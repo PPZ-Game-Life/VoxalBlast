@@ -396,12 +396,14 @@ function pointerPoint(event) {
 }
 
 function beginDrag(event, piece) {
-  if (piece.used || isPaused) return
+  if (piece.used || isPaused || drag) return
   event.preventDefault()
   selectedPiece = piece
   const hit = pointerPoint(event)
   drag = {
     piece,
+    pointerId: event.pointerId,
+    source: event.currentTarget,
     point: hit.point,
     ndc: hit.ndc,
     origin: null,
@@ -410,7 +412,14 @@ function beginDrag(event, piece) {
     startX: event.clientX,
     startY: event.clientY,
   }
-  renderPieceSlots()
+  // Keep receiving the touch after it leaves the slot button.
+  try {
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  } catch {
+    // Some embedded browsers reject capture during an interrupted gesture.
+  }
+  event.currentTarget.classList.add('selected')
+  setStatus('DRAG TO GRID')
 }
 
 function updatePreview(point) {
@@ -575,10 +584,19 @@ function updateCameraShake(delta) {
   camera.lookAt(0, 0, 0)
 }
 
-function finishDrag() {
-  if (!drag) return
+function releaseDragPointer(source, pointerId) {
+  try {
+    source?.releasePointerCapture?.(pointerId)
+  } catch {
+    // The browser may have already cancelled the pointer capture.
+  }
+}
+
+function finishDrag(event) {
+  if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return
   const currentDrag = drag
   drag = null
+  releaseDragPointer(currentDrag.source, currentDrag.pointerId)
   clearGroup(previewGroup)
   if (!currentDrag.active) {
     selectedPiece = currentDrag.piece
@@ -646,7 +664,8 @@ function resetView() {
 }
 
 window.addEventListener('pointermove', (event) => {
-  if (!drag) return
+  if (!drag || event.pointerId !== drag.pointerId) return
+  event.preventDefault()
   if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return
   drag.active = true
   const hit = pointerPoint(event)
@@ -654,9 +673,19 @@ window.addEventListener('pointermove', (event) => {
   drag.ndc = hit.ndc
   updatePreview(hit.point)
   setStatus(drag.valid ? 'RELEASE TO PLACE' : 'DRAG TO GRID')
-})
+}, { passive: false })
 window.addEventListener('pointerup', finishDrag)
-window.addEventListener('pointercancel', () => { drag = null; clearGroup(previewGroup) })
+window.addEventListener('pointercancel', (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return
+  const source = drag.source
+  const pointerId = drag.pointerId
+  drag = null
+  releaseDragPointer(source, pointerId)
+  clearGroup(previewGroup)
+  selectedPiece = null
+  renderPieceSlots()
+  setStatus('PLACE A SHAPE')
+})
 renderer.domElement.addEventListener('wheel', (event) => { event.preventDefault(); rotatePiece(event.deltaY > 0 ? 'y' : 'x') }, { passive: false })
 document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'r') resetView()
