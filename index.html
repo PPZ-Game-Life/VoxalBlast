@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#69a5ff" />
+    <title>VoxalBlast</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">V</span><span>VoxalBlast</span></div>
+        <div class="top-actions">
+          <button id="sound-toggle" class="icon-button" type="button" aria-label="Toggle sound" title="Toggle sound">◒</button>
+          <button id="reset-top" class="icon-button" type="button" aria-label="Restart game" title="Restart game">↻</button>
+        </div>
+      </header>
+      <main class="game-layout">
+        <aside class="score-panel">
+          <div class="eyebrow">CURRENT RUN</div>
+          <div id="score" class="score-value">0000</div>
+          <div class="best-label">BEST <span id="best">0000</span></div>
+          <div class="status-line"><span class="status-dot"></span><span id="status">PLACE A SHAPE</span></div>
+          <div class="help-copy">Build complete lines through the cube. Rotate pieces, then drag them onto the grid.</div>
+        </aside>
+        <section class="board-section">
+          <div class="board-heading"><span>VOXEL GRID</span><span id="lines-readout">0 LINES</span></div>
+          <div id="scene-wrap" class="scene-wrap"></div>
+          <div id="toast" class="toast" aria-live="polite"></div>
+        </section>
+        <aside class="pieces-panel">
+          <div class="panel-heading">NEXT SHAPES</div>
+          <div id="piece-slots" class="piece-slots"></div>
+          <div class="controls-block">
+            <div class="panel-heading">CONTROLS</div>
+            <div class="control-row"><span>DRAG</span><span>PLACE</span></div>
+            <div class="control-row"><span>W A S D</span><span>ROTATE</span></div>
+            <div class="control-row"><span>R</span><span>RESET VIEW</span></div>
+            <div class="control-row"><span>SCROLL</span><span>ROTATE PIECE</span></div>
+          </div>
+          <button id="reset-button" class="restart-button" type="button"><span>↻</span> RESTART RUN</button>
+        </aside>
+      </main>
+      <footer class="mobile-controls">
+        <button class="rotate-button" data-axis="x" type="button">↻ X</button>
+        <button class="rotate-button" data-axis="y" type="button">↻ Y</button>
+        <button class="rotate-button" data-axis="z" type="button">↻ Z</button>
+        <button id="reset-mobile" class="rotate-button" type="button">⌖ VIEW</button>
+      </footer>
+      <div id="game-over" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+        <div class="modal-content">
+          <div class="eyebrow">RUN COMPLETE</div>
+          <h1 id="game-over-title">GAME OVER</h1>
+          <div class="final-score"><span id="final-score">0000</span><small>POINTS</small></div>
+          <div class="final-best">BEST <span id="final-best">0000</span></div>
+          <button id="reset-modal" class="restart-button" type="button"><span>↻</span> PLAY AGAIN</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
