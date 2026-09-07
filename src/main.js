@@ -36,6 +36,8 @@ const statusEl = document.querySelector('#status')
 const linesEl = document.querySelector('#lines-readout')
 const toastEl = document.querySelector('#toast')
 const slotsEl = document.querySelector('#piece-slots')
+const piecesPanelEl = document.querySelector('.pieces-panel')
+const cancelZoneEl = document.querySelector('#cancel-zone')
 const gameOverEl = document.querySelector('#game-over')
 const finalScoreEl = document.querySelector('#final-score')
 const finalBestEl = document.querySelector('#final-best')
@@ -63,7 +65,9 @@ let audioContext
 let toastTimer
 let cameraShake = 0
 let transientEffects = []
+let suppressPieceClickUntil = 0
 const particleSystems = new Set()
+const piecePreviews = new Map()
 
 const quality = getRenderQuality()
 
@@ -384,7 +388,126 @@ function colorHex(color) {
   return `#${new THREE.Color(color).getHexString()}`
 }
 
+function centeredPreviewPositions(cells) {
+  const vectors = cells.map(([x, y, z]) => new THREE.Vector3(x, y, z).multiplyScalar(0.72))
+  const bounds = new THREE.Box3().setFromPoints(vectors)
+  const center = bounds.getCenter(new THREE.Vector3())
+  return vectors.map((position) => position.sub(center))
+}
+
+function disposePiecePreviews() {
+  piecePreviews.forEach((preview) => {
+    preview.meshes.forEach((mesh) => {
+      mesh.material.dispose()
+      mesh.children.forEach((child) => child.material?.dispose())
+    })
+    preview.renderer.dispose()
+    preview.renderer.forceContextLoss?.()
+  })
+  piecePreviews.clear()
+}
+
+function createPiecePreview(piece, canvas, slot) {
+  const previewRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' })
+  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+  previewRenderer.outputColorSpace = THREE.SRGBColorSpace
+  previewRenderer.toneMapping = THREE.ACESFilmicToneMapping
+  previewRenderer.toneMappingExposure = 1.16
+  previewRenderer.setClearColor(0x000000, 0)
+
+  const previewScene = new THREE.Scene()
+  previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6f82b7, 2.8))
+  const previewKey = new THREE.DirectionalLight(0xffffff, 4.4)
+  previewKey.position.set(4, 7, 5)
+  previewScene.add(previewKey)
+  const previewRim = new THREE.DirectionalLight(0x7ec8ff, 1.5)
+  previewRim.position.set(-4, 2, -3)
+  previewScene.add(previewRim)
+
+  const previewCamera = new THREE.OrthographicCamera(-2.5, 2.5, 2.2, -2.2, 0.1, 40)
+  previewCamera.position.set(5, 4.2, 6)
+  previewCamera.lookAt(0, 0, 0)
+  const root = new THREE.Group()
+  previewScene.add(root)
+  const positions = centeredPreviewPositions(currentCells(piece))
+  const size = new THREE.Box3().setFromPoints(positions).getSize(new THREE.Vector3()).addScalar(0.62)
+  const baseScale = THREE.MathUtils.clamp(3.4 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
+  root.scale.setScalar(baseScale)
+  const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
+  const meshes = positions.map((position) => {
+    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(piece.shape.color))
+    mesh.scale.setScalar(0.72)
+    mesh.position.copy(position)
+    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.66 })))
+    root.add(mesh)
+    return mesh
+  })
+  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes, baseScale, animation: null })
+}
+
+function updatePieceSlotSelection() {
+  piecePreviews.forEach((preview, piece) => {
+    preview.slot.classList.toggle('selected', selectedPiece === piece)
+    preview.slot.classList.toggle('used', piece.used)
+  })
+}
+
+function animatePiecePreview(piece, toCells, axis) {
+  const preview = piecePreviews.get(piece)
+  if (!preview) return
+  const targets = centeredPreviewPositions(toCells)
+  const targetSize = new THREE.Box3().setFromPoints(targets).getSize(new THREE.Vector3()).addScalar(0.62)
+  preview.animation = {
+    elapsed: 0,
+    duration: VFX_CONFIG.preview.rotationDuration,
+    axis,
+    starts: preview.meshes.map((mesh) => mesh.position.clone()),
+    targets,
+    startScale: preview.root.scale.x,
+    targetScale: THREE.MathUtils.clamp(3.4 / Math.max(targetSize.x, targetSize.y, targetSize.z), 0.96, 1.7),
+  }
+}
+
+function updatePiecePreviews(delta) {
+  piecePreviews.forEach((preview) => {
+    const width = Math.max(preview.renderer.domElement.clientWidth, 1)
+    const height = Math.max(preview.renderer.domElement.clientHeight, 1)
+    if (preview.renderer.domElement.width !== Math.round(width * preview.renderer.getPixelRatio()) || preview.renderer.domElement.height !== Math.round(height * preview.renderer.getPixelRatio())) {
+      preview.renderer.setSize(width, height, false)
+      const halfHeight = VFX_CONFIG.preview.cameraHeight
+      const halfWidth = halfHeight * width / height
+      preview.camera.left = -halfWidth
+      preview.camera.right = halfWidth
+      preview.camera.top = halfHeight
+      preview.camera.bottom = -halfHeight
+      preview.camera.updateProjectionMatrix()
+    }
+    if (preview.animation) {
+      preview.animation.elapsed += delta
+      const progress = THREE.MathUtils.clamp(preview.animation.elapsed / preview.animation.duration, 0, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      preview.meshes.forEach((mesh, index) => mesh.position.lerpVectors(preview.animation.starts[index], preview.animation.targets[index], eased))
+      const kick = Math.sin(progress * Math.PI) * 0.18
+      preview.root.rotation.set(
+        preview.animation.axis === 'x' ? kick : 0,
+        preview.animation.axis === 'y' ? kick : 0,
+        preview.animation.axis === 'z' ? kick : 0,
+      )
+      const scale = THREE.MathUtils.lerp(preview.animation.startScale, preview.animation.targetScale, eased)
+      preview.root.scale.setScalar(scale * (1 + Math.sin(progress * Math.PI) * 0.06))
+      if (progress >= 1) {
+        preview.root.rotation.set(0, 0, 0)
+        preview.baseScale = preview.animation.targetScale
+        preview.root.scale.setScalar(preview.baseScale)
+        preview.animation = null
+      }
+    }
+    preview.renderer.render(preview.scene, preview.camera)
+  })
+}
+
 function renderPieceSlots() {
+  disposePiecePreviews()
   slotsEl.innerHTML = ''
   pieces.forEach((piece, index) => {
     const slot = document.createElement('button')
@@ -395,16 +518,10 @@ function renderPieceSlots() {
 
     const thumb = document.createElement('span')
     thumb.className = 'piece-thumb'
-    const cells = currentCells(piece)
-    cells.forEach(([x, y, z]) => {
-      const cell = document.createElement('span')
-      cell.className = 'piece-thumb-cell'
-      cell.style.left = `${7 + x * 11 + z * 3}px`
-      cell.style.top = `${7 + y * 11 - z * 3}px`
-      cell.style.backgroundColor = colorHex(piece.shape.color)
-      cell.style.setProperty('--depth', `${z * 3}px`)
-      thumb.appendChild(cell)
-    })
+    const canvas = document.createElement('canvas')
+    canvas.className = 'piece-preview-canvas'
+    canvas.setAttribute('aria-hidden', 'true')
+    thumb.appendChild(canvas)
 
     const meta = document.createElement('span')
     meta.className = 'piece-meta'
@@ -412,9 +529,14 @@ function renderPieceSlots() {
     slot.append(thumb, meta)
     slot.addEventListener('pointerdown', (event) => beginDrag(event, piece))
     slot.addEventListener('click', () => {
-      if (!piece.used && !drag) { selectedPiece = piece; renderPieceSlots(); setStatus('READY TO PLACE') }
+      if (!piece.used && !drag && performance.now() >= suppressPieceClickUntil) {
+        selectedPiece = piece
+        updatePieceSlotSelection()
+        setStatus('READY TO PLACE')
+      }
     })
     slotsEl.appendChild(slot)
+    createPiecePreview(piece, canvas, slot)
   })
 }
 
@@ -424,6 +546,35 @@ function showToast(text) {
   toastEl.classList.add('visible')
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 1500)
+}
+
+function setCancelZone(active, highlighted = false) {
+  piecesPanelEl.classList.toggle('cancel-mode', active)
+  piecesPanelEl.classList.toggle('cancel-hot', active && highlighted)
+  cancelZoneEl.setAttribute('aria-hidden', String(!active))
+}
+
+function isInsidePieceArea(event) {
+  const rect = piecesPanelEl.getBoundingClientRect()
+  return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+}
+
+function cancelActiveDrag(showFeedback = true) {
+  if (!drag) return false
+  const currentDrag = drag
+  drag = null
+  releaseDragPointer(currentDrag.source, currentDrag.pointerId)
+  clearGroup(previewGroup)
+  selectedPiece = null
+  suppressPieceClickUntil = performance.now() + 260
+  setCancelZone(false)
+  updatePieceSlotSelection()
+  setStatus('PLACE A SHAPE')
+  if (showFeedback) {
+    showToast('PLACEMENT CANCELLED')
+    playHaptic(10)
+  }
+  return true
 }
 
 function updateSettingsUi() {
@@ -437,12 +588,7 @@ function openSettings() {
   if (gameEnded) return
   settingsOpen = true
   isPaused = true
-  if (drag) {
-    releaseDragPointer(drag.source, drag.pointerId)
-    drag = null
-    selectedPiece = null
-    renderPieceSlots()
-  }
+  if (drag) cancelActiveDrag(false)
   clearGroup(previewGroup)
   settingsEl.classList.remove('hidden')
   platform.gameplayStop()
@@ -508,7 +654,9 @@ function rotatePiece(axis) {
   if (!piece || isPaused) return
   selectedPiece = piece
   piece.rotations[axis] = (piece.rotations[axis] + 1) % 4
-  renderPieceSlots()
+  const nextCells = currentCells(piece)
+  updatePieceSlotSelection()
+  animatePiecePreview(piece, nextCells, axis)
   updatePreview(drag?.point)
   setStatus(`ROTATED ${axis.toUpperCase()}`)
 }
@@ -528,6 +676,9 @@ function pointerPoint(event) {
 
 function beginDrag(event, piece) {
   if (piece.used || isPaused || drag) return
+  // Right/middle click is reserved as the in-drag cancel entry on PC; it must
+  // not start a phantom placement drag when a slot is idle.
+  if (event.pointerType === 'mouse' && event.button !== 0) return
   event.preventDefault()
   selectedPiece = piece
   const hit = pointerPoint(event)
@@ -540,6 +691,7 @@ function beginDrag(event, piece) {
     origin: null,
     valid: false,
     active: false,
+    inCancelZone: false,
     startX: event.clientX,
     startY: event.clientY,
   }
@@ -729,20 +881,36 @@ function finishDrag(event) {
   drag = null
   releaseDragPointer(currentDrag.source, currentDrag.pointerId)
   clearGroup(previewGroup)
+  setCancelZone(false)
   if (!currentDrag.active) {
     selectedPiece = currentDrag.piece
-    renderPieceSlots()
+    updatePieceSlotSelection()
     setStatus('READY TO PLACE')
     return
   }
-  if (!currentDrag.valid || !currentDrag.origin) { setStatus('PLACE A SHAPE'); return }
+  suppressPieceClickUntil = performance.now() + 260
+  if (currentDrag.inCancelZone) {
+    selectedPiece = null
+    updatePieceSlotSelection()
+    setStatus('PLACE A SHAPE')
+    showToast('PLACEMENT CANCELLED')
+    playHaptic(10)
+    return
+  }
+  if (!currentDrag.valid || !currentDrag.origin) {
+    selectedPiece = null
+    updatePieceSlotSelection()
+    setStatus('PLACE A SHAPE')
+    showToast('TRY ANOTHER SPOT')
+    return
+  }
   const result = board.place(currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
   playPlaceSound(result.lines.length)
   playHaptic(result.lines.length > 1 ? [18, 35, 22] : result.lines.length ? [18, 28, 16] : 12)
   currentDrag.piece.used = true
   selectedPiece = null
   renderBoard()
-  renderPieceSlots()
+  updatePieceSlotSelection()
   if (result.lines.length) {
     const multiplier = result.lines.length === 1 ? 'x1' : result.lines.length === 2 ? 'x3' : result.lines.length === 3 ? 'x6' : 'x10'
     showToast(`${result.lines.length} LINE${result.lines.length === 1 ? '' : 'S'}  ${multiplier}  +${result.points}`)
@@ -786,6 +954,7 @@ function resetGame() {
   gameOverEl.classList.add('hidden')
   selectedPiece = null
   drag = null
+  setCancelZone(false)
   nextPieces()
   renderBoard()
   setStatus('PLACE A SHAPE')
@@ -839,12 +1008,24 @@ window.addEventListener('pointermove', (event) => {
   if (!drag || event.pointerId !== drag.pointerId) return
   event.preventDefault()
   if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return
-  drag.active = true
+  if (!drag.active) {
+    drag.active = true
+    setCancelZone(true)
+  }
+  drag.inCancelZone = isInsidePieceArea(event)
+  setCancelZone(true, drag.inCancelZone)
+  if (drag.inCancelZone) {
+    drag.valid = false
+    drag.origin = null
+    clearGroup(previewGroup)
+    setStatus('RELEASE TO CANCEL')
+    return
+  }
   const hit = pointerPoint(event)
   drag.point = hit.point
   drag.ndc = hit.ndc
   updatePreview(hit.point)
-  setStatus(drag.valid ? 'RELEASE TO PLACE' : 'DRAG TO GRID')
+  setStatus(drag.valid ? 'RELEASE TO PLACE' : 'INVALID POSITION')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
   finishViewDrag(event)
@@ -853,21 +1034,20 @@ window.addEventListener('pointerup', (event) => {
 window.addEventListener('pointercancel', (event) => {
   finishViewDrag(event)
   if (!drag || event.pointerId !== drag.pointerId) return
-  const source = drag.source
-  const pointerId = drag.pointerId
-  drag = null
-  releaseDragPointer(source, pointerId)
-  clearGroup(previewGroup)
-  selectedPiece = null
-  renderPieceSlots()
-  setStatus('PLACE A SHAPE')
+  cancelActiveDrag(false)
 })
 renderer.domElement.addEventListener('wheel', (event) => { event.preventDefault(); rotatePiece(event.deltaY > 0 ? 'y' : 'x') }, { passive: false })
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
   if (settingsOpen) return
   if (event.key.toLowerCase() === 'r') resetView()
   if (['w', 'a', 's', 'd'].includes(event.key.toLowerCase())) rotatePiece(event.key.toLowerCase() === 'w' || event.key.toLowerCase() === 's' ? 'x' : 'y')
+})
+window.addEventListener('contextmenu', (event) => {
+  if (!drag) return
+  event.preventDefault()
+  cancelActiveDrag()
 })
 for (const button of document.querySelectorAll('.rotate-button')) button.addEventListener('click', () => button.dataset.axis ? rotatePiece(button.dataset.axis) : resetView())
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
@@ -889,6 +1069,7 @@ hapticsSettingEl.addEventListener('click', () => {
 document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('VIEW RESET') })
 document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden && drag) cancelActiveDrag(false)
   isPaused = document.hidden || gameEnded || settingsOpen
   if (document.hidden) { platform.gameplayStop(); setStatus('PAUSED') }
   else if (gameEnded || settingsOpen) return
@@ -916,6 +1097,7 @@ function animate() {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
   }
+  updatePiecePreviews(delta)
   updateCameraShake(delta)
   candidateGroup.children.forEach((mesh, index) => {
     mesh.material.opacity = 0.1 + Math.sin(performance.now() * 0.003 + index) * 0.05

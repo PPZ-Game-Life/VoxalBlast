@@ -35,6 +35,11 @@ export const VFX_CONFIG = Object.freeze({
     levels: 6,
     lowPowerLevels: 4,
   }),
+  preview: Object.freeze({
+    rotationDuration: 0.22,
+    cameraHeight: 2.15,
+    maxScale: 1.7,
+  }),
 })
 
 export function getRenderQuality() {
