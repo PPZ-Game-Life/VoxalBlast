@@ -22,7 +22,7 @@ import {
   SizeOverLife,
 } from 'three.quarks'
 import { Board, SIZE } from './game/board.js'
-import { SHAPES, keyOf, normalizeCells, rotateCells } from './game/shapes.js'
+import { SHAPES, normalizeCells, rotateCells } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { getRenderQuality, RENDER_PALETTE as palette, VFX_CONFIG } from './rendering/config.js'
 import './styles.css'
@@ -53,6 +53,7 @@ let best = Number.parseInt(localStorage.getItem(bestKey) || '0', 10)
 let pieces = []
 let selectedPiece = null
 let drag = null
+let viewDrag = null
 let isPaused = false
 let gameEnded = false
 let settingsOpen = false
@@ -73,9 +74,18 @@ const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
 const cameraBasePosition = new THREE.Vector3()
 const cameraDirection = new THREE.Vector3(0.82, 0.76, 1).normalize()
 const cameraTarget = new THREE.Vector3(0, 0, 0)
+const cameraAzimuth = Math.atan2(1, 0.82)
+let cameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
+const defaultCameraElevation = cameraElevation
 
 function fitCameraToPlaySpace() {
   const isMobile = sceneWrap.clientWidth < 700
+  const horizontalScale = Math.cos(cameraElevation)
+  cameraDirection.set(
+    horizontalScale * Math.cos(cameraAzimuth),
+    Math.sin(cameraElevation),
+    horizontalScale * Math.sin(cameraAzimuth),
+  ).normalize()
   camera.fov = isMobile ? 37 : 34
   camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
   camera.updateProjectionMatrix()
@@ -566,7 +576,7 @@ function updatePreview(point) {
 }
 
 class AxisEmitter {
-  constructor(direction, spread = 0.3) {
+  constructor(direction, spread = VFX_CONFIG.clear.spread) {
     this.type = 'axis'
     this.direction = direction.clone().normalize()
     this.spread = spread
@@ -783,10 +793,48 @@ function resetGame() {
 }
 
 function resetView() {
+  cameraElevation = defaultCameraElevation
   fitCameraToPlaySpace()
 }
 
+function beginViewDrag(event) {
+  if (isPaused || drag || viewDrag || event.pointerType === 'mouse' && event.button !== 0) return
+  event.preventDefault()
+  viewDrag = {
+    pointerId: event.pointerId,
+    source: event.currentTarget,
+    startY: event.clientY,
+    startElevation: cameraElevation,
+    moved: false,
+  }
+  try {
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  } catch {
+    // Some embedded browsers can reject capture after an interrupted gesture.
+  }
+}
+
+function finishViewDrag(event) {
+  if (!viewDrag || (event?.pointerId !== undefined && event.pointerId !== viewDrag.pointerId)) return
+  const currentViewDrag = viewDrag
+  viewDrag = null
+  releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
+  if (currentViewDrag.moved) setStatus('VIEW ADJUSTED')
+}
+
+renderer.domElement.addEventListener('pointerdown', beginViewDrag)
 window.addEventListener('pointermove', (event) => {
+  if (viewDrag && event.pointerId === viewDrag.pointerId) {
+    event.preventDefault()
+    const travel = event.clientY - viewDrag.startY
+    if (Math.abs(travel) < 3) return
+    viewDrag.moved = true
+    const height = Math.max(sceneWrap.clientHeight, 1)
+    cameraElevation = THREE.MathUtils.clamp(viewDrag.startElevation - travel / height * 1.2, 0.16, 1.2)
+    fitCameraToPlaySpace()
+    setStatus('DRAG TO ADJUST VIEW')
+    return
+  }
   if (!drag || event.pointerId !== drag.pointerId) return
   event.preventDefault()
   if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return
@@ -797,8 +845,12 @@ window.addEventListener('pointermove', (event) => {
   updatePreview(hit.point)
   setStatus(drag.valid ? 'RELEASE TO PLACE' : 'DRAG TO GRID')
 }, { passive: false })
-window.addEventListener('pointerup', finishDrag)
+window.addEventListener('pointerup', (event) => {
+  finishViewDrag(event)
+  finishDrag(event)
+})
 window.addEventListener('pointercancel', (event) => {
+  finishViewDrag(event)
   if (!drag || event.pointerId !== drag.pointerId) return
   const source = drag.source
   const pointerId = drag.pointerId
