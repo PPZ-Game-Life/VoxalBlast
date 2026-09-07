@@ -831,7 +831,7 @@ window.addEventListener('pointermove', (event) => {
     viewDrag.moved = true
     const width = Math.max(sceneWrap.clientWidth, 1)
     // Horizontal swipe rotates the camera around the play-space's world Y axis.
-    cameraAzimuth = viewDrag.startAzimuth - travel / width * Math.PI
+    cameraAzimuth = viewDrag.startAzimuth + travel / width * Math.PI
     fitCameraToPlaySpace()
     setStatus('DRAG TO ROTATE VIEW')
     return
