@@ -184,10 +184,24 @@ const cubeGeometry = new RoundedBoxGeometry(0.86, 0.86, 0.86, 3, 0.075)
 const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
 const particleGeometry = new RoundedBoxGeometry(0.12, 0.12, 0.12, 2, 0.025)
 const beamGeometry = new THREE.BoxGeometry(boardSpan + 0.08, 0.065, 0.065)
+function buildStarShape(outer = 0.5, inner = 0.2, points = 5) {
+  const shape = new THREE.Shape()
+  for (let i = 0; i < points * 2; i += 1) {
+    const radius = i % 2 === 0 ? outer : inner
+    const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius
+    if (i === 0) shape.moveTo(x, y)
+    else shape.lineTo(x, y)
+  }
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape)
+}
+const starGeometry = buildStarShape(0.5, 0.22, 5)
 const particleMaterial = new THREE.MeshBasicMaterial({
   color: 0xffffff,
   transparent: true,
-  opacity: 0.92,
+  opacity: 0.8,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   toneMapped: false,
@@ -259,8 +273,8 @@ function buildGrid() {
   shadow.receiveShadow = true
   gridGroup.add(shadow)
 
-  // Eight short corner brackets replace the previous full 3D cage. They
-  // communicate the play-space volume without turning it into a wireframe box.
+  // Eight short corner brackets are only a faint depth hint now; the volume is
+  // carried by the colored blocks, the bottom landing pads and candidate hints.
   const corners = [
     new THREE.Vector3(min, min, min), new THREE.Vector3(max, min, min),
     new THREE.Vector3(min, max, min), new THREE.Vector3(max, max, min),
@@ -270,10 +284,10 @@ function buildGrid() {
   const edgeMaterial = new THREE.LineBasicMaterial({
     color: palette.navy,
     transparent: true,
-    opacity: 0.38,
+    opacity: 0.1,
     depthWrite: false,
   })
-  const bracketLength = 0.46
+  const bracketLength = 0.4
   const bracketPoints = []
   corners.forEach((corner) => {
     for (const axis of ['x', 'y', 'z']) {
@@ -284,19 +298,6 @@ function buildGrid() {
   })
   const bracketGeometry = new THREE.BufferGeometry().setFromPoints(bracketPoints)
   gridGroup.add(new THREE.LineSegments(bracketGeometry, edgeMaterial))
-
-  const markerGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 3, 0.045)
-  const markerMaterial = new THREE.MeshStandardMaterial({
-    color: palette.navyDeep,
-    roughness: 0.5,
-    transparent: true,
-    opacity: 0.66,
-  })
-  corners.forEach((corner) => {
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial)
-    marker.position.copy(corner)
-    gridGroup.add(marker)
-  })
 }
 buildGrid()
 
@@ -515,6 +516,7 @@ function renderPieceSlots() {
     slot.type = 'button'
     slot.dataset.index = index
     slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
+    slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} voxels`)
 
     const thumb = document.createElement('span')
     thumb.className = 'piece-thumb'
@@ -523,16 +525,13 @@ function renderPieceSlots() {
     canvas.setAttribute('aria-hidden', 'true')
     thumb.appendChild(canvas)
 
-    const meta = document.createElement('span')
-    meta.className = 'piece-meta'
-    meta.innerHTML = `<span class="piece-index">0${index + 1}</span><span class="piece-name">${piece.shape.name}</span><span class="piece-count">${piece.shape.cells.length} VOXELS</span>`
-    slot.append(thumb, meta)
+    slot.append(thumb)
     slot.addEventListener('pointerdown', (event) => beginDrag(event, piece))
     slot.addEventListener('click', () => {
       if (!piece.used && !drag && performance.now() >= suppressPieceClickUntil) {
         selectedPiece = piece
         updatePieceSlotSelection()
-        setStatus('READY TO PLACE')
+        setStatus('Ready to place')
       }
     })
     slotsEl.appendChild(slot)
@@ -569,9 +568,9 @@ function cancelActiveDrag(showFeedback = true) {
   suppressPieceClickUntil = performance.now() + 260
   setCancelZone(false)
   updatePieceSlotSelection()
-  setStatus('PLACE A SHAPE')
+  setStatus('Pick a shape')
   if (showFeedback) {
-    showToast('PLACEMENT CANCELLED')
+    showToast('Placement cancelled')
     playHaptic(10)
   }
   return true
@@ -592,7 +591,7 @@ function openSettings() {
   clearGroup(previewGroup)
   settingsEl.classList.remove('hidden')
   platform.gameplayStop()
-  setStatus('PAUSED')
+  setStatus('Paused')
   updateSettingsUi()
   document.querySelector('#settings-close').focus()
 }
@@ -604,7 +603,7 @@ function closeSettings() {
   isPaused = document.hidden || gameEnded
   if (!isPaused) {
     platform.gameplayStart()
-    setStatus('PLACE A SHAPE')
+    setStatus('Pick a shape')
   }
   settingsButtonEl.focus()
 }
@@ -658,7 +657,6 @@ function rotatePiece(axis) {
   updatePieceSlotSelection()
   animatePiecePreview(piece, nextCells, axis)
   updatePreview(drag?.point)
-  setStatus(`ROTATED ${axis.toUpperCase()}`)
 }
 
 const raycaster = new THREE.Raycaster()
@@ -702,7 +700,7 @@ function beginDrag(event, piece) {
     // Some embedded browsers reject capture during an interrupted gesture.
   }
   event.currentTarget.classList.add('selected')
-  setStatus('DRAG TO GRID')
+  setStatus('Drag to the cube')
 }
 
 function updatePreview(point) {
@@ -724,7 +722,7 @@ function updatePreview(point) {
     })))
     previewGroup.add(mesh)
   })
-  setStatus(valid ? 'RELEASE TO PLACE' : 'INVALID POSITION')
+  setStatus(valid ? 'Release to place' : 'No room here')
 }
 
 class AxisEmitter {
@@ -755,6 +753,8 @@ class AxisEmitter {
 function spawnLineParticles(line) {
   const direction = line.axis === 'x' ? new THREE.Vector3(1, 0, 0) : line.axis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1)
   const color = palette.line[line.axis]
+  // Stay in the line hue instead of blowing out to white at the end of life.
+  const brightEnd = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.42)
   const system = new ParticleSystem({
     autoDestroy: true,
     looping: false,
@@ -774,7 +774,7 @@ function spawnLineParticles(line) {
     behaviors: [
       new ColorOverLife(new Gradient([
         [new THREE.Vector3(new THREE.Color(color).r, new THREE.Color(color).g, new THREE.Color(color).b), 0],
-        [new THREE.Vector3(1, 1, 1), 1],
+        [new THREE.Vector3(brightEnd.r, brightEnd.g, brightEnd.b), 1],
       ], [[1, 0.95], [0, 0.02]])),
       new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.15, 0.4, 0), 0]])),
     ],
@@ -821,7 +821,7 @@ function spawnLineBeam(line, index) {
       effect.elapsed += delta
       const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
       const pulse = progress < 0.25 ? progress / 0.25 : 1 - (progress - 0.25) / 0.75
-      effect.object.material.opacity = Math.max(0, pulse) * 0.72
+      effect.object.material.opacity = Math.max(0, pulse) * VFX_CONFIG.clear.beamOpacity
       const scale = progress < 0.25 ? 0.72 + progress * 1.12 : 1.0
       effect.object.scale.setScalar(scale)
     },
@@ -829,8 +829,50 @@ function spawnLineBeam(line, index) {
   spawnLineParticles(line)
 }
 
+function spawnClearStars(line, index) {
+  const first = line.cells[0]
+  const last = line.cells[line.cells.length - 1]
+  const center = cellToWorld(
+    (first[0] + last[0]) / 2,
+    (first[1] + last[1]) / 2,
+    (first[2] + last[2]) / 2,
+  )
+  // Celebratory stars stay warm (yellow/orange) instead of flashing white.
+  ;[0xffd32a, 0xff9c3d].forEach((color, starIndex) => {
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    })
+    const star = new THREE.Mesh(starGeometry, material)
+    star.position.copy(center)
+    fxGroup.add(star)
+    transientEffects.push({
+      object: star,
+      elapsed: -index * 0.02,
+      duration: VFX_CONFIG.clear.starDuration,
+      update: (effect, delta) => {
+        effect.elapsed += delta
+        const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
+        const pop = progress < 0.22 ? 0.1 + (progress / 0.22) * 1.0 : 1.1 - ((progress - 0.22) / 0.78) * 0.18
+        const base = starIndex === 0 ? 1 : 0.6
+        effect.object.quaternion.copy(camera.quaternion)
+        effect.object.scale.setScalar(base * pop * VFX_CONFIG.clear.starMaxScale)
+        const fade = progress < 0.12 ? progress / 0.12 : progress > 0.55 ? 1 - (progress - 0.55) / 0.45 : 1
+        effect.object.material.opacity = Math.max(0, fade) * 0.85
+      },
+    })
+  })
+}
+
 function spawnClearEffects(lines) {
-  lines.forEach((line, index) => spawnLineBeam(line, index))
+  lines.forEach((line, index) => {
+    spawnLineBeam(line, index)
+    spawnClearStars(line, index)
+  })
   triggerShake(lines.length > 1 ? 0.12 : 0.055)
 }
 
@@ -885,23 +927,23 @@ function finishDrag(event) {
   if (!currentDrag.active) {
     selectedPiece = currentDrag.piece
     updatePieceSlotSelection()
-    setStatus('READY TO PLACE')
+    setStatus('Ready to place')
     return
   }
   suppressPieceClickUntil = performance.now() + 260
   if (currentDrag.inCancelZone) {
     selectedPiece = null
     updatePieceSlotSelection()
-    setStatus('PLACE A SHAPE')
-    showToast('PLACEMENT CANCELLED')
+    setStatus('Pick a shape')
+    showToast('Placement cancelled')
     playHaptic(10)
     return
   }
   if (!currentDrag.valid || !currentDrag.origin) {
     selectedPiece = null
     updatePieceSlotSelection()
-    setStatus('PLACE A SHAPE')
-    showToast('TRY ANOTHER SPOT')
+    setStatus('Pick a shape')
+    showToast('Try another spot')
     return
   }
   const result = board.place(currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
@@ -916,8 +958,8 @@ function finishDrag(event) {
     showToast(`${result.lines.length} LINE${result.lines.length === 1 ? '' : 'S'}  ${multiplier}  +${result.points}`)
     showScorePop(result.points, result.lines.length)
     spawnClearEffects(result.lines)
-    setStatus('CLEAR! KEEP BUILDING')
-  } else setStatus('PLACE A SHAPE')
+    setStatus('Clear! Keep building')
+  } else setStatus('Pick a shape')
   if (pieces.every((piece) => piece.used)) nextPieces()
   if (!gameEnded && pieces.every((piece) => piece.used || !hasAnyPlacement(piece))) endGame()
 }
@@ -957,7 +999,7 @@ function resetGame() {
   setCancelZone(false)
   nextPieces()
   renderBoard()
-  setStatus('PLACE A SHAPE')
+  setStatus('Pick a shape')
   if (!isPaused) platform.gameplayStart()
 }
 
@@ -988,7 +1030,6 @@ function finishViewDrag(event) {
   const currentViewDrag = viewDrag
   viewDrag = null
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
-  if (currentViewDrag.moved) setStatus('VIEW ADJUSTED')
 }
 
 renderer.domElement.addEventListener('pointerdown', beginViewDrag)
@@ -1002,7 +1043,6 @@ window.addEventListener('pointermove', (event) => {
     // Horizontal swipe rotates the camera around the play-space's world Y axis.
     cameraAzimuth = viewDrag.startAzimuth + travel / width * Math.PI
     fitCameraToPlaySpace()
-    setStatus('DRAG TO ROTATE VIEW')
     return
   }
   if (!drag || event.pointerId !== drag.pointerId) return
@@ -1018,14 +1058,14 @@ window.addEventListener('pointermove', (event) => {
     drag.valid = false
     drag.origin = null
     clearGroup(previewGroup)
-    setStatus('RELEASE TO CANCEL')
+    setStatus('Release to cancel')
     return
   }
   const hit = pointerPoint(event)
   drag.point = hit.point
   drag.ndc = hit.ndc
   updatePreview(hit.point)
-  setStatus(drag.valid ? 'RELEASE TO PLACE' : 'INVALID POSITION')
+  setStatus(drag.valid ? 'Release to place' : 'No room here')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
   finishViewDrag(event)
@@ -1066,14 +1106,14 @@ hapticsSettingEl.addEventListener('click', () => {
   updateSettingsUi()
   if (hapticsOn) playHaptic(18)
 })
-document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('VIEW RESET') })
+document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('View reset') })
 document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && drag) cancelActiveDrag(false)
   isPaused = document.hidden || gameEnded || settingsOpen
-  if (document.hidden) { platform.gameplayStop(); setStatus('PAUSED') }
+  if (document.hidden) { platform.gameplayStop(); setStatus('Paused') }
   else if (gameEnded || settingsOpen) return
-  else { platform.gameplayStart(); setStatus('PLACE A SHAPE') }
+  else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 updateSettingsUi()
 
@@ -1087,7 +1127,7 @@ function resize() {
 window.addEventListener('resize', resize)
 resize()
 resetGame()
-platform.initialize().catch(() => showToast('PLATFORM MODE OFFLINE'))
+platform.initialize().catch(() => showToast('Offline mode'))
 
 const clock = new THREE.Clock()
 function animate() {
