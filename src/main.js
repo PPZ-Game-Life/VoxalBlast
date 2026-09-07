@@ -31,27 +31,24 @@ const board = new Board()
 const platform = createCrazyGamesAdapter()
 const sceneWrap = document.querySelector('#scene-wrap')
 const scoreEl = document.querySelector('#score')
-const bestEl = document.querySelector('#best')
 const statusEl = document.querySelector('#status')
-const linesEl = document.querySelector('#lines-readout')
 const toastEl = document.querySelector('#toast')
 const slotsEl = document.querySelector('#piece-slots')
 const piecesPanelEl = document.querySelector('.pieces-panel')
 const cancelZoneEl = document.querySelector('#cancel-zone')
+const itemBarEl = document.querySelector('#item-bar')
+const axisPickEl = document.querySelector('#axis-pick')
 const gameOverEl = document.querySelector('#game-over')
 const finalScoreEl = document.querySelector('#final-score')
-const finalBestEl = document.querySelector('#final-best')
 const versionEl = document.querySelector('#app-version')
 const settingsEl = document.querySelector('#settings-modal')
 const settingsButtonEl = document.querySelector('#settings-button')
 const soundSettingEl = document.querySelector('#sound-setting')
 const hapticsSettingEl = document.querySelector('#haptics-setting')
 
-const bestKey = 'voxalblast-best'
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
 versionEl.textContent = `v${packageInfo.version}`
-let best = Number.parseInt(localStorage.getItem(bestKey) || '0', 10)
 let pieces = []
 let selectedPiece = null
 let drag = null
@@ -206,6 +203,20 @@ const previewGroup = new THREE.Group()
 const candidateGroup = new THREE.Group()
 const fxGroup = new THREE.Group()
 scene.add(gridGroup, blocksGroup, previewGroup, candidateGroup, fxGroup)
+
+// —— Item tools (docs/Planning/07) ——
+const ITEM_TOOLS = Object.freeze([
+  { id: 'refresh', name: 'Refresh', icon: '↻', start: 2, cap: 3 },
+  { id: 'hammer', name: 'Hammer', icon: '🔨', start: 1, cap: 2 },
+  { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
+  { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
+])
+const itemPreviewGroup = new THREE.Group()
+scene.add(itemPreviewGroup)
+let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
+let itemActive = null // { id, anchor: {x,y,z}|null, axis, ndc }
+let itemBusyUntil = 0
+let lastItemHoverKey = null
 
 const cellSize = 1.05
 const boardSpan = SIZE * cellSize
@@ -385,8 +396,6 @@ function renderBoard() {
 
 function updateHud() {
   scoreEl.textContent = String(board.score).padStart(4, '0')
-  bestEl.textContent = String(best).padStart(4, '0')
-  linesEl.textContent = `${board.totalLines} LINE${board.totalLines === 1 ? '' : 'S'}`
 }
 
 function makePiece(shape) {
@@ -519,7 +528,7 @@ function renderPieceSlots() {
     slot.append(thumb)
     slot.addEventListener('pointerdown', (event) => beginDrag(event, piece))
     slot.addEventListener('click', () => {
-      if (!piece.used && !drag && performance.now() >= suppressPieceClickUntil) {
+      if (!piece.used && !drag && !itemActive && performance.now() >= suppressPieceClickUntil) {
         selectedPiece = piece
         updatePieceSlotSelection()
         setStatus('Ready to place')
@@ -579,6 +588,7 @@ function openSettings() {
   settingsOpen = true
   isPaused = true
   if (drag) cancelActiveDrag(false)
+  cancelItemSelection(true)
   clearGroup(previewGroup)
   settingsEl.classList.remove('hidden')
   platform.gameplayStop()
@@ -639,6 +649,246 @@ function showScorePop(points, lineCount) {
   setTimeout(() => pop.remove(), 920)
 }
 
+function canUseItemsNow() {
+  return !gameEnded && !isPaused && !drag && !settingsOpen && performance.now() >= itemBusyUntil
+}
+
+function renderItemBar() {
+  itemBarEl.querySelectorAll('.item-button').forEach((button) => {
+    const id = button.dataset.item
+    const count = itemCounts[id]
+    const ready = canUseItemsNow() && count > 0
+    button.classList.toggle('disabled', !ready)
+    button.classList.toggle('active', itemActive?.id === id)
+    button.setAttribute('aria-pressed', String(itemActive?.id === id))
+    const countEl = button.querySelector('.item-count')
+    if (countEl) countEl.textContent = String(count)
+  })
+}
+
+function cancelItemSelection(silent = false) {
+  if (!itemActive) {
+    axisPickEl.classList.add('hidden')
+    clearGroup(itemPreviewGroup)
+    return
+  }
+  itemActive = null
+  lastItemHoverKey = null
+  clearGroup(itemPreviewGroup)
+  axisPickEl.classList.add('hidden')
+  if (!silent) setStatus('Pick a shape')
+  renderItemBar()
+}
+
+function resetItems() {
+  itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
+  itemActive = null
+  itemBusyUntil = 0
+  lastItemHoverKey = null
+  clearGroup(itemPreviewGroup)
+  axisPickEl.classList.add('hidden')
+  renderItemBar()
+}
+
+function eventNdc(event) {
+  const rect = renderer.domElement.getBoundingClientRect()
+  return new THREE.Vector2(
+    ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+    -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+  )
+}
+
+function occupiedCellNear(ndc) {
+  let bestCell = null
+  let bestDistance = Infinity
+  const projected = new THREE.Vector3()
+  board.cells.forEach((cell) => {
+    projected.copy(cellToWorld(cell.x, cell.y, cell.z)).project(camera)
+    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
+    if (distance < bestDistance) { bestDistance = distance; bestCell = cell }
+  })
+  return bestCell && bestDistance < 0.16 ? { x: bestCell.x, y: bestCell.y, z: bestCell.z } : null
+}
+
+function toolScopeCells(id, anchor) {
+  if (!anchor) return []
+  if (id === 'hammer') return [[anchor.x, anchor.y, anchor.z]]
+  if (id === 'rocket') {
+    const cells = []
+    for (let i = 0; i < SIZE; i += 1) {
+      if (itemActive.axis === 'x') cells.push([i, anchor.y, anchor.z])
+      else if (itemActive.axis === 'y') cells.push([anchor.x, i, anchor.z])
+      else cells.push([anchor.x, anchor.y, i])
+    }
+    return cells
+  }
+  // bomb: 2×2×2 growing toward +x/+y/+z, trimmed to the 4×4×4 bounds
+  const cells = []
+  for (let dx = 0; dx <= 1; dx += 1) for (let dy = 0; dy <= 1; dy += 1) for (let dz = 0; dz <= 1; dz += 1) {
+    const x = anchor.x + dx
+    const y = anchor.y + dy
+    const z = anchor.z + dz
+    if (x < SIZE && y < SIZE && z < SIZE) cells.push([x, y, z])
+  }
+  return cells
+}
+
+function rebuildItemOverlay() {
+  clearGroup(itemPreviewGroup)
+  if (!itemActive || !itemActive.anchor) return
+  const scope = toolScopeCells(itemActive.id, itemActive.anchor)
+  scope.forEach(([x, y, z]) => {
+    const occupied = board.cells.has(`${x},${y},${z}`)
+    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(palette.valid, occupied ? 0.5 : 0.2))
+    mesh.scale.setScalar(occupied ? 1 : 0.72)
+    mesh.position.copy(cellToWorld(x, y, z))
+    itemPreviewGroup.add(mesh)
+  })
+}
+
+function updateItemHover(ndc) {
+  if (!itemActive || itemActive.id === 'refresh') return
+  const anchor = occupiedCellNear(ndc)
+  itemActive.anchor = anchor
+  itemActive.ndc = ndc
+  const key = anchor ? `${itemActive.id}:${itemActive.axis}:${anchor.x},${anchor.y},${anchor.z}` : ''
+  if (key !== lastItemHoverKey) {
+    lastItemHoverKey = key
+    rebuildItemOverlay()
+  }
+}
+
+function selectItemAt(event) {
+  const ndc = eventNdc(event)
+  updateItemHover(ndc)
+  if (!itemActive || !itemActive.anchor) {
+    setStatus('Pick an occupied cube')
+    return
+  }
+  confirmItem()
+}
+
+function confirmItem() {
+  const { id, anchor } = itemActive
+  if (!anchor) return
+  const scope = toolScopeCells(id, anchor)
+  const removed = board.removeCells(scope)
+  if (!removed.length) {
+    setStatus('Nothing to clear there')
+    return
+  }
+  consumeItem(id)
+  itemBusyUntil = performance.now() + 420
+  setTimeout(renderItemBar, 450)
+  emitItemBurst(removed, id)
+  renderBoard()
+  cancelItemSelection(true)
+  setStatus('Pick a shape')
+  renderItemBar()
+  checkStuckAndPrompt()
+}
+
+function consumeItem(id) {
+  itemCounts[id] = Math.max(0, itemCounts[id] - 1)
+}
+
+function activateItem(id) {
+  if (itemActive) cancelItemSelection(true)
+  if (!canUseItemsNow() || itemCounts[id] <= 0) {
+    renderItemBar()
+    return
+  }
+  if (id === 'refresh') {
+    consumeItem('refresh')
+    rerollPieces()
+    return
+  }
+  itemActive = { id, anchor: null, axis: 'z', ndc: null }
+  lastItemHoverKey = null
+  axisPickEl.classList.toggle('hidden', id !== 'rocket')
+  setStatus(id === 'hammer' ? 'Pick a cube to knock out' : id === 'rocket' ? 'Pick a line to clear' : 'Pick an anchor cube')
+  renderItemBar()
+}
+
+function rerollPieces() {
+  const before = pieces.map((piece) => piece.shape.name).join('|')
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    pieces = Array.from({ length: 3 }, () => makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
+    if (pieces.map((piece) => piece.shape.name).join('|') !== before) break
+  }
+  selectedPiece = null
+  renderPieceSlots()
+  showToast('Refreshed')
+  playHaptic(10)
+  renderItemBar()
+  checkStuckAndPrompt()
+}
+
+function hasPlaceablePiece() {
+  return pieces.some((piece) => !piece.used && hasAnyPlacement(piece))
+}
+
+function checkStuckAndPrompt() {
+  if (gameEnded || isPaused || !pieces.length) return
+  if (hasPlaceablePiece()) return
+  if (itemCounts.refresh > 0) {
+    setStatus('No spot - use Refresh')
+    showToast('No spot - try Refresh')
+    return
+  }
+  endGame()
+}
+
+function emitItemBurst(cells, axisHint) {
+  if (!cells.length) return
+  const mid = [0, 1, 2].map((axis) => cells.reduce((sum, cell) => sum + cell[axis], 0) / cells.length)
+  const count = THREE.MathUtils.clamp(cells.length * 6, 6, 48)
+  const direction = axisHint === 'rocket'
+    ? (itemActive?.axis === 'x' ? new THREE.Vector3(1, 0, 0) : itemActive?.axis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1))
+    : new THREE.Vector3(0, 1, 0)
+  const warm = new THREE.Vector3(1, 0.83, 0.16)
+  const bright = new THREE.Vector3(1, 0.96, 0.45)
+  const system = new ParticleSystem({
+    autoDestroy: true,
+    looping: false,
+    duration: 0.55,
+    startLife: new ConstantValue(0.45),
+    startSpeed: new ConstantValue(1.15),
+    startSize: new ConstantValue(0.1),
+    startColor: new ConstantColor(colorToVector4(0xffd32a)),
+    emissionOverTime: new ConstantValue(0),
+    emissionBursts: [{ time: 0, count, cycle: 1, interval: 0.01, probability: 1 }],
+    shape: new AxisEmitter(direction, 0.5),
+    material: particleMaterial,
+    instancingGeometry: particleGeometry,
+    renderMode: RenderMode.Mesh,
+    renderOrder: 4,
+    worldSpace: true,
+    behaviors: [
+      new ColorOverLife(new Gradient([[warm, 0], [bright, 1]], [[1, 0.95], [0, 0.02]])),
+      new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.1, 0.3, 0), 0]])),
+    ],
+  })
+  system.emitter.position.copy(cellToWorld(mid[0], mid[1], mid[2]))
+  scene.add(system.emitter)
+  system.emitter.updateMatrixWorld(true)
+  particleRenderer.addSystem(system)
+  particleSystems.add(system)
+}
+
+for (const button of itemBarEl.querySelectorAll('.item-button')) {
+  button.addEventListener('click', () => activateItem(button.dataset.item))
+}
+for (const button of axisPickEl.querySelectorAll('button')) {
+  button.addEventListener('click', () => {
+    if (!itemActive || itemActive.id !== 'rocket') return
+    itemActive.axis = button.dataset.axis
+    lastItemHoverKey = null
+    if (itemActive.ndc) updateItemHover(itemActive.ndc)
+    setStatus(`Rocket axis: ${button.dataset.axis.toUpperCase()}`)
+  })
+}
+
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), boardSpan / 2 + 0.025)
@@ -653,7 +903,7 @@ function pointerPoint(event) {
 }
 
 function beginDrag(event, piece) {
-  if (piece.used || isPaused || drag) return
+  if (piece.used || isPaused || drag || itemActive) return
   // Right/middle click is reserved as the in-drag cancel entry on PC; it must
   // not start a phantom placement drag when a slot is idle.
   if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -938,10 +1188,12 @@ function finishDrag(event) {
     showToast(`${result.lines.length} LINE${result.lines.length === 1 ? '' : 'S'}  ${multiplier}  +${result.points}`)
     showScorePop(result.points, result.lines.length)
     spawnClearEffects(result.lines)
+    itemBusyUntil = performance.now() + 650
+    setTimeout(renderItemBar, 720)
     setStatus('Clear! Keep building')
   } else setStatus('Pick a shape')
   if (pieces.every((piece) => piece.used)) nextPieces()
-  if (!gameEnded && pieces.every((piece) => piece.used || !hasAnyPlacement(piece))) endGame()
+  checkStuckAndPrompt()
 }
 
 function hasAnyPlacement(piece) {
@@ -957,16 +1209,14 @@ function endGame() {
   gameEnded = true
   isPaused = true
   platform.gameplayStop()
-  best = Math.max(best, board.score)
-  localStorage.setItem(bestKey, String(best))
   finalScoreEl.textContent = String(board.score).padStart(4, '0')
-  finalBestEl.textContent = String(best).padStart(4, '0')
   gameOverEl.classList.remove('hidden')
 }
 
 function resetGame() {
   clearTransientEffects()
   board.clear()
+  resetItems()
   gameEnded = false
   settingsOpen = false
   isPaused = document.hidden
@@ -1012,7 +1262,15 @@ function finishViewDrag(event) {
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
 }
 
-renderer.domElement.addEventListener('pointerdown', beginViewDrag)
+renderer.domElement.addEventListener('pointerdown', (event) => {
+  if (itemActive) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    selectItemAt(event)
+    return
+  }
+  beginViewDrag(event)
+})
 window.addEventListener('pointermove', (event) => {
   if (viewDrag && event.pointerId === viewDrag.pointerId) {
     event.preventDefault()
@@ -1023,6 +1281,10 @@ window.addEventListener('pointermove', (event) => {
     // Horizontal swipe rotates the camera around the play-space's world Y axis.
     cameraAzimuth = viewDrag.startAzimuth + travel / width * Math.PI
     fitCameraToPlaySpace()
+    return
+  }
+  if (itemActive) {
+    updateItemHover(eventNdc(event))
     return
   }
   if (!drag || event.pointerId !== drag.pointerId) return
@@ -1062,12 +1324,20 @@ renderer.domElement.addEventListener('wheel', (event) => {
   fitCameraToPlaySpace()
 }, { passive: false })
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
   if (settingsOpen) return
   if (event.key.toLowerCase() === 'r') resetView()
+  if (itemActive?.id === 'rocket' && ['x', 'y', 'z'].includes(event.key.toLowerCase())) {
+    itemActive.axis = event.key.toLowerCase()
+    lastItemHoverKey = null
+    if (itemActive.ndc) updateItemHover(itemActive.ndc)
+    setStatus(`Rocket axis: ${event.key.toUpperCase()}`)
+  }
 })
 window.addEventListener('contextmenu', (event) => {
+  if (itemActive) { event.preventDefault(); cancelItemSelection(); return }
   if (!drag) return
   event.preventDefault()
   cancelActiveDrag()
@@ -1092,6 +1362,7 @@ hapticsSettingEl.addEventListener('click', () => {
 document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('View reset') })
 document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden && itemActive) cancelItemSelection(true)
   if (document.hidden && drag) cancelActiveDrag(false)
   isPaused = document.hidden || gameEnded || settingsOpen
   if (document.hidden) { platform.gameplayStop(); setStatus('Paused') }

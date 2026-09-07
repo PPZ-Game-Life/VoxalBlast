@@ -41,6 +41,19 @@ export class Board {
     return { lines, cleared, points }
   }
 
+  // Item tools remove cubes without scoring, clearing lines or advancing turns.
+  removeAt(x, y, z) {
+    return this.cells.delete(keyOf(x, y, z))
+  }
+
+  removeCells(list) {
+    const removed = []
+    list.forEach(([x, y, z]) => {
+      if (this.cells.delete(keyOf(x, y, z))) removed.push([x, y, z])
+    })
+    return removed
+  }
+
   findFullLines() {
     const lines = []
     for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {

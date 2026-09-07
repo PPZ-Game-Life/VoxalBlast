@@ -144,3 +144,25 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (max-width: 500px) {
   .mobile-controls { grid-template-columns: 1fr; }
 }
+/* Item tools (v0.2.12) */
+.item-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; min-width: 0; max-width: 100%; }
+.item-button { position: relative; display: grid; place-items: center; min-width: 0; padding: 9px 2px 7px; border: 0; border-radius: 16px; color: var(--navy-deep); background: #fff; box-shadow: 0 5px 0 rgba(36,52,93,.12), 0 8px 16px rgba(23,40,79,.14); font-size: 1.25rem; line-height: 1; transition: .15s; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.item-button:hover:not(.disabled) { transform: translateY(-2px); }
+.item-button.active { outline: 3px solid var(--yellow); box-shadow: 0 5px 0 rgba(255,211,42,.7), 0 10px 20px rgba(23,40,79,.2); }
+.item-button.disabled { opacity: .38; filter: grayscale(.9); cursor: default; box-shadow: none; }
+.item-button .item-icon { pointer-events: none; }
+.item-button .item-count { position: absolute; top: -6px; right: -6px; min-width: 19px; padding: 1px 5px; border-radius: 999px; color: #fff; background: var(--coral); border: 2px solid #fff; font-size: .64rem; font-weight: 900; line-height: 1.4; text-align: center; }
+.item-button.disabled .item-count { background: #8ba7cf; }
+.axis-pick { position: absolute; right: 12px; bottom: 12px; z-index: 5; display: flex; gap: 6px; padding: 6px; border-radius: 14px; background: rgba(255,255,255,.92); box-shadow: 0 8px 20px rgba(23,40,79,.25); }
+.axis-pick.hidden { display: none; }
+.axis-pick button { width: 46px; height: 40px; border: 0; border-radius: 11px; color: #fff; font-size: .9rem; font-weight: 900; letter-spacing: .02em; }
+.axis-pick button:nth-child(1) { background: var(--coral); }
+.axis-pick button:nth-child(2) { background: var(--green); }
+.axis-pick button:nth-child(3) { background: var(--navy); }
+@media (max-width: 900px) {
+  .item-bar { gap: 6px; margin-bottom: 2px; }
+  .item-button { border-radius: 14px; font-size: 1.15rem; }
+  .item-button .item-count { font-size: .6rem; }
+  .axis-pick { right: 8px; bottom: 8px; }
+  .axis-pick button { width: 42px; height: 38px; }
+}
