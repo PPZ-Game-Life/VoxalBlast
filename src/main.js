@@ -67,18 +67,52 @@ const particleSystems = new Set()
 const quality = getRenderQuality()
 
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(palette.background)
-scene.fog = new THREE.Fog(palette.background, 15, 28)
-const camera = new THREE.PerspectiveCamera(31, 1, 0.1, 100)
-const cameraBasePosition = new THREE.Vector3(7.8, 7.2, 9.4)
-camera.position.copy(cameraBasePosition)
-camera.lookAt(0, 0, 0)
+scene.background = null
+scene.fog = new THREE.Fog(palette.background, 17, 30)
+const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
+const cameraBasePosition = new THREE.Vector3()
+const cameraDirection = new THREE.Vector3(0.82, 0.76, 1).normalize()
+const cameraTarget = new THREE.Vector3(0, 0, 0)
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' })
+function fitCameraToPlaySpace() {
+  const isMobile = sceneWrap.clientWidth < 700
+  camera.fov = isMobile ? 37 : 34
+  camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
+  camera.updateProjectionMatrix()
+
+  // Fit the eight actual play-space corners rather than a conservative sphere.
+  // This keeps the floating cube large while preserving a safe edge margin.
+  camera.position.copy(cameraDirection)
+  camera.lookAt(cameraTarget)
+  camera.updateMatrixWorld(true)
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+  const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
+  const horizontalTan = verticalTan * camera.aspect
+  const safeFactor = isMobile ? 0.84 : 0.88
+  const min = -boardSpan / 2
+  const max = boardSpan / 2
+  let distance = 0
+  for (const x of [min, max]) for (const y of [min, max]) for (const z of [min, max]) {
+    const corner = new THREE.Vector3(x, y, z)
+    const depthOffset = corner.dot(cameraDirection)
+    distance = Math.max(
+      distance,
+      depthOffset + Math.abs(corner.dot(right)) / (horizontalTan * safeFactor),
+      depthOffset + Math.abs(corner.dot(up)) / (verticalTan * safeFactor),
+    )
+  }
+  cameraBasePosition.copy(cameraDirection).multiplyScalar(distance)
+  camera.position.copy(cameraBasePosition)
+  camera.lookAt(cameraTarget)
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.08
+renderer.toneMappingExposure = 1.14
+renderer.setClearColor(0x000000, 0)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 sceneWrap.appendChild(renderer.domElement)
@@ -181,67 +215,74 @@ function clearGroup(group) {
 }
 
 function buildGrid() {
-  const baseGeometry = new RoundedBoxGeometry(boardSpan + 0.62, 0.3, boardSpan + 0.62, 5, 0.12)
-  const base = new THREE.Mesh(baseGeometry, new THREE.MeshStandardMaterial({
-    color: palette.navyDeep,
-    roughness: 0.48,
-    metalness: 0.08,
-    emissive: 0x101b3d,
-    emissiveIntensity: 0.18,
-  }))
-  base.position.y = -2.38
-  base.receiveShadow = true
-  base.castShadow = true
-  gridGroup.add(base)
-
-  const insetGeometry = new RoundedBoxGeometry(boardSpan + 0.16, 0.08, boardSpan + 0.16, 4, 0.035)
-  const inset = new THREE.Mesh(insetGeometry, new THREE.MeshStandardMaterial({
-    color: palette.navy,
-    roughness: 0.58,
-    metalness: 0,
-    emissive: 0x1b2f62,
-    emissiveIntensity: 0.2,
-  }))
-  inset.position.y = -2.2
-  inset.receiveShadow = true
-  gridGroup.add(inset)
-
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: palette.gridGlow,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false,
-  })
   const min = -boardSpan / 2
   const max = boardSpan / 2
-  for (let y = 0; y <= SIZE; y += 1) for (let z = 0; z <= SIZE; z += 1) {
-    const offsetY = min + y * cellSize
-    const offsetZ = min + z * cellSize
-    const points = [new THREE.Vector3(min, offsetY, offsetZ), new THREE.Vector3(max, offsetY, offsetZ)]
-    gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMaterial))
-  }
-  for (let x = 0; x <= SIZE; x += 1) for (let z = 0; z <= SIZE; z += 1) {
-    const offsetX = min + x * cellSize
-    const offsetZ = min + z * cellSize
-    const points = [new THREE.Vector3(offsetX, min, offsetZ), new THREE.Vector3(offsetX, max, offsetZ)]
-    gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMaterial))
-  }
-  for (let x = 0; x <= SIZE; x += 1) for (let y = 0; y <= SIZE; y += 1) {
-    const offsetX = min + x * cellSize
-    const offsetY = min + y * cellSize
-    const points = [new THREE.Vector3(offsetX, offsetY, min), new THREE.Vector3(offsetX, offsetY, max)]
-    gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMaterial))
+
+  // The play space floats directly in the sky. Only the lowest layer keeps
+  // soft, separated landing pads so depth remains readable without a base.
+  const padGeometry = new RoundedBoxGeometry(0.82, 0.035, 0.82, 3, 0.09)
+  const padMaterial = new THREE.MeshStandardMaterial({
+    color: palette.grid,
+    roughness: 0.78,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.19,
+    depthWrite: false,
+  })
+  for (let x = 0; x < SIZE; x += 1) for (let z = 0; z < SIZE; z += 1) {
+    const pad = new THREE.Mesh(padGeometry, padMaterial)
+    pad.position.set(x * cellSize - boardOffset, min - 0.025, z * cellSize - boardOffset)
+    pad.receiveShadow = true
+    gridGroup.add(pad)
   }
 
-  const axisGeometry = new THREE.BoxGeometry(boardSpan + 0.3, 0.025, 0.025)
-  const axisMaterial = new THREE.MeshBasicMaterial({ color: palette.gridGlow, transparent: true, opacity: 0.42, toneMapped: false })
-  const axisX = new THREE.Mesh(axisGeometry, axisMaterial)
-  axisX.position.set(0, -2.18, boardSpan / 2 + 0.1)
-  gridGroup.add(axisX)
-  const axisZ = new THREE.Mesh(axisGeometry, axisMaterial)
-  axisZ.rotation.y = Math.PI / 2
-  axisZ.position.set(-boardSpan / 2 - 0.1, -2.18, 0)
-  gridGroup.add(axisZ)
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(boardSpan * 0.72, boardSpan * 0.72),
+    new THREE.ShadowMaterial({ color: palette.navyDeep, opacity: 0.14, transparent: true }),
+  )
+  shadow.rotation.x = -Math.PI / 2
+  shadow.position.y = min - 0.06
+  shadow.receiveShadow = true
+  gridGroup.add(shadow)
+
+  // Eight short corner brackets replace the previous full 3D cage. They
+  // communicate the play-space volume without turning it into a wireframe box.
+  const corners = [
+    new THREE.Vector3(min, min, min), new THREE.Vector3(max, min, min),
+    new THREE.Vector3(min, max, min), new THREE.Vector3(max, max, min),
+    new THREE.Vector3(min, min, max), new THREE.Vector3(max, min, max),
+    new THREE.Vector3(min, max, max), new THREE.Vector3(max, max, max),
+  ]
+  const edgeMaterial = new THREE.LineBasicMaterial({
+    color: palette.navy,
+    transparent: true,
+    opacity: 0.38,
+    depthWrite: false,
+  })
+  const bracketLength = 0.46
+  const bracketPoints = []
+  corners.forEach((corner) => {
+    for (const axis of ['x', 'y', 'z']) {
+      const end = corner.clone()
+      end[axis] += (corner[axis] === min ? 1 : -1) * bracketLength
+      bracketPoints.push(corner, end)
+    }
+  })
+  const bracketGeometry = new THREE.BufferGeometry().setFromPoints(bracketPoints)
+  gridGroup.add(new THREE.LineSegments(bracketGeometry, edgeMaterial))
+
+  const markerGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 3, 0.045)
+  const markerMaterial = new THREE.MeshStandardMaterial({
+    color: palette.navyDeep,
+    roughness: 0.5,
+    transparent: true,
+    opacity: 0.66,
+  })
+  corners.forEach((corner) => {
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial)
+    marker.position.copy(corner)
+    gridGroup.add(marker)
+  })
 }
 buildGrid()
 
@@ -742,9 +783,7 @@ function resetGame() {
 }
 
 function resetView() {
-  cameraBasePosition.set(7.8, 7.2, 9.4)
-  camera.position.copy(cameraBasePosition)
-  camera.lookAt(0, 0, 0)
+  fitCameraToPlaySpace()
 }
 
 window.addEventListener('pointermove', (event) => {
@@ -807,10 +846,9 @@ updateSettingsUi()
 function resize() {
   const width = sceneWrap.clientWidth
   const height = sceneWrap.clientHeight
-  camera.aspect = width / height
-  camera.updateProjectionMatrix()
   renderer.setSize(width, height, false)
   composer.setSize(width, height)
+  fitCameraToPlaySpace()
 }
 window.addEventListener('resize', resize)
 resize()
