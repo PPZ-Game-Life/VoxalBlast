@@ -1,6 +1,5 @@
 export const SHAPES = [
   { name: 'Line 3', color: 0xf04452, cells: [[0, 0, 0], [1, 0, 0], [2, 0, 0]] },
-  { name: 'Line 4', color: 0xffe21d, cells: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]] },
   { name: 'Big L', color: 0x354bff, cells: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0], [3, 1, 0]] },
   { name: 'L', color: 0x20de35, cells: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [2, 1, 0]] },
   { name: 'Square', color: 0xd13dda, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]] },

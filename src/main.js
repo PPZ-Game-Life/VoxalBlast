@@ -22,7 +22,7 @@ import {
   SizeOverLife,
 } from 'three.quarks'
 import { Board, SIZE } from './game/board.js'
-import { SHAPES, normalizeCells, rotateCells } from './game/shapes.js'
+import { SHAPES, normalizeCells } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { getRenderQuality, RENDER_PALETTE as palette, VFX_CONFIG } from './rendering/config.js'
 import './styles.css'
@@ -81,45 +81,80 @@ const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraAzimuth = Math.atan2(1, 0.82)
 const defaultCameraAzimuth = cameraAzimuth
 const cameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
+let cameraZoom = 1
+const minCameraZoom = 0.7
+const maxCameraZoom = 1.7
+let orbitDistance = 10
+const frameCorner = new THREE.Vector3()
+const frameRight = new THREE.Vector3()
+const frameUp = new THREE.Vector3()
 
-function fitCameraToPlaySpace() {
-  const isMobile = sceneWrap.clientWidth < 700
-  const horizontalScale = Math.cos(cameraElevation)
-  cameraDirection.set(
-    horizontalScale * Math.cos(cameraAzimuth),
-    Math.sin(cameraElevation),
-    horizontalScale * Math.sin(cameraAzimuth),
-  ).normalize()
-  camera.fov = isMobile ? 37 : 34
-  camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
-  camera.updateProjectionMatrix()
-
-  // Fit the eight actual play-space corners rather than a conservative sphere.
-  // This keeps the floating cube large while preserving a safe edge margin.
-  camera.position.copy(cameraDirection)
+// Camera orbits at a constant distance fitted to the widest view of the cube,
+// so the board keeps one apparent size instead of zooming in face-on and
+// shrinking when viewed corner-on.
+function distanceForViewDirection(direction) {
+  camera.position.copy(direction)
   camera.lookAt(cameraTarget)
   camera.updateMatrixWorld(true)
-  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
-  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+  const right = frameRight.setFromMatrixColumn(camera.matrixWorld, 0)
+  const up = frameUp.setFromMatrixColumn(camera.matrixWorld, 1)
   const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
   const horizontalTan = verticalTan * camera.aspect
+  const isMobile = sceneWrap.clientWidth < 700
   const safeFactor = isMobile ? 0.84 : 0.88
   const min = -boardSpan / 2
   const max = boardSpan / 2
   let distance = 0
   for (const x of [min, max]) for (const y of [min, max]) for (const z of [min, max]) {
-    const corner = new THREE.Vector3(x, y, z)
-    const depthOffset = corner.dot(cameraDirection)
+    const corner = frameCorner.set(x, y, z)
+    const depthOffset = corner.dot(direction)
     distance = Math.max(
       distance,
       depthOffset + Math.abs(corner.dot(right)) / (horizontalTan * safeFactor),
       depthOffset + Math.abs(corner.dot(up)) / (verticalTan * safeFactor),
     )
   }
-  cameraBasePosition.copy(cameraDirection).multiplyScalar(distance)
+  return distance
+}
+
+function recomputeOrbitDistance() {
+  let worst = 0
+  const horizontalScale = Math.cos(cameraElevation)
+  for (let i = 0; i < 72; i += 1) {
+    const azimuth = (i / 72) * Math.PI * 2
+    const direction = new THREE.Vector3(
+      horizontalScale * Math.cos(azimuth),
+      Math.sin(cameraElevation),
+      horizontalScale * Math.sin(azimuth),
+    ).normalize()
+    worst = Math.max(worst, distanceForViewDirection(direction))
+  }
+  return worst
+}
+
+function refreshCameraProjection() {
+  const isMobile = sceneWrap.clientWidth < 700
+  camera.fov = isMobile ? 37 : 34
+  camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
+  camera.updateProjectionMatrix()
+  orbitDistance = recomputeOrbitDistance()
+}
+
+function fitCameraToPlaySpace() {
+  const horizontalScale = Math.cos(cameraElevation)
+  cameraDirection.set(
+    horizontalScale * Math.cos(cameraAzimuth),
+    Math.sin(cameraElevation),
+    horizontalScale * Math.sin(cameraAzimuth),
+  ).normalize()
+  cameraBasePosition.copy(cameraDirection).multiplyScalar(orbitDistance * cameraZoom)
   camera.position.copy(cameraBasePosition)
   camera.lookAt(cameraTarget)
 }
+
+const previewCameraRadius = Math.hypot(5, 6)
+const previewCameraBaseAzimuth = Math.atan2(6, 5)
+const previewCameraHeight = 4.2
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
@@ -355,28 +390,11 @@ function updateHud() {
 }
 
 function makePiece(shape) {
-  return { shape, cells: normalizeCells(shape.cells), rotations: { x: 0, y: 0, z: 0 }, used: false }
+  return { shape, cells: normalizeCells(shape.cells), used: false }
 }
 
 function currentCells(piece) {
-  let cells = piece.shape.cells
-  for (const axis of ['x', 'y', 'z']) for (let i = 0; i < piece.rotations[axis]; i += 1) cells = rotateCells(cells, axis)
-  return normalizeCells(cells)
-}
-
-function rotationVariants(piece) {
-  const variants = []
-  const seen = new Set()
-  for (let rx = 0; rx < 4; rx += 1) for (let ry = 0; ry < 4; ry += 1) for (let rz = 0; rz < 4; rz += 1) {
-    let cells = piece.shape.cells
-    for (let i = 0; i < rx; i += 1) cells = rotateCells(cells, 'x')
-    for (let i = 0; i < ry; i += 1) cells = rotateCells(cells, 'y')
-    for (let i = 0; i < rz; i += 1) cells = rotateCells(cells, 'z')
-    cells = normalizeCells(cells)
-    const signature = cells.map((cell) => cell.join(',')).join('|')
-    if (!seen.has(signature)) { seen.add(signature); variants.push(cells) }
-  }
-  return variants
+  return piece.cells
 }
 
 function nextPieces() {
@@ -443,7 +461,7 @@ function createPiecePreview(piece, canvas, slot) {
     root.add(mesh)
     return mesh
   })
-  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes, baseScale, animation: null })
+  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes })
 }
 
 function updatePieceSlotSelection() {
@@ -453,23 +471,7 @@ function updatePieceSlotSelection() {
   })
 }
 
-function animatePiecePreview(piece, toCells, axis) {
-  const preview = piecePreviews.get(piece)
-  if (!preview) return
-  const targets = centeredPreviewPositions(toCells)
-  const targetSize = new THREE.Box3().setFromPoints(targets).getSize(new THREE.Vector3()).addScalar(0.62)
-  preview.animation = {
-    elapsed: 0,
-    duration: VFX_CONFIG.preview.rotationDuration,
-    axis,
-    starts: preview.meshes.map((mesh) => mesh.position.clone()),
-    targets,
-    startScale: preview.root.scale.x,
-    targetScale: THREE.MathUtils.clamp(3.4 / Math.max(targetSize.x, targetSize.y, targetSize.z), 0.96, 1.7),
-  }
-}
-
-function updatePiecePreviews(delta) {
+function updatePiecePreviews() {
   piecePreviews.forEach((preview) => {
     const width = Math.max(preview.renderer.domElement.clientWidth, 1)
     const height = Math.max(preview.renderer.domElement.clientHeight, 1)
@@ -483,26 +485,15 @@ function updatePiecePreviews(delta) {
       preview.camera.bottom = -halfHeight
       preview.camera.updateProjectionMatrix()
     }
-    if (preview.animation) {
-      preview.animation.elapsed += delta
-      const progress = THREE.MathUtils.clamp(preview.animation.elapsed / preview.animation.duration, 0, 1)
-      const eased = 1 - Math.pow(1 - progress, 3)
-      preview.meshes.forEach((mesh, index) => mesh.position.lerpVectors(preview.animation.starts[index], preview.animation.targets[index], eased))
-      const kick = Math.sin(progress * Math.PI) * 0.18
-      preview.root.rotation.set(
-        preview.animation.axis === 'x' ? kick : 0,
-        preview.animation.axis === 'y' ? kick : 0,
-        preview.animation.axis === 'z' ? kick : 0,
-      )
-      const scale = THREE.MathUtils.lerp(preview.animation.startScale, preview.animation.targetScale, eased)
-      preview.root.scale.setScalar(scale * (1 + Math.sin(progress * Math.PI) * 0.06))
-      if (progress >= 1) {
-        preview.root.rotation.set(0, 0, 0)
-        preview.baseScale = preview.animation.targetScale
-        preview.root.scale.setScalar(preview.baseScale)
-        preview.animation = null
-      }
-    }
+    // Candidate thumbnails share the board's yaw: orbiting the view turns the
+    // little previews the same way so a piece faces identically in both.
+    const azimuth = previewCameraBaseAzimuth + (cameraAzimuth - defaultCameraAzimuth)
+    preview.camera.position.set(
+      Math.cos(azimuth) * previewCameraRadius,
+      previewCameraHeight,
+      Math.sin(azimuth) * previewCameraRadius,
+    )
+    preview.camera.lookAt(0, 0, 0)
     preview.renderer.render(preview.scene, preview.camera)
   })
 }
@@ -646,17 +637,6 @@ function showScorePop(points, lineCount) {
   sceneWrap.appendChild(pop)
   requestAnimationFrame(() => pop.classList.add('visible'))
   setTimeout(() => pop.remove(), 920)
-}
-
-function rotatePiece(axis) {
-  const piece = selectedPiece || pieces.find((item) => !item.used)
-  if (!piece || isPaused) return
-  selectedPiece = piece
-  piece.rotations[axis] = (piece.rotations[axis] + 1) % 4
-  const nextCells = currentCells(piece)
-  updatePieceSlotSelection()
-  animatePiecePreview(piece, nextCells, axis)
-  updatePreview(drag?.point)
 }
 
 const raycaster = new THREE.Raycaster()
@@ -965,12 +945,11 @@ function finishDrag(event) {
 }
 
 function hasAnyPlacement(piece) {
-  return rotationVariants(piece).some((cells) => {
-    for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-      if (board.canPlace(cells, { x, y, z })) return true
-    }
-    return false
-  })
+  const cells = currentCells(piece)
+  for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
+    if (board.canPlace(cells, { x, y, z })) return true
+  }
+  return false
 }
 
 function endGame() {
@@ -1005,6 +984,7 @@ function resetGame() {
 
 function resetView() {
   cameraAzimuth = defaultCameraAzimuth
+  cameraZoom = 1
   fitCameraToPlaySpace()
 }
 
@@ -1076,20 +1056,23 @@ window.addEventListener('pointercancel', (event) => {
   if (!drag || event.pointerId !== drag.pointerId) return
   cancelActiveDrag(false)
 })
-renderer.domElement.addEventListener('wheel', (event) => { event.preventDefault(); rotatePiece(event.deltaY > 0 ? 'y' : 'x') }, { passive: false })
+renderer.domElement.addEventListener('wheel', (event) => {
+  event.preventDefault()
+  cameraZoom = THREE.MathUtils.clamp(cameraZoom * (event.deltaY > 0 ? 0.92 : 1.08), minCameraZoom, maxCameraZoom)
+  fitCameraToPlaySpace()
+}, { passive: false })
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
   if (settingsOpen) return
   if (event.key.toLowerCase() === 'r') resetView()
-  if (['w', 'a', 's', 'd'].includes(event.key.toLowerCase())) rotatePiece(event.key.toLowerCase() === 'w' || event.key.toLowerCase() === 's' ? 'x' : 'y')
 })
 window.addEventListener('contextmenu', (event) => {
   if (!drag) return
   event.preventDefault()
   cancelActiveDrag()
 })
-for (const button of document.querySelectorAll('.rotate-button')) button.addEventListener('click', () => button.dataset.axis ? rotatePiece(button.dataset.axis) : resetView())
+for (const button of document.querySelectorAll('.rotate-button')) button.addEventListener('click', () => resetView())
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
 settingsButtonEl.addEventListener('click', openSettings)
 document.querySelector('#settings-close').addEventListener('click', closeSettings)
@@ -1122,6 +1105,7 @@ function resize() {
   const height = sceneWrap.clientHeight
   renderer.setSize(width, height, false)
   composer.setSize(width, height)
+  refreshCameraProjection()
   fitCameraToPlaySpace()
 }
 window.addEventListener('resize', resize)
@@ -1137,7 +1121,7 @@ function animate() {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
   }
-  updatePiecePreviews(delta)
+  updatePiecePreviews()
   updateCameraShake(delta)
   candidateGroup.children.forEach((mesh, index) => {
     mesh.material.opacity = 0.1 + Math.sin(performance.now() * 0.003 + index) * 0.05

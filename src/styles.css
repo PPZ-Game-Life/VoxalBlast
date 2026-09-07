@@ -136,3 +136,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .rotate-button { font-size: .66rem; }
   .status-line { margin-top: 14px; }
 }
+/* Fixed-orientation mode (v0.2.11): single view-reset control on mobile */
+@media (max-width: 900px) {
+  .mobile-controls { grid-template-columns: minmax(200px, 320px); width: min(340px, 92vw); justify-content: center; margin: 0 auto; gap: 0; }
+  .rotate-button:nth-child(n) { box-shadow: 0 5px 0 rgba(37,66,127,.42); }
+}
+@media (max-width: 500px) {
+  .mobile-controls { grid-template-columns: 1fr; }
+}

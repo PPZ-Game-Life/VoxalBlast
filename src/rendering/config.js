@@ -38,7 +38,6 @@ export const VFX_CONFIG = Object.freeze({
     lowPowerLevels: 4,
   }),
   preview: Object.freeze({
-    rotationDuration: 0.22,
     cameraHeight: 2.15,
     maxScale: 1.7,
   }),
