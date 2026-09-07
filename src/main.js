@@ -1241,13 +1241,6 @@ function resetGame() {
   if (!isPaused) platform.gameplayStart()
 }
 
-function resetView() {
-  cameraAzimuth = defaultCameraAzimuth
-  cameraElevation = defaultCameraElevation
-  cameraZoom = 1
-  fitCameraToPlaySpace()
-}
-
 function beginViewDrag(event) {
   if (isPaused || drag || viewDrag || event.pointerType === 'mouse' && event.button !== 0) return
   event.preventDefault()
@@ -1348,7 +1341,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
   if (settingsOpen) return
-  if (event.key.toLowerCase() === 'r') resetView()
   if (itemActive?.id === 'rocket' && ['x', 'y', 'z'].includes(event.key.toLowerCase())) {
     itemActive.axis = event.key.toLowerCase()
     lastItemHoverKey = null
@@ -1362,7 +1354,6 @@ window.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   cancelActiveDrag()
 })
-for (const button of document.querySelectorAll('.rotate-button')) button.addEventListener('click', () => resetView())
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
 settingsButtonEl.addEventListener('click', openSettings)
 document.querySelector('#settings-close').addEventListener('click', closeSettings)
@@ -1379,7 +1370,6 @@ hapticsSettingEl.addEventListener('click', () => {
   updateSettingsUi()
   if (hapticsOn) playHaptic(18)
 })
-document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('View reset') })
 document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
