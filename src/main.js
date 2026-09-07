@@ -77,7 +77,10 @@ const cameraDirection = new THREE.Vector3(0.82, 0.76, 1).normalize()
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraAzimuth = Math.atan2(1, 0.82)
 const defaultCameraAzimuth = cameraAzimuth
-const cameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
+const defaultCameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
+let cameraElevation = defaultCameraElevation
+const minCameraElevation = 0.2
+const maxCameraElevation = 1.1
 let cameraZoom = 1
 const minCameraZoom = 0.7
 const maxCameraZoom = 1.7
@@ -115,16 +118,22 @@ function distanceForViewDirection(direction) {
 }
 
 function recomputeOrbitDistance() {
+  // Worst-case fit across every allowed azimuth and elevation so the board
+  // keeps a stable apparent size while orbiting or pitching.
   let worst = 0
-  const horizontalScale = Math.cos(cameraElevation)
-  for (let i = 0; i < 72; i += 1) {
-    const azimuth = (i / 72) * Math.PI * 2
-    const direction = new THREE.Vector3(
-      horizontalScale * Math.cos(azimuth),
-      Math.sin(cameraElevation),
-      horizontalScale * Math.sin(azimuth),
-    ).normalize()
-    worst = Math.max(worst, distanceForViewDirection(direction))
+  const elevationSteps = 7
+  for (let ei = 0; ei < elevationSteps; ei += 1) {
+    const elevation = minCameraElevation + (maxCameraElevation - minCameraElevation) * (ei / (elevationSteps - 1))
+    const horizontalScale = Math.cos(elevation)
+    for (let i = 0; i < 72; i += 1) {
+      const azimuth = (i / 72) * Math.PI * 2
+      const direction = new THREE.Vector3(
+        horizontalScale * Math.cos(azimuth),
+        Math.sin(elevation),
+        horizontalScale * Math.sin(azimuth),
+      ).normalize()
+      worst = Math.max(worst, distanceForViewDirection(direction))
+    }
   }
   return worst
 }
@@ -1234,6 +1243,7 @@ function resetGame() {
 
 function resetView() {
   cameraAzimuth = defaultCameraAzimuth
+  cameraElevation = defaultCameraElevation
   cameraZoom = 1
   fitCameraToPlaySpace()
 }
@@ -1245,7 +1255,9 @@ function beginViewDrag(event) {
     pointerId: event.pointerId,
     source: event.currentTarget,
     startX: event.clientX,
+    startY: event.clientY,
     startAzimuth: cameraAzimuth,
+    startElevation: cameraElevation,
     moved: false,
   }
   try {
@@ -1274,12 +1286,20 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
 window.addEventListener('pointermove', (event) => {
   if (viewDrag && event.pointerId === viewDrag.pointerId) {
     event.preventDefault()
-    const travel = event.clientX - viewDrag.startX
-    if (Math.abs(travel) < 3) return
+    const dx = event.clientX - viewDrag.startX
+    const dy = event.clientY - viewDrag.startY
+    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     viewDrag.moved = true
     const width = Math.max(sceneWrap.clientWidth, 1)
-    // Horizontal swipe rotates the camera around the play-space's world Y axis.
-    cameraAzimuth = viewDrag.startAzimuth + travel / width * Math.PI
+    const height = Math.max(sceneWrap.clientHeight, 1)
+    // Horizontal drag orbits around the play-space's world Y axis, vertical
+    // drag pitches the camera (clamped) — two-axis free view on one gesture.
+    cameraAzimuth = viewDrag.startAzimuth + dx / width * Math.PI
+    cameraElevation = THREE.MathUtils.clamp(
+      viewDrag.startElevation - dy / height * (maxCameraElevation - minCameraElevation),
+      minCameraElevation,
+      maxCameraElevation,
+    )
     fitCameraToPlaySpace()
     return
   }
