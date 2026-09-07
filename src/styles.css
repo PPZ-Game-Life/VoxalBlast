@@ -23,6 +23,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #app { min-height: 100vh; display: flex; flex-direction: column; }
 .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 4vw; border-bottom: 1px solid rgba(255,255,255,.2); background: rgba(36,52,93,.56); box-shadow: 0 10px 30px rgba(23,40,79,.14); position: relative; z-index: 3; backdrop-filter: blur(16px); }
 .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: -.04em; font-size: 1.15rem; }
+.app-version { align-self: flex-end; margin: 0 0 4px -5px; padding: 3px 7px; color: rgba(216,231,255,.82); border: 1px solid rgba(216,231,255,.28); border-radius: 999px; font-size: .58rem; font-weight: 700; letter-spacing: .08em; line-height: 1; }
 .brand-mark { display: grid; place-items: center; width: 32px; height: 32px; color: var(--navy-deep); background: linear-gradient(145deg, #fff, #c5e2ff); border: 2px solid rgba(255,255,255,.75); border-radius: 10px 10px 10px 3px; font-size: .85rem; box-shadow: 0 5px 14px rgba(23,40,79,.2); }
 .top-actions { display: flex; gap: 9px; }
 .icon-button { width: 40px; height: 40px; border: 1px solid rgba(255,255,255,.28); border-radius: 12px; background: rgba(255,255,255,.12); font-size: 1.15rem; transition: .2s; }

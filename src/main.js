@@ -1,3 +1,4 @@
+import packageInfo from '../package.json'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
@@ -38,8 +39,10 @@ const slotsEl = document.querySelector('#piece-slots')
 const gameOverEl = document.querySelector('#game-over')
 const finalScoreEl = document.querySelector('#final-score')
 const finalBestEl = document.querySelector('#final-best')
+const versionEl = document.querySelector('#app-version')
 
 const bestKey = 'voxalblast-best'
+versionEl.textContent = `v${packageInfo.version}`
 let best = Number.parseInt(localStorage.getItem(bestKey) || '0', 10)
 let pieces = []
 let selectedPiece = null
