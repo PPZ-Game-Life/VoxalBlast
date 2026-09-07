@@ -663,7 +663,7 @@ function rotatePiece(axis) {
 
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
-const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 2.65)
+const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), boardSpan / 2 + 0.025)
 function pointerPoint(event) {
   const rect = renderer.domElement.getBoundingClientRect()
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1

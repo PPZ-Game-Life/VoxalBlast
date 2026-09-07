@@ -1,6 +1,6 @@
 import { keyOf } from './shapes.js'
 
-export const SIZE = 5
+export const SIZE = 4
 
 export class Board {
   constructor() {
