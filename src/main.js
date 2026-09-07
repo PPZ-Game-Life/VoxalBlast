@@ -74,9 +74,9 @@ const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
 const cameraBasePosition = new THREE.Vector3()
 const cameraDirection = new THREE.Vector3(0.82, 0.76, 1).normalize()
 const cameraTarget = new THREE.Vector3(0, 0, 0)
-const cameraAzimuth = Math.atan2(1, 0.82)
-let cameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
-const defaultCameraElevation = cameraElevation
+let cameraAzimuth = Math.atan2(1, 0.82)
+const defaultCameraAzimuth = cameraAzimuth
+const cameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
 
 function fitCameraToPlaySpace() {
   const isMobile = sceneWrap.clientWidth < 700
@@ -793,7 +793,7 @@ function resetGame() {
 }
 
 function resetView() {
-  cameraElevation = defaultCameraElevation
+  cameraAzimuth = defaultCameraAzimuth
   fitCameraToPlaySpace()
 }
 
@@ -803,8 +803,8 @@ function beginViewDrag(event) {
   viewDrag = {
     pointerId: event.pointerId,
     source: event.currentTarget,
-    startY: event.clientY,
-    startElevation: cameraElevation,
+    startX: event.clientX,
+    startAzimuth: cameraAzimuth,
     moved: false,
   }
   try {
@@ -826,13 +826,14 @@ renderer.domElement.addEventListener('pointerdown', beginViewDrag)
 window.addEventListener('pointermove', (event) => {
   if (viewDrag && event.pointerId === viewDrag.pointerId) {
     event.preventDefault()
-    const travel = event.clientY - viewDrag.startY
+    const travel = event.clientX - viewDrag.startX
     if (Math.abs(travel) < 3) return
     viewDrag.moved = true
-    const height = Math.max(sceneWrap.clientHeight, 1)
-    cameraElevation = THREE.MathUtils.clamp(viewDrag.startElevation - travel / height * 1.2, 0.16, 1.2)
+    const width = Math.max(sceneWrap.clientWidth, 1)
+    // Horizontal swipe rotates the camera around the play-space's world Y axis.
+    cameraAzimuth = viewDrag.startAzimuth - travel / width * Math.PI
     fitCameraToPlaySpace()
-    setStatus('DRAG TO ADJUST VIEW')
+    setStatus('DRAG TO ROTATE VIEW')
     return
   }
   if (!drag || event.pointerId !== drag.pointerId) return
