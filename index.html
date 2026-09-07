@@ -11,8 +11,7 @@
       <header class="topbar">
         <div class="brand"><span class="brand-mark">V</span><span>VoxalBlast</span><span id="app-version" class="app-version" aria-label="Game version"></span></div>
         <div class="top-actions">
-          <button id="sound-toggle" class="icon-button" type="button" aria-label="Toggle sound" title="Toggle sound">◒</button>
-          <button id="reset-top" class="icon-button" type="button" aria-label="Restart game" title="Restart game">↻</button>
+          <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
         </div>
       </header>
       <main class="game-layout">
@@ -45,8 +44,22 @@
         <button class="rotate-button" data-axis="x" type="button">↻ X</button>
         <button class="rotate-button" data-axis="y" type="button">↻ Y</button>
         <button class="rotate-button" data-axis="z" type="button">↻ Z</button>
-        <button id="reset-mobile" class="rotate-button" type="button">⌖ VIEW</button>
+        <button id="reset-mobile" class="rotate-button" type="button" aria-label="Reset camera view">⌖ VIEW RESET</button>
       </footer>
+      <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-content settings-card">
+          <div class="settings-header">
+            <div><div class="eyebrow">GAME OPTIONS</div><h1 id="settings-title">SETTINGS</h1></div>
+            <button id="settings-close" class="modal-close" type="button" aria-label="Close settings">×</button>
+          </div>
+          <div class="settings-list">
+            <button id="sound-setting" class="setting-row" type="button"><span><strong>SOUND</strong><small>Game audio</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="haptics-setting" class="setting-row" type="button"><span><strong>HAPTICS</strong><small>Touch vibration</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="view-setting" class="setting-action" type="button"><span>⌖</span><strong>RESET VIEW</strong></button>
+            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong>RESTART GAME</strong></button>
+          </div>
+        </div>
+      </div>
       <div id="game-over" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <div class="modal-content">
           <div class="eyebrow">RUN COMPLETE</div>

@@ -40,8 +40,14 @@ const gameOverEl = document.querySelector('#game-over')
 const finalScoreEl = document.querySelector('#final-score')
 const finalBestEl = document.querySelector('#final-best')
 const versionEl = document.querySelector('#app-version')
+const settingsEl = document.querySelector('#settings-modal')
+const settingsButtonEl = document.querySelector('#settings-button')
+const soundSettingEl = document.querySelector('#sound-setting')
+const hapticsSettingEl = document.querySelector('#haptics-setting')
 
 const bestKey = 'voxalblast-best'
+const soundKey = 'voxalblast-sound'
+const hapticsKey = 'voxalblast-haptics'
 versionEl.textContent = `v${packageInfo.version}`
 let best = Number.parseInt(localStorage.getItem(bestKey) || '0', 10)
 let pieces = []
@@ -49,7 +55,10 @@ let selectedPiece = null
 let drag = null
 let isPaused = false
 let gameEnded = false
-let soundOn = true
+let settingsOpen = false
+let soundOn = localStorage.getItem(soundKey) !== 'off'
+let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
+let audioContext
 let toastTimer
 let cameraShake = 0
 let transientEffects = []
@@ -366,6 +375,74 @@ function showToast(text) {
   toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 1500)
 }
 
+function updateSettingsUi() {
+  soundSettingEl.classList.toggle('enabled', soundOn)
+  soundSettingEl.setAttribute('aria-pressed', String(soundOn))
+  hapticsSettingEl.classList.toggle('enabled', hapticsOn)
+  hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
+}
+
+function openSettings() {
+  if (gameEnded) return
+  settingsOpen = true
+  isPaused = true
+  if (drag) {
+    releaseDragPointer(drag.source, drag.pointerId)
+    drag = null
+    selectedPiece = null
+    renderPieceSlots()
+  }
+  clearGroup(previewGroup)
+  settingsEl.classList.remove('hidden')
+  platform.gameplayStop()
+  setStatus('PAUSED')
+  updateSettingsUi()
+  document.querySelector('#settings-close').focus()
+}
+
+function closeSettings() {
+  if (!settingsOpen) return
+  settingsOpen = false
+  settingsEl.classList.add('hidden')
+  isPaused = document.hidden || gameEnded
+  if (!isPaused) {
+    platform.gameplayStart()
+    setStatus('PLACE A SHAPE')
+  }
+  settingsButtonEl.focus()
+}
+
+function playTone(frequency, duration = 0.08, volume = 0.045, delay = 0) {
+  if (!soundOn) return
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+  if (!AudioContext) return
+  audioContext ||= new AudioContext()
+  if (audioContext.state === 'suspended') audioContext.resume()
+  const start = audioContext.currentTime + delay
+  const oscillator = audioContext.createOscillator()
+  const gain = audioContext.createGain()
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(frequency, start)
+  oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.08, start + duration)
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.012)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  oscillator.connect(gain).connect(audioContext.destination)
+  oscillator.start(start)
+  oscillator.stop(start + duration + 0.02)
+}
+
+function playPlaceSound(lineCount) {
+  if (lineCount > 0) {
+    playTone(520, 0.12, 0.055)
+    playTone(lineCount > 1 ? 880 : 720, 0.16, 0.05, 0.055)
+  } else playTone(330, 0.075, 0.036)
+}
+
+function playHaptic(pattern = 15) {
+  if (hapticsOn && navigator.vibrate) navigator.vibrate(pattern)
+}
+
 function showScorePop(points, lineCount) {
   const pop = document.createElement('div')
   pop.className = 'score-pop'
@@ -609,6 +686,8 @@ function finishDrag(event) {
   }
   if (!currentDrag.valid || !currentDrag.origin) { setStatus('PLACE A SHAPE'); return }
   const result = board.place(currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
+  playPlaceSound(result.lines.length)
+  playHaptic(result.lines.length > 1 ? [18, 35, 22] : result.lines.length ? [18, 28, 16] : 12)
   currentDrag.piece.used = true
   selectedPiece = null
   renderBoard()
@@ -649,15 +728,17 @@ function resetGame() {
   clearTransientEffects()
   board.clear()
   gameEnded = false
+  settingsOpen = false
   isPaused = document.hidden
   cameraShake = 0
+  settingsEl.classList.add('hidden')
   gameOverEl.classList.add('hidden')
   selectedPiece = null
   drag = null
   nextPieces()
   renderBoard()
   setStatus('PLACE A SHAPE')
-  platform.gameplayStart()
+  if (!isPaused) platform.gameplayStart()
 }
 
 function resetView() {
@@ -691,22 +772,37 @@ window.addEventListener('pointercancel', (event) => {
 })
 renderer.domElement.addEventListener('wheel', (event) => { event.preventDefault(); rotatePiece(event.deltaY > 0 ? 'y' : 'x') }, { passive: false })
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
+  if (settingsOpen) return
   if (event.key.toLowerCase() === 'r') resetView()
   if (['w', 'a', 's', 'd'].includes(event.key.toLowerCase())) rotatePiece(event.key.toLowerCase() === 'w' || event.key.toLowerCase() === 's' ? 'x' : 'y')
 })
 for (const button of document.querySelectorAll('.rotate-button')) button.addEventListener('click', () => button.dataset.axis ? rotatePiece(button.dataset.axis) : resetView())
-for (const button of document.querySelectorAll('#reset-button, #reset-top, #reset-mobile, #reset-modal')) button.addEventListener('click', resetGame)
-document.querySelector('#sound-toggle').addEventListener('click', (event) => {
+for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
+settingsButtonEl.addEventListener('click', openSettings)
+document.querySelector('#settings-close').addEventListener('click', closeSettings)
+settingsEl.addEventListener('pointerdown', (event) => { if (event.target === settingsEl) closeSettings() })
+soundSettingEl.addEventListener('click', () => {
   soundOn = !soundOn
-  event.currentTarget.textContent = soundOn ? '◒' : '◌'
-  event.currentTarget.setAttribute('aria-label', soundOn ? 'Mute sound' : 'Enable sound')
+  localStorage.setItem(soundKey, soundOn ? 'on' : 'off')
+  updateSettingsUi()
+  if (soundOn) playTone(520, 0.08, 0.035)
 })
+hapticsSettingEl.addEventListener('click', () => {
+  hapticsOn = !hapticsOn
+  localStorage.setItem(hapticsKey, hapticsOn ? 'on' : 'off')
+  updateSettingsUi()
+  if (hapticsOn) playHaptic(18)
+})
+document.querySelector('#view-setting').addEventListener('click', () => { resetView(); closeSettings(); showToast('VIEW RESET') })
+document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
-  isPaused = document.hidden || gameEnded
+  isPaused = document.hidden || gameEnded || settingsOpen
   if (document.hidden) { platform.gameplayStop(); setStatus('PAUSED') }
-  else if (gameEnded) return
+  else if (gameEnded || settingsOpen) return
   else { platform.gameplayStart(); setStatus('PLACE A SHAPE') }
 })
+updateSettingsUi()
 
 function resize() {
   const width = sceneWrap.clientWidth
