@@ -230,21 +230,30 @@ let itemActive = null // { id, anchor: {x,y,z}|null, axis, ndc }
 let itemBusyUntil = 0
 let lastItemHoverKey = null
 
-// Starter voxels scattered across the 4×4×4 space without completing any full
-// line; they pop in one after another so a new run never opens on an empty
-// wireframe.
-const SEED_VOXELS = [
-  [0, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1],
-  [3, 0, 2], [2, 0, 2], [3, 0, 3],
-  [0, 1, 3], [1, 1, 3], [2, 1, 3],
-  [3, 2, 0], [3, 2, 1],
-  [0, 3, 3], [2, 3, 0], [3, 3, 1], [1, 2, 2],
+// A new run opens with several complete base shapes already resting on the
+// board (no single isolated cubes, no white voxels); each shape pops in as a
+// whole so the board never starts empty and never starts monochrome.
+const SEED_PIECES = [
+  { shape: 'Line 3', origin: [0, 0, 0] },
+  { shape: 'Square', origin: [2, 0, 2] },
+  { shape: 'Big L', origin: [0, 2, 0] },
+  { shape: 'Tri-cube', origin: [0, 2, 3] },
+  { shape: 'Corner', origin: [0, 0, 1] },
 ]
-const SEED_COLORS = [0xf04452, 0xffe21d, 0x20de35, 0x354bff, 0xd13dda, 0xff920d, 0x45d8f1, 0xe9eeff]
 
 function seedInitialVoxels() {
-  SEED_VOXELS.forEach(([x, y, z], index) => {
-    board.cells.set(`${x},${y},${z}`, { x, y, z, color: SEED_COLORS[index % SEED_COLORS.length] })
+  SEED_PIECES.forEach((entry, pieceIndex) => {
+    const shape = SHAPES.find((item) => item.name === entry.shape)
+    if (!shape) return
+    const origin = entry.origin
+    shape.cells.forEach(([x, y, z]) => {
+      const px = x + origin[0]
+      const py = y + origin[1]
+      const pz = z + origin[2]
+      board.cells.set(`${px},${py},${pz}`, {
+        x: px, y: py, z: pz, color: shape.color, entryDelay: pieceIndex * 0.14,
+      })
+    })
   })
 }
 
@@ -396,9 +405,8 @@ function nearestOrigin(ndc, cells) {
   return bestOrigin
 }
 
-function renderBoard(popIn = false) {
+function renderBoard() {
   clearGroup(blocksGroup)
-  let voxelIndex = 0
   board.cells.forEach((cell) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
     mesh.position.copy(cellToWorld(cell.x, cell.y, cell.z))
@@ -411,8 +419,12 @@ function renderBoard(popIn = false) {
       depthWrite: false,
     })))
     blocksGroup.add(mesh)
-    if (popIn) mesh.userData.entry = { elapsed: 0, delay: voxelIndex * 0.05, duration: 0.5 }
-    voxelIndex += 1
+    // One-shot entry: seeded pieces start collapsed and rise exactly once.
+    if (cell.entryDelay !== undefined) {
+      mesh.userData.entry = { elapsed: 0, delay: cell.entryDelay, duration: 0.5 }
+      mesh.scale.setScalar(0.001)
+      cell.entryDelay = undefined
+    }
   })
   clearGroup(candidateGroup)
   board.candidateCells().forEach((key) => {
@@ -435,7 +447,10 @@ function updateBoardEntries(delta) {
     if (!entry) return
     entry.elapsed += delta
     const progress = THREE.MathUtils.clamp((entry.elapsed - entry.delay) / entry.duration, 0, 1)
-    if (progress <= 0) return
+    if (progress <= 0) {
+      child.scale.setScalar(0.001)
+      return
+    }
     const u = progress - 1
     const eased = 1 + c3 * u * u * u + c1 * u * u
     child.scale.setScalar(Math.max(0.001, eased))
@@ -1280,7 +1295,7 @@ function resetGame() {
   drag = null
   setCancelZone(false)
   nextPieces()
-  renderBoard(true)
+  renderBoard()
   setStatus('Pick a shape')
   if (!isPaused) platform.gameplayStart()
 }

@@ -5,7 +5,7 @@ export const SHAPES = [
   { name: 'Square', color: 0xd13dda, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]] },
   { name: 'Corner', color: 0xff920d, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]] },
   { name: 'Tri-cube', color: 0x45d8f1, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] },
-  { name: 'Block', color: 0xe9eeff, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
+  { name: 'Block', color: 0xff6fa5, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
 ]
 
 export function rotateCells(cells, axis) {
