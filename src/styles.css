@@ -204,3 +204,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .app-version { display: none; }
   .status-line { left: 8px; top: 8px; font-size: .66rem; }
 }
+/* v0.2.19 — align to the Block Blast reference: chip score top-left, bare
+   floating candidate previews, round power-up buttons. */
+.topbar .score-chip { justify-self: start; }
+.topbar .score-chip { margin-left: 4px; }
+.piece-slot { min-height: 96px; padding: 8px; border-radius: 18px; background: rgba(255,255,255,.18); box-shadow: none; }
+.piece-slot::before { display: none; }
+.piece-slot::after { display: none; }
+.piece-slot:hover, .piece-slot:focus-visible, .piece-slot.selected { transform: translateY(-3px); background: rgba(255,255,255,.3); box-shadow: none; }
+.piece-thumb { background: transparent; height: 84px; border-radius: 14px; }
+.bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 56px); }
+.item-button { width: 56px; height: 56px; border-radius: 50%; padding: 0; box-shadow: 0 5px 0 rgba(36,52,93,.14), 0 8px 16px rgba(23,40,79,.16); }
+.item-button .item-count { top: -2px; right: -2px; }
+@media (max-width: 700px) {
+  .bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 54px); }
+  .item-button { width: 54px; height: 54px; }
+  .piece-slot { min-height: 84px; }
+  .piece-thumb { height: 72px; }
+}
