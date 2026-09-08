@@ -84,6 +84,9 @@ const maxCameraElevation = 1.1
 let cameraZoom = 1
 const minCameraZoom = 0.7
 const maxCameraZoom = 1.7
+// Fills more of the scene with the cube: a 0.9 multiplier on the fitted
+// distance brings the default framing closer while keeping size stable.
+const cameraFitFill = 0.9
 let orbitDistance = 10
 const frameCorner = new THREE.Vector3()
 const frameRight = new THREE.Vector3()
@@ -143,7 +146,7 @@ function refreshCameraProjection() {
   camera.fov = isMobile ? 37 : 34
   camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
   camera.updateProjectionMatrix()
-  orbitDistance = recomputeOrbitDistance()
+  orbitDistance = recomputeOrbitDistance() * cameraFitFill
 }
 
 function fitCameraToPlaySpace() {
@@ -226,6 +229,24 @@ let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.star
 let itemActive = null // { id, anchor: {x,y,z}|null, axis, ndc }
 let itemBusyUntil = 0
 let lastItemHoverKey = null
+
+// Starter voxels scattered across the 4×4×4 space without completing any full
+// line; they pop in one after another so a new run never opens on an empty
+// wireframe.
+const SEED_VOXELS = [
+  [0, 0, 0], [0, 0, 1], [1, 0, 0], [1, 0, 1],
+  [3, 0, 2], [2, 0, 2], [3, 0, 3],
+  [0, 1, 3], [1, 1, 3], [2, 1, 3],
+  [3, 2, 0], [3, 2, 1],
+  [0, 3, 3], [2, 3, 0], [3, 3, 1], [1, 2, 2],
+]
+const SEED_COLORS = [0xf04452, 0xffe21d, 0x20de35, 0x354bff, 0xd13dda, 0xff920d, 0x45d8f1, 0xe9eeff]
+
+function seedInitialVoxels() {
+  SEED_VOXELS.forEach(([x, y, z], index) => {
+    board.cells.set(`${x},${y},${z}`, { x, y, z, color: SEED_COLORS[index % SEED_COLORS.length] })
+  })
+}
 
 const cellSize = 1.05
 const boardSpan = SIZE * cellSize
@@ -375,8 +396,9 @@ function nearestOrigin(ndc, cells) {
   return bestOrigin
 }
 
-function renderBoard() {
+function renderBoard(popIn = false) {
   clearGroup(blocksGroup)
+  let voxelIndex = 0
   board.cells.forEach((cell) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
     mesh.position.copy(cellToWorld(cell.x, cell.y, cell.z))
@@ -389,6 +411,8 @@ function renderBoard() {
       depthWrite: false,
     })))
     blocksGroup.add(mesh)
+    if (popIn) mesh.userData.entry = { elapsed: 0, delay: voxelIndex * 0.05, duration: 0.5 }
+    voxelIndex += 1
   })
   clearGroup(candidateGroup)
   board.candidateCells().forEach((key) => {
@@ -401,6 +425,25 @@ function renderBoard() {
     candidateGroup.add(ring)
   })
   updateHud()
+}
+
+function updateBoardEntries(delta) {
+  const c1 = 1.70158
+  const c3 = c1 + 1
+  blocksGroup.children.forEach((child) => {
+    const entry = child.userData.entry
+    if (!entry) return
+    entry.elapsed += delta
+    const progress = THREE.MathUtils.clamp((entry.elapsed - entry.delay) / entry.duration, 0, 1)
+    if (progress <= 0) return
+    const u = progress - 1
+    const eased = 1 + c3 * u * u * u + c1 * u * u
+    child.scale.setScalar(Math.max(0.001, eased))
+    if (progress >= 1) {
+      child.scale.setScalar(1)
+      delete child.userData.entry
+    }
+  })
 }
 
 function updateHud() {
@@ -1225,6 +1268,7 @@ function endGame() {
 function resetGame() {
   clearTransientEffects()
   board.clear()
+  seedInitialVoxels()
   resetItems()
   gameEnded = false
   settingsOpen = false
@@ -1236,7 +1280,7 @@ function resetGame() {
   drag = null
   setCancelZone(false)
   nextPieces()
-  renderBoard()
+  renderBoard(true)
   setStatus('Pick a shape')
   if (!isPaused) platform.gameplayStart()
 }
@@ -1289,7 +1333,7 @@ window.addEventListener('pointermove', (event) => {
     // drag pitches the camera (clamped) — two-axis free view on one gesture.
     cameraAzimuth = viewDrag.startAzimuth + dx / width * Math.PI
     cameraElevation = THREE.MathUtils.clamp(
-      viewDrag.startElevation - dy / height * (maxCameraElevation - minCameraElevation),
+      viewDrag.startElevation + dy / height * (maxCameraElevation - minCameraElevation),
       minCameraElevation,
       maxCameraElevation,
     )
@@ -1403,6 +1447,7 @@ function animate() {
     updateTransientEffects(delta)
   }
   updatePiecePreviews()
+  updateBoardEntries(delta)
   updateCameraShake(delta)
   candidateGroup.children.forEach((mesh, index) => {
     mesh.material.opacity = 0.1 + Math.sin(performance.now() * 0.003 + index) * 0.05
