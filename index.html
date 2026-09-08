@@ -9,18 +9,16 @@
   <body>
     <div id="app">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">V</span><span>VoxalBlast</span><span id="app-version" class="app-version" aria-label="Game version"></span></div>
-        <div class="top-actions">
-          <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
+        <span id="app-version" class="app-version" aria-label="Game version"></span>
+        <div class="score-chip" aria-label="Score">
+          <span class="score-chip-label">SCORE</span>
+          <span id="score" class="score-chip-value">0000</span>
         </div>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
       </header>
       <main class="game-layout">
-        <aside class="score-panel">
-          <div class="eyebrow">SCORE</div>
-          <div id="score" class="score-value">0000</div>
-          <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
-        </aside>
         <section class="board-section">
+          <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
           <div id="scene-wrap" class="scene-wrap"></div>
           <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket axis">
             <button type="button" data-axis="x">X</button>
@@ -29,7 +27,7 @@
           </div>
           <div id="toast" class="toast" aria-live="polite"></div>
         </section>
-        <aside class="pieces-panel">
+        <section class="bottom-panel">
           <div id="item-bar" class="item-bar" aria-label="Items">
             <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
             <button class="item-button" type="button" data-item="hammer" title="Knock out one cube" aria-label="Hammer one cube"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
@@ -42,7 +40,7 @@
             <span class="cancel-copy"><strong>Cancel</strong><small>placement</small></span>
             <span class="cancel-arrow" aria-hidden="true">↩</span>
           </div>
-        </aside>
+        </section>
       </main>
       <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content settings-card">
