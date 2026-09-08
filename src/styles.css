@@ -201,7 +201,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .topbar { gap: 8px; padding: 0 2.5vw; }
   .score-chip { padding: 5px 12px; gap: 6px; }
   .score-chip-value { font-size: 1.35rem; }
-  .app-version { display: none; }
+  .app-version { font-size: .52rem; }
   .status-line { left: 8px; top: 8px; font-size: .66rem; }
 }
 /* v0.2.19 — align to the Block Blast reference: chip score top-left, bare
