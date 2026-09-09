@@ -21,8 +21,8 @@ import {
   RenderMode,
   SizeOverLife,
 } from 'three.quarks'
-import { Board, SIZE } from './game/board.js'
-import { SHAPES, normalizeCells } from './game/shapes.js'
+import { Board, SH, FACES, faceLattice } from './game/board.js'
+import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { getRenderQuality, RENDER_PALETTE as palette, VFX_CONFIG } from './rendering/config.js'
 import './styles.css'
@@ -72,29 +72,120 @@ const scene = new THREE.Scene()
 scene.background = null
 scene.fog = new THREE.Fog(palette.background, 17, 30)
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
-const cameraBasePosition = new THREE.Vector3()
-const cameraDirection = new THREE.Vector3(0.82, 0.76, 1).normalize()
 const cameraTarget = new THREE.Vector3(0, 0, 0)
-let cameraAzimuth = Math.atan2(1, 0.82)
-const defaultCameraAzimuth = cameraAzimuth
-const defaultCameraElevation = Math.atan2(0.76, Math.hypot(0.82, 1))
-let cameraElevation = defaultCameraElevation
-const minCameraElevation = 0.2
-const maxCameraElevation = 1.1
 let cameraZoom = 1
 const minCameraZoom = 0.7
 const maxCameraZoom = 1.7
-// Fills more of the scene with the cube: a 0.9 multiplier on the fitted
-// distance brings the default framing closer while keeping size stable.
-const cameraFitFill = 0.9
-let orbitDistance = 10
+
+// ============================================================
+// Cube-face geometry
+// ============================================================
+const cs = 1.0 // cell pitch (lattice unit)
+const half = (SH * cs) / 2 // 3 — cube half side
+const cubeSide = SH * cs // 6
+// Per-face placement plane in cube-local space. n = outward face normal,
+// u/v = the in-plane axes matching the board's face->lattice mapping.
+const FACE_PLANE = {
+  '+x': { n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
+  '-x': { n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
+  '+y': { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+  '-y': { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+  '+z': { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
+  '-z': { n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] },
+}
+
+const cubeGroup = new THREE.Group()
+const cellsGroup = new THREE.Group()
+cubeGroup.add(cellsGroup)
+scene.add(cubeGroup)
+
+// Solid cube body sits a hair inside the shell cells so placed blocks read as a
+// flush surface pattern, not floating bumps; the base colour is softened so the
+// placed blocks pop.
+const cubeBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x7f93c2, roughness: 0.6, metalness: 0, emissive: 0x46619a, emissiveIntensity: 0.1 })
+const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.16), cubeBodyMaterial)
+cubeBody.castShadow = true
+cubeBody.receiveShadow = true
+cubeGroup.add(cubeBody)
+const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(cubeBody.geometry), new THREE.LineBasicMaterial({ color: 0x3a4f86, transparent: true, opacity: 0.2, depthWrite: false }))
+cubeGroup.add(cubeEdge)
+
+function cubeVector(face, axis) {
+  const b = FACE_PLANE[face]
+  if (axis === 'n') return new THREE.Vector3(...b.n)
+  if (axis === 'u') return new THREE.Vector3(...b.u)
+  return new THREE.Vector3(...b.v)
+}
+
+// World-space lattice cell -> 3D position (cells are flush on the shell).
+function cellToWorld(x, y, z) {
+  return new THREE.Vector3(
+    x * cs - half + cs / 2,
+    y * cs - half + cs / 2,
+    z * cs - half + cs / 2,
+  )
+}
+
+// Cube-local position of a face cell (from its lattice coordinate).
+function cellLocal(face, u, v) {
+  const [x, y, z] = faceLattice(face, u, v)
+  return cellToWorld(x, y, z)
+}
+
+// Center of a face's placement plane (the outer shell surface), cube-local.
+function facePlaneLocalCenter(face) {
+  return cubeVector(face, 'n').multiplyScalar(half)
+}
+
+// Build the faint N×N grid overlay on every face.
+const gridGroup = new THREE.Group()
+cubeGroup.add(gridGroup)
+function buildFaceGridLines() {
+  const off = half + 0.005
+  const halfG = (SH * cs) / 2
+  const positions = []
+  for (const face of FACES) {
+    const b = FACE_PLANE[face]
+    for (let i = 0; i <= SH; i += 1) {
+      const cu = i * cs - halfG
+      positions.push(
+        b.u[0] * cu + b.v[0] * -halfG + b.n[0] * off,
+        b.u[1] * cu + b.v[1] * -halfG + b.n[1] * off,
+        b.u[2] * cu + b.v[2] * -halfG + b.n[2] * off,
+        b.u[0] * cu + b.v[0] * halfG + b.n[0] * off,
+        b.u[1] * cu + b.v[1] * halfG + b.n[1] * off,
+        b.u[2] * cu + b.v[2] * halfG + b.n[2] * off,
+      )
+    }
+    for (let j = 0; j <= SH; j += 1) {
+      const cv = j * cs - halfG
+      positions.push(
+        b.u[0] * -halfG + b.v[0] * cv + b.n[0] * off,
+        b.u[1] * -halfG + b.v[1] * cv + b.n[1] * off,
+        b.u[2] * -halfG + b.v[2] * cv + b.n[2] * off,
+        b.u[0] * halfG + b.v[0] * cv + b.n[0] * off,
+        b.u[1] * halfG + b.v[1] * cv + b.n[1] * off,
+        b.u[2] * halfG + b.v[2] * cv + b.n[2] * off,
+      )
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  const mat = new THREE.LineBasicMaterial({ color: 0x9db8e6, transparent: true, opacity: 0.3, depthWrite: false })
+  gridGroup.add(new THREE.LineSegments(geo, mat))
+}
+buildFaceGridLines()
+
+// ============================================================
+// Camera fit (cube rotates; camera stays put)
+// ============================================================
+const CAMERA_DIR = new THREE.Vector3(0.3, 0.4, 1.05).normalize()
+const CUBE_EXTENT = half + 0.4
 const frameCorner = new THREE.Vector3()
 const frameRight = new THREE.Vector3()
 const frameUp = new THREE.Vector3()
+let orbitDistance = 12
 
-// Camera orbits at a constant distance fitted to the widest view of the cube,
-// so the board keeps one apparent size instead of zooming in face-on and
-// shrinking when viewed corner-on.
 function distanceForViewDirection(direction) {
   camera.position.copy(direction)
   camera.lookAt(cameraTarget)
@@ -104,9 +195,9 @@ function distanceForViewDirection(direction) {
   const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
   const horizontalTan = verticalTan * camera.aspect
   const isMobile = sceneWrap.clientWidth < 700
-  const safeFactor = isMobile ? 0.84 : 0.88
-  const min = -boardSpan / 2
-  const max = boardSpan / 2
+  const safeFactor = isMobile ? 0.82 : 0.88
+  const min = -CUBE_EXTENT
+  const max = CUBE_EXTENT
   let distance = 0
   for (const x of [min, max]) for (const y of [min, max]) for (const z of [min, max]) {
     const corner = frameCorner.set(x, y, z)
@@ -120,56 +211,27 @@ function distanceForViewDirection(direction) {
   return distance
 }
 
-function recomputeOrbitDistance() {
-  // Worst-case fit across every allowed azimuth and elevation so the board
-  // keeps a stable apparent size while orbiting or pitching.
-  let worst = 0
-  const elevationSteps = 7
-  for (let ei = 0; ei < elevationSteps; ei += 1) {
-    const elevation = minCameraElevation + (maxCameraElevation - minCameraElevation) * (ei / (elevationSteps - 1))
-    const horizontalScale = Math.cos(elevation)
-    for (let i = 0; i < 72; i += 1) {
-      const azimuth = (i / 72) * Math.PI * 2
-      const direction = new THREE.Vector3(
-        horizontalScale * Math.cos(azimuth),
-        Math.sin(elevation),
-        horizontalScale * Math.sin(azimuth),
-      ).normalize()
-      worst = Math.max(worst, distanceForViewDirection(direction))
-    }
-  }
-  return worst
-}
-
 function refreshCameraProjection() {
   const isMobile = sceneWrap.clientWidth < 700
   camera.fov = isMobile ? 37 : 34
   camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
   camera.updateProjectionMatrix()
-  orbitDistance = recomputeOrbitDistance() * cameraFitFill
+  orbitDistance = distanceForViewDirection(CAMERA_DIR)
 }
 
 function fitCameraToPlaySpace() {
-  const horizontalScale = Math.cos(cameraElevation)
-  cameraDirection.set(
-    horizontalScale * Math.cos(cameraAzimuth),
-    Math.sin(cameraElevation),
-    horizontalScale * Math.sin(cameraAzimuth),
-  ).normalize()
-  cameraBasePosition.copy(cameraDirection).multiplyScalar(orbitDistance * cameraZoom)
-  camera.position.copy(cameraBasePosition)
+  camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
   camera.lookAt(cameraTarget)
 }
 
-const previewCameraRadius = Math.hypot(5, 6)
-const previewCameraBaseAzimuth = Math.atan2(6, 5)
-const previewCameraHeight = 4.2
-
+// ============================================================
+// Renderer / post / lights
+// ============================================================
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.14
+renderer.toneMappingExposure = 1.02
 renderer.setClearColor(0x000000, 0)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -190,9 +252,9 @@ const effectPass = new EffectPass(camera, bloomEffect, smaaEffect)
 composer.addPass(renderPass)
 composer.addPass(effectPass)
 
-const hemiLight = new THREE.HemisphereLight(0xdbeaff, 0x182653, 2.25)
+const hemiLight = new THREE.HemisphereLight(0xf4fbff, 0x1d3264, 2.55)
 scene.add(hemiLight)
-const keyLight = new THREE.DirectionalLight(0xffffff, 4.1)
+const keyLight = new THREE.DirectionalLight(0xffffff, 4.6)
 keyLight.position.set(5.5, 10, 7)
 keyLight.castShadow = true
 keyLight.shadow.mapSize.set(2048, 2048)
@@ -202,73 +264,106 @@ keyLight.shadow.camera.top = 8
 keyLight.shadow.camera.bottom = -8
 keyLight.shadow.bias = -0.0004
 scene.add(keyLight)
-const rimLight = new THREE.DirectionalLight(0x72aaff, 2.2)
+const rimLight = new THREE.DirectionalLight(0x72aaff, 1.25)
 rimLight.position.set(-8, 4, -6)
 scene.add(rimLight)
-const fillLight = new THREE.PointLight(0x9de8ff, 18, 15, 2)
+const fillLight = new THREE.PointLight(0x9de8ff, 10, 15, 2)
 fillLight.position.set(0, 5, 2)
 scene.add(fillLight)
 
-const gridGroup = new THREE.Group()
-const blocksGroup = new THREE.Group()
 const previewGroup = new THREE.Group()
 const candidateGroup = new THREE.Group()
 const fxGroup = new THREE.Group()
-scene.add(gridGroup, blocksGroup, previewGroup, candidateGroup, fxGroup)
+// The drag preview and the item-target overlay sit in the cube's local frame so
+// they rotate with the cube (cells are positioned in cube-local coordinates).
+cubeGroup.add(previewGroup)
+scene.add(candidateGroup, fxGroup)
 
-// —— Item tools (docs/Planning/07) ——
-const ITEM_TOOLS = Object.freeze([
-  { id: 'refresh', name: 'Refresh', icon: '↻', start: 2, cap: 3 },
-  { id: 'hammer', name: 'Hammer', icon: '🔨', start: 1, cap: 2 },
-  { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
-  { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
-])
-const itemPreviewGroup = new THREE.Group()
-scene.add(itemPreviewGroup)
-let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
-let itemActive = null // { id, anchor: {x,y,z}|null, axis, ndc }
-let itemBusyUntil = 0
-let lastItemHoverKey = null
+// Cube rotation state (yaw about world Y, pitch about world X; snapped to 90°).
+let cubeYaw = 0
+let cubePitch = 0
+const cubeSnapAnim = { active: false, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t: 0, duration: 0.22 }
+const PITCH_MIN = -Math.PI / 2
+const PITCH_MAX = Math.PI / 2
 
-// A new run opens with several complete base shapes already resting on the
-// board (no single isolated cubes, no white voxels); each shape pops in as a
-// whole so the board never starts empty and never starts monochrome.
-const SEED_PIECES = [
-  { shape: 'Line 3', origin: [0, 0, 0] },
-  { shape: 'Square', origin: [2, 0, 2] },
-  { shape: 'Big L', origin: [0, 2, 0] },
-  { shape: 'Tri-cube', origin: [0, 2, 3] },
-  { shape: 'Corner', origin: [0, 0, 1] },
-]
+function applyCubeRotation() {
+  cubeGroup.rotation.order = 'YXZ'
+  cubeGroup.rotation.y = cubeYaw
+  cubeGroup.rotation.x = cubePitch
+  cubeGroup.rotation.z = 0
+  cubeGroup.updateMatrixWorld(true)
+}
 
-function seedInitialVoxels() {
-  SEED_PIECES.forEach((entry, pieceIndex) => {
-    const shape = SHAPES.find((item) => item.name === entry.shape)
-    if (!shape) return
-    const origin = entry.origin
-    shape.cells.forEach(([x, y, z]) => {
-      const px = x + origin[0]
-      const py = y + origin[1]
-      const pz = z + origin[2]
-      board.cells.set(`${px},${py},${pz}`, {
-        x: px, y: py, z: pz, color: shape.color, entryDelay: pieceIndex * 0.14,
-      })
-    })
+function snapAngle(angle) {
+  const step = Math.PI / 2
+  return Math.round(angle / step) * step
+}
+
+// Front face = the one whose outward normal (rotated into world) points most
+// toward the camera.
+const frontProbe = new THREE.Vector3()
+function findFrontFace() {
+  const toCamera = camera.position.clone().sub(cubeGroup.position).normalize()
+  let best = '+z'
+  let bestDot = -Infinity
+  for (const face of FACES) {
+    frontProbe.set(...FACE_PLANE[face].n).applyQuaternion(cubeGroup.quaternion)
+    const dot = frontProbe.dot(toCamera)
+    if (dot > bestDot) { bestDot = dot; best = face }
+  }
+  return best
+}
+
+function startCubeSnap() {
+  cubeSnapAnim.active = true
+  cubeSnapAnim.fromYaw = cubeYaw
+  cubeSnapAnim.fromPitch = cubePitch
+  cubeSnapAnim.toYaw = snapAngle(cubeYaw)
+  cubeSnapAnim.toPitch = THREE.MathUtils.clamp(snapAngle(cubePitch), PITCH_MIN, PITCH_MAX)
+  cubeSnapAnim.t = 0
+}
+
+function updateCubeSnap(delta) {
+  if (!cubeSnapAnim.active) return
+  cubeSnapAnim.t += delta
+  const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
+  const eased = 1 - (1 - p) * (1 - p)
+  cubeYaw = THREE.MathUtils.lerp(cubeSnapAnim.fromYaw, cubeSnapAnim.toYaw, eased)
+  cubePitch = THREE.MathUtils.lerp(cubeSnapAnim.fromPitch, cubeSnapAnim.toPitch, eased)
+  applyCubeRotation()
+  if (p >= 1) {
+    cubeYaw = cubeSnapAnim.toYaw
+    cubePitch = cubeSnapAnim.toPitch
+    cubeSnapAnim.active = false
+    applyCubeRotation()
+  }
+}
+
+// ============================================================
+// Materials / helpers
+// ============================================================
+function colorToVector4(color, alpha = 1) {
+  const normalized = new THREE.Color(color)
+  return new THREE.Vector4(normalized.r, normalized.g, normalized.b, alpha)
+}
+
+function makeMaterial(color, opacity = 1) {
+  const materialColor = new THREE.Color(color)
+  return new THREE.MeshStandardMaterial({
+    color: materialColor,
+    roughness: 0.58,
+    metalness: 0,
+    emissive: materialColor,
+    emissiveIntensity: opacity < 1 ? 0.06 : 0.025,
+    transparent: opacity < 1,
+    opacity,
   })
 }
 
-const cellSize = 1.05
-const boardSpan = SIZE * cellSize
-const boardOffset = (SIZE - 1) * cellSize / 2
-const cellToWorld = (x, y, z) => new THREE.Vector3(
-  x * cellSize - boardOffset,
-  y * cellSize - boardOffset,
-  z * cellSize - boardOffset,
-)
-const cubeGeometry = new RoundedBoxGeometry(0.86, 0.86, 0.86, 3, 0.075)
+const cubeGeometry = new RoundedBoxGeometry(0.92, 0.92, 0.92, 4, 0.105)
 const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
-const particleGeometry = new RoundedBoxGeometry(0.12, 0.12, 0.12, 2, 0.025)
-const beamGeometry = new THREE.BoxGeometry(boardSpan + 0.08, 0.065, 0.065)
+const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
+const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
 function buildStarShape(outer = 0.5, inner = 0.2, points = 5) {
   const shape = new THREE.Shape()
   for (let i = 0; i < points * 2; i += 1) {
@@ -294,27 +389,9 @@ const particleMaterial = new THREE.MeshBasicMaterial({
 const particleRenderer = new BatchedRenderer()
 scene.add(particleRenderer)
 
-function colorToVector4(color, alpha = 1) {
-  const normalized = new THREE.Color(color)
-  return new THREE.Vector4(normalized.r, normalized.g, normalized.b, alpha)
-}
-
-function makeMaterial(color, opacity = 1) {
-  const materialColor = new THREE.Color(color)
-  return new THREE.MeshStandardMaterial({
-    color: materialColor,
-    roughness: 0.34,
-    metalness: 0.04,
-    emissive: materialColor,
-    emissiveIntensity: opacity < 1 ? 0.12 : 0.055,
-    transparent: opacity < 1,
-    opacity,
-  })
-}
-
 function disposeNode(node) {
   node.traverse((child) => {
-    if (child.geometry && child.geometry !== cubeGeometry && child.geometry !== edgeGeometry) child.geometry.dispose()
+    if (child.geometry && child.geometry !== cubeGeometry && child.geometry !== edgeGeometry && child.geometry !== cubeBody.geometry) child.geometry.dispose()
     if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose())
     else if (child.material) child.material.dispose()
   })
@@ -327,140 +404,34 @@ function clearGroup(group) {
   }
 }
 
-function buildGrid() {
-  const min = -boardSpan / 2
-  const max = boardSpan / 2
-
-  // The play space floats directly in the sky. Only the lowest layer keeps
-  // soft, separated landing pads so depth remains readable without a base.
-  const padGeometry = new RoundedBoxGeometry(0.82, 0.035, 0.82, 3, 0.09)
-  const padMaterial = new THREE.MeshStandardMaterial({
-    color: palette.grid,
-    roughness: 0.78,
-    metalness: 0,
-    transparent: true,
-    opacity: 0.19,
-    depthWrite: false,
-  })
-  for (let x = 0; x < SIZE; x += 1) for (let z = 0; z < SIZE; z += 1) {
-    const pad = new THREE.Mesh(padGeometry, padMaterial)
-    pad.position.set(x * cellSize - boardOffset, min - 0.025, z * cellSize - boardOffset)
-    pad.receiveShadow = true
-    gridGroup.add(pad)
-  }
-
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(boardSpan * 0.72, boardSpan * 0.72),
-    new THREE.ShadowMaterial({ color: palette.navyDeep, opacity: 0.14, transparent: true }),
-  )
-  shadow.rotation.x = -Math.PI / 2
-  shadow.position.y = min - 0.06
-  shadow.receiveShadow = true
-  gridGroup.add(shadow)
-
-  // Eight short corner brackets are only a faint depth hint now; the volume is
-  // carried by the colored blocks, the bottom landing pads and candidate hints.
-  const corners = [
-    new THREE.Vector3(min, min, min), new THREE.Vector3(max, min, min),
-    new THREE.Vector3(min, max, min), new THREE.Vector3(max, max, min),
-    new THREE.Vector3(min, min, max), new THREE.Vector3(max, min, max),
-    new THREE.Vector3(min, max, max), new THREE.Vector3(max, max, max),
-  ]
-  const edgeMaterial = new THREE.LineBasicMaterial({
-    color: palette.navy,
-    transparent: true,
-    opacity: 0.1,
-    depthWrite: false,
-  })
-  const bracketLength = 0.4
-  const bracketPoints = []
-  corners.forEach((corner) => {
-    for (const axis of ['x', 'y', 'z']) {
-      const end = corner.clone()
-      end[axis] += (corner[axis] === min ? 1 : -1) * bracketLength
-      bracketPoints.push(corner, end)
-    }
-  })
-  const bracketGeometry = new THREE.BufferGeometry().setFromPoints(bracketPoints)
-  gridGroup.add(new THREE.LineSegments(bracketGeometry, edgeMaterial))
-}
-buildGrid()
-
-function nearestOrigin(ndc, cells) {
-  let bestOrigin = { x: 0, y: 0, z: 0 }
-  let bestDistance = Infinity
-  const projected = new THREE.Vector3()
-  for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-    if (!board.canPlace(cells, { x, y, z })) continue
-    projected.copy(cellToWorld(x, y, z)).project(camera)
-    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
-    if (distance < bestDistance) { bestDistance = distance; bestOrigin = { x, y, z } }
-  }
-  if (bestDistance < Infinity) return bestOrigin
-  for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-    projected.copy(cellToWorld(x, y, z)).project(camera)
-    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
-    if (distance < bestDistance) { bestDistance = distance; bestOrigin = { x, y, z } }
-  }
-  return bestOrigin
+// ============================================================
+// Board rendering
+// ============================================================
+function cellWorld(face, u, v) {
+  return cellLocal(face, u, v).applyMatrix4(cubeGroup.matrixWorld)
 }
 
 function renderBoard() {
-  clearGroup(blocksGroup)
-  board.cells.forEach((cell) => {
+  clearGroup(cellsGroup)
+  board.occupied().forEach((cell) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
     mesh.position.copy(cellToWorld(cell.x, cell.y, cell.z))
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
-      color: 0xffffff,
+      color: 0x24427d,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.13,
       depthWrite: false,
     })))
-    blocksGroup.add(mesh)
-    // One-shot entry: seeded pieces start collapsed and rise exactly once.
-    if (cell.entryDelay !== undefined) {
-      mesh.userData.entry = { elapsed: 0, delay: cell.entryDelay, duration: 0.5 }
-      mesh.scale.setScalar(0.001)
-      cell.entryDelay = undefined
-    }
-  })
-  clearGroup(candidateGroup)
-  board.candidateCells().forEach((key) => {
-    const [x, y, z] = key.split(',').map(Number)
-    const ring = new THREE.Mesh(
-      new RoundedBoxGeometry(0.94, 0.94, 0.94, 2, 0.06),
-      new THREE.MeshBasicMaterial({ color: palette.candidate, transparent: true, opacity: 0.15, wireframe: true, toneMapped: false }),
-    )
-    ring.position.copy(cellToWorld(x, y, z))
-    candidateGroup.add(ring)
+    cellsGroup.add(mesh)
   })
   updateHud()
 }
 
-function updateBoardEntries(delta) {
-  const c1 = 1.70158
-  const c3 = c1 + 1
-  blocksGroup.children.forEach((child) => {
-    const entry = child.userData.entry
-    if (!entry) return
-    entry.elapsed += delta
-    const progress = THREE.MathUtils.clamp((entry.elapsed - entry.delay) / entry.duration, 0, 1)
-    if (progress <= 0) {
-      child.scale.setScalar(0.001)
-      return
-    }
-    const u = progress - 1
-    const eased = 1 + c3 * u * u * u + c1 * u * u
-    child.scale.setScalar(Math.max(0.001, eased))
-    if (progress >= 1) {
-      child.scale.setScalar(1)
-      delete child.userData.entry
-    }
-  })
-}
-
+// ============================================================
+// HUD / pieces / previews
+// ============================================================
 function updateHud() {
   scoreEl.textContent = String(board.score).padStart(4, '0')
 }
@@ -483,11 +454,13 @@ function colorHex(color) {
   return `#${new THREE.Color(color).getHexString()}`
 }
 
-function centeredPreviewPositions(cells) {
-  const vectors = cells.map(([x, y, z]) => new THREE.Vector3(x, y, z).multiplyScalar(0.72))
-  const bounds = new THREE.Box3().setFromPoints(vectors)
-  const center = bounds.getCenter(new THREE.Vector3())
-  return vectors.map((position) => position.sub(center))
+// Flat, face-on preview positions: (u,v) -> screen space (x right, y down).
+function flatPreviewPositions(cells) {
+  const maxU = Math.max(...cells.map(([u]) => u))
+  const maxV = Math.max(...cells.map(([, v]) => v))
+  const cx = maxU / 2
+  const cy = maxV / 2
+  return cells.map(([u, v]) => new THREE.Vector3((u - cx) * 0.8, (cy - v) * 0.8, 0))
 }
 
 function disposePiecePreviews() {
@@ -513,25 +486,25 @@ function createPiecePreview(piece, canvas, slot) {
   const previewScene = new THREE.Scene()
   previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6f82b7, 2.8))
   const previewKey = new THREE.DirectionalLight(0xffffff, 4.4)
-  previewKey.position.set(4, 7, 5)
+  previewKey.position.set(2, 3, 6)
   previewScene.add(previewKey)
-  const previewRim = new THREE.DirectionalLight(0x7ec8ff, 1.5)
-  previewRim.position.set(-4, 2, -3)
+  const previewRim = new THREE.DirectionalLight(0x7ec8ff, 1.2)
+  previewRim.position.set(-3, 1, 4)
   previewScene.add(previewRim)
 
   const previewCamera = new THREE.OrthographicCamera(-2.5, 2.5, 2.2, -2.2, 0.1, 40)
-  previewCamera.position.set(5, 4.2, 6)
+  previewCamera.position.set(2.5, 2.9, 5.4)
   previewCamera.lookAt(0, 0, 0)
   const root = new THREE.Group()
   previewScene.add(root)
-  const positions = centeredPreviewPositions(currentCells(piece))
-  const size = new THREE.Box3().setFromPoints(positions).getSize(new THREE.Vector3()).addScalar(0.62)
-  const baseScale = THREE.MathUtils.clamp(3.4 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
+  const positions = flatPreviewPositions(currentCells(piece))
+  const size = new THREE.Box3().setFromPoints(positions.map((p) => p.clone())).getSize(new THREE.Vector3()).addScalar(0.62)
+  const baseScale = THREE.MathUtils.clamp(3.2 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
   root.scale.setScalar(baseScale)
   const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
   const meshes = positions.map((position) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(piece.shape.color))
-    mesh.scale.setScalar(0.72)
+    mesh.scale.setScalar(0.7)
     mesh.position.copy(position)
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.66 })))
     root.add(mesh)
@@ -553,7 +526,7 @@ function updatePiecePreviews() {
     const height = Math.max(preview.renderer.domElement.clientHeight, 1)
     if (preview.renderer.domElement.width !== Math.round(width * preview.renderer.getPixelRatio()) || preview.renderer.domElement.height !== Math.round(height * preview.renderer.getPixelRatio())) {
       preview.renderer.setSize(width, height, false)
-      const halfHeight = VFX_CONFIG.preview.cameraHeight
+      const halfHeight = 1.6
       const halfWidth = halfHeight * width / height
       preview.camera.left = -halfWidth
       preview.camera.right = halfWidth
@@ -561,14 +534,7 @@ function updatePiecePreviews() {
       preview.camera.bottom = -halfHeight
       preview.camera.updateProjectionMatrix()
     }
-    // Candidate thumbnails share the board's yaw: orbiting the view turns the
-    // little previews the same way so a piece faces identically in both.
-    const azimuth = previewCameraBaseAzimuth + (cameraAzimuth - defaultCameraAzimuth)
-    preview.camera.position.set(
-      Math.cos(azimuth) * previewCameraRadius,
-      previewCameraHeight,
-      Math.sin(azimuth) * previewCameraRadius,
-    )
+    preview.camera.position.set(2.5, 2.9, 5.4)
     preview.camera.lookAt(0, 0, 0)
     preview.renderer.render(preview.scene, preview.camera)
   })
@@ -583,7 +549,7 @@ function renderPieceSlots() {
     slot.type = 'button'
     slot.dataset.index = index
     slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
-    slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} voxels`)
+    slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} blocks`)
 
     const thumb = document.createElement('span')
     thumb.className = 'piece-thumb'
@@ -598,7 +564,7 @@ function renderPieceSlots() {
       if (!piece.used && !drag && !itemActive && performance.now() >= suppressPieceClickUntil) {
         selectedPiece = piece
         updatePieceSlotSelection()
-        setStatus('Ready to place')
+        setStatus('Drag to a face')
       }
     })
     slotsEl.appendChild(slot)
@@ -643,6 +609,9 @@ function cancelActiveDrag(showFeedback = true) {
   return true
 }
 
+// ============================================================
+// Settings / audio / haptics
+// ============================================================
 function updateSettingsUi() {
   soundSettingEl.classList.toggle('enabled', soundOn)
   soundSettingEl.setAttribute('aria-pressed', String(soundOn))
@@ -716,6 +685,22 @@ function showScorePop(points, lineCount) {
   setTimeout(() => pop.remove(), 920)
 }
 
+// ============================================================
+// Items (front-face based)
+// ============================================================
+const ITEM_TOOLS = Object.freeze([
+  { id: 'refresh', name: 'Refresh', icon: '↻', start: 2, cap: 3 },
+  { id: 'hammer', name: 'Hammer', icon: '🔨', start: 1, cap: 2 },
+  { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
+  { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
+])
+const itemPreviewGroup = new THREE.Group()
+cubeGroup.add(itemPreviewGroup)
+let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
+let itemActive = null // { id, face, u, v }
+let itemBusyUntil = 0
+let lastItemHoverKey = null
+
 function canUseItemsNow() {
   return !gameEnded && !isPaused && !drag && !settingsOpen && performance.now() >= itemBusyUntil
 }
@@ -765,47 +750,65 @@ function eventNdc(event) {
   )
 }
 
-function occupiedCellNear(ndc) {
-  let bestCell = null
-  let bestDistance = Infinity
-  const projected = new THREE.Vector3()
-  board.cells.forEach((cell) => {
-    projected.copy(cellToWorld(cell.x, cell.y, cell.z)).project(camera)
-    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
-    if (distance < bestDistance) { bestDistance = distance; bestCell = cell }
-  })
-  return bestCell && bestDistance < 0.16 ? { x: bestCell.x, y: bestCell.y, z: bestCell.z } : null
+// Convert an NDC into the front face's (u, v) grid cell nearest to the pointer.
+function ndcToCell(face, ndc) {
+  const plane = new THREE.Plane()
+  const nWorld = cubeVector(face, 'n').applyQuaternion(cubeGroup.quaternion).normalize()
+  const centerWorld = facePlaneLocalCenter(face).applyMatrix4(cubeGroup.matrixWorld)
+  plane.setFromNormalAndCoplanarPoint(nWorld, centerWorld)
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(ndc, camera)
+  const point = new THREE.Vector3()
+  if (!raycaster.ray.intersectPlane(plane, point)) return null
+  const localP = point.applyMatrix4(new THREE.Matrix4().copy(cubeGroup.matrixWorld).invert())
+  const rel = localP.sub(facePlaneLocalCenter(face))
+  const uF = rel.dot(cubeVector(face, 'u')) / cs + (SH - 1) / 2
+  const vF = rel.dot(cubeVector(face, 'v')) / cs + (SH - 1) / 2
+  return { u: Math.round(uF), v: Math.round(vF) }
 }
 
-function toolScopeCells(id, anchor) {
-  if (!anchor) return []
-  if (id === 'hammer') return [[anchor.x, anchor.y, anchor.z]]
+// For a placed set of cells, enumerate legal origins on the front face and pick
+// the one whose world projection is nearest the pointer (mirrors BlockBlast snap).
+function nearestOriginOnFace(face, ndc, cells) {
+  const projected = new THREE.Vector3()
+  const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+  let bestOrigin = { u: 0, v: 0 }
+  let bestDistance = Infinity
+  let found = false
+  for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
+    if (!board.canPlace(face, cells, { u, v })) continue
+    projected.copy(cellWorld(face, u, v)).project(camera)
+    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
+    if (distance < bestDistance) { bestDistance = distance; bestOrigin = { u, v }; found = true }
+  }
+  if (found) return bestOrigin
+  return null
+}
+
+function toolScopeCells(id, face, u, v) {
+  if (id === 'hammer') return [faceLattice(face, u, v)]
   if (id === 'rocket') {
     const cells = []
-    for (let i = 0; i < SIZE; i += 1) {
-      if (itemActive.axis === 'x') cells.push([i, anchor.y, anchor.z])
-      else if (itemActive.axis === 'y') cells.push([anchor.x, i, anchor.z])
-      else cells.push([anchor.x, anchor.y, i])
-    }
+    if (itemActive?.orientation === 'col') for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, u, i))
+    else for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, i, v))
     return cells
   }
-  // bomb: 2×2×2 growing toward +x/+y/+z, trimmed to the 4×4×4 bounds
+  // bomb: 2×2 square on the face, growing toward +u/+v, trimmed to bounds
   const cells = []
-  for (let dx = 0; dx <= 1; dx += 1) for (let dy = 0; dy <= 1; dy += 1) for (let dz = 0; dz <= 1; dz += 1) {
-    const x = anchor.x + dx
-    const y = anchor.y + dy
-    const z = anchor.z + dz
-    if (x < SIZE && y < SIZE && z < SIZE) cells.push([x, y, z])
+  for (let du = 0; du <= 1; du += 1) for (let dv = 0; dv <= 1; dv += 1) {
+    const cu = u + du
+    const cv = v + dv
+    if (cu < SH && cv < SH) cells.push(faceLattice(face, cu, cv))
   }
   return cells
 }
 
 function rebuildItemOverlay() {
   clearGroup(itemPreviewGroup)
-  if (!itemActive || !itemActive.anchor) return
-  const scope = toolScopeCells(itemActive.id, itemActive.anchor)
+  if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
+  const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v)
   scope.forEach(([x, y, z]) => {
-    const occupied = board.cells.has(`${x},${y},${z}`)
+    const occupied = board.has(x, y, z)
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(palette.valid, occupied ? 0.5 : 0.2))
     mesh.scale.setScalar(occupied ? 1 : 0.72)
     mesh.position.copy(cellToWorld(x, y, z))
@@ -815,10 +818,12 @@ function rebuildItemOverlay() {
 
 function updateItemHover(ndc) {
   if (!itemActive || itemActive.id === 'refresh') return
-  const anchor = occupiedCellNear(ndc)
-  itemActive.anchor = anchor
-  itemActive.ndc = ndc
-  const key = anchor ? `${itemActive.id}:${itemActive.axis}:${anchor.x},${anchor.y},${anchor.z}` : ''
+  const frontFace = findFrontFace()
+  const cellAt = ndcToCell(frontFace, ndc)
+  itemActive.face = frontFace
+  itemActive.u = cellAt ? cellAt.u : 0
+  itemActive.v = cellAt ? cellAt.v : 0
+  const key = `${itemActive.id}:${frontFace}:${itemActive.u},${itemActive.v}:${itemActive.orientation || ''}`
   if (key !== lastItemHoverKey) {
     lastItemHoverKey = key
     rebuildItemOverlay()
@@ -827,18 +832,19 @@ function updateItemHover(ndc) {
 
 function selectItemAt(event) {
   const ndc = eventNdc(event)
-  updateItemHover(ndc)
-  if (!itemActive || !itemActive.anchor) {
-    setStatus('Pick an occupied cube')
-    return
-  }
+  const frontFace = findFrontFace()
+  const cellAt = ndcToCell(frontFace, ndc)
+  if (!cellAt) { setStatus('Pick a face cell'); return }
+  itemActive.face = frontFace
+  itemActive.u = cellAt.u
+  itemActive.v = cellAt.v
   confirmItem()
 }
 
 function confirmItem() {
-  const { id, anchor } = itemActive
-  if (!anchor) return
-  const scope = toolScopeCells(id, anchor)
+  const { id, face, u, v } = itemActive
+  if (u === undefined || v === undefined) return
+  const scope = toolScopeCells(id, face, u, v)
   const removed = board.removeCells(scope)
   if (!removed.length) {
     setStatus('Nothing to clear there')
@@ -870,10 +876,10 @@ function activateItem(id) {
     rerollPieces()
     return
   }
-  itemActive = { id, anchor: null, axis: 'z', ndc: null }
+  itemActive = { id, face: null, u: undefined, v: undefined, orientation: id === 'bomb' ? '2x2' : 'row' }
   lastItemHoverKey = null
   axisPickEl.classList.toggle('hidden', id !== 'rocket')
-  setStatus(id === 'hammer' ? 'Pick a cube to knock out' : id === 'rocket' ? 'Pick a line to clear' : 'Pick an anchor cube')
+  setStatus(id === 'hammer' ? 'Pick a block to remove' : id === 'rocket' ? 'Pick a line to clear' : 'Pick a 2×2 area')
   renderItemBar()
 }
 
@@ -892,7 +898,7 @@ function rerollPieces() {
 }
 
 function hasPlaceablePiece() {
-  return pieces.some((piece) => !piece.used && hasAnyPlacement(piece))
+  return pieces.some((piece) => !piece.used && board.anyPlacement(piece.cells))
 }
 
 function checkStuckAndPrompt() {
@@ -908,11 +914,14 @@ function checkStuckAndPrompt() {
 
 function emitItemBurst(cells, axisHint) {
   if (!cells.length) return
-  const mid = [0, 1, 2].map((axis) => cells.reduce((sum, cell) => sum + cell[axis], 0) / cells.length)
+  const frontFace = findFrontFace()
+  const uDir = cubeVector(frontFace, 'u').applyQuaternion(cubeGroup.quaternion)
+  const vDir = cubeVector(frontFace, 'v').applyQuaternion(cubeGroup.quaternion)
+  const worldCenter = new THREE.Vector3()
+  cells.forEach(([x, y, z]) => worldCenter.add(cellToWorld(x, y, z).applyMatrix4(cubeGroup.matrixWorld)))
+  worldCenter.multiplyScalar(1 / cells.length)
   const count = THREE.MathUtils.clamp(cells.length * 6, 6, 48)
-  const direction = axisHint === 'rocket'
-    ? (itemActive?.axis === 'x' ? new THREE.Vector3(1, 0, 0) : itemActive?.axis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1))
-    : new THREE.Vector3(0, 1, 0)
+  const direction = uDir.clone().add(vDir).normalize()
   const warm = new THREE.Vector3(1, 0.83, 0.16)
   const bright = new THREE.Vector3(1, 0.96, 0.45)
   const system = new ParticleSystem({
@@ -936,7 +945,7 @@ function emitItemBurst(cells, axisHint) {
       new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.1, 0.3, 0), 0]])),
     ],
   })
-  system.emitter.position.copy(cellToWorld(mid[0], mid[1], mid[2]))
+  system.emitter.position.copy(worldCenter)
   scene.add(system.emitter)
   system.emitter.updateMatrixWorld(true)
   particleRenderer.addSystem(system)
@@ -949,40 +958,30 @@ for (const button of itemBarEl.querySelectorAll('.item-button')) {
 for (const button of axisPickEl.querySelectorAll('button')) {
   button.addEventListener('click', () => {
     if (!itemActive || itemActive.id !== 'rocket') return
-    itemActive.axis = button.dataset.axis
+    itemActive.orientation = button.dataset.axis === 'col' ? 'col' : 'row'
     lastItemHoverKey = null
-    if (itemActive.ndc) updateItemHover(itemActive.ndc)
-    setStatus(`Rocket axis: ${button.dataset.axis.toUpperCase()}`)
+    if (itemActive.u !== undefined) rebuildItemOverlay()
+    setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
   })
 }
 
+// ============================================================
+// Piece placement drag
+// ============================================================
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
-const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), boardSpan / 2 + 0.025)
-function pointerPoint(event) {
-  const rect = renderer.domElement.getBoundingClientRect()
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-  raycaster.setFromCamera(pointer, camera)
-  const point = new THREE.Vector3()
-  raycaster.ray.intersectPlane(boardPlane, point)
-  return { point, ndc: pointer.clone() }
-}
 
 function beginDrag(event, piece) {
   if (piece.used || isPaused || drag || itemActive) return
-  // Right/middle click is reserved as the in-drag cancel entry on PC; it must
-  // not start a phantom placement drag when a slot is idle.
   if (event.pointerType === 'mouse' && event.button !== 0) return
   event.preventDefault()
   selectedPiece = piece
-  const hit = pointerPoint(event)
   drag = {
     piece,
     pointerId: event.pointerId,
     source: event.currentTarget,
-    point: hit.point,
-    ndc: hit.ndc,
+    ndc: eventNdc(event),
+    face: null,
     origin: null,
     valid: false,
     active: false,
@@ -990,27 +989,34 @@ function beginDrag(event, piece) {
     startX: event.clientX,
     startY: event.clientY,
   }
-  // Keep receiving the touch after it leaves the slot button.
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
   } catch {
     // Some embedded browsers reject capture during an interrupted gesture.
   }
   event.currentTarget.classList.add('selected')
-  setStatus('Drag to the cube')
+  setStatus('Drag to a face')
 }
 
-function updatePreview(point) {
+function updatePreview(ndc) {
   clearGroup(previewGroup)
-  if (!selectedPiece || !point || !drag?.active) return
+  if (!selectedPiece || !ndc || !drag?.active) return
+  const face = findFrontFace()
   const cells = currentCells(selectedPiece)
-  const origin = nearestOrigin(drag.ndc, cells)
-  const valid = board.canPlace(cells, origin)
+  const origin = nearestOriginOnFace(face, ndc, cells)
+  drag.face = face
+  if (!origin) {
+    drag.valid = false
+    drag.origin = null
+    setStatus('No room on this face')
+    return
+  }
+  const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
-  cells.forEach(([x, y, z]) => {
+  cells.forEach(([u, v]) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.52))
-    mesh.position.copy(cellToWorld(x + origin.x, y + origin.y, z + origin.z))
+    mesh.position.copy(cellLocal(face, u + origin.u, v + origin.v))
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
       color: valid ? 0x083c39 : 0x6b1024,
       transparent: true,
@@ -1048,10 +1054,12 @@ class AxisEmitter {
 }
 
 function spawnLineParticles(line) {
-  const direction = line.axis === 'x' ? new THREE.Vector3(1, 0, 0) : line.axis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1)
-  const color = palette.line[line.axis]
-  // Stay in the line hue instead of blowing out to white at the end of life.
+  const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
+  const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
+  const direction = line.axis === 'row' ? worldU : worldV
+  const color = palette.line[line.axis === 'row' ? 'x' : 'y']
   const brightEnd = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.42)
+  const center = lineCenterWorld(line)
   const system = new ParticleSystem({
     autoDestroy: true,
     looping: false,
@@ -1076,13 +1084,6 @@ function spawnLineParticles(line) {
       new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.15, 0.4, 0), 0]])),
     ],
   })
-  const first = line.cells[0]
-  const last = line.cells[line.cells.length - 1]
-  const center = cellToWorld(
-    (first[0] + last[0]) / 2,
-    (first[1] + last[1]) / 2,
-    (first[2] + last[2]) / 2,
-  )
   system.emitter.position.copy(center)
   scene.add(system.emitter)
   system.emitter.updateMatrixWorld(true)
@@ -1090,25 +1091,26 @@ function spawnLineParticles(line) {
   particleSystems.add(system)
 }
 
+function lineCenterWorld(line) {
+  const cell = line.cells[Math.floor(line.cells.length / 2)]
+  return cellToWorld(cell[0], cell[1], cell[2]).applyMatrix4(cubeGroup.matrixWorld)
+}
+
 function spawnLineBeam(line, index) {
-  const first = line.cells[0]
-  const last = line.cells[line.cells.length - 1]
-  const center = cellToWorld(
-    (first[0] + last[0]) / 2,
-    (first[1] + last[1]) / 2,
-    (first[2] + last[2]) / 2,
-  )
+  const center = lineCenterWorld(line)
+  const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
+  const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
+  const dir = line.axis === 'row' ? worldU : worldV
   const beam = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({
-    color: palette.line[line.axis],
+    color: palette.line[line.axis === 'row' ? 'x' : 'y'],
     transparent: true,
     opacity: 0,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     toneMapped: false,
   }))
-  if (line.axis === 'y') beam.rotation.z = Math.PI / 2
-  if (line.axis === 'z') beam.rotation.y = Math.PI / 2
   beam.position.copy(center)
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir)
   fxGroup.add(beam)
   transientEffects.push({
     object: beam,
@@ -1127,14 +1129,7 @@ function spawnLineBeam(line, index) {
 }
 
 function spawnClearStars(line, index) {
-  const first = line.cells[0]
-  const last = line.cells[line.cells.length - 1]
-  const center = cellToWorld(
-    (first[0] + last[0]) / 2,
-    (first[1] + last[1]) / 2,
-    (first[2] + last[2]) / 2,
-  )
-  // Celebratory stars stay warm (yellow/orange) instead of flashing white.
+  const center = lineCenterWorld(line)
   ;[0xffd32a, 0xff9c3d].forEach((color, starIndex) => {
     const material = new THREE.MeshBasicMaterial({
       color,
@@ -1196,14 +1191,14 @@ function clearTransientEffects() {
 function triggerShake(amount) { cameraShake = Math.max(cameraShake, amount) }
 function updateCameraShake(delta) {
   cameraShake = Math.max(0, cameraShake - delta * 0.42)
-  camera.position.copy(cameraBasePosition)
+  camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
   if (cameraShake > 0) {
     const time = performance.now() * 0.045
     camera.position.x += Math.sin(time) * cameraShake
     camera.position.y += Math.cos(time * 1.17) * cameraShake * 0.7
     camera.position.z += Math.sin(time * 0.83) * cameraShake * 0.5
   }
-  camera.lookAt(0, 0, 0)
+  camera.lookAt(cameraTarget)
 }
 
 function releaseDragPointer(source, pointerId) {
@@ -1224,7 +1219,7 @@ function finishDrag(event) {
   if (!currentDrag.active) {
     selectedPiece = currentDrag.piece
     updatePieceSlotSelection()
-    setStatus('Ready to place')
+    setStatus('Drag to a face')
     return
   }
   suppressPieceClickUntil = performance.now() + 260
@@ -1236,14 +1231,15 @@ function finishDrag(event) {
     playHaptic(10)
     return
   }
-  if (!currentDrag.valid || !currentDrag.origin) {
+  if (!currentDrag.valid || !currentDrag.origin || !currentDrag.face) {
     selectedPiece = null
     updatePieceSlotSelection()
     setStatus('Pick a shape')
     showToast('Try another spot')
     return
   }
-  const result = board.place(currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
+  const face = currentDrag.face
+  const result = board.place(face, currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
   playPlaceSound(result.lines.length)
   playHaptic(result.lines.length > 1 ? [18, 35, 22] : result.lines.length ? [18, 28, 16] : 12)
   currentDrag.piece.used = true
@@ -1263,14 +1259,6 @@ function finishDrag(event) {
   checkStuckAndPrompt()
 }
 
-function hasAnyPlacement(piece) {
-  const cells = currentCells(piece)
-  for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-    if (board.canPlace(cells, { x, y, z })) return true
-  }
-  return false
-}
-
 function endGame() {
   if (gameEnded) return
   gameEnded = true
@@ -1283,7 +1271,6 @@ function endGame() {
 function resetGame() {
   clearTransientEffects()
   board.clear()
-  seedInitialVoxels()
   resetItems()
   gameEnded = false
   settingsOpen = false
@@ -1294,6 +1281,9 @@ function resetGame() {
   selectedPiece = null
   drag = null
   setCancelZone(false)
+  cubeYaw = 0
+  cubePitch = 0
+  applyCubeRotation()
   nextPieces()
   renderBoard()
   setStatus('Pick a shape')
@@ -1308,8 +1298,8 @@ function beginViewDrag(event) {
     source: event.currentTarget,
     startX: event.clientX,
     startY: event.clientY,
-    startAzimuth: cameraAzimuth,
-    startElevation: cameraElevation,
+    startYaw: cubeYaw,
+    startPitch: cubePitch,
     moved: false,
   }
   try {
@@ -1324,6 +1314,7 @@ function finishViewDrag(event) {
   const currentViewDrag = viewDrag
   viewDrag = null
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
+  startCubeSnap()
 }
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
@@ -1344,15 +1335,10 @@ window.addEventListener('pointermove', (event) => {
     viewDrag.moved = true
     const width = Math.max(sceneWrap.clientWidth, 1)
     const height = Math.max(sceneWrap.clientHeight, 1)
-    // Horizontal drag orbits around the play-space's world Y axis, vertical
-    // drag pitches the camera (clamped) — two-axis free view on one gesture.
-    cameraAzimuth = viewDrag.startAzimuth + dx / width * Math.PI
-    cameraElevation = THREE.MathUtils.clamp(
-      viewDrag.startElevation + dy / height * (maxCameraElevation - minCameraElevation),
-      minCameraElevation,
-      maxCameraElevation,
-    )
-    fitCameraToPlaySpace()
+    // Drag rotates the cube (not the camera). Horizontal -> yaw, vertical -> pitch.
+    cubeYaw = viewDrag.startYaw + dx / width * Math.PI
+    cubePitch = THREE.MathUtils.clamp(viewDrag.startPitch + dy / height * Math.PI, PITCH_MIN, PITCH_MAX)
+    applyCubeRotation()
     return
   }
   if (itemActive) {
@@ -1375,10 +1361,9 @@ window.addEventListener('pointermove', (event) => {
     setStatus('Release to cancel')
     return
   }
-  const hit = pointerPoint(event)
-  drag.point = hit.point
-  drag.ndc = hit.ndc
-  updatePreview(hit.point)
+  const ndc = eventNdc(event)
+  drag.ndc = ndc
+  updatePreview(ndc)
   setStatus(drag.valid ? 'Release to place' : 'No room here')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
@@ -1400,11 +1385,11 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
   if (settingsOpen) return
-  if (itemActive?.id === 'rocket' && ['x', 'y', 'z'].includes(event.key.toLowerCase())) {
-    itemActive.axis = event.key.toLowerCase()
+  if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
+    itemActive.orientation = event.key.toLowerCase() === 'c' ? 'col' : 'row'
     lastItemHoverKey = null
-    if (itemActive.ndc) updateItemHover(itemActive.ndc)
-    setStatus(`Rocket axis: ${event.key.toUpperCase()}`)
+    rebuildItemOverlay()
+    setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
   }
 })
 window.addEventListener('contextmenu', (event) => {
@@ -1460,13 +1445,11 @@ function animate() {
   if (!isPaused) {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
+    updateCubeSnap(delta)
   }
   updatePiecePreviews()
-  updateBoardEntries(delta)
   updateCameraShake(delta)
-  candidateGroup.children.forEach((mesh, index) => {
-    mesh.material.opacity = 0.1 + Math.sin(performance.now() * 0.003 + index) * 0.05
-  })
   composer.render(delta)
 }
+applyCubeRotation()
 animate()

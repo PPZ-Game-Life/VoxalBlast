@@ -20,10 +20,9 @@
         <section class="board-section">
           <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
           <div id="scene-wrap" class="scene-wrap"></div>
-          <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket axis">
-            <button type="button" data-axis="x">X</button>
-            <button type="button" data-axis="y">Y</button>
-            <button type="button" data-axis="z">Z</button>
+          <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket line">
+            <button type="button" data-axis="row">Row</button>
+            <button type="button" data-axis="col">Col</button>
           </div>
           <div id="toast" class="toast" aria-live="polite"></div>
         </section>
@@ -31,9 +30,9 @@
           <div id="piece-slots" class="piece-slots"></div>
           <div id="item-bar" class="item-bar" aria-label="Items">
             <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="hammer" title="Knock out one cube" aria-label="Hammer one cube"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="rocket" title="Clear one full line" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2x2 area" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span></button>
+            <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
+            <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span></button>
+            <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span></button>
           </div>
           <div id="cancel-zone" class="cancel-zone" aria-hidden="true">
             <span class="cancel-icon" aria-hidden="true">×</span>

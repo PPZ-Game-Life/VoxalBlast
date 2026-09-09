@@ -222,3 +222,104 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .piece-slot { min-height: 84px; }
   .piece-thumb { height: 72px; }
 }
+
+/* v0.2.21 — clearer toy HUD and readable board stage */
+.topbar {
+  height: 72px;
+  padding: 0 clamp(14px, 3vw, 38px);
+  border-bottom: 4px solid rgba(255,255,255,.62);
+  background:
+    radial-gradient(circle at 50% -90%, rgba(255,255,255,.42), transparent 58%),
+    linear-gradient(180deg, #83bcff 0%, #5f98ed 100%);
+  box-shadow: 0 8px 0 rgba(31,71,145,.12), 0 16px 30px rgba(48,95,177,.12);
+}
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent);
+  pointer-events: none;
+}
+.score-chip {
+  min-width: 178px;
+  justify-content: center;
+  padding: 9px 22px 10px;
+  gap: 10px;
+  border: 3px solid rgba(255,255,255,.78);
+  box-shadow: 0 6px 0 rgba(35,55,111,.14), 0 12px 22px rgba(23,55,125,.2), inset 0 2px 0 rgba(255,255,255,.86);
+}
+.score-chip-label { color: #5e7db6; font-size: .76rem; }
+.score-chip-value { color: #203c7b; font-size: 2rem; letter-spacing: -.06em; }
+.topbar .icon-button {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(255,255,255,.84);
+  border-radius: 17px;
+  box-shadow: 0 6px 0 rgba(35,55,111,.14), 0 12px 22px rgba(23,55,125,.2);
+  font-size: 1.35rem;
+}
+.board-section {
+  isolation: isolate;
+}
+.board-section::before {
+  content: "";
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  top: 8%;
+  bottom: 5%;
+  z-index: -1;
+  border-radius: 48%;
+  background: radial-gradient(ellipse, rgba(225,245,255,.34) 0%, rgba(165,216,255,.12) 48%, transparent 75%);
+  filter: blur(10px);
+  pointer-events: none;
+}
+.status-line {
+  color: #fff;
+  background: rgba(36,66,125,.28);
+  border: 2px solid rgba(255,255,255,.22);
+  box-shadow: 0 5px 12px rgba(27,67,139,.12);
+}
+@media (max-width: 700px) {
+  .topbar { height: 64px; }
+  .score-chip { min-width: 158px; padding: 8px 16px 9px; }
+  .score-chip-value { font-size: 1.72rem; }
+  .topbar .icon-button { width: 44px; height: 44px; }
+  .board-section::before { top: 4%; bottom: 2%; }
+}
+@media (max-width: 460px) {
+  .topbar { height: 60px; }
+  .score-chip { min-width: 144px; padding: 7px 13px 8px; }
+  .score-chip-label { font-size: .68rem; }
+  .score-chip-value { font-size: 1.52rem; }
+}
+/* v0.2.21 — the dev-only version tag floats centered on the top bar and out of
+   layout flow: dropping it for the release build never shifts the SCORE chip
+   or the settings button. */
+.app-version {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  margin: 0;
+  padding: 4px 10px;
+  color: rgba(255,255,255,.94);
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 999px;
+  background: rgba(23,40,79,.16);
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.topbar .score-chip { grid-column: 1; }
+.topbar .icon-button { grid-column: 3; }
+@media (max-width: 460px) {
+  .app-version { padding: 3px 7px; font-size: .5rem; }
+}

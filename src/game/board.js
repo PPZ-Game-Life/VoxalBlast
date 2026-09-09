@@ -1,10 +1,35 @@
-import { keyOf } from './shapes.js'
+// Cube-face placement on the OUTER SHELL of a 6×6×6 lattice.
+// The cube is a 6×6×6 grid of unit cells; placement is allowed only on the
+// exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by their lattice
+// coordinate (x,y,z), so blocks on an edge or corner are shared by the adjacent
+// faces — exactly one cube there, not one per face.
+import { maxOrigin } from './shapes.js'
 
-export const SIZE = 4
+export const SH = 6 // shell lattice size per axis
+export const FACES = ['+x', '-x', '+y', '-y', '+z', '-z']
+
+// Map a face's local grid (u in the first in-plane axis, v in the second) to a
+// lattice cell (x,y,z). The plane axis is pinned to the shell layer.
+const FACE_LATTICE = {
+  '+z': (u, v) => [u, v, SH - 1],
+  '-z': (u, v) => [u, v, 0],
+  '+x': (u, v) => [SH - 1, u, v],
+  '-x': (u, v) => [0, u, v],
+  '+y': (u, v) => [u, SH - 1, v],
+  '-y': (u, v) => [u, 0, v],
+}
+
+export function faceLattice(face, u, v) {
+  return FACE_LATTICE[face](u, v)
+}
+
+export function isShell(x, y, z) {
+  return x === 0 || x === SH - 1 || y === 0 || y === SH - 1 || z === 0 || z === SH - 1
+}
 
 export class Board {
   constructor() {
-    this.cells = new Map()
+    this.cells = new Map() // key `${x},${y},${z}` -> { x, y, z, color }
     this.score = 0
     this.totalLines = 0
   }
@@ -15,24 +40,33 @@ export class Board {
     this.totalLines = 0
   }
 
-  canPlace(cells, origin) {
-    return cells.every(([x, y, z]) => {
-      const px = x + origin.x
-      const py = y + origin.y
-      const pz = z + origin.z
-      return px >= 0 && px < SIZE && py >= 0 && py < SIZE && pz >= 0 && pz < SIZE && !this.cells.has(keyOf(px, py, pz))
+  key(x, y, z) {
+    return `${x},${y},${z}`
+  }
+
+  inBounds(x, y, z) {
+    return x >= 0 && x < SH && y >= 0 && y < SH && z >= 0 && z < SH
+  }
+
+  has(x, y, z) {
+    return this.cells.has(this.key(x, y, z))
+  }
+
+  canPlace(face, cells, origin) {
+    return cells.every(([u, v]) => {
+      const [x, y, z] = faceLattice(face, u + origin.u, v + origin.v)
+      return this.inBounds(x, y, z) && !this.cells.has(this.key(x, y, z))
     })
   }
 
-  place(cells, origin, color) {
-    cells.forEach(([x, y, z]) => {
-      const px = x + origin.x
-      const py = y + origin.y
-      const pz = z + origin.z
-      this.cells.set(keyOf(px, py, pz), { x: px, y: py, z: pz, color })
+  place(face, cells, origin, color) {
+    cells.forEach(([u, v]) => {
+      const [x, y, z] = faceLattice(face, u + origin.u, v + origin.v)
+      this.cells.set(this.key(x, y, z), { x, y, z, color })
     })
-    const lines = this.findFullLines()
-    const cleared = new Set(lines.flatMap((line) => line.cells.map(([x, y, z]) => keyOf(x, y, z))))
+    const lines = this.findFullLines(face)
+    const cleared = new Set()
+    lines.forEach((line) => line.cells.forEach(([x, y, z]) => cleared.add(this.key(x, y, z))))
     cleared.forEach((key) => this.cells.delete(key))
     const multiplier = lines.length === 1 ? 1 : lines.length === 2 ? 3 : lines.length === 3 ? 6 : 10
     const points = lines.length ? 100 * lines.length * multiplier : 0
@@ -43,51 +77,47 @@ export class Board {
 
   // Item tools remove cubes without scoring, clearing lines or advancing turns.
   removeAt(x, y, z) {
-    return this.cells.delete(keyOf(x, y, z))
+    return this.cells.delete(this.key(x, y, z))
   }
 
   removeCells(list) {
+    // list entries are lattice cells [x,y,z]
     const removed = []
     list.forEach(([x, y, z]) => {
-      if (this.cells.delete(keyOf(x, y, z))) removed.push([x, y, z])
+      if (this.cells.delete(this.key(x, y, z))) removed.push([x, y, z])
     })
     return removed
   }
 
-  findFullLines() {
+  findFullLines(face) {
     const lines = []
-    for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-      const cells = Array.from({ length: SIZE }, (_, x) => [x, y, z])
-      if (cells.every(([x, yy, zz]) => this.cells.has(keyOf(x, yy, zz)))) lines.push({ axis: 'x', cells })
+    for (let v = 0; v < SH; v += 1) {
+      const cells = []
+      for (let u = 0; u < SH; u += 1) cells.push(faceLattice(face, u, v))
+      if (cells.every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) lines.push({ axis: 'row', v, face, cells })
     }
-    for (let x = 0; x < SIZE; x += 1) for (let z = 0; z < SIZE; z += 1) {
-      const cells = Array.from({ length: SIZE }, (_, y) => [x, y, z])
-      if (cells.every(([xx, y, zz]) => this.cells.has(keyOf(xx, y, zz)))) lines.push({ axis: 'y', cells })
-    }
-    for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) {
-      const cells = Array.from({ length: SIZE }, (_, z) => [x, y, z])
-      if (cells.every(([xx, yy, z]) => this.cells.has(keyOf(xx, yy, z)))) lines.push({ axis: 'z', cells })
+    for (let u = 0; u < SH; u += 1) {
+      const cells = []
+      for (let v = 0; v < SH; v += 1) cells.push(faceLattice(face, u, v))
+      if (cells.every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) lines.push({ axis: 'col', u, face, cells })
     }
     return lines
   }
 
-  candidateCells() {
-    const candidates = new Set()
-    for (let y = 0; y < SIZE; y += 1) for (let z = 0; z < SIZE; z += 1) {
-      const row = Array.from({ length: SIZE }, (_, x) => [x, y, z])
-      const missing = row.filter(([x, yy, zz]) => !this.cells.has(keyOf(x, yy, zz)))
-      if (missing.length > 0 && missing.length <= 2) missing.forEach((cell) => candidates.add(keyOf(...cell)))
+  // True if the piece fits somewhere on ANY face (the cube can be rotated freely).
+  anyPlacement(cells) {
+    if (cells.length === 0) return false
+    for (const face of FACES) {
+      const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+      for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
+        if (this.canPlace(face, cells, { u, v })) return true
+      }
     }
-    for (let x = 0; x < SIZE; x += 1) for (let z = 0; z < SIZE; z += 1) {
-      const row = Array.from({ length: SIZE }, (_, y) => [x, y, z])
-      const missing = row.filter(([xx, y, zz]) => !this.cells.has(keyOf(xx, y, zz)))
-      if (missing.length > 0 && missing.length <= 2) missing.forEach((cell) => candidates.add(keyOf(...cell)))
-    }
-    for (let x = 0; x < SIZE; x += 1) for (let y = 0; y < SIZE; y += 1) {
-      const row = Array.from({ length: SIZE }, (_, z) => [x, y, z])
-      const missing = row.filter(([xx, yy, z]) => !this.cells.has(keyOf(xx, yy, z)))
-      if (missing.length > 0 && missing.length <= 2) missing.forEach((cell) => candidates.add(keyOf(...cell)))
-    }
-    return candidates
+    return false
+  }
+
+  // All occupied shell cells (lattice coordinates), for rendering.
+  occupied() {
+    return Array.from(this.cells.values())
   }
 }

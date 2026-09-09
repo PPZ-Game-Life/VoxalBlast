@@ -1,28 +1,39 @@
+// Flat 2D polyomino pool for the cube-face placement model.
+// Placements snap onto one of the six faces of the cube; each face is a flat
+// grid, so shapes are two-dimensional (u, v) only. Pieces keep a fixed
+// orientation (no player rotation) — see docs/Planning/02 & 03.
+//
+// Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 export const SHAPES = [
-  { name: 'Line 3', color: 0xf04452, cells: [[0, 0, 0], [1, 0, 0], [2, 0, 0]] },
-  { name: 'Big L', color: 0x354bff, cells: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [2, 1, 0]] },
-  { name: 'L', color: 0x20de35, cells: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [2, 1, 0]] },
-  { name: 'Square', color: 0xd13dda, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]] },
-  { name: 'Corner', color: 0xff920d, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]] },
-  { name: 'Tri-cube', color: 0x45d8f1, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] },
-  { name: 'Block', color: 0xff6fa5, cells: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]] },
+  { name: 'Dot',    color: 0xff6d5c, cells: [[0, 0]] },
+  { name: 'Line 2', color: 0x35c3ff, cells: [[0, 0], [1, 0]] },
+  { name: 'Line 3', color: 0xffcb1f, cells: [[0, 0], [1, 0], [2, 0]] },
+  { name: 'Line 4', color: 0x2fd89b, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
+  { name: 'Line 5', color: 0xf4586b, cells: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] },
+  { name: 'Square', color: 0xa349ff, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+  { name: 'L',      color: 0xff8a2a, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'J',      color: 0x4a6cff, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'T',      color: 0xff5d6f, cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'S',      color: 0x00c2a0, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] },
+  { name: 'Z',      color: 0xc24bff, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] },
+  { name: 'Corner', color: 0x45d8f1, cells: [[0, 0], [1, 0], [0, 1]] },
 ]
 
-export function rotateCells(cells, axis) {
-  const rotated = cells.map(([x, y, z]) => {
-    if (axis === 'x') return [x, -z, y]
-    if (axis === 'y') return [z, y, -x]
-    return [-y, x, z]
-  })
-  const min = [0, 1, 2].map((axisIndex) => Math.min(...rotated.map((cell) => cell[axisIndex])))
-  return rotated.map((cell) => cell.map((value, index) => value - min[index]))
-}
-
-export function keyOf(x, y, z) {
-  return `${x},${y},${z}`
-}
-
+// Normalize a set of 2D cells so the minimum u/v is 0 (top-left origin).
 export function normalizeCells(cells) {
-  const min = [0, 1, 2].map((axisIndex) => Math.min(...cells.map((cell) => cell[axisIndex])))
+  const min = [0, 1].map((axisIndex) => Math.min(...cells.map((cell) => cell[axisIndex])))
   return cells.map((cell) => cell.map((value, index) => value - min[index]))
+}
+
+// Largest origin offset for a set of cells within a face of `faceSize`.
+export function maxOrigin(cells, faceSize) {
+  const maxU = Math.max(...cells.map(([u]) => u))
+  const maxV = Math.max(...cells.map(([, v]) => v))
+  return { u: faceSize - maxU, v: faceSize - maxV }
+}
+
+export function cellExtent(cells) {
+  const maxU = Math.max(...cells.map(([u]) => u))
+  const maxV = Math.max(...cells.map(([, v]) => v))
+  return { u: maxU + 1, v: maxV + 1 }
 }
