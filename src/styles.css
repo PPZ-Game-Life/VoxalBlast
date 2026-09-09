@@ -277,6 +277,26 @@ button { font: inherit; color: inherit; cursor: pointer; }
   filter: blur(10px);
   pointer-events: none;
 }
+/* v0.2.23 — soft floating anchor under the (body-less) cube so the empty
+   space board still sits in the scene instead of hovering on nothing. */
+.board-section::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 66%;
+  width: min(46vw, 540px);
+  height: 116px;
+  z-index: 0;
+  transform: translate(-50%, -44%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(16,38,92,.30) 0%, rgba(16,38,92,.12) 42%, rgba(16,38,92,0) 70%);
+  filter: blur(5px);
+  pointer-events: none;
+}
+@media (max-width: 700px) {
+  .board-section::before { top: 4%; bottom: 2%; }
+  .board-section::after { top: 62%; width: min(84vw, 430px); height: 78px; }
+}
 .status-line {
   color: #fff;
   background: rgba(36,66,125,.28);

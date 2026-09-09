@@ -24,7 +24,7 @@ import {
 import { Board, SH, FACES, faceLattice } from './game/board.js'
 import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, RENDER_PALETTE as palette, VFX_CONFIG } from './rendering/config.js'
+import { getRenderQuality, RENDER_PALETTE as palette, BOARD_STYLE as style, VFX_CONFIG } from './rendering/config.js'
 import './styles.css'
 
 const board = new Board()
@@ -99,15 +99,25 @@ const cellsGroup = new THREE.Group()
 cubeGroup.add(cellsGroup)
 scene.add(cubeGroup)
 
-// Solid cube body sits a hair inside the shell cells so placed blocks read as a
-// flush surface pattern, not floating bumps; the base colour is softened so the
-// placed blocks pop.
-const cubeBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x7f93c2, roughness: 0.6, metalness: 0, emissive: 0x46619a, emissiveIntensity: 0.1 })
+// Floating space board (v0.2.23): the old near-solid cube body is gone. What
+// remains is a barely-there deep-navy volume tint that still hints at the
+// 6×6×6 space on an empty board, plus a faint space-boundary cage. Placed
+// blocks are pushed slightly out of the shell and carry the depth.
+const cubeBodyMaterial = new THREE.MeshStandardMaterial({
+  color: style.hullColor,
+  roughness: style.hullRoughness,
+  metalness: 0,
+  transparent: true,
+  opacity: style.hullOpacity,
+  depthWrite: false,
+})
 const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.16), cubeBodyMaterial)
-cubeBody.castShadow = true
+cubeBody.renderOrder = -2
+cubeBody.castShadow = false
 cubeBody.receiveShadow = true
 cubeGroup.add(cubeBody)
-const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(cubeBody.geometry), new THREE.LineBasicMaterial({ color: 0x3a4f86, transparent: true, opacity: 0.2, depthWrite: false }))
+const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(cubeBody.geometry), new THREE.LineBasicMaterial({ color: style.edgeColor, transparent: true, opacity: style.edgeOpacity, depthWrite: false }))
+cubeEdge.renderOrder = -1
 cubeGroup.add(cubeEdge)
 
 function cubeVector(face, axis) {
@@ -135,6 +145,19 @@ function cellLocal(face, u, v) {
 // Center of a face's placement plane (the outer shell surface), cube-local.
 function facePlaneLocalCenter(face) {
   return cubeVector(face, 'n').multiplyScalar(half)
+}
+
+// Outward direction from the cube centre for a shell cell (radial: face cells
+// push along their face normal, shared edge/corner cells push along the
+// diagonal). Placed voxels float this far off the shell.
+function shellRaise(x, y, z) {
+  const base = cellToWorld(x, y, z)
+  return base.normalize().multiplyScalar(style.voxelRaise)
+}
+
+// Cube-local position of a rendered voxel (lattice cell raised off the shell).
+function placedLocal(x, y, z) {
+  return cellToWorld(x, y, z).add(shellRaise(x, y, z))
 }
 
 // Build the faint N×N grid overlay on every face.
@@ -171,7 +194,7 @@ function buildFaceGridLines() {
   }
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  const mat = new THREE.LineBasicMaterial({ color: 0x9db8e6, transparent: true, opacity: 0.3, depthWrite: false })
+  const mat = new THREE.LineBasicMaterial({ color: style.gridColor, transparent: true, opacity: style.gridOpacity, depthWrite: false })
   gridGroup.add(new THREE.LineSegments(geo, mat))
 }
 buildFaceGridLines()
@@ -180,7 +203,8 @@ buildFaceGridLines()
 // Camera fit (cube rotates; camera stays put)
 // ============================================================
 const CAMERA_DIR = new THREE.Vector3(0.3, 0.4, 1.05).normalize()
-const CUBE_EXTENT = half + 0.4
+// Fit bound covers the raised voxels (shell 3.0 + voxelRaise + rounded half).
+const CUBE_EXTENT = half + 0.55
 const frameCorner = new THREE.Vector3()
 const frameRight = new THREE.Vector3()
 const frameUp = new THREE.Vector3()
@@ -195,7 +219,7 @@ function distanceForViewDirection(direction) {
   const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
   const horizontalTan = verticalTan * camera.aspect
   const isMobile = sceneWrap.clientWidth < 700
-  const safeFactor = isMobile ? 0.82 : 0.88
+  const safeFactor = isMobile ? style.safeFactorMobile : style.safeFactorDesktop
   const min = -CUBE_EXTENT
   const max = CUBE_EXTENT
   let distance = 0
@@ -216,6 +240,8 @@ function refreshCameraProjection() {
   camera.fov = isMobile ? 37 : 34
   camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
   camera.updateProjectionMatrix()
+  // Re-centre the cube inside the tall central canvas per platform.
+  cameraTarget.y = isMobile ? style.targetYMobile : style.targetYDesktop
   orbitDistance = distanceForViewDirection(CAMERA_DIR)
 }
 
@@ -351,10 +377,8 @@ function makeMaterial(color, opacity = 1) {
   const materialColor = new THREE.Color(color)
   return new THREE.MeshStandardMaterial({
     color: materialColor,
-    roughness: 0.58,
+    roughness: style.voxelRoughness,
     metalness: 0,
-    emissive: materialColor,
-    emissiveIntensity: opacity < 1 ? 0.06 : 0.025,
     transparent: opacity < 1,
     opacity,
   })
@@ -415,13 +439,13 @@ function renderBoard() {
   clearGroup(cellsGroup)
   board.occupied().forEach((cell) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
-    mesh.position.copy(cellToWorld(cell.x, cell.y, cell.z))
+    mesh.position.copy(placedLocal(cell.x, cell.y, cell.z))
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
-      color: 0x24427d,
+      color: style.voxelEdgeColor,
       transparent: true,
-      opacity: 0.13,
+      opacity: style.voxelEdgeOpacity,
       depthWrite: false,
     })))
     cellsGroup.add(mesh)
@@ -811,7 +835,7 @@ function rebuildItemOverlay() {
     const occupied = board.has(x, y, z)
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(palette.valid, occupied ? 0.5 : 0.2))
     mesh.scale.setScalar(occupied ? 1 : 0.72)
-    mesh.position.copy(cellToWorld(x, y, z))
+    mesh.position.copy(placedLocal(x, y, z))
     itemPreviewGroup.add(mesh)
   })
 }
@@ -1016,7 +1040,7 @@ function updatePreview(ndc) {
   drag.origin = origin
   cells.forEach(([u, v]) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.52))
-    mesh.position.copy(cellLocal(face, u + origin.u, v + origin.v))
+    mesh.position.copy(placedLocal(...faceLattice(face, u + origin.u, v + origin.v)))
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
       color: valid ? 0x083c39 : 0x6b1024,
       transparent: true,
