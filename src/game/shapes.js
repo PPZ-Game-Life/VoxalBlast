@@ -3,13 +3,17 @@
 // grid, so shapes are two-dimensional (u, v) only. Pieces keep a fixed
 // orientation (no player rotation) — see docs/Planning/02 & 03.
 //
+// v0.2.24: the face shrank to 5×5, so the 5-long line was dropped from the pool
+// — on a 5-wide face it could only ever be placed on a completely empty row and
+// would instantly clear that line, handing out free points and rescuing almost
+// every "no legal placement" game over. 4 is therefore the longest line.
+//
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 export const SHAPES = [
   { name: 'Dot',    color: 0xff6d5c, cells: [[0, 0]] },
   { name: 'Line 2', color: 0x35c3ff, cells: [[0, 0], [1, 0]] },
   { name: 'Line 3', color: 0xffcb1f, cells: [[0, 0], [1, 0], [2, 0]] },
   { name: 'Line 4', color: 0x2fd89b, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
-  { name: 'Line 5', color: 0xf4586b, cells: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] },
   { name: 'Square', color: 0xa349ff, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
   { name: 'L',      color: 0xff8a2a, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'J',      color: 0x4a6cff, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },

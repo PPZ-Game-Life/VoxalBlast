@@ -15,7 +15,7 @@ export const RENDER_PALETTE = Object.freeze({
 // rounded voxels — slightly pushed out of the shell — are the visual subject.
 export const BOARD_STYLE = Object.freeze({
   // Near-invisible volume tint left in place of the old solid body, so empty
-  // boards still hint at the 6×6×6 space without looking like a dark block.
+  // boards still hint at the 5×5×5 space without looking like a dark block.
   hullColor: 0x16295c,
   hullOpacity: 0.05,
   hullRoughness: 0.55,
@@ -37,6 +37,19 @@ export const BOARD_STYLE = Object.freeze({
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0.1,
   targetYMobile: -0.3,
+})
+
+// v0.2.24 swipe-to-rotate feel. One gesture moves the cube by at most ONE face
+// per axis: the step only fires once the drag passes `stepThreshold`, otherwise
+// the cube springs back to the face it started on. The rest pose keeps whatever
+// overshoot the gesture had left, clamped to the per-axis offset budget, so the
+// face that ends up in front still reads as a 3D cube (and never snaps to a
+// mechanically flat square). Radian values; degrees in the comments.
+export const ROTATE_STYLE = Object.freeze({
+  stepThreshold: 0.52, // ≈30° of drag before the gesture turns to the next face
+  restOffsetYaw: 0.14, // ≈8° max leftover tilt from a horizontal swipe (screen X)
+  restOffsetPitch: 0.14, // ≈8° max leftover tilt from a vertical swipe (screen Y)
+  snapDuration: 0.26, // s — settle animation onto the resting pose
 })
 
 export const VFX_CONFIG = Object.freeze({

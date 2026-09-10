@@ -24,7 +24,7 @@ import {
 import { Board, SH, FACES, faceLattice } from './game/board.js'
 import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, RENDER_PALETTE as palette, BOARD_STYLE as style, VFX_CONFIG } from './rendering/config.js'
+import { getRenderQuality, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import './styles.css'
 
 const board = new Board()
@@ -81,8 +81,8 @@ const maxCameraZoom = 1.7
 // Cube-face geometry
 // ============================================================
 const cs = 1.0 // cell pitch (lattice unit)
-const half = (SH * cs) / 2 // 3 — cube half side
-const cubeSide = SH * cs // 6
+const half = (SH * cs) / 2 // 2.5 — cube half side
+const cubeSide = SH * cs // 5
 // Per-face placement plane in cube-local space. n = outward face normal,
 // u/v = the in-plane axes matching the board's face->lattice mapping.
 const FACE_PLANE = {
@@ -101,7 +101,7 @@ scene.add(cubeGroup)
 
 // Floating space board (v0.2.23): the old near-solid cube body is gone. What
 // remains is a barely-there deep-navy volume tint that still hints at the
-// 6×6×6 space on an empty board, plus a faint space-boundary cage. Placed
+// 5×5×5 space on an empty board, plus a faint space-boundary cage. Placed
 // blocks are pushed slightly out of the shell and carry the depth.
 const cubeBodyMaterial = new THREE.MeshStandardMaterial({
   color: style.hullColor,
@@ -305,10 +305,19 @@ const fxGroup = new THREE.Group()
 cubeGroup.add(previewGroup)
 scene.add(candidateGroup, fxGroup)
 
-// Cube rotation state (yaw about world Y, pitch about world X; snapped to 90°).
+// Cube rotation state. `cubeYaw`/`cubePitch` are the pose actually rendered
+// (yaw about world Y, pitch about world X); `cubeBaseYaw`/`cubeBasePitch` are the
+// face-aligned pose they settle around — multiples of 90° that put exactly one
+// face square to the screen. v0.2.24 feel: a gesture steps the base by at most
+// ONE face per axis (only past ROTATE_STYLE.stepThreshold), and the resting pose
+// keeps the gesture's leftover tilt clamped to the per-axis offset budget, so no
+// face ever lands mechanically flat and small swipes simply spring back.
 let cubeYaw = 0
 let cubePitch = 0
-const cubeSnapAnim = { active: false, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t: 0, duration: 0.22 }
+let cubeBaseYaw = 0
+let cubeBasePitch = 0
+const ROT_STEP = Math.PI / 2
+const cubeSnapAnim = { active: false, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t: 0, duration: rotateStyle.snapDuration }
 const PITCH_MIN = -Math.PI / 2
 const PITCH_MAX = Math.PI / 2
 
@@ -320,9 +329,20 @@ function applyCubeRotation() {
   cubeGroup.updateMatrixWorld(true)
 }
 
-function snapAngle(angle) {
-  const step = Math.PI / 2
-  return Math.round(angle / step) * step
+// Plane one axis of the settle. `live` is where the drag left the angle, `start`
+// is where that gesture began, `base` is the face-aligned angle it began from.
+// Over the threshold the gesture turns exactly one face in the drag direction
+// (never "the nearest face"); under it, the cube returns to its starting face.
+// Either way the overshoot past that face survives as a bounded resting offset.
+function planAxisRest(live, start, base, offsetMax, limitPitch) {
+  const delta = live - start
+  const stepped = Math.abs(delta) >= rotateStyle.stepThreshold ? Math.sign(delta) : 0
+  let nextBase = base + stepped * ROT_STEP
+  if (limitPitch) nextBase = THREE.MathUtils.clamp(nextBase, PITCH_MIN, PITCH_MAX)
+  const offset = THREE.MathUtils.clamp(live - nextBase, -offsetMax, offsetMax)
+  let rest = nextBase + offset
+  if (limitPitch) rest = THREE.MathUtils.clamp(rest, PITCH_MIN, PITCH_MAX)
+  return { base: nextBase, rest }
 }
 
 // Front face = the one whose outward normal (rotated into world) points most
@@ -340,13 +360,38 @@ function findFrontFace() {
   return best
 }
 
-function startCubeSnap() {
+function startCubeSnap(gesture) {
+  const yawPlan = planAxisRest(cubeYaw, gesture.startYaw, cubeBaseYaw, rotateStyle.restOffsetYaw, false)
+  const pitchPlan = planAxisRest(cubePitch, gesture.startPitch, cubeBasePitch, rotateStyle.restOffsetPitch, true)
+  cubeBaseYaw = yawPlan.base
+  cubeBasePitch = pitchPlan.base
   cubeSnapAnim.active = true
   cubeSnapAnim.fromYaw = cubeYaw
   cubeSnapAnim.fromPitch = cubePitch
-  cubeSnapAnim.toYaw = snapAngle(cubeYaw)
-  cubeSnapAnim.toPitch = THREE.MathUtils.clamp(snapAngle(cubePitch), PITCH_MIN, PITCH_MAX)
+  cubeSnapAnim.toYaw = yawPlan.rest
+  cubeSnapAnim.toPitch = pitchPlan.rest
   cubeSnapAnim.t = 0
+  cubeSnapAnim.duration = rotateStyle.snapDuration
+}
+
+// A new gesture must start from a stable pose: settle any running animation
+// instantly, otherwise it would keep overwriting the angles the drag writes.
+function settleCubeSnap() {
+  if (!cubeSnapAnim.active) return
+  cubeSnapAnim.active = false
+  cubeYaw = cubeSnapAnim.toYaw
+  cubePitch = cubeSnapAnim.toPitch
+  applyCubeRotation()
+}
+
+// Return to the face-aligned start pose (used by Reset Game).
+function resetCubeRotation() {
+  cubeSnapAnim.active = false
+  cubeYaw = 0
+  cubePitch = 0
+  cubeBaseYaw = 0
+  cubeBasePitch = 0
+  applyCubeRotation()
 }
 
 function updateCubeSnap(delta) {
@@ -1305,9 +1350,7 @@ function resetGame() {
   selectedPiece = null
   drag = null
   setCancelZone(false)
-  cubeYaw = 0
-  cubePitch = 0
-  applyCubeRotation()
+  resetCubeRotation()
   nextPieces()
   renderBoard()
   setStatus('Pick a shape')
@@ -1317,6 +1360,9 @@ function resetGame() {
 function beginViewDrag(event) {
   if (isPaused || drag || viewDrag || event.pointerType === 'mouse' && event.button !== 0) return
   event.preventDefault()
+  // Start from a stable pose so the gesture's own delta is the only thing the
+  // settle logic sees.
+  settleCubeSnap()
   viewDrag = {
     pointerId: event.pointerId,
     source: event.currentTarget,
@@ -1338,7 +1384,7 @@ function finishViewDrag(event) {
   const currentViewDrag = viewDrag
   viewDrag = null
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
-  startCubeSnap()
+  startCubeSnap(currentViewDrag)
 }
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
@@ -1475,5 +1521,20 @@ function animate() {
   updateCameraShake(delta)
   composer.render(delta)
 }
+// Read-only introspection hook for the headless verification runs (the CDP
+// checks assert that a swipe settles on a face-aligned pose). It exposes no
+// mutable game state and is not used by any gameplay code path.
+globalThis.__voxalblast = Object.freeze({
+  version: packageInfo.version,
+  rotation: () => ({
+    yaw: cubeYaw,
+    pitch: cubePitch,
+    baseYaw: cubeBaseYaw,
+    basePitch: cubeBasePitch,
+    front: findFrontFace(),
+    settling: cubeSnapAnim.active,
+  }),
+})
+
 applyCubeRotation()
 animate()

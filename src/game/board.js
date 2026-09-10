@@ -1,11 +1,11 @@
-// Cube-face placement on the OUTER SHELL of a 6×6×6 lattice.
-// The cube is a 6×6×6 grid of unit cells; placement is allowed only on the
-// exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by their lattice
-// coordinate (x,y,z), so blocks on an edge or corner are shared by the adjacent
-// faces — exactly one cube there, not one per face.
+// Cube-face placement on the OUTER SHELL of a 5×5×5 lattice.
+// The cube is a 5×5×5 grid of unit cells (one 5×5 grid per face); placement is
+// allowed only on the exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by
+// their lattice coordinate (x,y,z), so blocks on an edge or corner are shared by
+// the adjacent faces — exactly one cube there, not one per face.
 import { maxOrigin } from './shapes.js'
 
-export const SH = 6 // shell lattice size per axis
+export const SH = 5 // shell lattice size per axis (v0.2.24: 6 → 5)
 export const FACES = ['+x', '-x', '+y', '-y', '+z', '-z']
 
 // Map a face's local grid (u in the first in-plane axis, v in the second) to a
