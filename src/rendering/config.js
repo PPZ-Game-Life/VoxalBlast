@@ -58,13 +58,20 @@ export const BOARD_STYLE = Object.freeze({
 // front still reads as a 3D cube (and never snaps to a mechanically flat
 // square). Radian values; degrees in the comments.
 export const ROTATE_STYLE = Object.freeze({
-  // Gesture direction (v0.2.26). Every axis is signed in ONE place so a
-  // direction is a single knob, never a scattered sign. +1 = the cube's surface
-  // travels with the finger, -1 = the opposite. v0.2.26 flipped all three axes
-  // to the side the player expects (see docs/Planning/03 §3).
-  yawDirection: -1,
-  pitchDirection: -1,
-  rollDirection: 1,
+  // Gesture direction. Every axis is signed in ONE place so a direction is a
+  // single knob, never a sign scattered through the arithmetic. The signs below
+  // make the cube's surface travel WITH the finger: swipe right and the front
+  // face slides right (the left face comes around), swipe down inside the cube
+  // and the front face slides down (the top face tips in), swipe down in a side
+  // band and the cube spins clockwise on screen.
+  //
+  // v0.2.26 flipped all three to the opposite side; v0.2.27 put them back, after
+  // the "the direction feels reversed" report turned out to come from the axes
+  // themselves following the cube (see main.js, fixed gesture axes). Do not flip
+  // these again to chase a direction report — check the axes first.
+  yawDirection: 1,
+  pitchDirection: 1,
+  rollDirection: -1,
   stepThreshold: 0.52, // ≈30° of drag before the gesture turns to the next face
   axisLockPx: 6, // travel before the gesture commits to yaw / pitch / roll
   // Resting offsets: how much of the gesture's leftover tilt survives the
