@@ -242,8 +242,10 @@ function refreshCameraProjection() {
   camera.updateProjectionMatrix()
   // Re-centre the cube inside the tall central canvas per platform.
   cameraTarget.y = isMobile ? style.targetYMobile : style.targetYDesktop
+  cameraTarget.x = 0
   orbitDistance = distanceForViewDirection(CAMERA_DIR)
   keepCubeInsideCanvas()
+  centreCubeHorizontally()
 }
 
 function fitCameraToPlaySpace() {
@@ -272,6 +274,24 @@ function keepCubeInsideCanvas(inset = 6) {
     )
     if (overflow <= 0) return
     orbitDistance *= 1 + overflow / Math.max(rect.height, 1)
+    fitCameraToPlaySpace()
+  }
+}
+
+// The 3/4 view puts the cube's silhouette a few percent off the canvas centre
+// (further off on narrow canvases), which made the two "swipe outside the cube"
+// roll bands lopsided (28px vs 50px on mobile). Aim the camera so both bands end
+// up equal: measure the silhouette's horizontal offset and shift the look-at
+// point by the equivalent world distance, then re-measure.
+function centreCubeHorizontally() {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const centreX = rect.left + rect.width * 0.5
+  const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
+  for (let i = 0; i < 3; i += 1) {
+    const bounds = cubeScreenBounds()
+    const offset = (bounds.minX + bounds.maxX) * 0.5 - centreX
+    if (Math.abs(offset) < 1) return
+    cameraTarget.x += offset * worldPerPx
     fitCameraToPlaySpace()
   }
 }

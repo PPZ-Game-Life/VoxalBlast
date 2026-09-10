@@ -35,10 +35,10 @@ export const BOARD_STYLE = Object.freeze({
   // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the
   // remaining margin is what the "swipe outside the cube" roll band needs.
   // Measured across six viewports (PC 1280/1440/1920 wide, mobile 360/390/414
-  // wide): the cube fills 0.81 of the PC canvas height and 0.77~0.79 of the
-  // mobile canvas width, leaving 184~395px (PC) and 27~30px (mobile, +50~53px on
-  // the other side) of roll band. `keepCubeInsideCanvas()` additionally
-  // guarantees the cube cannot leave the canvas on any other viewport aspect.
+  // wide) after horizontal centring: the cube fills 0.82 of the PC canvas height
+  // and 0.77~0.79 of the mobile canvas width, with equal roll bands on both sides
+  // (302/220/376px on PC, 39~42px on mobile). `keepCubeInsideCanvas()`
+  // additionally guarantees the cube cannot leave the canvas on any aspect.
   safeFactorDesktop: 1.04,
   safeFactorMobile: 1.0,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
