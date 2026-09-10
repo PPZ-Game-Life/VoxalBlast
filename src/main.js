@@ -243,11 +243,83 @@ function refreshCameraProjection() {
   // Re-centre the cube inside the tall central canvas per platform.
   cameraTarget.y = isMobile ? style.targetYMobile : style.targetYDesktop
   orbitDistance = distanceForViewDirection(CAMERA_DIR)
+  keepCubeInsideCanvas()
 }
 
 function fitCameraToPlaySpace() {
   camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
   camera.lookAt(cameraTarget)
+}
+
+// The tuned framing sits close to the edge (the cube IS the operation area), and
+// how much of the canvas a given `safeFactor` buys depends on the viewport
+// aspect. This guard keeps that promise device-independent: if the visible cube
+// would leave the canvas, the camera is nudged back until `inset` px of slack
+// remain on every side.
+function keepCubeInsideCanvas(inset = 6) {
+  // `refreshCameraProjection()` runs before the camera is placed, so put it at
+  // the freshly solved distance first — measuring from a stale/inside-the-cube
+  // camera would project nonsense and run the correction away.
+  fitCameraToPlaySpace()
+  for (let i = 0; i < 6; i += 1) {
+    const bounds = cubeScreenBounds()
+    const rect = renderer.domElement.getBoundingClientRect()
+    const overflow = Math.max(
+      rect.left + inset - bounds.minX,
+      bounds.maxX - (rect.right - inset),
+      rect.top + inset - bounds.minY,
+      bounds.maxY - (rect.bottom - inset),
+    )
+    if (overflow <= 0) return
+    orbitDistance *= 1 + overflow / Math.max(rect.height, 1)
+    fitCameraToPlaySpace()
+  }
+}
+
+// Screen-space box of the cube (client pixels). v0.2.25 uses it to split the
+// vertical swipe by region: a finger that lands inside the cube's horizontal
+// span pitches it (screen X), one that lands outside it rolls it (screen Z).
+// CUBE_SOLID_EXTENT is the visible body (outermost voxel centres + the raised
+// rounded block), so the region matches the silhouette the player sees.
+const CUBE_SOLID_EXTENT = half - cs / 2 + 0.46 + style.voxelRaise
+const cubeBoundsProbe = new THREE.Vector3()
+function projectCubeBounds(extent) {
+  camera.updateMatrixWorld()
+  const rect = renderer.domElement.getBoundingClientRect()
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    cubeBoundsProbe.set(sx * extent, sy * extent, sz * extent)
+      .applyMatrix4(cubeGroup.matrixWorld)
+      .project(camera)
+    const x = rect.left + (cubeBoundsProbe.x + 1) * 0.5 * rect.width
+    const y = rect.top + (1 - cubeBoundsProbe.y) * 0.5 * rect.height
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y)
+  }
+  return { minX, maxX, minY, maxY }
+}
+function cubeScreenBounds() {
+  return projectCubeBounds(CUBE_SOLID_EXTENT)
+}
+
+// Gesture partition: vertical swipes inside the cube's x-span turn it about the
+// screen X axis, vertical swipes outside that span spin it about the screen Z
+// axis (an in-plane roll). Sampled where the finger lands.
+function isHorizontallyOnCube(clientX) {
+  const bounds = cubeScreenBounds()
+  return clientX >= bounds.minX && clientX <= bounds.maxX
+}
+
+// One gesture drives exactly ONE axis: the dominant screen direction wins, so a
+// diagonal swipe can never tilt two axes at once.
+function pickGestureAxis(dx, dy, overCube) {
+  if (Math.abs(dx) >= Math.abs(dy)) return 'yaw'
+  return overCube ? 'pitch' : 'roll'
 }
 
 // ============================================================
@@ -305,27 +377,31 @@ const fxGroup = new THREE.Group()
 cubeGroup.add(previewGroup)
 scene.add(candidateGroup, fxGroup)
 
-// Cube rotation state. `cubeYaw`/`cubePitch` are the pose actually rendered
-// (yaw about world Y, pitch about world X); `cubeBaseYaw`/`cubeBasePitch` are the
-// face-aligned pose they settle around — multiples of 90° that put exactly one
-// face square to the screen. v0.2.24 feel: a gesture steps the base by at most
-// ONE face per axis (only past ROTATE_STYLE.stepThreshold), and the resting pose
-// keeps the gesture's leftover tilt clamped to the per-axis offset budget, so no
-// face ever lands mechanically flat and small swipes simply spring back.
+// Cube rotation state. `cubeYaw`/`cubePitch`/`cubeRoll` are the pose actually
+// rendered (yaw about world Y, pitch about world X, roll about world Z);
+// `cubeBase*` are the face-aligned poses they settle around — multiples of 90°
+// that put exactly one face square to the screen. v0.2.24 feel: a gesture steps
+// the base by at most ONE face on ONE axis (only past ROTATE_STYLE.stepThreshold),
+// and the resting pose keeps the gesture's leftover tilt clamped to the per-axis
+// offset budget, so no face ever lands mechanically flat and small swipes simply
+// spring back.
 let cubeYaw = 0
 let cubePitch = 0
+let cubeRoll = 0
 let cubeBaseYaw = 0
 let cubeBasePitch = 0
+let cubeBaseRoll = 0
 const ROT_STEP = Math.PI / 2
-const cubeSnapAnim = { active: false, fromYaw: 0, fromPitch: 0, toYaw: 0, toPitch: 0, t: 0, duration: rotateStyle.snapDuration }
+const cubeSnapAnim = { active: false, fromYaw: 0, fromPitch: 0, fromRoll: 0, toYaw: 0, toPitch: 0, toRoll: 0, t: 0, duration: rotateStyle.snapDuration }
 const PITCH_MIN = -Math.PI / 2
 const PITCH_MAX = Math.PI / 2
 
 function applyCubeRotation() {
-  cubeGroup.rotation.order = 'YXZ'
-  cubeGroup.rotation.y = cubeYaw
-  cubeGroup.rotation.x = cubePitch
-  cubeGroup.rotation.z = 0
+  // Order 'ZYX' = Rz · Ry · Rx, so the roll is the OUTERMOST rotation: a roll
+  // gesture spins the cube in the screen plane whichever face is currently
+  // front. With roll === 0 the pose is exactly the old 'YXZ' yaw/pitch pose.
+  cubeGroup.rotation.order = 'ZYX'
+  cubeGroup.rotation.set(cubePitch, cubeYaw, cubeRoll)
   cubeGroup.updateMatrixWorld(true)
 }
 
@@ -363,13 +439,17 @@ function findFrontFace() {
 function startCubeSnap(gesture) {
   const yawPlan = planAxisRest(cubeYaw, gesture.startYaw, cubeBaseYaw, rotateStyle.restOffsetYaw, false)
   const pitchPlan = planAxisRest(cubePitch, gesture.startPitch, cubeBasePitch, rotateStyle.restOffsetPitch, true)
+  const rollPlan = planAxisRest(cubeRoll, gesture.startRoll, cubeBaseRoll, rotateStyle.restOffsetRoll, false)
   cubeBaseYaw = yawPlan.base
   cubeBasePitch = pitchPlan.base
+  cubeBaseRoll = rollPlan.base
   cubeSnapAnim.active = true
   cubeSnapAnim.fromYaw = cubeYaw
   cubeSnapAnim.fromPitch = cubePitch
+  cubeSnapAnim.fromRoll = cubeRoll
   cubeSnapAnim.toYaw = yawPlan.rest
   cubeSnapAnim.toPitch = pitchPlan.rest
+  cubeSnapAnim.toRoll = rollPlan.rest
   cubeSnapAnim.t = 0
   cubeSnapAnim.duration = rotateStyle.snapDuration
 }
@@ -381,6 +461,7 @@ function settleCubeSnap() {
   cubeSnapAnim.active = false
   cubeYaw = cubeSnapAnim.toYaw
   cubePitch = cubeSnapAnim.toPitch
+  cubeRoll = cubeSnapAnim.toRoll
   applyCubeRotation()
 }
 
@@ -389,8 +470,10 @@ function resetCubeRotation() {
   cubeSnapAnim.active = false
   cubeYaw = 0
   cubePitch = 0
+  cubeRoll = 0
   cubeBaseYaw = 0
   cubeBasePitch = 0
+  cubeBaseRoll = 0
   applyCubeRotation()
 }
 
@@ -401,10 +484,12 @@ function updateCubeSnap(delta) {
   const eased = 1 - (1 - p) * (1 - p)
   cubeYaw = THREE.MathUtils.lerp(cubeSnapAnim.fromYaw, cubeSnapAnim.toYaw, eased)
   cubePitch = THREE.MathUtils.lerp(cubeSnapAnim.fromPitch, cubeSnapAnim.toPitch, eased)
+  cubeRoll = THREE.MathUtils.lerp(cubeSnapAnim.fromRoll, cubeSnapAnim.toRoll, eased)
   applyCubeRotation()
   if (p >= 1) {
     cubeYaw = cubeSnapAnim.toYaw
     cubePitch = cubeSnapAnim.toPitch
+    cubeRoll = cubeSnapAnim.toRoll
     cubeSnapAnim.active = false
     applyCubeRotation()
   }
@@ -1370,7 +1455,11 @@ function beginViewDrag(event) {
     startY: event.clientY,
     startYaw: cubeYaw,
     startPitch: cubePitch,
-    moved: false,
+    startRoll: cubeRoll,
+    // Region is sampled once, where the finger goes down: a gesture never
+    // switches meaning halfway through.
+    overCube: isHorizontallyOnCube(event.clientX),
+    axis: null,
   }
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -1401,13 +1490,22 @@ window.addEventListener('pointermove', (event) => {
     event.preventDefault()
     const dx = event.clientX - viewDrag.startX
     const dy = event.clientY - viewDrag.startY
-    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return
-    viewDrag.moved = true
+    if (!viewDrag.axis) {
+      if (Math.hypot(dx, dy) < rotateStyle.axisLockPx) return
+      viewDrag.axis = pickGestureAxis(dx, dy, viewDrag.overCube)
+    }
     const width = Math.max(sceneWrap.clientWidth, 1)
     const height = Math.max(sceneWrap.clientHeight, 1)
-    // Drag rotates the cube (not the camera). Horizontal -> yaw, vertical -> pitch.
-    cubeYaw = viewDrag.startYaw + dx / width * Math.PI
-    cubePitch = THREE.MathUtils.clamp(viewDrag.startPitch + dy / height * Math.PI, PITCH_MIN, PITCH_MAX)
+    // Drag rotates the cube (not the camera). The locked axis is the only one
+    // that moves; the other two keep the pose the gesture started from.
+    if (viewDrag.axis === 'yaw') {
+      cubeYaw = viewDrag.startYaw + dx / width * Math.PI
+    } else if (viewDrag.axis === 'pitch') {
+      cubePitch = THREE.MathUtils.clamp(viewDrag.startPitch + dy / height * Math.PI, PITCH_MIN, PITCH_MAX)
+    } else {
+      // Roll: dragging down spins the cube clockwise on screen.
+      cubeRoll = viewDrag.startRoll - dy / height * Math.PI
+    }
     applyCubeRotation()
     return
   }
@@ -1529,11 +1627,35 @@ globalThis.__voxalblast = Object.freeze({
   rotation: () => ({
     yaw: cubeYaw,
     pitch: cubePitch,
+    roll: cubeRoll,
     baseYaw: cubeBaseYaw,
     basePitch: cubeBasePitch,
+    baseRoll: cubeBaseRoll,
     front: findFrontFace(),
     settling: cubeSnapAnim.active,
   }),
+  // Screen-space cube box + framing numbers, used to check the "inside vs
+  // outside the cube" gesture split and how much of the canvas the cube fills.
+  bounds: () => cubeScreenBounds(),
+  framing: () => {
+    const rect = renderer.domElement.getBoundingClientRect()
+    const solid = cubeScreenBounds()
+    const fitBox = projectCubeBounds(CUBE_EXTENT)
+    return {
+      canvas: { left: rect.left, top: rect.top, width: rect.width, height: rect.height, right: rect.left + rect.width, bottom: rect.top + rect.height },
+      solid,
+      fitBox,
+      fillX: (solid.maxX - solid.minX) / Math.max(rect.width, 1),
+      fillY: (solid.maxY - solid.minY) / Math.max(rect.height, 1),
+      bandLeft: solid.minX - rect.left,
+      bandRight: rect.left + rect.width - solid.maxX,
+      clipped: solid.minX < rect.left || solid.maxX > rect.left + rect.width || solid.minY < rect.top || solid.maxY > rect.top + rect.height,
+      orbitDistance,
+      zoom: cameraZoom,
+      fov: camera.fov,
+      aspect: camera.aspect,
+    }
+  },
 })
 
 applyCubeRotation()

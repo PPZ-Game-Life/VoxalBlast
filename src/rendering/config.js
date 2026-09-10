@@ -30,25 +30,39 @@ export const BOARD_STYLE = Object.freeze({
   voxelRoughness: 0.46,
   voxelEdgeColor: 0x24427d,
   voxelEdgeOpacity: 0.1,
-  // Camera framing: higher = the cube fills more of the central canvas
-  // (desktop ~+10%, mobile ~+14% versus the v0.2.22 fit).
-  safeFactorDesktop: 0.97,
-  safeFactorMobile: 0.93,
+  // Camera framing: higher = the cube fills more of the central canvas. The
+  // cube is the primary touch surface (rotate gestures + placement), so the
+  // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the
+  // remaining margin is what the "swipe outside the cube" roll band needs.
+  // Measured across six viewports (PC 1280/1440/1920 wide, mobile 360/390/414
+  // wide): the cube fills 0.81 of the PC canvas height and 0.77~0.79 of the
+  // mobile canvas width, leaving 184~395px (PC) and 27~30px (mobile, +50~53px on
+  // the other side) of roll band. `keepCubeInsideCanvas()` additionally
+  // guarantees the cube cannot leave the canvas on any other viewport aspect.
+  safeFactorDesktop: 1.04,
+  safeFactorMobile: 1.0,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0.1,
   targetYMobile: -0.3,
 })
 
-// v0.2.24 swipe-to-rotate feel. One gesture moves the cube by at most ONE face
-// per axis: the step only fires once the drag passes `stepThreshold`, otherwise
-// the cube springs back to the face it started on. The rest pose keeps whatever
-// overshoot the gesture had left, clamped to the per-axis offset budget, so the
-// face that ends up in front still reads as a 3D cube (and never snaps to a
-// mechanically flat square). Radian values; degrees in the comments.
+// Swipe-to-rotate feel. One gesture drives exactly ONE axis (v0.2.25): the
+// dominant screen direction decides it, so a diagonal swipe can never tilt two
+// axes at once. Horizontal -> yaw (screen Y axis). Vertical -> pitch (screen X
+// axis) when the finger lands inside the cube's horizontal span, and roll
+// (screen Z axis, an in-plane spin) when it lands outside it. Whichever axis
+// wins, the gesture still moves the cube by at most ONE face: the step only
+// fires once the drag passes `stepThreshold`, otherwise the cube springs back
+// to the face it started on. The rest pose keeps whatever overshoot the gesture
+// had left, clamped to the per-axis offset budget, so the face that ends up in
+// front still reads as a 3D cube (and never snaps to a mechanically flat
+// square). Radian values; degrees in the comments.
 export const ROTATE_STYLE = Object.freeze({
   stepThreshold: 0.52, // ≈30° of drag before the gesture turns to the next face
+  axisLockPx: 6, // travel before the gesture commits to yaw / pitch / roll
   restOffsetYaw: 0.14, // ≈8° max leftover tilt from a horizontal swipe (screen X)
   restOffsetPitch: 0.14, // ≈8° max leftover tilt from a vertical swipe (screen Y)
+  restOffsetRoll: 0.14, // ≈8° max leftover spin from a vertical swipe outside the cube
   snapDuration: 0.26, // s — settle animation onto the resting pose
 })
 
