@@ -456,6 +456,63 @@ function findFrontFace() {
   return best
 }
 
+// ---- Candidate orientation on the front face (v0.2.26) ----------------------
+// The slot draws every candidate as a flat card: piece +u to the right, piece
+// +v up. A face's own (u, v) lattice axes turn WITH the cube, so placing the raw
+// cells would spin the piece every time the cube is rotated — the candidate
+// would look like it had come along for the ride. Instead the piece is
+// re-expressed on whichever pair of face axes currently reads as screen-right /
+// screen-up: the drop is defined RELATIVE TO THE FACE THE PLAYER IS LOOKING AT,
+// which is exactly what the slot showed. Turn the cube any way you like; the
+// piece lands the same way up every time.
+const screenRightLocal = new THREE.Vector3()
+const screenUpLocal = new THREE.Vector3()
+const cubeInverseQuat = new THREE.Quaternion()
+
+function updateScreenAxesLocal() {
+  camera.updateMatrixWorld()
+  cubeGroup.updateMatrixWorld()
+  // The piece preview lives in the cube's local frame, so the screen directions
+  // have to be expressed there too.
+  cubeInverseQuat.copy(cubeGroup.quaternion).invert()
+  screenRightLocal.setFromMatrixColumn(camera.matrixWorld, 0).applyQuaternion(cubeInverseQuat)
+  screenUpLocal.setFromMatrixColumn(camera.matrixWorld, 1).applyQuaternion(cubeInverseQuat)
+}
+
+// The face is square to the screen (its residual tilt is bounded by the yaw and
+// pitch rest offsets, far under 45°), so each screen direction projects onto
+// exactly one signed lattice axis. The pair is built as (across, along) from the
+// face's two axes rather than from four independent signs: a mirror would flip
+// the piece's chirality, and a piece is never mirrored.
+function faceOrientedCells(face, cells) {
+  updateScreenAxesLocal()
+  const normal = cubeVector(face, 'n')
+  const right = screenRightLocal.clone().addScaledVector(normal, -screenRightLocal.dot(normal)).normalize()
+  const up = screenUpLocal.clone().addScaledVector(normal, -screenUpLocal.dot(normal)).normalize()
+  const uAxis = cubeVector(face, 'u')
+  const vAxis = cubeVector(face, 'v')
+  const uRight = uAxis.dot(right)
+  const vRight = vAxis.dot(right)
+  const across = Math.abs(uRight) >= Math.abs(vRight)
+    ? { u: uRight >= 0 ? 1 : -1, v: 0 }
+    : { u: 0, v: vRight >= 0 ? 1 : -1 }
+  const along = across.u !== 0
+    ? { u: 0, v: vAxis.dot(up) >= 0 ? 1 : -1 }
+    : { u: uAxis.dot(up) >= 0 ? 1 : -1, v: 0 }
+  return normalizeCells(cells.map(([u, v]) => [
+    u * across.u + v * along.u,
+    u * across.v + v * along.v,
+  ]))
+}
+
+// Spring-ish settle: easeOutBack so the pose springs a few degrees past the
+// face it is landing on and then comes back. It always ENDS exactly on the
+// planned rest angles, so the Z axis still lands dead on the 90° grid.
+function easeOutBack(p, strength) {
+  const q = p - 1
+  return 1 + (strength + 1) * q * q * q + strength * q * q
+}
+
 function startCubeSnap(gesture) {
   const yawPlan = planAxisRest(cubeYaw, gesture.startYaw, cubeBaseYaw, rotateStyle.restOffsetYaw, false)
   const pitchPlan = planAxisRest(cubePitch, gesture.startPitch, cubeBasePitch, rotateStyle.restOffsetPitch, true)
@@ -501,7 +558,7 @@ function updateCubeSnap(delta) {
   if (!cubeSnapAnim.active) return
   cubeSnapAnim.t += delta
   const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
-  const eased = 1 - (1 - p) * (1 - p)
+  const eased = easeOutBack(p, rotateStyle.snapOvershoot)
   cubeYaw = THREE.MathUtils.lerp(cubeSnapAnim.fromYaw, cubeSnapAnim.toYaw, eased)
   cubePitch = THREE.MathUtils.lerp(cubeSnapAnim.fromPitch, cubeSnapAnim.toPitch, eased)
   cubeRoll = THREE.MathUtils.lerp(cubeSnapAnim.fromRoll, cubeSnapAnim.toRoll, eased)
@@ -1157,6 +1214,7 @@ function beginDrag(event, piece) {
     ndc: eventNdc(event),
     face: null,
     origin: null,
+    cells: null,
     valid: false,
     active: false,
     inCancelZone: false,
@@ -1176,18 +1234,22 @@ function updatePreview(ndc) {
   clearGroup(previewGroup)
   if (!selectedPiece || !ndc || !drag?.active) return
   const face = findFrontFace()
-  const cells = currentCells(selectedPiece)
+  // Laid out on the front face the way the slot drew it — see
+  // faceOrientedCells(). The board gets these exact cells on release.
+  const cells = faceOrientedCells(face, currentCells(selectedPiece))
   const origin = nearestOriginOnFace(face, ndc, cells)
   drag.face = face
   if (!origin) {
     drag.valid = false
     drag.origin = null
+    drag.cells = null
     setStatus('No room on this face')
     return
   }
   const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
+  drag.cells = cells
   cells.forEach(([u, v]) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.52))
     mesh.position.copy(placedLocal(...faceLattice(face, u + origin.u, v + origin.v)))
@@ -1413,7 +1475,10 @@ function finishDrag(event) {
     return
   }
   const face = currentDrag.face
-  const result = board.place(face, currentCells(currentDrag.piece), currentDrag.origin, currentDrag.piece.shape.color)
+  // Place the cells the preview actually showed (screen-facing orientation on
+  // the front face), never a fresh re-derivation — the drop must match what the
+  // player saw under their finger.
+  const result = board.place(face, currentDrag.cells, currentDrag.origin, currentDrag.piece.shape.color)
   playPlaceSound(result.lines.length)
   playHaptic(result.lines.length > 1 ? [18, 35, 22] : result.lines.length ? [18, 28, 16] : 12)
   currentDrag.piece.used = true
@@ -1517,14 +1582,16 @@ window.addEventListener('pointermove', (event) => {
     const width = Math.max(sceneWrap.clientWidth, 1)
     const height = Math.max(sceneWrap.clientHeight, 1)
     // Drag rotates the cube (not the camera). The locked axis is the only one
-    // that moves; the other two keep the pose the gesture started from.
+    // that moves; the other two keep the pose the gesture started from. Each
+    // axis carries its own direction sign (ROTATE_STYLE), so which way a swipe
+    // turns the cube is a config knob, not a sign buried in the arithmetic.
     if (viewDrag.axis === 'yaw') {
-      cubeYaw = viewDrag.startYaw + dx / width * Math.PI
+      cubeYaw = viewDrag.startYaw + rotateStyle.yawDirection * dx / width * Math.PI
     } else if (viewDrag.axis === 'pitch') {
-      cubePitch = THREE.MathUtils.clamp(viewDrag.startPitch + dy / height * Math.PI, PITCH_MIN, PITCH_MAX)
+      cubePitch = THREE.MathUtils.clamp(viewDrag.startPitch + rotateStyle.pitchDirection * dy / height * Math.PI, PITCH_MIN, PITCH_MAX)
     } else {
-      // Roll: dragging down spins the cube clockwise on screen.
-      cubeRoll = viewDrag.startRoll - dy / height * Math.PI
+      // Roll: the cube spins the way the finger travels (down = counter-clockwise).
+      cubeRoll = viewDrag.startRoll + rotateStyle.rollDirection * dy / height * Math.PI
     }
     applyCubeRotation()
     return
@@ -1545,6 +1612,7 @@ window.addEventListener('pointermove', (event) => {
   if (drag.inCancelZone) {
     drag.valid = false
     drag.origin = null
+    drag.cells = null
     clearGroup(previewGroup)
     setStatus('Release to cancel')
     return
@@ -1657,6 +1725,37 @@ globalThis.__voxalblast = Object.freeze({
   // Screen-space cube box + framing numbers, used to check the "inside vs
   // outside the cube" gesture split and how much of the canvas the cube fills.
   bounds: () => cubeScreenBounds(),
+  // Candidate orientation on the current front face. `raw` is the layout the
+  // slot draws, `oriented` is what would actually be dropped, and `uAxis` /
+  // `vAxis` project the lattice step the piece's +u / +v take, in client pixels
+  // with dx > 0 = rightward and dy > 0 = upward. A screen-facing placement means
+  // +u always goes right and +v always goes up, whatever pose the cube is in —
+  // that is what the headless check asserts.
+  placement: () => {
+    const face = findFrontFace()
+    const piece = pieces.find((candidate) => !candidate.used) || pieces[0]
+    const rect = renderer.domElement.getBoundingClientRect()
+    const stepScreen = (probeCells) => {
+      const [from, to] = faceOrientedCells(face, probeCells)
+      const du = to[0] - from[0]
+      const dv = to[1] - from[1]
+      const start = cellWorld(face, 0, 0).project(camera)
+      const end = cellWorld(face, du, dv).project(camera)
+      return {
+        step: [du, dv],
+        dx: (end.x - start.x) * 0.5 * rect.width,
+        dy: (end.y - start.y) * 0.5 * rect.height, // NDC y is already up-positive
+      }
+    }
+    return {
+      face,
+      piece: piece ? piece.shape.name : null,
+      raw: piece ? currentCells(piece) : [],
+      oriented: piece ? faceOrientedCells(face, currentCells(piece)) : [],
+      uAxis: stepScreen([[0, 0], [1, 0]]),
+      vAxis: stepScreen([[0, 0], [0, 1]]),
+    }
+  },
   framing: () => {
     const rect = renderer.domElement.getBoundingClientRect()
     const solid = cubeScreenBounds()

@@ -36,6 +36,16 @@ export function maxOrigin(cells, faceSize) {
   return { u: faceSize - maxU, v: faceSize - maxV }
 }
 
+// Rotate a normalized cell set by `quarter` × 90° steps in the (u,v) plane and
+// re-normalize it to a top-left origin. Used to reason about every in-plane
+// orientation a piece can reach once the cube is turned.
+export function rotateCells(cells, quarter = 1) {
+  let out = cells.map(([u, v]) => [u, v])
+  const turns = ((quarter % 4) + 4) % 4
+  for (let i = 0; i < turns; i += 1) out = normalizeCells(out.map(([u, v]) => [-v, u]))
+  return out
+}
+
 export function cellExtent(cells) {
   const maxU = Math.max(...cells.map(([u]) => u))
   const maxV = Math.max(...cells.map(([, v]) => v))

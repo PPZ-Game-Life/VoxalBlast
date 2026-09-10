@@ -3,7 +3,7 @@
 // allowed only on the exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by
 // their lattice coordinate (x,y,z), so blocks on an edge or corner are shared by
 // the adjacent faces — exactly one cube there, not one per face.
-import { maxOrigin } from './shapes.js'
+import { maxOrigin, rotateCells } from './shapes.js'
 
 export const SH = 5 // shell lattice size per axis (v0.2.24: 6 → 5)
 export const FACES = ['+x', '-x', '+y', '-y', '+z', '-z']
@@ -104,13 +104,21 @@ export class Board {
     return lines
   }
 
-  // True if the piece fits somewhere on ANY face (the cube can be rotated freely).
+  // True if the piece fits somewhere on ANY face (the cube can be rotated
+  // freely). v0.2.26: a placement keeps the candidate's screen-facing
+  // orientation, so the four in-plane rotations are exactly what the player can
+  // reach by rolling/yawing the cube before dropping the piece. Checking only
+  // the raw orientation would call a sideways-only fit "no spot" and end the
+  // game one turn early.
   anyPlacement(cells) {
     if (cells.length === 0) return false
     for (const face of FACES) {
-      const { u: uMax, v: vMax } = maxOrigin(cells, SH)
-      for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
-        if (this.canPlace(face, cells, { u, v })) return true
+      for (let quarter = 0; quarter < 4; quarter += 1) {
+        const shape = rotateCells(cells, quarter)
+        const { u: uMax, v: vMax } = maxOrigin(shape, SH)
+        for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
+          if (this.canPlace(face, shape, { u, v })) return true
+        }
       }
     }
     return false

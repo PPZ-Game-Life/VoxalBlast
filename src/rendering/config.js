@@ -58,12 +58,25 @@ export const BOARD_STYLE = Object.freeze({
 // front still reads as a 3D cube (and never snaps to a mechanically flat
 // square). Radian values; degrees in the comments.
 export const ROTATE_STYLE = Object.freeze({
+  // Gesture direction (v0.2.26). Every axis is signed in ONE place so a
+  // direction is a single knob, never a scattered sign. +1 = the cube's surface
+  // travels with the finger, -1 = the opposite. v0.2.26 flipped all three axes
+  // to the side the player expects (see docs/Planning/03 §3).
+  yawDirection: -1,
+  pitchDirection: -1,
+  rollDirection: 1,
   stepThreshold: 0.52, // ≈30° of drag before the gesture turns to the next face
   axisLockPx: 6, // travel before the gesture commits to yaw / pitch / roll
+  // Resting offsets: how much of the gesture's leftover tilt survives the
+  // settle. Yaw/pitch keep ≤8° so the cube still reads as a 3D body instead of a
+  // flat square. Roll keeps NOTHING: it is the in-plane spin, so any residual is
+  // seen as a skewed face — Z always lands dead on the 90° grid (offset 0). The
+  // spring feel comes from snapOvershoot instead of from a resting tilt.
   restOffsetYaw: 0.14, // ≈8° max leftover tilt from a horizontal swipe (screen X)
   restOffsetPitch: 0.14, // ≈8° max leftover tilt from a vertical swipe (screen Y)
-  restOffsetRoll: 0.14, // ≈8° max leftover spin from a vertical swipe outside the cube
+  restOffsetRoll: 0, // 0 = the Z spin always straightens up exactly
   snapDuration: 0.26, // s — settle animation onto the resting pose
+  snapOvershoot: 1.05, // easeOutBack strength ≈4% spring past the pose, then back
 })
 
 export const VFX_CONFIG = Object.freeze({
