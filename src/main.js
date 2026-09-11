@@ -397,7 +397,7 @@ const fxGroup = new THREE.Group()
 cubeGroup.add(previewGroup)
 scene.add(candidateGroup, fxGroup)
 
-// ---- Cube rotation state (v0.2.27: fixed gesture axes) ----------------------
+// ---- Cube rotation state (v0.2.28: fixed axes + strict Z settle) ------------
 // The three gesture axes are FIXED to the screen/world and never follow the
 // cube: yaw is always world Y, pitch always world X, roll always world Z. Each
 // gesture is applied to whatever pose the cube currently has, i.e. "settle
@@ -516,39 +516,36 @@ function findFrontFace() {
   return frontFaceOf(cubeGroup.quaternion)
 }
 
-// ---- Candidate orientation on the front face (v0.2.26) ----------------------
-// The slot draws every candidate as a flat card: piece +u to the right, piece
-// +v up. A face's own (u, v) lattice axes turn WITH the cube, so placing the raw
-// cells would spin the piece every time the cube is rotated — the candidate
-// would look like it had come along for the ride. Instead the piece is
-// re-expressed on whichever pair of face axes currently reads as screen-right /
-// screen-up: the drop is defined RELATIVE TO THE FACE THE PLAYER IS LOOKING AT,
-// which is exactly what the slot showed. Turn the cube any way you like; the
-// piece lands the same way up every time.
+// ---- Candidate orientation on the front face (v0.2.28) ----------------------
+// Shape data and the flat slot both use a top-left origin: piece +u points
+// screen-right and piece +v points screen-down. A face's own (u, v) lattice axes
+// turn WITH the cube, so placing raw cells would spin or flip the piece whenever
+// the cube turns. Re-express both source axes in the front face's current
+// screen-right / screen-down basis so the drop preserves the exact silhouette
+// shown in the slot, including asymmetric L/J/S/Z pieces.
 const screenRightLocal = new THREE.Vector3()
-const screenUpLocal = new THREE.Vector3()
+const screenDownLocal = new THREE.Vector3()
 const cubeInverseQuat = new THREE.Quaternion()
 
 function updateScreenAxesLocal() {
   camera.updateMatrixWorld()
   cubeGroup.updateMatrixWorld()
-  // The piece preview lives in the cube's local frame, so the screen directions
-  // have to be expressed there too.
+  // The placement preview lives in the cube's local frame, so express the
+  // camera's right/down directions there. Camera matrix column 1 is screen-up.
   cubeInverseQuat.copy(cubeGroup.quaternion).invert()
   screenRightLocal.setFromMatrixColumn(camera.matrixWorld, 0).applyQuaternion(cubeInverseQuat)
-  screenUpLocal.setFromMatrixColumn(camera.matrixWorld, 1).applyQuaternion(cubeInverseQuat)
+  screenDownLocal.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(-1).applyQuaternion(cubeInverseQuat)
 }
 
-// The face is square to the screen (its residual tilt is bounded by the yaw and
-// pitch rest offsets, far under 45°), so each screen direction projects onto
-// exactly one signed lattice axis. The pair is built as (across, along) from the
-// face's two axes rather than from four independent signs: a mirror would flip
-// the piece's chirality, and a piece is never mirrored.
+// The front face's residual tilt is far under 45°, so each projected screen
+// direction resolves to exactly one signed lattice axis. Mapping source +u and
+// +v independently is intentional: the face lattice conventions do not all
+// share the slot's top-left handedness, while the on-screen silhouette must.
 function faceOrientedCells(face, cells) {
   updateScreenAxesLocal()
   const normal = cubeVector(face, 'n')
   const right = screenRightLocal.clone().addScaledVector(normal, -screenRightLocal.dot(normal)).normalize()
-  const up = screenUpLocal.clone().addScaledVector(normal, -screenUpLocal.dot(normal)).normalize()
+  const down = screenDownLocal.clone().addScaledVector(normal, -screenDownLocal.dot(normal)).normalize()
   const uAxis = cubeVector(face, 'u')
   const vAxis = cubeVector(face, 'v')
   const uRight = uAxis.dot(right)
@@ -557,8 +554,8 @@ function faceOrientedCells(face, cells) {
     ? { u: uRight >= 0 ? 1 : -1, v: 0 }
     : { u: 0, v: vRight >= 0 ? 1 : -1 }
   const along = across.u !== 0
-    ? { u: 0, v: vAxis.dot(up) >= 0 ? 1 : -1 }
-    : { u: uAxis.dot(up) >= 0 ? 1 : -1, v: 0 }
+    ? { u: 0, v: vAxis.dot(down) >= 0 ? 1 : -1 }
+    : { u: uAxis.dot(down) >= 0 ? 1 : -1, v: 0 }
   return normalizeCells(cells.map(([u, v]) => [
     u * across.u + v * along.u,
     u * across.v + v * along.v,
@@ -589,11 +586,19 @@ function startCubeSnap(gesture) {
   if (stepped !== 0) cubeBase.premultiply(stepQuaternion(axis, stepped)).normalize()
   if (axis === 'yaw') cubeRestYaw = rest
   else if (axis === 'pitch') cubeRestPitch = rest
+  else {
+    // A Z spin is the player's explicit "straighten this face" gesture. Clear
+    // yaw/pitch presentation offsets left by earlier swipes as well as the roll
+    // remainder; otherwise tilt * Rz(90°) is grid-exact internally but still
+    // looks a few degrees crooked when the settle animation ends.
+    cubeRestYaw = 0
+    cubeRestPitch = 0
+  }
   cubeLive = null
   cubeSnapAnim.active = true
   cubeSnapAnim.from.copy(cubeQuat)
-  // Tilt then base: the targeted resting pose, with the Z spin landing exactly
-  // on the grid (offsetMax is 0 there, so `rest` is 0 and the tilt carries no Z).
+  // The Z target is the bare grid pose. Yaw/pitch targets retain their bounded
+  // presentation tilt so the resting cube still reads as three-dimensional.
   cubeSnapAnim.to.copy(cubeTilt()).multiply(cubeBase).normalize()
   cubeSnapAnim.t = 0
   cubeSnapAnim.duration = rotateStyle.snapDuration
@@ -1807,12 +1812,11 @@ globalThis.__voxalblast = Object.freeze({
   // Screen-space cube box + framing numbers, used to check the "inside vs
   // outside the cube" gesture split and how much of the canvas the cube fills.
   bounds: () => cubeScreenBounds(),
-  // Candidate orientation on the current front face. `raw` is the layout the
-  // slot draws, `oriented` is what would actually be dropped, and `uAxis` /
-  // `vAxis` project the lattice step the piece's +u / +v take, in client pixels
-  // with dx > 0 = rightward and dy > 0 = upward. A screen-facing placement means
-  // +u always goes right and +v always goes up, whatever pose the cube is in —
-  // that is what the headless check asserts.
+  // Candidate orientation on the current front face. `raw` is the top-left
+  // layout the slot draws, `oriented` is what would actually be dropped, and
+  // `uAxis` / `vAxis` project the lattice step the piece's +u / +v take, in
+  // client pixels with dx > 0 = rightward and dy > 0 = upward (NDC convention).
+  // A matching placement therefore has +u rightward and +v downward.
   placement: () => {
     const face = findFrontFace()
     const piece = pieces.find((candidate) => !candidate.used) || pieces[0]

@@ -76,12 +76,12 @@ export const ROTATE_STYLE = Object.freeze({
   axisLockPx: 6, // travel before the gesture commits to yaw / pitch / roll
   // Resting offsets: how much of the gesture's leftover tilt survives the
   // settle. Yaw/pitch keep ≤8° so the cube still reads as a 3D body instead of a
-  // flat square. Roll keeps NOTHING: it is the in-plane spin, so any residual is
-  // seen as a skewed face — Z always lands dead on the 90° grid (offset 0). The
-  // spring feel comes from snapOvershoot instead of from a resting tilt.
+  // flat square. Roll keeps NOTHING and also clears prior yaw/pitch offsets in
+  // main.js: Z is the explicit straighten gesture, so the final pose is the bare
+  // 90° grid pose. Spring feel comes from snapOvershoot, not a resting skew.
   restOffsetYaw: 0.14, // ≈8° max leftover tilt from a horizontal swipe (screen X)
   restOffsetPitch: 0.14, // ≈8° max leftover tilt from a vertical swipe (screen Y)
-  restOffsetRoll: 0, // 0 = the Z spin always straightens up exactly
+  restOffsetRoll: 0, // 0 = Z has no own residual; main.js clears all rest tilt
   snapDuration: 0.26, // s — settle animation onto the resting pose
   snapOvershoot: 1.05, // easeOutBack strength ≈4% spring past the pose, then back
 })
