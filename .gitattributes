@@ -1,0 +1,6 @@
+# Line endings. Everything follows the repository default (core.autocrlf), except
+# Windows command scripts, which cmd.exe can only parse with CRLF line endings:
+# an LF-only tools/push.cmd silently turned into a wall of "'xxx' is not recognized
+# as an internal or external command" and never actually pushed anything (v0.2.29).
+*.cmd text eol=crlf
+*.bat text eol=crlf
