@@ -25,6 +25,7 @@ import { Board, SH, FACES, faceLattice } from './game/board.js'
 import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { getRenderQuality, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
 import './styles.css'
 
 const board = new Board()
@@ -335,11 +336,18 @@ function isHorizontallyOnCube(clientX) {
   return clientX >= bounds.minX && clientX <= bounds.maxX
 }
 
-// One gesture drives exactly ONE axis: the dominant screen direction wins, so a
-// diagonal swipe can never tilt two axes at once.
-function pickGestureAxis(dx, dy, overCube) {
-  if (Math.abs(dx) >= Math.abs(dy)) return 'yaw'
-  return overCube ? 'pitch' : 'roll'
+// Drag -> angle ruler: the cube's own silhouette on screen, sampled once where the
+// gesture claims its axis (the axis rules themselves live in rendering/swipe.js).
+// A canvas-relative ruler made the same face step cost 185px of horizontal drag on
+// a 1120px-wide desktop canvas but 65px on a phone, which is why "sometimes it
+// won't turn" showed up on PC and not on mobile. The floor only guards a
+// degenerate projection.
+function gestureSpan() {
+  const bounds = cubeScreenBounds()
+  return {
+    x: Math.max(bounds.maxX - bounds.minX, 120),
+    y: Math.max(bounds.maxY - bounds.minY, 120),
+  }
 }
 
 // ============================================================
@@ -617,6 +625,9 @@ function settleCubeSnap() {
 function resetCubeRotation() {
   cubeSnapAnim.active = false
   cubeLive = null
+  // A reset can land in the middle of a gesture; drop it so the pointerup that
+  // may never come cannot leave rotation permanently blocked.
+  viewDrag = null
   cubeBase.identity()
   cubeQuat.identity()
   cubeRestYaw = 0
@@ -1600,7 +1611,12 @@ function resetGame() {
 }
 
 function beginViewDrag(event) {
-  if (isPaused || drag || viewDrag || event.pointerType === 'mouse' && event.button !== 0) return
+  if (isPaused || drag || event.pointerType === 'mouse' && event.button !== 0) return
+  // A gesture whose pointerup never arrived must not block this one: if we held
+  // the pointer capture for it and the capture is gone, that pointer is gone too.
+  if (viewDrag && viewDrag.pointerId !== event.pointerId && viewDrag.captured
+    && viewDrag.source?.hasPointerCapture?.(viewDrag.pointerId) === false) cancelViewDrag()
+  if (viewDrag) return
   event.preventDefault()
   // Start from a stable pose so the gesture's own delta is the only thing the
   // settle logic sees.
@@ -1614,9 +1630,12 @@ function beginViewDrag(event) {
     // switches meaning halfway through.
     overCube: isHorizontallyOnCube(event.clientX),
     axis: null,
+    span: null, // drag -> angle ruler, sampled where the axis is claimed
+    captured: false,
   }
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
+    viewDrag.captured = event.currentTarget.hasPointerCapture?.(event.pointerId) ?? false
   } catch {
     // Some embedded browsers can reject capture after an interrupted gesture.
   }
@@ -1627,7 +1646,20 @@ function finishViewDrag(event) {
   const currentViewDrag = viewDrag
   viewDrag = null
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
-  // No axis was locked (a tap or a sub-threshold wobble): the pose never moved.
+  // No axis was claimed (a tap, or a drag that never committed): the pose never moved.
+  if (cubeLive) startCubeSnap(cubeLive)
+}
+
+// A view gesture can outlive its pointer: the page goes hidden, a native gesture
+// hijacks the touch, the window loses focus with the button still down. The
+// pointerup then never arrives, and because beginViewDrag() refuses to start a new
+// gesture while `viewDrag` is set, rotation would stay dead for the rest of the
+// session (placement keeps working, which is exactly how this shows up: "it won't
+// turn, it feels locked"). Every path that can lose a pointer ends the gesture
+// here and settles the halfway pose it left behind.
+function cancelViewDrag() {
+  if (!viewDrag && !cubeLive) return
+  viewDrag = null
   if (cubeLive) startCubeSnap(cubeLive)
 }
 
@@ -1646,26 +1678,20 @@ window.addEventListener('pointermove', (event) => {
     const dx = event.clientX - viewDrag.startX
     const dy = event.clientY - viewDrag.startY
     if (!viewDrag.axis) {
-      if (Math.hypot(dx, dy) < rotateStyle.axisLockPx) return
+      // Until a decisive dominant direction claims the gesture the pose does not
+      // move at all: a few px of sideways drift must never be able to swallow a
+      // vertical swipe (rendering/swipe.js).
+      if (!gestureAxisReady(dx, dy)) return
       viewDrag.axis = pickGestureAxis(dx, dy, viewDrag.overCube)
-      // Locked: snapshot the pose the gesture starts from (tilt + grid pose).
+      viewDrag.span = gestureSpan()
+      // Claimed: snapshot the pose the gesture starts from (tilt + grid pose).
       beginAxisGesture(viewDrag.axis)
     }
-    const width = Math.max(sceneWrap.clientWidth, 1)
-    const height = Math.max(sceneWrap.clientHeight, 1)
-    // Drag rotates the cube (not the camera). The locked axis is the only one
+    // Drag rotates the cube (not the camera). The claimed axis is the only one
     // that moves, and it is a FIXED world axis: the angle is applied to the pose
     // the cube happens to have, so it never turns with the cube. Each axis
-    // carries its own direction sign (ROTATE_STYLE), so which way a swipe turns
-    // the cube is a config knob, not a sign buried in the arithmetic.
-    if (viewDrag.axis === 'yaw') {
-      setLiveAngle(cubeLive.start + rotateStyle.yawDirection * dx / width * Math.PI)
-    } else if (viewDrag.axis === 'pitch') {
-      setLiveAngle(cubeLive.start + rotateStyle.pitchDirection * dy / height * Math.PI)
-    } else {
-      // Roll: the cube spins the way the finger travels (down = clockwise).
-      setLiveAngle(cubeLive.start + rotateStyle.rollDirection * dy / height * Math.PI)
-    }
+    // carries its own direction sign and its own ruler (ROTATE_STYLE, swipe.js).
+    setLiveAngle(cubeLive.start + swipeAngle(viewDrag.axis, dx, dy, viewDrag.span))
     return
   }
   if (itemActive) {
@@ -1746,11 +1772,16 @@ document.querySelector('#restart-setting').addEventListener('click', resetGame)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
   if (document.hidden && drag) cancelActiveDrag(false)
+  // A page that goes hidden never delivers the pointerup of a finger that was
+  // down, so the rotation gesture has to be ended here (see cancelViewDrag()).
+  if (document.hidden) cancelViewDrag()
   isPaused = document.hidden || gameEnded || settingsOpen
   if (document.hidden) { platform.gameplayStop(); setStatus('Paused') }
   else if (gameEnded || settingsOpen) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
+// Losing the window ends a mouse gesture the same way (button released outside).
+window.addEventListener('blur', cancelViewDrag)
 updateSettingsUi()
 
 function resize() {

@@ -57,6 +57,20 @@ export const BOARD_STYLE = Object.freeze({
 // had left, clamped to the per-axis offset budget, so the face that ends up in
 // front still reads as a 3D cube (and never snaps to a mechanically flat
 // square). Radian values; degrees in the comments.
+//
+// v0.2.29 fixed two ways a gesture could turn into NOTHING (reported as "sometimes
+// it just won't turn, it feels locked"):
+//  1. The drag -> angle ruler was the CANVAS (dx / canvasWidth * π), so the same
+//     "one face" step cost ~65px of drag on a 390px phone but ~185px on a 1120px
+//     desktop canvas — on desktop an ordinary swipe simply sprang back. The ruler
+//     is now the CUBE's own on-screen silhouette (sampled where the gesture
+//     commits), so one face costs the same swipe length on every viewport and on
+//     both axes.
+//  2. The axis was claimed by whichever screen direction happened to be larger at
+//     the first 6px of travel. A finger that starts with a few px of sideways
+//     drift and then goes straight down claimed YAW, and since a locked gesture
+//     ignores the other axis the whole vertical drag was discarded: the cube did
+//     not move at all. The claim now needs a decisive leader (see axisDominance).
 export const ROTATE_STYLE = Object.freeze({
   // Gesture direction. Every axis is signed in ONE place so a direction is a
   // single knob, never a sign scattered through the arithmetic. The signs below
@@ -72,8 +86,17 @@ export const ROTATE_STYLE = Object.freeze({
   yawDirection: 1,
   pitchDirection: 1,
   rollDirection: -1,
-  stepThreshold: 0.52, // ≈30° of drag before the gesture turns to the next face
-  axisLockPx: 6, // travel before the gesture commits to yaw / pitch / roll
+  stepThreshold: 0.52, // ≈30° of drag (≈1/6 of the cube's silhouette) before the gesture turns to the next face
+  // Axis claim (v0.2.29). `axisLockPx` is the travel a drag must reach before any
+  // axis may claim it; `axisDominance` is how far the leading direction must lead
+  // the other one to claim it; a drag that is still ambiguous after
+  // `axisHardLockPx` is handed to the leader anyway, so a deliberate diagonal
+  // gesture can never stall. swipe.js re-tests this on every move until it
+  // commits, so a slow start costs nothing (the angle is measured from the
+  // gesture's own start point, not from where the axis was claimed).
+  axisLockPx: 16, // travel before the dominant direction may claim the gesture
+  axisDominance: 1.2, // lead / trail ratio that makes the dominant direction decisive
+  axisHardLockPx: 44, // still ambiguous this far in? the leader takes it
   // Resting offsets: how much of the gesture's leftover tilt survives the
   // settle. Yaw/pitch keep ≤8° so the cube still reads as a 3D body instead of a
   // flat square. Roll keeps NOTHING and also clears prior yaw/pitch offsets in
