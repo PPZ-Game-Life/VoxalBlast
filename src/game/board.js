@@ -3,7 +3,7 @@
 // allowed only on the exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by
 // their lattice coordinate (x,y,z), so blocks on an edge or corner are shared by
 // the adjacent faces — exactly one cube there, not one per face.
-import { maxOrigin, rotateCells } from './shapes.js'
+import { normalizeCells, maxOrigin, rotateCells } from './shapes.js'
 
 export const SH = 5 // shell lattice size per axis (v0.2.24: 6 → 5)
 export const FACES = ['+x', '-x', '+y', '-y', '+z', '-z']
@@ -102,6 +102,72 @@ export class Board {
       if (cells.every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) lines.push({ axis: 'col', u, face, cells })
     }
     return lines
+  }
+
+  // Is a row or column on this face already full? Cheap enough to use as a guard
+  // (findFullLines() builds every line it finds, which the opening seeder would
+  // only throw away).
+  hasFullLine(face) {
+    for (let v = 0; v < SH; v += 1) {
+      if (Array.from({ length: SH }, (_, u) => faceLattice(face, u, v)).every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) return true
+    }
+    for (let u = 0; u < SH; u += 1) {
+      if (Array.from({ length: SH }, (_, v) => faceLattice(face, u, v)).every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) return true
+    }
+    return false
+  }
+
+  hasFullLineOnAnyFace() {
+    return FACES.some((face) => this.hasFullLine(face))
+  }
+
+  // ---- Opening layout (v0.2.31) ---------------------------------------------
+  // Seed a starting position instead of an empty shell. `plan` maps a face to how
+  // many CELLS to fill on it (a target, not a shape count: shapes run from 1 to 4
+  // cells, so seeding "2 shapes" could put two single blocks on the play surface
+  // or eight, and the opening would swing between bare and crowded from one game
+  // to the next). `shapePool` is the same pool the candidate slots draw from, so
+  // the colors on the cube are exactly the candidate colors. Two rules make a
+  // seeded board indistinguishable from a played one:
+  //   - no overlap (canPlace, which also keeps every cell on the shell), and
+  //   - no completed line on ANY face. A seeded line would be a free clear, and
+  //     because place() only settles the face being played it would also sit there
+  //     full and unbreakable until the player happened to play that face.
+  // Returns the seeds it managed to place. A face may end up under its target if
+  // the random attempts keep colliding — an opening layout is decoration, never a
+  // source of stuck states, so it may never score or clear.
+  seedOpening(shapePool, plan, random = Math.random) {
+    const seeded = []
+    Object.entries(plan).forEach(([face, targetCells]) => {
+      let filled = 0
+      // The guard caps the number of shapes per face (a target of 7 cells cannot
+      // legitimately need more than 7 attempts, and every retry is a fresh shape).
+      for (let guard = 0; filled < targetCells && guard < 8; guard += 1) {
+        const seed = this.seedOne(face, shapePool, random)
+        if (!seed) continue
+        seeded.push(seed)
+        filled += seed.cells.length
+      }
+    })
+    return seeded
+  }
+
+  seedOne(face, shapePool, random, attempts = 40) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const shape = shapePool[Math.floor(random() * shapePool.length)]
+      const cells = normalizeCells(shape.cells)
+      const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+      const origin = { u: Math.floor(random() * uMax), v: Math.floor(random() * vMax) }
+      if (!this.canPlace(face, cells, origin)) continue
+      const added = cells.map(([u, v]) => faceLattice(face, u + origin.u, v + origin.v))
+      added.forEach(([x, y, z]) => this.cells.set(this.key(x, y, z), { x, y, z, color: shape.color }))
+      if (this.hasFullLineOnAnyFace()) {
+        added.forEach(([x, y, z]) => this.cells.delete(this.key(x, y, z)))
+        continue
+      }
+      return { face, name: shape.name, cells: added }
+    }
+    return null
   }
 
   // True if the piece fits somewhere on ANY face (the cube can be rotated

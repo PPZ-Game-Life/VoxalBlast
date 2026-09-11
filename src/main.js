@@ -24,7 +24,7 @@ import {
 import { Board, SH, FACES, faceLattice } from './game/board.js'
 import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { getRenderQuality, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
 import './styles.css'
 
@@ -1599,6 +1599,10 @@ function endGame() {
 function resetGame() {
   clearTransientEffects()
   board.clear()
+  // v0.2.31: the cube starts with an opening layout instead of a bare shell
+  // (config.js OPENING_LAYOUT). Seeding never scores or clears lines, so the HUD
+  // still starts at 0 and the first placement is settled like any other.
+  board.seedOpening(SHAPES, OPENING_LAYOUT)
   resetItems()
   gameEnded = false
   settingsOpen = false
@@ -1898,6 +1902,19 @@ globalThis.__voxalblast = Object.freeze({
       aspect: camera.aspect,
     }
   },
+  // Board read-out for the headless checks (v0.2.31): the occupied shell cells as
+  // [x, y, z, color] — the color is the shape type, so a check can prove the
+  // opening layout draws from the candidate pool — plus the score and any face
+  // line that is already full. Read-only, like the rest of this hook.
+  board: () => ({
+    cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
+    score: board.score,
+    totalLines: board.totalLines,
+    fullLines: FACES.flatMap((face) => board.findFullLines(face)
+      .map((line) => `${face}:${line.axis}:${line.axis === 'row' ? line.v : line.u}`)),
+  }),
+  // The candidate pool itself: name, color and cell count per type.
+  shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
 })
 
 applyCubeRotation()

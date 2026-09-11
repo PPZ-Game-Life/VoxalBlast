@@ -46,6 +46,30 @@ export const BOARD_STYLE = Object.freeze({
   targetYMobile: -0.3,
 })
 
+// Opening layout (v0.2.31): the cube no longer starts as a bare shell. A few
+// blocks are seeded onto the faces the 3/4 camera can already see, drawn from the
+// SAME pool the candidate slots use — same shapes, same colors — so the first
+// frame reads as a board in play instead of an empty cage. The hard rules live in
+// Board.seedOpening(): blocks never overlap, and a seed NEVER completes a line on
+// any face. `place()` only settles the face being played, so a line seeded on some
+// other face would sit there full and unbreakable until the player happened to
+// play that face.
+//
+// One entry per face; the value is a target CELL count for that face (not a shape
+// count — shapes run from 1 to 4 cells, so "2 shapes" could be 2 cells or 8 and the
+// opening would swing between bare and crowded game to game). The 3/4 camera puts
+// the front face (+z) right in front of the player and the top face (+y) on the
+// roofline, so the front face carries most of the layout: seeding the top instead
+// reads as "blocks on the roof" above an empty play surface (first cut, v0.2.31).
+// ~13 of the shell's 98 cells (~13%), about a third of the front face: reads as a
+// board in play while keeping the airy v0.2.23 look. Tune with these numbers only —
+// the invalidity rules live in Board.seedOpening().
+export const OPENING_LAYOUT = Object.freeze({
+  '+z': 7, // front face: the player's play surface, and what the camera faces
+  '+y': 3, // top face: visible on the roofline without rotating
+  '+x': 3, // right side face: the second visible side
+})
+
 // Swipe-to-rotate feel. One gesture drives exactly ONE axis (v0.2.25): the
 // dominant screen direction decides it, so a diagonal swipe can never tilt two
 // axes at once. Horizontal -> yaw (screen Y axis). Vertical -> pitch (screen X
