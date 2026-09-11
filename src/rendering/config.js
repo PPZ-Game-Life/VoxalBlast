@@ -58,6 +58,12 @@ export const BOARD_STYLE = Object.freeze({
 // front still reads as a 3D cube (and never snaps to a mechanically flat
 // square). Radian values; degrees in the comments.
 //
+// v0.2.30 made the DRAG agree with that release rule: main.js's setLiveAngle()
+// clamps the live angle to the same single face, so the cube can never show the
+// player a rotation the release is about to take back ("it turned while my finger
+// was down, then bounced back"), and the pitch pole limit that used to veto a
+// step after the fact is gone — every axis can be turned again and again.
+//
 // v0.2.29 fixed two ways a gesture could turn into NOTHING (reported as "sometimes
 // it just won't turn, it feels locked"):
 //  1. The drag -> angle ruler was the CANVAS (dx / canvasWidth * π), so the same

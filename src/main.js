@@ -434,12 +434,14 @@ let cubeRestPitch = 0
 let cubeLive = null // the gesture in flight, see beginAxisGesture()
 const cubeSnapAnim = { active: false, from: new THREE.Quaternion(), to: new THREE.Quaternion(), t: 0, duration: rotateStyle.snapDuration }
 const scratchQuat = new THREE.Quaternion()
-const PITCH_FACES = ['+y', '-y']
-// 0 = the front face sits on the equator, ±1 = it is one face above/below it.
-// Pitching is the only axis that can tip the cube over a pole, so the step that
-// would carry it on to the BACK face is refused; this is the fixed-axis
-// restatement of v0.2.25's "clamp the pitch angle to ±90°".
-let pitchReach = 0
+// v0.2.30 dropped the pitch pole limit (and its `pitchReach` bookkeeping). It was
+// the fixed-axis restatement of v0.2.25's Euler "clamp pitch to ±90°", but in the
+// quaternion model there is nothing to protect: pitching past a pole is an
+// ordinary quarter turn that brings the back face round, exactly like yaw. What
+// the limit DID do was refuse a step after the drag had already rendered it — the
+// player turned the cube a full face with their finger and watched the release
+// undo all of it (probe: drag 105.5° -> bounce 89.5°, and every repeat in that
+// direction stayed dead). No axis can now be entered into a dead direction.
 
 // Quarter turn about one FIXED world axis. `steps` is in 90° units.
 function stepQuaternion(axis, steps) {
@@ -485,9 +487,18 @@ function beginAxisGesture(axis) {
 // applied on top of the frozen (tilt, base) pair. Because it is the outermost
 // factor, an increment of the angle is exactly a rotation about that world axis
 // no matter what the cube looks like at that moment.
+//
+// The angle is clamped to the single face a gesture can commit (v0.2.30): the
+// drag renders AT MOST what the release will keep. Without the clamp a long drag
+// wound the cube past the face it had earned and the release had to unwind the
+// excess, which the player reads as "it turned while my finger was down, then
+// bounced back" (probe: the drag showed 136.4°, the release kept 90° and gave
+// 38.4° back). The clamp makes the finger a promise the release can always honour;
+// the only rotation a release still takes back is the sub-threshold flick, which
+// never gets past `stepThreshold` (≈30°) in the first place.
 function setLiveAngle(angle) {
-  cubeLive.angle = angle
-  cubeQuat.copy(cubeLive.rest).premultiply(scratchQuat.setFromAxisAngle(AXIS_OF[cubeLive.axis], angle)).multiply(cubeLive.base).normalize()
+  cubeLive.angle = THREE.MathUtils.clamp(angle, cubeLive.start - ROT_STEP, cubeLive.start + ROT_STEP)
+  cubeQuat.copy(cubeLive.rest).premultiply(scratchQuat.setFromAxisAngle(AXIS_OF[cubeLive.axis], cubeLive.angle)).multiply(cubeLive.base).normalize()
   applyCubeRotation()
 }
 
@@ -582,15 +593,11 @@ function startCubeSnap(gesture) {
   const axis = gesture.axis
   const offsetMax = axis === 'roll' ? rotateStyle.restOffsetRoll
     : axis === 'yaw' ? rotateStyle.restOffsetYaw : rotateStyle.restOffsetPitch
-  let { stepped } = planAxisStep(gesture.angle, gesture.start, offsetMax)
-  // Pole limit: a pitch step is refused when the cube already stands one face
-  // off the equator and the step would carry it further that way.
-  if (axis === 'pitch' && stepped !== 0) {
-    const atPole = PITCH_FACES.includes(frontFaceOf(cubeBase))
-    if (atPole && pitchReach !== 0 && stepped === pitchReach) stepped = 0
-    else pitchReach = atPole ? 0 : stepped
-  }
-  const rest = THREE.MathUtils.clamp(gesture.angle - stepped * ROT_STEP, -offsetMax, offsetMax)
+  // The release decision is the whole story now (v0.2.30): one face at most, or
+  // the sub-threshold flick back to the face the gesture started on. Nothing can
+  // veto the step after the finger has already seen it — the live angle is
+  // clamped to the same single face in setLiveAngle().
+  const { stepped, rest } = planAxisStep(gesture.angle, gesture.start, offsetMax)
   if (stepped !== 0) cubeBase.premultiply(stepQuaternion(axis, stepped)).normalize()
   if (axis === 'yaw') cubeRestYaw = rest
   else if (axis === 'pitch') cubeRestPitch = rest
@@ -632,7 +639,6 @@ function resetCubeRotation() {
   cubeQuat.identity()
   cubeRestYaw = 0
   cubeRestPitch = 0
-  pitchReach = 0
   applyCubeRotation()
 }
 
