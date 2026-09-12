@@ -105,6 +105,33 @@ export class Board {
     }
   }
 
+  // Rebuild the board from a resume snapshot (src/game/session.js). Every cell is
+  // re-checked against the shell lattice: a coordinate inside the 3×3 core, out of
+  // bounds, or a duplicate would put a block where no line can ever reach it, and a
+  // restored cube that cannot be cleared is worse than no restore at all. Returns
+  // how many cells it accepted, so the caller can tell a restored board from an
+  // empty shell. The score is restored as handed over — this method owns validity,
+  // not arithmetic.
+  restore(snapshot = {}) {
+    this.clear()
+    const seen = new Set()
+    if (Array.isArray(snapshot.cells)) {
+      snapshot.cells.forEach((cell) => {
+        if (!Array.isArray(cell) || cell.length < 3) return
+        const [x, y, z, color] = cell
+        if (![x, y, z].every((value) => Number.isInteger(value) && value >= 0 && value < SH)) return
+        if (!isShell(x, y, z)) return
+        const key = this.key(x, y, z)
+        if (seen.has(key)) return
+        seen.add(key)
+        this.cells.set(key, { x, y, z, color: Number.isFinite(color) ? color : 0xffffff })
+      })
+    }
+    this.score = Number.isFinite(snapshot.score) && snapshot.score > 0 ? Math.floor(snapshot.score) : 0
+    this.totalLines = Number.isFinite(snapshot.totalLines) && snapshot.totalLines > 0 ? Math.floor(snapshot.totalLines) : 0
+    return this.cells.size
+  }
+
   // Running totals (the HUD reads them). Scoring itself lives in scoring.js; the
   // board only accumulates what it is handed so the two stay independent.
   addScore(points, linesCleared = 0) {

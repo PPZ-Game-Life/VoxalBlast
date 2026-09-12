@@ -576,3 +576,174 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .game-over-card { padding: 24px 18px; }
   .leaderboard-card { padding: 20px 16px; }
 }
+
+/* v0.4: 回到主页 lives in this panel, so it has to open ABOVE the Game Over panel
+   (v0.3 ruled that the settings gear is dead once a run ends). Same stacking order
+   as the leaderboard, which already draws over the Game Over card. */
+#settings-modal { z-index: 12; }
+
+/* ============================================================
+   v0.4 — home screen (03 §「主页与断点续玩」)
+   The game opens here: brand, the record, one big play button
+   (继续游戏 when a run is open, 新游戏 otherwise), and the two
+   entries — 排行榜 (总榜) and 设置. Same toy language as the
+   board: white pill chips, chunky bottom shadows, saturated
+   colour, no new art assets (05 美术规范: 程序化渲染).
+   ============================================================ */
+.home-screen {
+  position: fixed;
+  inset: 0;
+  /* Under the modals (10) and over the board + top bar (3): home is an opaque
+     cover, so the version tag and the score chips leave the screen with it —
+     which is exactly what 05 asks for ("版本号退出主界面"). */
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 22px max(24px, env(safe-area-inset-bottom));
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% -10%, #e6f6ff 0%, var(--sky-light) 26%, var(--sky) 68%, #4b82e8 100%);
+}
+.home-screen.hidden { display: none; }
+.home-screen::before,
+.home-screen::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: .34;
+  /* Soft blobs, not shapes: without the blur they read as two flat ellipses stuck on
+     the gradient (the v0.4 shot run caught exactly that). */
+  filter: blur(46px);
+}
+.home-screen::before { width: 52vw; height: 22vw; top: 12vh; left: -14vw; background: #fff; }
+.home-screen::after { width: 44vw; height: 20vw; right: -16vw; bottom: 8vh; background: #b6f5d0; }
+.home-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(440px, 92vw);
+  text-align: center;
+}
+.home-brand { display: grid; justify-items: center; gap: 8px; }
+.home-mark {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  color: #fff;
+  background: linear-gradient(150deg, #ffd85e 0%, #ff9f34 100%);
+  border: 4px solid rgba(255,255,255,.9);
+  border-radius: 26px 26px 26px 8px;
+  box-shadow: 0 10px 0 rgba(140,84,10,.22), 0 18px 34px rgba(23,40,79,.24), inset 0 3px 0 rgba(255,255,255,.6);
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: -.06em;
+  text-shadow: 0 3px 10px rgba(120,70,10,.35);
+}
+.home-brand h1 {
+  margin: 6px 0 0;
+  color: #fff;
+  font-size: clamp(2.3rem, 8vw, 3.1rem);
+  font-weight: 900;
+  letter-spacing: -.06em;
+  line-height: 1;
+  text-shadow: 0 4px 0 rgba(36,66,125,.16), 0 12px 26px rgba(23,40,79,.22);
+}
+.home-tagline {
+  margin: 0;
+  color: rgba(255,255,255,.92);
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+.home-record {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 7px 18px 8px;
+  border: 2px solid rgba(255,255,255,.72);
+  border-radius: 999px;
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 4px 0 rgba(35,55,111,.12), 0 8px 18px rgba(23,55,125,.16);
+}
+.home-record-label { color: #5e7db6; font-size: .58rem; font-weight: 900; letter-spacing: .08em; }
+.home-record strong { color: #203c7b; font-size: 1.25rem; font-weight: 900; letter-spacing: -.03em; }
+/* The single play button. `继续游戏` swaps the palette (blue = resuming, yellow =
+   a fresh run) so the button never has to be read to be understood. */
+.home-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 20px 26px;
+  border: 3px solid rgba(255,255,255,.86);
+  border-radius: 26px;
+  color: #3c2606;
+  background: linear-gradient(140deg, #ffd85e 0%, #ff9f34 100%);
+  box-shadow: 0 9px 0 rgba(140,84,10,.26), 0 18px 32px rgba(23,40,79,.24);
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.home-primary.resume {
+  color: #fff;
+  background: linear-gradient(140deg, #8ecbff 0%, #3f7ce0 100%);
+  box-shadow: 0 9px 0 rgba(28,62,130,.32), 0 18px 32px rgba(23,40,79,.24);
+}
+.home-primary:hover, .home-primary:focus-visible { transform: translateY(-3px); filter: brightness(1.04); outline: none; }
+.home-primary:active { transform: translateY(3px); box-shadow: 0 4px 0 rgba(35,55,111,.28); }
+.home-primary-icon { font-size: 1.1rem; }
+.home-resume-note {
+  min-height: 1.1em;
+  margin: 0;
+  color: rgba(255,255,255,.94);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.home-secondary-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; }
+.home-secondary {
+  flex: 1 1 130px;
+  max-width: 190px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 16px;
+  border: 2px solid rgba(255,255,255,.7);
+  border-radius: 18px;
+  color: #203c7b;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 6px 0 rgba(35,55,111,.14), 0 12px 22px rgba(23,55,125,.18);
+  font-size: .8rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  transition: transform .16s ease, background .16s ease;
+}
+.home-secondary:hover, .home-secondary:focus-visible { transform: translateY(-2px); background: #fff; outline: none; }
+@media (min-width: 700px) {
+  /* A wide screen gets a slightly bigger mark and play button, not a wider column:
+     the home screen is a menu, and a stretched one reads as an empty page. */
+  .home-inner { gap: 16px; }
+  .home-mark { width: 96px; height: 96px; font-size: 3rem; }
+  .home-primary { padding: 24px 28px; font-size: 1.55rem; }
+  .home-record strong { font-size: 1.4rem; }
+}
+@media (max-width: 460px) {
+  .home-mark { width: 68px; height: 68px; font-size: 2.1rem; border-radius: 22px 22px 22px 7px; }
+  .home-primary { padding: 17px 20px; font-size: 1.2rem; border-radius: 22px; }
+  .home-secondary { flex: 1 1 110px; padding: 11px 12px; font-size: .74rem; }
+  .home-record strong { font-size: 1.1rem; }
+}
+/* A short viewport (landscape phone) must not push the play button off screen. */
+@media (max-height: 560px) {
+  .home-inner { gap: 10px; }
+  .home-mark { width: 56px; height: 56px; font-size: 1.7rem; border-radius: 18px 18px 18px 6px; }
+  .home-brand h1 { font-size: 1.8rem; }
+  .home-primary { padding: 14px 20px; font-size: 1.1rem; }
+}

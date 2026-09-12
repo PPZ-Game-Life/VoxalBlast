@@ -110,7 +110,10 @@ export function migrate(raw) {
   return records
 }
 
-function pickStorage() {
+// Exported for src/game/session.js: the save slot needs the very same
+// "is there a storage that does not lie to us" probe, and a second copy of it
+// would be a second place for the private-mode edge case to drift.
+export function pickStorage() {
   try {
     const storage = globalThis.localStorage
     if (!storage) return null
@@ -128,7 +131,7 @@ function pickStorage() {
 // A storage that lies about being usable (setItem throwing, quota gone, an embedded
 // webview that throws on access instead of returning null) is treated as no storage
 // at all, so `persistent` reports the truth and every write goes to memory.
-function probeStorage(storage) {
+export function probeStorage(storage) {
   if (!storage) return null
   try {
     const probe = `${STORAGE_KEY}.probe`

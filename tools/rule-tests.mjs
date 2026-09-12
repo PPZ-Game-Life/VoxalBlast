@@ -8,7 +8,7 @@
 // It drives the REAL modules (src/game/board.js, scoring.js, honors.js, records.js,
 // tiers.js) — no copies — so a drift between the docs, the code and this file shows
 // up as a failure instead of a surprise in the browser.
-import { Board, SH, FACES, faceLattice } from '../src/game/board.js'
+import { Board, SH, FACES, faceLattice, isShell } from '../src/game/board.js'
 import { SHAPES, normalizeCells, maxOrigin, rotateCells } from '../src/game/shapes.js'
 import {
   SCORING, MAX_LINES_PER_MOVE, lineMultiplier, lineScore, faceBonus, placementScore, chainBonus,
@@ -16,6 +16,7 @@ import {
 } from '../src/game/scoring.js'
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
 import { createRecordStore, weekKey, migrate, RECORD_FIELDS } from '../src/game/records.js'
+import { createSessionStore, migrate as migrateSession, SESSION_VERSION } from '../src/game/session.js'
 import { TIERS, TIER_CUTS, tiersReady, tierForScore } from '../src/game/tiers.js'
 
 let passed = 0
@@ -332,6 +333,104 @@ group('tiers', () => {
   equal('P90 is tier 5', tierForScore(400, cuts).tier, 5)
   equal('P99 and above is tier 6', tierForScore(500, cuts).tier, 6)
   equal('a huge score is still tier 6', tierForScore(1e9, cuts).tier, 6)
+})
+
+// ---------------------------------------------------------------- resume slot
+// v0.4: the home screen's 继续游戏 button is only as trustworthy as this module —
+// a slot that cannot be replayed must read as "no saved run", never as a half-lost
+// board (03 §「主页与断点续玩」).
+group('session', () => {
+  const fake = new Map()
+  const storage = {
+    getItem: (key) => (fake.has(key) ? fake.get(key) : null),
+    setItem: (key, value) => fake.set(key, value),
+    removeItem: (key) => fake.delete(key),
+  }
+
+  // A board worth saving: three real placements, then out again through restore().
+  const source = new Board()
+  const shape = normalizeCells(SHAPES.find((entry) => entry.name === 'Corner').cells)
+  source.place('+z', shape, { u: 0, v: 0 }, 0xff6d5c)
+  source.place('-x', shape, { u: 1, v: 1 }, 0x35c3ff)
+  source.addScore(1234, 2)
+  const live = source.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color])
+
+  const restored = new Board()
+  equal('restore accepts every cell it was handed', restored.restore({ cells: live, score: 1234, totalLines: 2 }), live.length)
+  equal('the restored board has the same cell count', restored.occupied().length, source.occupied().length)
+  equal('the restored board keeps the score', restored.score, 1234)
+  equal('the restored board keeps the line total', restored.totalLines, 2)
+  check('every restored cell is on the shell', restored.occupied().every((cell) => isShell(cell.x, cell.y, cell.z)))
+
+  // The lattice rule is enforced on the way in: the 3×3 core is not a place, and a
+  // duplicate or an out-of-bounds coordinate must not silently become one.
+  const guarded = new Board()
+  equal('a core cell, an out-of-bounds cell and a duplicate are all rejected', guarded.restore({
+    cells: [[2, 2, 2, 0xffffff], [SH, 0, 0, 0xffffff], [0, 0, 0, 0xff6d5c], [0, 0, 0, 0x35c3ff]],
+    score: -5,
+    totalLines: 'x',
+  }), 1)
+  equal('a rejected cell count leaves the score at zero', guarded.score, 0)
+
+  const store = createSessionStore(storage)
+  const snapshot = {
+    board: { cells: live, score: 1234, totalLines: 2 },
+    pieces: [{ name: 'Corner', used: true }, { name: 'Dot', used: false }, { name: 'Square', used: false }],
+    items: { refresh: 1, hammer: 0, rocket: 2, bomb: 1 },
+    run: { chain: 3, bestChain: 4, maxLinesOneMove: 2, maxFacesOneMove: 1, facesLit: ['+z', 'nope'], faceWipes: 1, honors: ['TRIPLE'], honorCounts: { TRIPLE: 2 } },
+    pose: { yaw: 0.1, pitch: -0.2, quat: [0, 0, 0, 1], base: [0, 0, 0, 1] },
+  }
+  check('a playable run is accepted by the slot', store.save(snapshot))
+  const read = store.read()
+  equal('the slot round-trips the board', read.board.cells.length, live.length)
+  equal('the slot round-trips the score', read.board.score, 1234)
+  equal('the slot round-trips the candidates', read.pieces.length, 3)
+  equal('the slot round-trips the chain', read.run.chain, 3)
+  equal('the slot round-trips the items', read.items.rocket, 2)
+  equal('the slot round-trips the pose', read.pose.quat.length, 4)
+  check('the slot reports the current version', read.v === SESSION_VERSION)
+
+  store.clear()
+  equal('a cleared slot reads as no saved run', store.read(), null)
+
+  // Unplayable slots: every candidate used, or nothing left in the pool.
+  equal('a run with no candidate left to place is not resumable', migrateSession({
+    board: { cells: live, score: 10 },
+    pieces: [{ name: 'Dot', used: true }, { name: 'Square', used: true }],
+  }), null)
+  equal('a snapshot from a retired shape pool is not resumable', migrateSession({
+    board: { cells: live },
+    pieces: [{ name: 'Line 4', used: false }],
+  }), null)
+  equal('garbage in the slot is not resumable', migrateSession({ board: { cells: 'nope' }, pieces: [] }), null)
+  equal('null in the slot is not resumable', migrateSession(null), null)
+
+  const degraded = migrateSession({
+    board: { cells: [[0, 0, 0, 1], [9, 9, 9, 1], [0, 0, 0, 2]], score: 400 },
+    pieces: [{ name: 'Line 4', used: false }, { name: 'Dot', used: false }],
+    items: { bomb: -3, refresh: 2, bogus: 'x' },
+    run: { facesLit: ['+z', 'q'], honors: ['TRIPLE', 7] },
+  })
+  equal('an unknown shape is dropped, a known one survives', degraded.pieces.length, 1)
+  equal('only shell cells survive validation', degraded.board.cells.length, 1)
+  equal('a negative item count clamps to zero', degraded.items.bomb, 0)
+  equal('a non-numeric item count clamps to zero', degraded.items.bogus, 0)
+  equal('an unknown face is dropped from the run', degraded.run.facesLit.length, 1)
+  equal('a non-string honor id is dropped', degraded.run.honors.length, 1)
+
+  // Storage failures are the normal case in an embedded webview, not an error.
+  const throwing = createSessionStore({
+    getItem: () => '{not json',
+    setItem: () => { throw new Error('quota') },
+    removeItem: () => {},
+  })
+  equal('corrupt JSON reads as no saved run instead of throwing', throwing.read(), null)
+  const memory = createSessionStore(null)
+  // save() reports PERSISTENCE, not "the run survived" — with no storage the slot
+  // still resumes this session, which is what the home screen reads.
+  check('a storage-less save reports that it was not persisted', memory.save(snapshot) === false)
+  equal('a run saved without storage still resumes this session', memory.read().board.cells.length, live.length)
+  check('a storage-less slot reports itself as not persistent', !memory.persistent)
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

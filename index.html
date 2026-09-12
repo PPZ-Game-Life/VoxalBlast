@@ -57,6 +57,33 @@
           </div>
         </section>
       </main>
+      <!-- Home screen (v0.4, 03 §「主页与断点续玩」): the game opens here instead of on
+           a live board. An OPAQUE COVER, not a hidden game layer — the 3D canvas keeps
+           its size behind it, so coming home and going back costs no reload and no
+           re-fit. The primary button reads 继续游戏 whenever a resume snapshot exists
+           (src/game/session.js), 新游戏 otherwise. -->
+      <div id="home" class="home-screen" role="dialog" aria-modal="true" aria-labelledby="home-title">
+        <div class="home-inner">
+          <div class="home-brand">
+            <span class="home-mark" aria-hidden="true">V</span>
+            <h1 id="home-title">VoxalBlast</h1>
+            <p class="home-tagline">立体消除 · 六面连爆</p>
+          </div>
+          <div class="home-record">
+            <span class="home-record-label">最高分</span>
+            <strong id="home-best">0</strong>
+          </div>
+          <button id="home-primary" class="home-primary" type="button">
+            <span class="home-primary-icon" aria-hidden="true">▶</span>
+            <span id="home-primary-label">新游戏</span>
+          </button>
+          <p id="home-resume-note" class="home-resume-note" aria-live="polite"></p>
+          <div class="home-secondary-row">
+            <button id="home-leaderboard" class="home-secondary" type="button"><span aria-hidden="true">🏆</span>排行榜</button>
+            <button id="home-settings" class="home-secondary" type="button"><span aria-hidden="true">⚙</span>设置</button>
+          </div>
+        </div>
+      </div>
       <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content settings-card">
           <div class="settings-header">
@@ -66,6 +93,9 @@
           <div class="settings-list">
             <button id="sound-setting" class="setting-row" type="button"><span><strong>SOUND</strong><small>Game audio</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
             <button id="haptics-setting" class="setting-row" type="button"><span><strong>HAPTICS</strong><small>Touch vibration</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <!-- v0.4: the way home from anywhere, including the Game Over panel. The
+                 run in progress is snapshotted first, so this never costs progress. -->
+            <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong>回到主页</strong></button>
             <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong>RESTART GAME</strong></button>
           </div>
         </div>

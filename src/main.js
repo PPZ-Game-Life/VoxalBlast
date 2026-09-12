@@ -29,6 +29,7 @@ import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
 import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
 import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
+import { sessionStore } from './game/session.js'
 import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
@@ -67,6 +68,14 @@ const leaderboardEl = document.querySelector('#leaderboard')
 const leaderboardBodyEl = document.querySelector('#leaderboard-body')
 const leaderboardCloseEl = document.querySelector('#leaderboard-close')
 const leaderboardPlatformEl = document.querySelector('#leaderboard-platform')
+const homeEl = document.querySelector('#home')
+const homePrimaryEl = document.querySelector('#home-primary')
+const homePrimaryLabelEl = document.querySelector('#home-primary-label')
+const homeBestEl = document.querySelector('#home-best')
+const homeResumeNoteEl = document.querySelector('#home-resume-note')
+const homeLeaderboardEl = document.querySelector('#home-leaderboard')
+const homeSettingsEl = document.querySelector('#home-settings')
+const homeSettingEl = document.querySelector('#home-setting')
 
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
@@ -78,6 +87,13 @@ let viewDrag = null
 let isPaused = false
 let gameEnded = false
 let settingsOpen = false
+// v0.4 home screen. `homeOpen` is a third pause source next to document.hidden and
+// the modals; `runLive` means "the player has entered a board and has not finished
+// it", which is what makes a resume snapshot worth writing. They are separate on
+// purpose: the game boots on the home screen with no run open, and writing a slot
+// there would offer 继续游戏 on a board nobody has touched.
+let homeOpen = false
+let runLive = false
 let soundOn = localStorage.getItem(soundKey) !== 'off'
 let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
 let audioContext
@@ -986,6 +1002,15 @@ function cancelActiveDrag(showFeedback = true) {
 // ============================================================
 // Settings / audio / haptics
 // ============================================================
+// One place decides whether the board is live. Before v0.4 every call site wrote
+// `isPaused` itself, which is the kind of state machine that grows a hole the
+// moment a screen is added — and the home screen is that screen. Returns the new
+// value so a caller can branch on it in the same statement.
+function syncPause() {
+  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen
+  return isPaused
+}
+
 function updateSettingsUi() {
   soundSettingEl.classList.toggle('enabled', soundOn)
   soundSettingEl.setAttribute('aria-pressed', String(soundOn))
@@ -994,13 +1019,15 @@ function updateSettingsUi() {
 }
 
 function openSettings() {
-  if (gameEnded) return
+  // Reachable from the home screen and from a finished run too: 回到主页 has to be
+  // available "at any time", and the sounds/haptics switches are not less useful
+  // after a game over than during one.
   settingsOpen = true
-  isPaused = true
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
   clearGroup(previewGroup)
   settingsEl.classList.remove('hidden')
+  syncPause()
   platform.gameplayStop()
   setStatus('Paused')
   updateSettingsUi()
@@ -1011,7 +1038,7 @@ function closeSettings() {
   if (!settingsOpen) return
   settingsOpen = false
   settingsEl.classList.add('hidden')
-  isPaused = document.hidden || gameEnded
+  syncPause()
   if (!isPaused) {
     platform.gameplayStart()
     setStatus('Pick a shape')
@@ -1320,6 +1347,7 @@ function confirmItem() {
   cancelItemSelection(true)
   setStatus('Pick a shape')
   renderItemBar()
+  saveSession()
   checkStuckAndPrompt()
 }
 
@@ -1356,6 +1384,7 @@ function rerollPieces() {
   showToast('Refreshed')
   playHaptic(10)
   renderItemBar()
+  saveSession()
   checkStuckAndPrompt()
 }
 
@@ -1783,6 +1812,10 @@ function finishDrag(event) {
     setStatus('Pick a shape')
   }
   if (pieces.every((piece) => piece.used)) nextPieces()
+  // The resume slot is written on the same beat as the board change, and BEFORE the
+  // stuck check: checkStuckAndPrompt() may end the run, and a snapshot written after
+  // that would be a save of a finished game (saveSession refuses those anyway).
+  saveSession()
   checkStuckAndPrompt()
 }
 
@@ -1830,16 +1863,216 @@ function bestDimensionLabel() {
 }
 
 // ============================================================
+// Home screen + resume slot (v0.4, 03 §「主页与断点续玩」)
+// ============================================================
+// The home screen is an opaque cover over a live scene, not a second page: the
+// board, the pose and the candidate previews all survive going home, and the only
+// thing that has to be rebuilt after a page load is what session.js stored.
+const shapeByName = new Map(SHAPES.map((shape) => [shape.name, shape]))
+
+function sessionSnapshot() {
+  return {
+    board: {
+      cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
+      score: board.score,
+      totalLines: board.totalLines,
+    },
+    // Names, not shape objects: the pool is the single source of truth for a
+    // candidate's colour and cells, so a snapshot can never resurrect a shape that
+    // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
+    pieces: pieces.map((piece) => ({ name: piece.shape.name, used: piece.used })),
+    items: { ...itemCounts },
+    run: {
+      chain: run.chain,
+      bestChain: run.bestChain,
+      maxLinesOneMove: run.maxLinesOneMove,
+      maxFacesOneMove: run.maxFacesOneMove,
+      facesLit: [...run.facesLit],
+      faceWipes: run.faceWipes,
+      honors: [...run.honors],
+      honorCounts: { ...run.honorCounts },
+    },
+    pose: {
+      yaw: cubeRestYaw,
+      pitch: cubeRestPitch,
+      quat: cubeQuat.toArray(),
+      base: cubeBase.toArray(),
+    },
+  }
+}
+
+// Written after every mutation that changes the board or the candidates, so a
+// browser closed mid-run resumes on the last placement rather than on the last
+// visit home. Refuses once the run is over: endGame() clears the slot, and a save
+// written after it would offer 继续游戏 on a finished game.
+function saveSession() {
+  if (!runLive || gameEnded) return false
+  return sessionStore.save(sessionSnapshot())
+}
+
+function clearSession() {
+  runLive = false
+  return sessionStore.clear()
+}
+
+function refreshHome() {
+  const saved = sessionStore.read()
+  homePrimaryEl.classList.toggle('resume', Boolean(saved))
+  homePrimaryLabelEl.textContent = saved ? '继续游戏' : '新游戏'
+  homeBestEl.textContent = bestScore.toLocaleString('en-US')
+  homeResumeNoteEl.textContent = saved
+    ? `未完成的一局：${saved.board.score.toLocaleString('en-US')} 分 · ${saved.board.cells.length} 格`
+    : ''
+  return saved
+}
+
+function openHome() {
+  if (homeOpen) return
+  if (drag) cancelActiveDrag(false)
+  cancelItemSelection(true)
+  clearGroup(previewGroup)
+  // The panel is closed rather than kept behind the cover: it would otherwise still
+  // be open (and still holding the socket) the next time the player opens it.
+  settingsOpen = false
+  settingsEl.classList.add('hidden')
+  // Snapshot before the board stops being visible, so whatever was built is still
+  // there behind the 继续游戏 button.
+  saveSession()
+  homeOpen = true
+  homeEl.classList.remove('hidden')
+  refreshHome()
+  syncPause()
+  platform.gameplayStop()
+  setStatus('Home')
+  homePrimaryEl.focus()
+}
+
+function leaveHome() {
+  homeOpen = false
+  homeEl.classList.add('hidden')
+  syncPause()
+  renderItemBar()
+  if (!isPaused) {
+    platform.gameplayStart()
+    setStatus('Pick a shape')
+  }
+}
+
+// Every entry point that starts a REAL run for the player (home 新游戏, the settings
+// RESTART action, PLAY AGAIN) comes through here: a reset board is only a run once
+// the player is looking at it, which is why the boot-time resetGame() does not.
+function beginRun() {
+  resetGame()
+  runLive = true
+  saveSession()
+}
+
+function continueRun() {
+  const saved = sessionStore.read()
+  if (saved) {
+    applySession(saved)
+    runLive = true
+  } else {
+    beginRun()
+  }
+  leaveHome()
+}
+
+// The home screen's one play button. Its meaning comes from the slot, never from the
+// label: a snapshot that appeared between two renders must not be lost to a stale
+// class name on the button.
+function startFromHome() {
+  if (sessionStore.read()) continueRun()
+  else {
+    beginRun()
+    leaveHome()
+  }
+}
+
+function applySession(saved) {
+  clearTransientEffects()
+  clearHonorLayer()
+  cameraShake = 0
+  slowMo = null
+  drag = null
+  selectedPiece = null
+  gameEnded = false
+  setCancelZone(false)
+  board.restore(saved.board)
+  run.chain = saved.run.chain
+  run.bestChain = saved.run.bestChain
+  run.maxLinesOneMove = saved.run.maxLinesOneMove
+  run.maxFacesOneMove = saved.run.maxFacesOneMove
+  run.facesLit = new Set(saved.run.facesLit)
+  run.faceWipes = saved.run.faceWipes
+  run.honors = [...saved.run.honors]
+  run.honorCounts = { ...saved.run.honorCounts }
+  pieces = saved.pieces
+    .map((entry) => {
+      const shape = shapeByName.get(entry.name)
+      if (!shape) return null
+      const piece = makePiece(shape)
+      piece.used = entry.used
+      return piece
+    })
+    .filter(Boolean)
+  // A retired shape can leave fewer than three candidates; deal the missing slots
+  // instead of resuming with a short strip (the layout is a fixed row of three).
+  while (pieces.length < 3) pieces.push(makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
+  itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
+    tool.id,
+    THREE.MathUtils.clamp(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),
+  ]))
+  itemActive = null
+  itemBusyUntil = 0
+  lastItemHoverKey = null
+  clearGroup(itemPreviewGroup)
+  axisPickEl.classList.add('hidden')
+  // Pose is restored from the raw quaternions, so the cube comes back in exactly the
+  // orientation it was left in (a face-aligned pose matters: the candidate's drop
+  // orientation is derived from it). An unreadable pose starts face-aligned instead
+  // of guessing.
+  if (saved.pose.quat && saved.pose.base) {
+    cubeSnapAnim.active = false
+    cubeLive = null
+    viewDrag = null
+    cubeQuat.fromArray(saved.pose.quat).normalize()
+    cubeBase.fromArray(saved.pose.base).normalize()
+    cubeRestYaw = saved.pose.yaw
+    cubeRestPitch = saved.pose.pitch
+    applyCubeRotation()
+  } else {
+    resetCubeRotation()
+  }
+  renderPieceSlots()
+  renderBoard()
+  updateChainHud()
+  renderItemBar()
+  syncPause()
+  setStatus('Pick a shape')
+}
+
+// ============================================================
 // Leaderboard panel (08 §7.5) — Layer 1 in-game, plus the platform entry
 // ============================================================
+// The panel has three entry points now (Game Over, the home screen, and the dev
+// handle), so focus is returned to whoever opened it instead of to one hard-coded
+// button — returning to the Game Over button while the home screen is up would drop
+// focus onto a covered element.
+let leaderboardOpener = null
+
 function openLeaderboard() {
   renderLeaderboard()
+  leaderboardOpener = document.activeElement
   leaderboardEl.classList.remove('hidden')
   leaderboardCloseEl.focus()
 }
 
 function closeLeaderboard() {
   leaderboardEl.classList.add('hidden')
+  const opener = leaderboardOpener
+  leaderboardOpener = null
+  if (opener instanceof HTMLElement && opener.isConnected && !opener.closest('.hidden')) opener.focus()
 }
 
 function renderLeaderboard() {
@@ -1910,7 +2143,7 @@ function triggerSlowMo(level) {
 function endGame() {
   if (gameEnded) return
   gameEnded = true
-  isPaused = true
+  syncPause()
   platform.gameplayStop()
   clearHonorLayer()
   const finalScore = board.score
@@ -1933,6 +2166,11 @@ function endGame() {
   bestScore = summary.bestScore
   updateHud()
   renderGameOver(summary)
+  // The run is in the record book now, so the save slot goes: a finished game must
+  // never come back as 继续游戏. Cleared unconditionally, including when the player
+  // reached it through the platform-less degraded path.
+  clearSession()
+  refreshHome()
   // Layer 2: exactly one submission per run, dropped silently when the game has no
   // leaderboard invitation (§7.4).
   platform.submitScore(finalScore, runId)
@@ -1952,7 +2190,6 @@ function resetGame() {
   resetRun()
   gameEnded = false
   settingsOpen = false
-  isPaused = document.hidden
   cameraShake = 0
   slowMo = null
   settingsEl.classList.add('hidden')
@@ -1965,6 +2202,7 @@ function resetGame() {
   renderBoard()
   updateChainHud()
   setStatus('Pick a shape')
+  syncPause()
   if (!isPaused) platform.gameplayStart()
 }
 
@@ -2116,12 +2354,24 @@ leaderboardButtonEl.addEventListener('click', () => {
 })
 leaderboardCloseEl.addEventListener('click', () => {
   closeLeaderboard()
-  leaderboardButtonEl.focus()
 })
 leaderboardEl.addEventListener('click', (event) => {
   if (event.target === leaderboardEl) closeLeaderboard()
 })
-for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
+// v0.4 home screen. 排行榜 opens the same Layer-1 panel the Game Over screen opens
+// (the 总榜 reading of the board: 单局最高分 + 最近十局 + 荣誉收集), plus the platform
+// entry at the bottom of the card.
+homePrimaryEl.addEventListener('click', startFromHome)
+homeLeaderboardEl.addEventListener('click', () => openLeaderboard())
+homeSettingsEl.addEventListener('click', () => openSettings())
+homeSettingEl.addEventListener('click', () => {
+  // Already home: the row only has to close the panel it sits in.
+  if (homeOpen) closeSettings()
+  else openHome()
+})
+// PLAY AGAIN / RESTART both start a real run, which means both have to open a resume
+// slot: the reset board is the new unfinished game.
+for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', beginRun)
 settingsButtonEl.addEventListener('click', openSettings)
 document.querySelector('#settings-close').addEventListener('click', closeSettings)
 settingsEl.addEventListener('pointerdown', (event) => { if (event.target === settingsEl) closeSettings() })
@@ -2137,16 +2387,19 @@ hapticsSettingEl.addEventListener('click', () => {
   updateSettingsUi()
   if (hapticsOn) playHaptic(18)
 })
-document.querySelector('#restart-setting').addEventListener('click', resetGame)
+document.querySelector('#restart-setting').addEventListener('click', beginRun)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
   if (document.hidden && drag) cancelActiveDrag(false)
   // A page that goes hidden never delivers the pointerup of a finger that was
   // down, so the rotation gesture has to be ended here (see cancelViewDrag()).
   if (document.hidden) cancelViewDrag()
-  isPaused = document.hidden || gameEnded || settingsOpen
-  if (document.hidden) { platform.gameplayStop(); setStatus('Paused') }
-  else if (gameEnded || settingsOpen) return
+  // A run that is simply closed (tab, phone, browser) has to be resumable without
+  // having visited the home screen first.
+  if (document.hidden) saveSession()
+  syncPause()
+  if (document.hidden) { platform.gameplayStop(); setStatus(homeOpen ? 'Home' : 'Paused') }
+  else if (gameEnded || settingsOpen || homeOpen) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 // Losing the window ends a mouse gesture the same way (button released outside).
@@ -2163,7 +2416,12 @@ function resize() {
 }
 window.addEventListener('resize', resize)
 resize()
+// v0.4: the game opens on the home screen. resetGame() still runs first so the scene
+// under the cover is a real, fitted board (opening layout and all) instead of an empty
+// shell — leaving home then costs no work. It deliberately does NOT open a resume slot:
+// a board nobody has touched is not 未完成的一局 (that is what beginRun() is for).
 resetGame()
+openHome()
 platform.initialize().catch(() => showToast('Offline mode'))
 
 const clock = new THREE.Clock()
@@ -2173,6 +2431,9 @@ function animate() {
   if (slowMo && performance.now() > slowMo.until) slowMo = null
   // The L5 dip scales the animation clock only — never input, never the board state.
   const delta = slowMo ? raw * slowMo.scale : raw
+  // The home cover hides the canvas: nothing behind it is on screen, and the board
+  // under it must not drift (the pose snap is part of the paused branch anyway).
+  if (homeOpen) return
   if (!isPaused) {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
@@ -2293,6 +2554,17 @@ globalThis.__voxalblast = Object.freeze({
   // The persisted Layer-1 snapshot (read-only: it is the same object the store hands
   // the UI, so the checks can prove a run round-tripped through storage).
   records: () => recordStore.all(),
+  // v0.4 home + resume slot, read-only: what the cover is showing and whether a run
+  // is waiting behind it (the checks assert the slot survives a page load, which is
+  // the whole point of storing it).
+  home: () => ({
+    open: homeOpen,
+    label: homePrimaryLabelEl.textContent,
+    note: homeResumeNoteEl.textContent,
+    hasSavedRun: Boolean(sessionStore.read()),
+    persistent: sessionStore.persistent,
+  }),
+  session: () => sessionStore.read(),
   // The candidate pool itself: name, color and cell count per type.
   shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
 })
