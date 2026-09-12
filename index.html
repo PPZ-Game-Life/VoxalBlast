@@ -14,12 +14,28 @@
           <span class="score-chip-label">SCORE</span>
           <span id="score" class="score-chip-value">0000</span>
         </div>
+        <!-- CHAIN (v0.3, 08 §7.5): the stake of the streak. Hidden below a chain of
+             HUD_STYLE.chainMinVisible so that breaking it costs something. -->
+        <div id="chain" class="chain-chip" aria-hidden="true" aria-label="Clear streak">
+          <span class="chain-chip-label">CHAIN</span>
+          <span class="chain-chip-value">×<b id="chain-value">0</b></span>
+          <span class="chain-chip-bar" aria-hidden="true"><i id="chain-bar"></i></span>
+        </div>
+        <!-- BEST is allowed again since 2026-09-11 (04「UI 与发布」修订): it must
+             stay visually below SCORE and the row must never wrap. -->
+        <div class="best-chip" aria-label="Best score">
+          <span class="best-chip-label">BEST</span>
+          <span id="best" class="best-chip-value">0</span>
+        </div>
         <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
       </header>
       <main class="game-layout">
         <section class="board-section">
           <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
           <div id="scene-wrap" class="scene-wrap"></div>
+          <!-- Honor broadcast layer (08 §6): lives in the info band above the cube,
+               never covers the board, never takes a pointer event. -->
+          <div id="honor-layer" class="honor-layer" aria-live="polite"></div>
           <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket line">
             <button type="button" data-axis="row">Row</button>
             <button type="button" data-axis="col">Col</button>
@@ -54,12 +70,33 @@
           </div>
         </div>
       </div>
+      <!-- Game Over (08 §7.5): the "再来一局" screen. Delta copy first, then the next
+           goal (六面制霸), then what was earned this run. -->
       <div id="game-over" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
-        <div class="modal-content">
+        <div class="modal-content game-over-card">
           <div class="eyebrow">RUN COMPLETE</div>
           <h1 id="game-over-title">GAME OVER</h1>
           <div class="final-score"><span id="final-score">0000</span><small>POINTS</small></div>
-          <button id="reset-modal" class="restart-button" type="button"><span>↻</span> PLAY AGAIN</button>
+          <p id="game-over-best" class="game-over-best"></p>
+          <div id="game-over-faces" class="game-over-faces"></div>
+          <div id="game-over-honors" class="game-over-honors"></div>
+          <div id="game-over-stats" class="game-over-stats"></div>
+          <div class="game-over-actions">
+            <button id="reset-modal" class="restart-button" type="button"><span>↻</span> PLAY AGAIN</button>
+            <button id="leaderboard-button" class="ghost-button" type="button">排行榜</button>
+          </div>
+        </div>
+      </div>
+      <!-- Local leaderboard panel (08 §7.5): Layer 1 only, plus the platform entry.
+           Rows are rendered in main.js from src/game/records.js. -->
+      <div id="leaderboard" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
+        <div class="modal-content leaderboard-card">
+          <div class="settings-header">
+            <div><div class="eyebrow">LOCAL RECORDS</div><h1 id="leaderboard-title">排行榜</h1></div>
+            <button id="leaderboard-close" class="modal-close" type="button" aria-label="Close leaderboard">×</button>
+          </div>
+          <div id="leaderboard-body" class="leaderboard-body"></div>
+          <div id="leaderboard-platform" class="leaderboard-platform"></div>
         </div>
       </div>
     </div>

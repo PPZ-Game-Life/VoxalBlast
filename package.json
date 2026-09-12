@@ -1,12 +1,14 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.2.31",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tools/rule-tests.mjs",
+    "reachability": "node tools/reachability.mjs all"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",

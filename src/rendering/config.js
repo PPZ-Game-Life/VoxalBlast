@@ -152,11 +152,6 @@ export const VFX_CONFIG = Object.freeze({
     starDuration: 0.62,
     starMaxScale: 1.3,
   }),
-  cameraShake: Object.freeze({
-    singleLine: 0.055,
-    multiLine: 0.12,
-    decay: 0.42,
-  }),
   bloom: Object.freeze({
     intensity: 0.55,
     lowPowerIntensity: 0.34,
@@ -170,6 +165,38 @@ export const VFX_CONFIG = Object.freeze({
     cameraHeight: 2.15,
     maxScale: 1.7,
   }),
+})
+
+// v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
+// honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
+// banner is owed); the seconds, shake and particle strength behind each level are
+// visual numbers and live here. Index = level, 0 = a placement that cleared nothing.
+// The gradient is the point: 一段日常有反馈、稀有才隆重 — L3 runs about twice a game,
+// L4 about once every three games, L5 about once every fifty (08 §6), so the top of
+// the ladder must never become the background hum.
+export const FEEDBACK_STYLE = Object.freeze({
+  levels: Object.freeze([
+    /* 0 nothing cleared */ Object.freeze({ duration: 0, shake: 0, particleScale: 0, banner: 'none', badges: false }),
+    /* 1 one line */ Object.freeze({ duration: 0.35, shake: 0.055, particleScale: 1, banner: 'none', badges: false }),
+    /* 2 two lines */ Object.freeze({ duration: 0.6, shake: 0.09, particleScale: 1.6, banner: 'small', badges: true }),
+    /* 3 TRIPLE */ Object.freeze({ duration: 0.9, shake: 0.14, particleScale: 2.4, banner: 'name', badges: true }),
+    /* 4 QUAD / TRIFACE */ Object.freeze({ duration: 1.4, shake: 0.2, particleScale: 3.5, banner: 'large', badges: true }),
+    // L5 gets the only "顿帧" in the game: a brief slowdown for the ceremony, which
+    // must never block input and must leave the board readable (03 §7 hard rule).
+    /* 5 PENTA+ */ Object.freeze({ duration: 2.2, shake: 0.26, particleScale: 5, banner: 'full', badges: true, slowMo: Object.freeze({ scale: 0.6, ms: 400 }) }),
+  ]),
+  shakeDecay: 0.42, // per-second falloff of the camera shake
+  honorBannerMs: Object.freeze({ small: 700, name: 900, large: 1400, full: 2200 }),
+})
+
+// HUD rules that the design fixes rather than the art: the chain pill only exists
+// once a chain is real (08 §7.5 — a "CHAIN ×1" that is always on screen would make
+// breaking it cost nothing), and the Game Over copy calls a gap "就差一点" only
+// inside this ratio of the record (08 §7.5 差值文案一等公民).
+export const HUD_STYLE = Object.freeze({
+  chainMinVisible: 2,
+  chainBarCap: 20, // chain length that fills the indicator bar
+  bestGapRatio: 0.1,
 })
 
 export function getRenderQuality() {

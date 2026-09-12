@@ -1,0 +1,144 @@
+{
+  "generatedAt": "2026-09-11T23:20:06.944Z",
+  "model": {
+    "source": "imported from src/game/{board,shapes,scoring,honors}.js",
+    "shellCells": 98,
+    "lines": 60,
+    "placements": 2202,
+    "orientations": 26,
+    "shapePool": [
+      "Dot",
+      "Line 2",
+      "Line 3",
+      "Square",
+      "L",
+      "J",
+      "T",
+      "S",
+      "Z",
+      "Corner"
+    ]
+  },
+  "phase1": {
+    "placementsScanned": 367,
+    "nodesTotal": 51120,
+    "truncatedPlacements": 0,
+    "timeUp": false,
+    "complete": true,
+    "maxLinesInOneMove": 12,
+    "maxLinesByShape": {
+      "L": 12,
+      "J": 12,
+      "T": 11,
+      "Line 3": 10,
+      "Square": 10,
+      "S": 10,
+      "Z": 10,
+      "Corner": 10,
+      "Line 2": 8,
+      "Dot": 6
+    },
+    "reachableHonors": {
+      "TRIPLE": 26910,
+      "QUAD": 21654,
+      "PENTA": 15584,
+      "TRIFACE": 12132,
+      "HEXA": 9872,
+      "PERFECT_TWELVE": 8
+    },
+    "ms": 124
+  },
+  "phase2": {
+    "strategy": "noise",
+    "games": 2000,
+    "stepCap": 600,
+    "gamesReachedStepCap": 2000,
+    "avgStepsPerGame": 601,
+    "maxStepsPerGame": 601,
+    "avgScore": 170241,
+    "medianScore": 169805,
+    "scorePercentiles": {
+      "p25": 164020,
+      "p50": 169805,
+      "p75": 175520,
+      "p90": 181660,
+      "p99": 192135
+    },
+    "maxLinesInOneMoveObserved": 6,
+    "avgBestChain": 8.53,
+    "maxChainObserved": 14,
+    "linesClearedPerMove": {
+      "1": 463329,
+      "2": 226016,
+      "3": 22509,
+      "4": 2434,
+      "5": 242,
+      "6": 10
+    },
+    "facesHitPerMove": {
+      "1": 495652,
+      "2": 215484,
+      "3": 3404
+    },
+    "linesByFaces": {
+      "1|1": 463329,
+      "2|1": 31498,
+      "2|2": 194518,
+      "3|1": 806,
+      "3|2": 20032,
+      "3|3": 1671,
+      "4|1": 19,
+      "4|2": 857,
+      "4|3": 1558,
+      "5|2": 77,
+      "5|3": 165,
+      "6|3": 10
+    },
+    "honorOccurrencesPerGame": {
+      "TRIPLE": 12.5975,
+      "TRIFACE": 1.702,
+      "QUAD": 1.343,
+      "PENTA": 0.126,
+      "HEXA": 0.005,
+      "PERFECT_TWELVE": 0
+    },
+    "honorGamesPct": {
+      "TRIPLE": 100,
+      "TRIFACE": 83.4,
+      "QUAD": 76.8,
+      "PENTA": 12.2,
+      "HEXA": 0.5,
+      "PERFECT_TWELVE": 0
+    },
+    "honorShareOfClears": {
+      "TRIPLE": 3.526,
+      "TRIFACE": 0.4764,
+      "QUAD": 0.3759,
+      "PENTA": 0.0353,
+      "HEXA": 0.0014,
+      "PERFECT_TWELVE": 0
+    },
+    "legacyHonorOccurrencesPerGame": {
+      "CROSS": 14.044,
+      "DOUBLE_CROSS": 0.029,
+      "PERFECT_STRIKE": 0,
+      "DUAL_FACE": 109.444,
+      "TRIPLE_FACE": 1.702,
+      "CUBE_BURST": 0,
+      "FACE_WIPE": 7.117,
+      "PURE_CUBE": 0.033
+    },
+    "legacyHonorGamesPct": {
+      "CROSS": 100,
+      "DOUBLE_CROSS": 2.9,
+      "PERFECT_STRIKE": 0,
+      "DUAL_FACE": 100,
+      "TRIPLE_FACE": 83.4,
+      "CUBE_BURST": 0,
+      "FACE_WIPE": 99,
+      "PURE_CUBE": 3.3
+    },
+    "sixFaceClearPct": 100,
+    "ms": 19405
+  }
+}

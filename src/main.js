@@ -1,5 +1,8 @@
 import packageInfo from '../package.json'
 import * as THREE from 'three'
+// Must come before the three.quarks import below: it bridges the r159 `updateRange`
+// removal that otherwise throws inside animate() and freezes the canvas.
+import './rendering/threeCompat.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
   BloomEffect,
@@ -23,8 +26,12 @@ import {
 } from 'three.quarks'
 import { Board, SH, FACES, faceLattice } from './game/board.js'
 import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
+import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
+import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
+import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
+import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
 import './styles.css'
 
@@ -46,6 +53,20 @@ const settingsEl = document.querySelector('#settings-modal')
 const settingsButtonEl = document.querySelector('#settings-button')
 const soundSettingEl = document.querySelector('#sound-setting')
 const hapticsSettingEl = document.querySelector('#haptics-setting')
+const bestEl = document.querySelector('#best')
+const chainEl = document.querySelector('#chain')
+const chainValueEl = document.querySelector('#chain-value')
+const chainBarEl = document.querySelector('#chain-bar')
+const honorLayerEl = document.querySelector('#honor-layer')
+const gameOverBestEl = document.querySelector('#game-over-best')
+const gameOverFacesEl = document.querySelector('#game-over-faces')
+const gameOverHonorsEl = document.querySelector('#game-over-honors')
+const gameOverStatsEl = document.querySelector('#game-over-stats')
+const leaderboardButtonEl = document.querySelector('#leaderboard-button')
+const leaderboardEl = document.querySelector('#leaderboard')
+const leaderboardBodyEl = document.querySelector('#leaderboard-body')
+const leaderboardCloseEl = document.querySelector('#leaderboard-close')
+const leaderboardPlatformEl = document.querySelector('#leaderboard-platform')
 
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
@@ -66,6 +87,37 @@ let transientEffects = []
 let suppressPieceClickUntil = 0
 const particleSystems = new Set()
 const piecePreviews = new Map()
+
+// ============================================================
+// Run state (v0.3 honors / records)
+// ============================================================
+// Everything the chain indicator, the Game Over panel and the record wall need to
+// know about the run in progress. Nothing here is persisted as-is: endGame() hands
+// it to recordStore, which owns the snapshot format and its migration.
+const run = {
+  chain: 0, // consecutive clearing placements; a dead turn zeroes it (08 §4.4)
+  bestChain: 0,
+  maxLinesOneMove: 0,
+  maxFacesOneMove: 0,
+  facesLit: new Set(), // faces cleared at least once this run (六面制霸 progress)
+  faceWipes: 0,
+  honors: [], // ids in the order they were earned
+  honorCounts: {},
+}
+let runId = 0 // one token per game, so a score is never submitted twice
+let bestScore = recordStore.best().score
+
+function resetRun() {
+  run.chain = 0
+  run.bestChain = 0
+  run.maxLinesOneMove = 0
+  run.maxFacesOneMove = 0
+  run.facesLit.clear()
+  run.faceWipes = 0
+  run.honors = []
+  run.honorCounts = {}
+  runId += 1
+}
 
 const quality = getRenderQuality()
 
@@ -754,6 +806,8 @@ function renderBoard() {
 // ============================================================
 function updateHud() {
   scoreEl.textContent = String(board.score).padStart(4, '0')
+  // BEST is a secondary pill: same chip language, smaller type (04「UI 与发布」修订条款).
+  bestEl.textContent = bestScore.toLocaleString('en-US')
 }
 
 function makePiece(shape) {
@@ -992,17 +1046,105 @@ function playPlaceSound(lineCount) {
   } else playTone(330, 0.075, 0.036)
 }
 
+// Feedback ladder (08 §6 / 03 §7): the level comes from honors.js, these are the
+// noises that go with it. L1/L2 are still just chords — the banner is earned at L3.
+function playHonorSound(level) {
+  if (level >= 5) [660, 830, 990, 1320].forEach((tone, index) => playTone(tone, 0.22, 0.05, index * 0.11))
+  else if (level === 4) {
+    playTone(680, 0.16, 0.05)
+    playTone(1020, 0.22, 0.045, 0.07)
+    playTone(1360, 0.3, 0.04, 0.15)
+  } else if (level === 3) [620, 780, 930].forEach((tone, index) => playTone(tone, 0.2, 0.045, index * 0.05))
+  else if (level === 2) {
+    playTone(700, 0.14, 0.042)
+    playTone(940, 0.18, 0.038, 0.06)
+  }
+}
+
+function playChainSound(chain) {
+  if (chain >= 2) playTone(560 + Math.min(chain, 12) * 45, 0.13, 0.04)
+}
+
+// 断链 must be FELT (08 §4.4): a chain nobody can see is not a stake. Grey flash on
+// the pill plus a descending tone, on the way down only.
+function playChainBreakSound(chain) {
+  const base = 420 + Math.min(chain, 8) * 20
+  playTone(base, 0.2, 0.045)
+  playTone(base * 0.74, 0.24, 0.04, 0.08)
+  playTone(base * 0.52, 0.3, 0.034, 0.17)
+}
+
 function playHaptic(pattern = 15) {
   if (hapticsOn && navigator.vibrate) navigator.vibrate(pattern)
 }
 
-function showScorePop(points, lineCount) {
+// 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
+// 荣誉名号. A placement that clears nothing still pops its placement score, which
+// is the entire purpose of the 放置分 layer (§4.1): "this turn built instead of
+// clearing" must not read as nothing happened.
+function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = false } = {}) {
   const pop = document.createElement('div')
-  pop.className = 'score-pop'
-  pop.innerHTML = `<strong>+${points}</strong><span>${lineCount} LINE${lineCount === 1 ? '' : 'S'}</span>`
+  pop.className = quiet ? 'score-pop quiet' : 'score-pop'
+  const rows = [`<strong>+${points}</strong>`]
+  if (lines > 0) rows.push(`<span>${lines} LINE${lines === 1 ? '' : 'S'}</span>`)
+  if (faces > 1) rows.push(`<span class="score-pop-faces">${faces} FACES</span>`)
+  if (honor) rows.push(`<span class="score-pop-honor">${honor.title}</span>`)
+  pop.innerHTML = rows.join('')
   sceneWrap.appendChild(pop)
   requestAnimationFrame(() => pop.classList.add('visible'))
-  setTimeout(() => pop.remove(), 920)
+  setTimeout(() => pop.remove(), quiet ? 640 : 920)
+}
+
+// Chain indicator (08 §7.5): absent below HUD_STYLE.chainMinVisible and brighter as
+// it grows. A chain that is always on screen costs nothing to break, and the whole
+// mechanism is the stake (08 §4.4).
+function updateChainHud() {
+  const visible = run.chain >= HUD_STYLE.chainMinVisible
+  chainEl.classList.toggle('visible', visible)
+  chainEl.classList.toggle('hot', run.chain >= 5)
+  chainEl.setAttribute('aria-hidden', String(!visible))
+  chainValueEl.textContent = String(run.chain)
+  chainBarEl.style.transform = `scaleX(${Math.min(1, run.chain / HUD_STYLE.chainBarCap)})`
+}
+
+function breakChainFeedback(chain) {
+  chainEl.classList.add('broken')
+  setTimeout(() => chainEl.classList.remove('broken'), 620)
+  playChainBreakSound(chain)
+}
+
+// §5.3: ONE primary banner (the rarest honor wins), the rest float in as a single
+// row of small badges. Both are overlay-only — the design forbids a reward moment
+// that blocks input, so nothing here is modal and nothing here can eat a gesture.
+function showHonorBanner(honors, level) {
+  const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[0]
+  if (honors.primary) {
+    const banner = document.createElement('div')
+    banner.className = `honor-banner honor-banner-${feedback.banner}`
+    banner.innerHTML = `<strong>${honors.primary.title}</strong><small>${honors.primary.label} · +${honors.primary.bonus}</small>`
+    honorLayerEl.appendChild(banner)
+    requestAnimationFrame(() => banner.classList.add('visible'))
+    const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
+    setTimeout(() => {
+      banner.classList.remove('visible')
+      setTimeout(() => banner.remove(), 320)
+    }, ms)
+  }
+  const extras = honors.secondary.concat(honors.records)
+  if (!extras.length || !feedback.badges) return
+  const row = document.createElement('div')
+  row.className = 'honor-badges'
+  row.innerHTML = extras.map((honor) => `<span class="honor-badge">${honor.title}</span>`).join('')
+  honorLayerEl.appendChild(row)
+  requestAnimationFrame(() => row.classList.add('visible'))
+  setTimeout(() => {
+    row.classList.remove('visible')
+    setTimeout(() => row.remove(), 320)
+  }, 1400)
+}
+
+function clearHonorLayer() {
+  honorLayerEl.replaceChildren()
 }
 
 // ============================================================
@@ -1253,7 +1395,11 @@ function emitItemBurst(cells, axisHint) {
     startSize: new ConstantValue(0.1),
     startColor: new ConstantColor(colorToVector4(0xffd32a)),
     emissionOverTime: new ConstantValue(0),
-    emissionBursts: [{ time: 0, count, cycle: 1, interval: 0.01, probability: 1 }],
+    // three.quarks types `emissionBursts[].count` as a ValueGenerator and calls
+    // count.genValue() when the burst fires — a raw number throws there and takes
+    // the whole frame down with it (animate() aborts before composer.render, so the
+    // canvas freezes while the game keeps running). Wrap it.
+    emissionBursts: [{ time: 0, count: new ConstantValue(count), cycle: 1, interval: 0.01, probability: 1 }],
     shape: new AxisEmitter(direction, 0.5),
     material: particleMaterial,
     instancingGeometry: particleGeometry,
@@ -1378,23 +1524,26 @@ class AxisEmitter {
   clone() { return new AxisEmitter(this.direction, this.spread) }
 }
 
-function spawnLineParticles(line) {
+function spawnLineParticles(line, scale = 1) {
   const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
   const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
   const direction = line.axis === 'row' ? worldU : worldV
   const color = palette.line[line.axis === 'row' ? 'x' : 'y']
   const brightEnd = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.42)
   const center = lineCenterWorld(line)
+  // The feedback ladder raises the particle count and size with the level (08 §6):
+  // L1 runs the baseline burst, L5 lands at 5×.
+  const burst = Math.max(3, Math.round(quality.particlesPerLine * scale))
   const system = new ParticleSystem({
     autoDestroy: true,
     looping: false,
     duration: 0.72,
     startLife: new ConstantValue(0.62),
     startSpeed: new ConstantValue(1.45),
-    startSize: new ConstantValue(0.09),
+    startSize: new ConstantValue(0.09 * (1 + (scale - 1) * 0.12)),
     startColor: new ConstantColor(colorToVector4(color)),
     emissionOverTime: new ConstantValue(0),
-    emissionBursts: [{ time: 0, count: quality.particlesPerLine, cycle: 1, interval: 0.01, probability: 1 }],
+    emissionBursts: [{ time: 0, count: new ConstantValue(burst), cycle: 1, interval: 0.01, probability: 1 }],
     shape: new AxisEmitter(direction),
     material: particleMaterial,
     instancingGeometry: particleGeometry,
@@ -1421,7 +1570,7 @@ function lineCenterWorld(line) {
   return cellToWorld(cell[0], cell[1], cell[2]).applyMatrix4(cubeGroup.matrixWorld)
 }
 
-function spawnLineBeam(line, index) {
+function spawnLineBeam(line, index, scale = 1) {
   const center = lineCenterWorld(line)
   const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
   const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
@@ -1450,10 +1599,10 @@ function spawnLineBeam(line, index) {
       effect.object.scale.setScalar(scale)
     },
   })
-  spawnLineParticles(line)
+  spawnLineParticles(line, scale)
 }
 
-function spawnClearStars(line, index) {
+function spawnClearStars(line, index, starScale = 1) {
   const center = lineCenterWorld(line)
   ;[0xffd32a, 0xff9c3d].forEach((color, starIndex) => {
     const material = new THREE.MeshBasicMaterial({
@@ -1477,7 +1626,7 @@ function spawnClearStars(line, index) {
         const pop = progress < 0.22 ? 0.1 + (progress / 0.22) * 1.0 : 1.1 - ((progress - 0.22) / 0.78) * 0.18
         const base = starIndex === 0 ? 1 : 0.6
         effect.object.quaternion.copy(camera.quaternion)
-        effect.object.scale.setScalar(base * pop * VFX_CONFIG.clear.starMaxScale)
+        effect.object.scale.setScalar(base * pop * VFX_CONFIG.clear.starMaxScale * starScale)
         const fade = progress < 0.12 ? progress / 0.12 : progress > 0.55 ? 1 - (progress - 0.55) / 0.45 : 1
         effect.object.material.opacity = Math.max(0, fade) * 0.85
       },
@@ -1485,12 +1634,16 @@ function spawnClearStars(line, index) {
   })
 }
 
-function spawnClearEffects(lines) {
+function spawnClearEffects(lines, level = 1) {
+  // One place that turns a feedback LEVEL (honors.js) into strength (08 §6): the
+  // ladder is what makes a 4-line clear visibly heavier than a single line.
+  const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[1]
+  const scale = feedback.particleScale || 1
   lines.forEach((line, index) => {
-    spawnLineBeam(line, index)
-    spawnClearStars(line, index)
+    spawnLineBeam(line, index, scale)
+    spawnClearStars(line, index, Math.min(2, 1 + (scale - 1) * 0.25))
   })
-  triggerShake(lines.length > 1 ? 0.12 : 0.055)
+  triggerShake(feedback.shake)
 }
 
 function updateTransientEffects(delta) {
@@ -1515,7 +1668,7 @@ function clearTransientEffects() {
 
 function triggerShake(amount) { cameraShake = Math.max(cameraShake, amount) }
 function updateCameraShake(delta) {
-  cameraShake = Math.max(0, cameraShake - delta * 0.42)
+  cameraShake = Math.max(0, cameraShake - delta * FEEDBACK_STYLE.shakeDecay)
   camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
   if (cameraShake > 0) {
     const time = performance.now() * 0.045
@@ -1532,6 +1685,40 @@ function releaseDragPointer(source, pointerId) {
   } catch {
     // The browser may have already cancelled the pointer capture.
   }
+}
+
+// One settled placement, in the order the design fixes it: settle every face
+// (board.js) → chain → honors → score (§4.5) → present (§6). Keeping the whole
+// sequence here is what makes the HUD number auditable — it is the sum of the
+// named parts, and the parts are the ones the docs name.
+function settlePlacement(face, cells, origin, color) {
+  const result = board.place(face, cells, origin, color)
+  const lines = result.lines
+  const lineCount = lines.length
+  const previousChain = run.chain
+  run.chain = nextChain(previousChain, lineCount)
+  if (lineCount > 0) {
+    run.bestChain = Math.max(run.bestChain, run.chain)
+    lines.forEach((line) => run.facesLit.add(line.face))
+  }
+  const honors = resolveHonors({ lines: lineCount, faces: result.facesHit })
+  const level = feedbackLevel({ lines: lineCount, faces: result.facesHit })
+  const score = moveScore({
+    cellCount: cells.length,
+    lines: lineCount,
+    faces: result.facesHit,
+    chain: run.chain,
+    honorBonus: honors.bonus,
+  })
+  board.addScore(score.total, lineCount)
+  run.maxLinesOneMove = Math.max(run.maxLinesOneMove, lineCount)
+  run.maxFacesOneMove = Math.max(run.maxFacesOneMove, result.facesHit)
+  run.faceWipes += result.faceWiped.length
+  honors.ids.forEach((id) => {
+    run.honors.push(id)
+    run.honorCounts[id] = (run.honorCounts[id] || 0) + 1
+  })
+  return { result, lines, lineCount, honors, level, score, previousChain }
 }
 
 function finishDrag(event) {
@@ -1567,24 +1754,157 @@ function finishDrag(event) {
   // Place the cells the preview actually showed (screen-facing orientation on
   // the front face), never a fresh re-derivation — the drop must match what the
   // player saw under their finger.
-  const result = board.place(face, currentDrag.cells, currentDrag.origin, currentDrag.piece.shape.color)
-  playPlaceSound(result.lines.length)
-  playHaptic(result.lines.length > 1 ? [18, 35, 22] : result.lines.length ? [18, 28, 16] : 12)
+  const {
+    result, lines, lineCount, honors, level, score, previousChain,
+  } = settlePlacement(face, currentDrag.cells, currentDrag.origin, currentDrag.piece.shape.color)
+  playPlaceSound(lineCount)
+  playHaptic(lineCount > 1 ? [18, 35, 22] : lineCount ? [18, 28, 16] : 12)
   currentDrag.piece.used = true
   selectedPiece = null
   renderBoard()
+  updateChainHud()
   updatePieceSlotSelection()
-  if (result.lines.length) {
-    const multiplier = result.lines.length === 1 ? 'x1' : result.lines.length === 2 ? 'x3' : result.lines.length === 3 ? 'x6' : 'x10'
-    showToast(`${result.lines.length} LINE${result.lines.length === 1 ? '' : 'S'}  ${multiplier}  +${result.points}`)
-    showScorePop(result.points, result.lines.length)
-    spawnClearEffects(result.lines)
+  if (lineCount) {
+    showToast(`${lineCount} LINE${lineCount === 1 ? '' : 'S'}  x${lineMultiplier(lineCount)}  +${score.total}`)
+    showScorePop(score.total, { lines: lineCount, faces: result.facesHit, honor: honors.primary })
+    showHonorBanner(honors, level)
+    spawnClearEffects(lines, level)
+    playHonorSound(level)
+    playChainSound(run.chain)
+    triggerSlowMo(level)
     itemBusyUntil = performance.now() + 650
     setTimeout(renderItemBar, 720)
     setStatus('Clear! Keep building')
-  } else setStatus('Pick a shape')
+  } else {
+    // §4.1: a building turn still pays, and still says so. A chain that was real
+    // enough to be on screen must be seen breaking (§4.4).
+    showScorePop(score.total, { quiet: true })
+    if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
+    setStatus('Pick a shape')
+  }
   if (pieces.every((piece) => piece.used)) nextPieces()
   checkStuckAndPrompt()
+}
+
+// The Game Over panel is the "再来一局" screen (08 §7.5), so it leads with the
+// delta to the record, not with the score the player just watched count up. Every
+// branch here is a reason to press PLAY AGAIN once more.
+function renderGameOver(summary) {
+  if (summary.isNewBest) {
+    gameOverBestEl.textContent = '★ NEW BEST!'
+    gameOverBestEl.className = 'game-over-best new-best'
+  } else if (summary.previousBest > 0 && summary.gapRatio < HUD_STYLE.bestGapRatio) {
+    gameOverBestEl.textContent = `差 ${summary.gapToBest.toLocaleString('en-US')} 分破纪录`
+    gameOverBestEl.className = 'game-over-best close'
+  } else {
+    gameOverBestEl.textContent = bestDimensionLabel()
+    gameOverBestEl.className = 'game-over-best'
+  }
+
+  // 六面制霸 progress. §5.2 forbids shipping the BADGE (its old threshold fired in
+  // 100% of games), but the progress bar is the panel's "next goal" and stays.
+  const lit = run.facesLit.size
+  gameOverFacesEl.innerHTML = `<span class="faces-label">六面制霸</span>`
+    + FACES.map((face, index) => `<i class="${index < lit ? 'lit' : ''}"></i>`).join('')
+    + `<small>${lit}/6</small>`
+
+  const earned = Object.entries(run.honorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, times]) => `<span class="honor-badge">${id} ×${times}</span>`)
+    .join('')
+  gameOverHonorsEl.innerHTML = earned || '<span class="game-over-empty">本局还没拿到荣誉</span>'
+
+  gameOverStatsEl.innerHTML = [
+    `最长链 <strong>${run.bestChain}</strong>`,
+    `单次最多 <strong>${run.maxLinesOneMove}</strong> 线`,
+    `三面同爆 <strong>${run.honorCounts.TRIFACE || 0}</strong> 次`,
+    `本周最佳 <strong>${summary.weeklyBest.toLocaleString('en-US')}</strong>`,
+  ].map((text) => `<span>${text}</span>`).join('')
+}
+
+function bestDimensionLabel() {
+  if (run.maxLinesOneMove >= 4) return `本局名场面 · 单次 ${run.maxLinesOneMove} 线`
+  if (run.honorCounts.TRIFACE) return `本局三面同爆 ${run.honorCounts.TRIFACE} 次`
+  if (run.bestChain >= 3) return `本局最长链 ${run.bestChain}`
+  return `本局点亮 ${run.facesLit.size}/6 面`
+}
+
+// ============================================================
+// Leaderboard panel (08 §7.5) — Layer 1 in-game, plus the platform entry
+// ============================================================
+function openLeaderboard() {
+  renderLeaderboard()
+  leaderboardEl.classList.remove('hidden')
+  leaderboardCloseEl.focus()
+}
+
+function closeLeaderboard() {
+  leaderboardEl.classList.add('hidden')
+}
+
+function renderLeaderboard() {
+  const records = recordStore.all()
+  const tier = tierForScore(records.best.score)
+  // The tier badge: the mechanism is finished, the cut scores are deliberately
+  // empty (08 §4.6, 交接单 §2 — 99.3% of games never end, so no absolute number
+  // can be calibrated yet). A badge with invented thresholds would be worse than
+  // no badge, so the panel says what it is waiting for.
+  const tierHtml = tier
+    ? `<div class="lb-tier"><span class="lb-tier-badge">T${tier.tier}</span><span class="lb-tier-copy"><strong>${tier.name}</strong><small>${tier.title}</small></span></div>`
+    : `<div class="lb-tier uncalibrated"><span class="lb-tier-badge">T?</span><span class="lb-tier-copy"><strong>阶位待校准</strong><small>难度定稿后按真实玩家分位分档（08 §4.6）</small></span></div>`
+
+  const recent = records.recent
+  const top = Math.max(1, ...recent.map((entry) => entry.score))
+  const bars = recent.length
+    ? recent.map((entry, index) => `<li class="lb-bar-row"><span class="lb-bar-index">${index + 1}</span><span class="lb-bar"><i style="width:${Math.max(4, Math.round((entry.score / top) * 100))}%"></i></span><span class="lb-bar-score">${entry.score.toLocaleString('en-US')}</span></li>`).join('')
+    : '<li class="lb-empty">还没有对局记录</li>'
+
+  const recordRows = RECORD_FIELDS
+    .map((field) => `<li><span>${field.label}</span><strong>${records.records[field.key]}</strong></li>`)
+    .join('')
+  const honorRows = HONORS
+    .map((honor) => `<li><span>${honor.label}<small>${honor.title}</small></span><strong>${records.honors[honor.id] || 0}</strong></li>`)
+    .join('')
+
+  leaderboardBodyEl.innerHTML = `
+    ${tierHtml}
+    <section class="lb-section">
+      <h2>最近 ${recent.length || 0} 局</h2>
+      <ol class="lb-bars">${bars}</ol>
+    </section>
+    <section class="lb-section">
+      <h2>个人最佳</h2>
+      <ul class="lb-list">
+        <li><span>最高分</span><strong>${records.best.score.toLocaleString('en-US')}</strong></li>
+        <li><span>本周最佳</span><strong>${(records.weekly.key === weekKey() ? records.weekly.score : 0).toLocaleString('en-US')}</strong></li>
+        <li><span>已玩局数</span><strong>${records.records.gamesPlayed}</strong></li>
+        ${recordRows}
+      </ul>
+    </section>
+    <section class="lb-section">
+      <h2>荣誉收集</h2>
+      <ul class="lb-list lb-list-honors">${honorRows}</ul>
+      ${tiersReady(TIER_CUTS) ? '' : '<p class="lb-note">阶位分档取自真实玩家分位数，难度定稿后一次性标定；当前不出具体数字（08 §12 待决策 4）。</p>'}
+    </section>`
+
+  // Layer 2 entry: without an invitation the platform has nothing to show, so the
+  // button is greyed with "即将开放" and never fires a request (§7.4).
+  const invited = platform.leaderboardAvailable()
+  leaderboardPlatformEl.innerHTML = `<p>全球榜由 CrazyGames 提供</p>`
+    + (invited
+      ? '<button id="platform-button" class="ghost-button" type="button">打开全球榜</button>'
+      : '<button class="ghost-button disabled" type="button" disabled>即将开放</button>')
+  leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
+}
+
+// L5 ceremony (08 §6): the only time-dilation in the game, ≤400ms at 0.6×, and it
+// only scales the animation clock. Input never reads it, so a gesture during the
+// dip is handled exactly as usual — the rule is "不得阻断输入".
+let slowMo = null
+
+function triggerSlowMo(level) {
+  const config = FEEDBACK_STYLE.levels[level]?.slowMo
+  if (config) slowMo = { scale: config.scale, until: performance.now() + config.ms }
 }
 
 function endGame() {
@@ -1592,22 +1912,49 @@ function endGame() {
   gameEnded = true
   isPaused = true
   platform.gameplayStop()
-  finalScoreEl.textContent = String(board.score).padStart(4, '0')
+  clearHonorLayer()
+  const finalScore = board.score
+  finalScoreEl.textContent = String(finalScore).padStart(4, '0')
+  // Layer 1 first, and unconditionally (§7.4): a platform failure must never cost
+  // the player their local record, and a missing localStorage must not throw here.
+  const summary = recordStore.recordRun({
+    score: finalScore,
+    lines: board.totalLines,
+    chain: run.bestChain,
+    maxChain: run.bestChain,
+    maxLinesOneMove: run.maxLinesOneMove,
+    maxFacesOneMove: run.maxFacesOneMove,
+    facesLit: run.facesLit.size,
+    faceWipes: run.faceWipes,
+    pureCubes: board.occupied().length === 0 ? 1 : 0,
+    honors: run.honors,
+    at: Date.now(),
+  })
+  bestScore = summary.bestScore
+  updateHud()
+  renderGameOver(summary)
+  // Layer 2: exactly one submission per run, dropped silently when the game has no
+  // leaderboard invitation (§7.4).
+  platform.submitScore(finalScore, runId)
   gameOverEl.classList.remove('hidden')
 }
 
 function resetGame() {
   clearTransientEffects()
+  clearHonorLayer()
+  closeLeaderboard()
   board.clear()
   // v0.2.31: the cube starts with an opening layout instead of a bare shell
   // (config.js OPENING_LAYOUT). Seeding never scores or clears lines, so the HUD
   // still starts at 0 and the first placement is settled like any other.
   board.seedOpening(SHAPES, OPENING_LAYOUT)
   resetItems()
+  resetRun()
   gameEnded = false
   settingsOpen = false
   isPaused = document.hidden
   cameraShake = 0
+  slowMo = null
   settingsEl.classList.add('hidden')
   gameOverEl.classList.add('hidden')
   selectedPiece = null
@@ -1616,6 +1963,7 @@ function resetGame() {
   resetCubeRotation()
   nextPieces()
   renderBoard()
+  updateChainHud()
   setStatus('Pick a shape')
   if (!isPaused) platform.gameplayStart()
 }
@@ -1745,6 +2093,7 @@ renderer.domElement.addEventListener('wheel', (event) => {
   fitCameraToPlaySpace()
 }, { passive: false })
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
   if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
@@ -1761,6 +2110,16 @@ window.addEventListener('contextmenu', (event) => {
   if (!drag) return
   event.preventDefault()
   cancelActiveDrag()
+})
+leaderboardButtonEl.addEventListener('click', () => {
+  if (gameEnded) openLeaderboard()
+})
+leaderboardCloseEl.addEventListener('click', () => {
+  closeLeaderboard()
+  leaderboardButtonEl.focus()
+})
+leaderboardEl.addEventListener('click', (event) => {
+  if (event.target === leaderboardEl) closeLeaderboard()
 })
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', resetGame)
 settingsButtonEl.addEventListener('click', openSettings)
@@ -1810,7 +2169,10 @@ platform.initialize().catch(() => showToast('Offline mode'))
 const clock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
-  const delta = Math.min(clock.getDelta(), 0.05)
+  const raw = Math.min(clock.getDelta(), 0.05)
+  if (slowMo && performance.now() > slowMo.until) slowMo = null
+  // The L5 dip scales the animation clock only — never input, never the board state.
+  const delta = slowMo ? raw * slowMo.scale : raw
   if (!isPaused) {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
@@ -1910,12 +2272,57 @@ globalThis.__voxalblast = Object.freeze({
     cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
     score: board.score,
     totalLines: board.totalLines,
-    fullLines: FACES.flatMap((face) => board.findFullLines(face)
-      .map((line) => `${face}:${line.axis}:${line.axis === 'row' ? line.v : line.u}`)),
+    // The v0.3 regression assertion reads this: after ANY settled placement it must
+    // be empty on all six faces (04「玩法与规则」残留满线条款) — place() settles
+    // every face, so nothing can be left standing full.
+    fullLines: board.findAllFullLines().map((line) => `${line.face}:${line.axis}:${line.axis === 'row' ? line.v : line.u}`),
+    faceOccupancy: Object.fromEntries(FACES.map((face) => [face, board.faceOccupancy(face)])),
   }),
+  // The run in progress: chain, per-run bests, which faces have been cleared and
+  // the honors earned — what the Game Over panel and the records layer are fed from.
+  run: () => ({
+    chain: run.chain,
+    bestChain: run.bestChain,
+    maxLinesOneMove: run.maxLinesOneMove,
+    maxFacesOneMove: run.maxFacesOneMove,
+    facesLit: [...run.facesLit],
+    faceWipes: run.faceWipes,
+    honors: [...run.honors],
+    honorCounts: { ...run.honorCounts },
+  }),
+  // The persisted Layer-1 snapshot (read-only: it is the same object the store hands
+  // the UI, so the checks can prove a run round-tripped through storage).
+  records: () => recordStore.all(),
   // The candidate pool itself: name, color and cell count per type.
   shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
 })
+
+// DEV-ONLY handles for the headless verification run. The two modal panels cannot be
+// reached by playing: the model says a shell "jam" takes more than 600 placements
+// (09 §3), so a screenshot run would never get there. These live behind
+// import.meta.env.DEV, which vite replaces with `false` in the production build, so
+// the shipped bundle does not contain them — and unlike the read-only hook above,
+// they are never used by any gameplay path.
+if (import.meta.env.DEV) {
+  globalThis.__voxalblastDev = Object.freeze({
+    endGame: () => endGame(),
+    openLeaderboard: () => openLeaderboard(),
+    records: () => recordStore.all(),
+    // Visual triggers for the headless UI checks: they call the very same functions
+    // the gameplay path calls, so a screenshot of them is a screenshot of the real
+    // rendering, not a hand-built mock of it.
+    showChain: (chain) => {
+      run.chain = Math.max(0, Math.trunc(chain) || 0)
+      updateChainHud()
+    },
+    showHonor: (lines, faces) => {
+      const honors = resolveHonors({ lines, faces })
+      showHonorBanner(honors, feedbackLevel({ lines, faces }))
+      return honors
+    },
+    showScorePop: (points, options) => showScorePop(points, options),
+  })
+}
 
 applyCubeRotation()
 animate()

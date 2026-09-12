@@ -3,6 +3,13 @@
 // allowed only on the exposed shell (x/y/z at 0 or CUBE-1). Cells are keyed by
 // their lattice coordinate (x,y,z), so blocks on an edge or corner are shared by
 // the adjacent faces — exactly one cube there, not one per face.
+//
+// v0.3 — clearing settles ALL SIX faces (docs/Planning/08 §1/§3, 02 §2). Because
+// of that sharing, a drop on +z can complete a row on -y; settling only the face
+// played left such a line sitting there full, and the player had to drop a second
+// piece to make it go away. This module owns the rule only — the score lives in
+// scoring.js, the honors in honors.js. `place()` reports what happened and
+// nothing else.
 import { normalizeCells, maxOrigin, rotateCells } from './shapes.js'
 
 export const SH = 5 // shell lattice size per axis (v0.2.24: 6 → 5)
@@ -59,20 +66,50 @@ export class Board {
     })
   }
 
+  // Drop a piece on `face` and settle every full line on the cube in the same
+  // batch. Returns the resolution only (no score): `linesByFace` groups the
+  // settled lines by the face they live on, `facesHit` is how many distinct faces
+  // took part, `cellsCleared` counts the SHELL CELLS actually deleted (a shared
+  // edge/corner cell crossed by several lines is still one cube) while `lines`
+  // counts every line — the same cell can be in two rows and a column at once.
   place(face, cells, origin, color) {
+    const occupancyBefore = {}
+    FACES.forEach((faceKey) => { occupancyBefore[faceKey] = this.faceOccupancy(faceKey) })
     cells.forEach(([u, v]) => {
       const [x, y, z] = faceLattice(face, u + origin.u, v + origin.v)
       this.cells.set(this.key(x, y, z), { x, y, z, color })
     })
-    const lines = this.findFullLines(face)
+    const lines = this.findAllFullLines()
+    const linesByFace = {}
+    lines.forEach((line) => {
+      if (!linesByFace[line.face]) linesByFace[line.face] = []
+      linesByFace[line.face].push(line)
+    })
     const cleared = new Set()
     lines.forEach((line) => line.cells.forEach(([x, y, z]) => cleared.add(this.key(x, y, z))))
     cleared.forEach((key) => this.cells.delete(key))
-    const multiplier = lines.length === 1 ? 1 : lines.length === 2 ? 3 : lines.length === 3 ? 6 : 10
-    const points = lines.length ? 100 * lines.length * multiplier : 0
+    const occupancy = {}
+    FACES.forEach((faceKey) => { occupancy[faceKey] = this.faceOccupancy(faceKey) })
+    return {
+      face,
+      lines,
+      linesByFace,
+      facesHit: Object.keys(linesByFace).length,
+      cellsCleared: cleared.size,
+      // Faces left with nothing on them after the settle. A face can be empty from
+      // the opening layout too, so `faceWiped` is the one to read for "this move
+      // emptied a face": it only counts faces that had cells before the drop. A
+      // shared edge cell can empty a face that never had a line of its own.
+      faceEmpty: FACES.filter((faceKey) => occupancy[faceKey] === 0),
+      faceWiped: FACES.filter((faceKey) => occupancyBefore[faceKey] > 0 && occupancy[faceKey] === 0),
+    }
+  }
+
+  // Running totals (the HUD reads them). Scoring itself lives in scoring.js; the
+  // board only accumulates what it is handed so the two stay independent.
+  addScore(points, linesCleared = 0) {
     this.score += points
-    this.totalLines += lines.length
-    return { lines, cleared, points }
+    this.totalLines += linesCleared
   }
 
   // Item tools remove cubes without scoring, clearing lines or advancing turns.
@@ -89,6 +126,7 @@ export class Board {
     return removed
   }
 
+  // Every full row/column on this one face.
   findFullLines(face) {
     const lines = []
     for (let v = 0; v < SH; v += 1) {
@@ -102,6 +140,25 @@ export class Board {
       if (cells.every(([x, y, z]) => this.cells.has(this.key(x, y, z)))) lines.push({ axis: 'col', u, face, cells })
     }
     return lines
+  }
+
+  // Every full line on all six faces, in FACES order and rows before columns on
+  // each face. v0.3: this is what place() settles — see the file header.
+  findAllFullLines() {
+    return FACES.flatMap((face) => this.findFullLines(face))
+  }
+
+  // Occupied cells as seen from one face (its 25 lattice cells; edge and corner
+  // cells are counted by each face that can see them).
+  faceOccupancy(face) {
+    let occupied = 0
+    for (let u = 0; u < SH; u += 1) {
+      for (let v = 0; v < SH; v += 1) {
+        const [x, y, z] = faceLattice(face, u, v)
+        if (this.cells.has(this.key(x, y, z))) occupied += 1
+      }
+    }
+    return occupied
   }
 
   // Is a row or column on this face already full? Cheap enough to use as a guard
@@ -130,9 +187,9 @@ export class Board {
   // the colors on the cube are exactly the candidate colors. Two rules make a
   // seeded board indistinguishable from a played one:
   //   - no overlap (canPlace, which also keeps every cell on the shell), and
-  //   - no completed line on ANY face. A seeded line would be a free clear, and
-  //     because place() only settles the face being played it would also sit there
-  //     full and unbreakable until the player happened to play that face.
+  //   - no completed line on ANY face. A seeded line would be a free clear for the
+  //     first placement to touch it, and the opening layout is decoration: it may
+  //     never hand out a line the player did not build.
   // Returns the seeds it managed to place. A face may end up under its target if
   // the random attempts keep colliding — an opening layout is decoration, never a
   // source of stuck states, so it may never score or clear.

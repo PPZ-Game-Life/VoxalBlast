@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-09-11T13:13:17.866Z",
+  "model": {
+    "shellCells": 98,
+    "lines": 60,
+    "placements": 2322,
+    "orientations": 28
+  },
+  "phase1": {
+    "placementsScanned": 387,
+    "nodesTotal": 60620,
+    "truncatedPlacements": 0,
+    "timeUp": false,
+    "maxLinesInOneMove": 12,
+    "maxLinesByShape": {
+      "Line4": 12,
+      "L": 12,
+      "J": 12,
+      "T": 11,
+      "Line3": 10,
+      "Square": 10,
+      "S": 10,
+      "Z": 10,
+      "Corner": 10,
+      "Line2": 8,
+      "Dot": 6
+    },
+    "reachableHonors": {
+      "FACE_WIPE": 36961,
+      "DUAL_FACE": 32104,
+      "CROSS": 26435,
+      "PURE_CUBE": 21305,
+      "TRIPLE_FACE": 15076,
+      "DOUBLE_CROSS": 3428,
+      "PERFECT_STRIKE": 1064
+    },
+    "ms": 134
+  },
+  "phase2": {
+    "strategy": "noise",
+    "games": 2000,
+    "stepCap": 600,
+    "gamesReachedStepCap": 1985,
+    "avgStepsPerGame": 600.8,
+    "maxStepsPerGame": 601,
+    "avgScore": 214452,
+    "medianScore": 212300,
+    "maxLinesInOneMoveObserved": 6,
+    "linesClearedPerMove": {
+      "1": 464139,
+      "2": 240804,
+      "3": 22514,
+      "4": 2992,
+      "5": 228,
+      "6": 45
+    },
+    "facesHitPerMove": {
+      "1": 495131,
+      "2": 231621,
+      "3": 3970
+    },
+    "linesByFaces": {
+      "1|1": 464139,
+      "2|1": 30459,
+      "2|2": 210345,
+      "3|1": 518,
+      "3|2": 20254,
+      "3|3": 1742,
+      "4|1": 15,
+      "4|2": 976,
+      "4|3": 2001,
+      "5|2": 46,
+      "5|3": 182,
+      "6|3": 45
+    },
+    "honorOccurrencesPerGame": {
+      "CROSS": 15.512,
+      "DOUBLE_CROSS": 0.023,
+      "PERFECT_STRIKE": 0,
+      "DUAL_FACE": 117.796,
+      "TRIPLE_FACE": 1.985,
+      "CUBE_BURST": 0,
+      "FACE_WIPE": 9.35,
+      "PURE_CUBE": 0.037
+    },
+    "honorGamesPct": {
+      "CROSS": 100,
+      "DOUBLE_CROSS": 2.3,
+      "PERFECT_STRIKE": 0,
+      "DUAL_FACE": 100,
+      "TRIPLE_FACE": 85.5,
+      "CUBE_BURST": 0,
+      "FACE_WIPE": 100,
+      "PURE_CUBE": 3.8
+    },
+    "sixFaceClearPct": 100,
+    "ms": 20628
+  }
+}

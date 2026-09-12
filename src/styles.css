@@ -350,3 +350,229 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (max-width: 460px) {
   .app-version { padding: 3px 7px; font-size: .5rem; }
 }
+
+/* ============================================================
+   v0.3 — honors, streak, best pill, records panel
+   (docs/Planning/08-荣誉与排行榜系统.md §4~§7)
+   ============================================================ */
+
+/* Top bar: the version tag moves from an absolute centre into the flow, between SCORE
+   and the right cluster. Same DOM position (first child), same visibility rule (never
+   hidden — it only shrinks on narrow screens), but now a longer BEST can never slide
+   under it. Flex + `order`, NOT grid columns: giving the first child an explicit
+   grid-column of 2 made grid's sparse auto-placement open a second row, so the chips
+   overflowed the 72px bar (caught by the v0.3 screenshot run). The tag keeps the same
+   centred position by absorbing the free space with auto margins, so SCORE stays hard
+   left and the chain/best/gear cluster stays hard right. */
+.topbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+.topbar .score-chip { order: 1; margin-right: 0; }
+.app-version {
+  order: 2;
+  position: static;
+  top: auto;
+  left: auto;
+  /* A legacy rule sets align-self: flex-end (from the days when the tag hugged the
+     bar's bottom edge); inside the layout flow it has to sit on the centre line. */
+  align-self: center;
+  transform: none;
+  margin: 0 auto;
+}
+.chain-chip { order: 3; }
+.topbar .icon-button { order: 5; }
+.best-chip {
+  order: 4;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 12px 6px;
+  border: 2px solid rgba(255,255,255,.62);
+  border-radius: 999px;
+  color: #203c7b;
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 3px 0 rgba(35,55,111,.12), 0 6px 14px rgba(23,55,125,.14);
+  white-space: nowrap;
+}
+/* 04「UI 与发布」修订条款: BEST is allowed, but it must read as secondary — .95rem
+   against SCORE's 2rem, and it never wins the row. */
+.best-chip-label { color: #5e7db6; font-size: .54rem; font-weight: 900; letter-spacing: .07em; }
+.best-chip-value { font-size: .95rem; font-weight: 900; letter-spacing: -.03em; }
+
+/* Streak pill (08 §7.5). Hidden below HUD_STYLE.chainMinVisible: a chain that is
+   always on screen costs nothing to break, and the stake IS the mechanism. */
+.chain-chip {
+  grid-column: 3;
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 6px;
+  border: 2px solid rgba(255,255,255,.42);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(23,40,79,.34);
+  box-shadow: 0 4px 12px rgba(23,40,79,.18);
+  white-space: nowrap;
+}
+.chain-chip.visible { display: inline-flex; }
+.chain-chip-label { font-size: .5rem; font-weight: 900; letter-spacing: .1em; opacity: .82; }
+.chain-chip-value { font-size: .95rem; font-weight: 900; letter-spacing: -.03em; }
+.chain-chip-bar { width: 34px; height: 5px; border-radius: 999px; background: rgba(255,255,255,.26); overflow: hidden; }
+.chain-chip-bar i { display: block; width: 100%; height: 100%; transform-origin: left center; transform: scaleX(0); border-radius: 999px; background: linear-gradient(90deg, #ffd85e, #ff9f34); transition: transform .18s ease-out; }
+.chain-chip.hot { background: linear-gradient(135deg, #ffb03a, #ff6f61); border-color: rgba(255,255,255,.78); }
+.chain-chip.broken { animation: chainBreak .62s ease-out; }
+@keyframes chainBreak {
+  0% { background: rgba(158,168,190,.72); border-color: rgba(255,255,255,.7); }
+  100% { background: rgba(23,40,79,.34); }
+}
+
+/* Honor broadcast (08 §6). The layer sits in the info band above the cube — the
+   hard rule is that an L5 ceremony never covers the board and never blocks input,
+   so the whole layer is pointer-events:none and nothing here is modal. */
+.honor-layer {
+  position: absolute;
+  left: 50%;
+  /* Pinned to the very top of the info band: a banner plus its badge row has to clear
+     the cube's roofline (the v0.3 screenshot run showed the badge row landing on it
+     at top:44px), and the hard rule is that a reward never covers the board. */
+  top: 4px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: 92%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.honor-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 20px 8px;
+  border-radius: 18px;
+  opacity: 0;
+  transform: translateY(-8px) scale(.92);
+  transition: .2s ease-out;
+}
+.honor-banner.visible { opacity: 1; transform: none; }
+.honor-banner strong { font-size: 1.4rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+.honor-banner small { font-size: .58rem; font-weight: 900; letter-spacing: .08em; opacity: .92; }
+.honor-banner-small { padding: 4px 14px 5px; border-radius: 999px; color: #203c7b; background: rgba(255,255,255,.94); box-shadow: 0 6px 16px rgba(23,40,79,.18); }
+.honor-banner-small strong { font-size: .8rem; }
+.honor-banner-small small { color: #55719b; }
+.honor-banner-name { color: #2a1d05; background: linear-gradient(135deg, #ffd85e, #ff9f34); box-shadow: 0 8px 0 rgba(140,84,10,.16), 0 16px 30px rgba(120,70,10,.26); }
+.honor-banner-large { padding: 9px 26px 10px; color: #fff; background: linear-gradient(135deg, #ffb03a, #ff6f61); box-shadow: 0 9px 0 rgba(140,60,20,.18), 0 18px 34px rgba(120,50,20,.28); }
+.honor-banner-large strong { font-size: 1.7rem; }
+.honor-banner-full { padding: 11px 32px 12px; color: #fff; background: linear-gradient(135deg, #a06bff, #5c4dff); box-shadow: 0 10px 0 rgba(50,30,140,.2), 0 22px 40px rgba(40,25,120,.3); }
+.honor-banner-full strong { font-size: 2rem; text-shadow: 0 2px 10px rgba(20,10,60,.3); }
+.honor-badges { display: flex; gap: 6px; opacity: 0; transform: translateY(-6px); transition: .2s ease-out; }
+.honor-badges.visible { opacity: 1; transform: none; }
+.honor-badge {
+  padding: 3px 10px 4px;
+  border: 1px solid rgba(255,255,255,.36);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(23,40,79,.44);
+  font-size: .56rem;
+  font-weight: 900;
+  letter-spacing: .07em;
+  white-space: nowrap;
+}
+
+/* Score pop, now up to four rows (08 §6) — and a quiet variant for a placement
+   that cleared nothing but still paid (§4.1 放置分). */
+.score-pop.quiet strong { font-size: clamp(1.05rem, 2.4vw, 1.5rem); opacity: .92; }
+.score-pop-faces { color: #ffd85e; }
+.score-pop-honor { color: #ffe9a8; letter-spacing: .2em; }
+
+/* Game Over panel (08 §7.5) — delta copy first, next goal second. */
+.game-over-card { width: min(420px, 100%); padding: 30px 26px; }
+.game-over-best { margin: 0 0 14px; color: #2f6fd0; font-size: .92rem; font-weight: 900; }
+.game-over-best.new-best { color: #d98500; font-size: 1.15rem; letter-spacing: .02em; }
+.game-over-best.close { color: #d9542f; }
+.game-over-faces { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
+.faces-label { margin-right: 2px; color: #55719b; font-size: .6rem; font-weight: 900; letter-spacing: .06em; }
+.game-over-faces i { width: 11px; height: 11px; border-radius: 50%; background: rgba(23,40,79,.15); }
+.game-over-faces i.lit { background: linear-gradient(135deg, #ffd85e, #ff9f34); }
+.game-over-faces small { margin-left: 2px; color: #55719b; font-size: .6rem; font-weight: 900; }
+.game-over-honors { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 20px; margin-bottom: 12px; }
+.game-over-honors .honor-badge { color: #203c7b; background: rgba(23,40,79,.12); border-color: rgba(23,40,79,.06); }
+.game-over-empty { color: #7d92b5; font-size: .6rem; font-weight: 800; }
+.game-over-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin-bottom: 18px; color: #55719b; font-size: .66rem; font-weight: 800; }
+.game-over-stats strong { color: #203c7b; }
+.game-over-actions { display: grid; gap: 8px; }
+.ghost-button {
+  width: 100%;
+  padding: 11px 15px;
+  border: 2px solid rgba(23,40,79,.16);
+  border-radius: 14px;
+  color: #203c7b;
+  background: rgba(255,255,255,.62);
+  font-size: .74rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  transition: .2s;
+}
+.ghost-button:hover:not(.disabled) { transform: translateY(-1px); background: #fff; }
+.ghost-button.disabled, .ghost-button[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Local records panel (08 §7.5). Layer 1 only — the global ranking belongs to the
+   platform drawer, so this panel says so and links to it. The card is a column with
+   the body scrolling: the platform entry stays reachable at the bottom however long
+   the record list grows. */
+.leaderboard-card { display: flex; flex-direction: column; width: min(440px, 100%); max-height: min(86vh, 720px); padding: 26px; text-align: left; overflow: hidden; }
+.leaderboard-card h1 { margin: 6px 0 0; font-size: 1.55rem; }
+.leaderboard-body { display: grid; gap: 16px; margin-top: 16px; overflow-y: auto; min-height: 0; padding-right: 2px; }
+.lb-tier { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, rgba(255,216,94,.4), rgba(255,159,52,.3)); }
+.lb-tier.uncalibrated { background: rgba(23,40,79,.07); }
+.lb-tier-badge { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 13px; color: #203c7b; background: #fff; box-shadow: 0 3px 0 rgba(23,40,79,.12); font-size: .95rem; font-weight: 900; }
+.lb-tier-copy { display: grid; }
+.lb-tier-copy strong { color: #203c7b; font-size: .9rem; font-weight: 900; }
+.lb-tier-copy small { color: #55719b; font-size: .56rem; font-weight: 800; letter-spacing: .03em; line-height: 1.5; }
+.lb-section h2 { margin: 0 0 8px; color: #55719b; font-size: .62rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.lb-bars { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.lb-bar-row { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; color: #55719b; font-size: .6rem; font-weight: 900; }
+.lb-bar { height: 9px; border-radius: 999px; background: rgba(23,40,79,.1); overflow: hidden; }
+.lb-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #8ecbff, #3f7ce0); }
+.lb-bar-score { color: #203c7b; }
+.lb-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.lb-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 11px; color: #55719b; font-size: .68rem; font-weight: 800; }
+.lb-list li:nth-child(odd) { background: rgba(23,40,79,.06); }
+.lb-list strong { color: #203c7b; font-size: .82rem; }
+.lb-list span small { margin-left: 6px; color: #8ba0c2; font-size: .54rem; letter-spacing: .06em; }
+.lb-note, .lb-empty { margin: 8px 0 0; color: #7d92b5; font-size: .6rem; font-weight: 800; line-height: 1.55; }
+.leaderboard-platform { display: grid; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 2px solid rgba(23,40,79,.08); flex: 0 0 auto; }
+.leaderboard-platform p { margin: 0; color: #55719b; font-size: .62rem; font-weight: 800; }
+
+@media (max-width: 700px) {
+  .honor-layer { top: 2px; }
+  .honor-banner strong { font-size: 1.2rem; }
+  .honor-banner-large strong { font-size: 1.45rem; }
+  .honor-banner-full strong { font-size: 1.6rem; }
+}
+
+/* Narrow phones: the row must not wrap (04「UI 与发布」), so the chips get tighter
+   instead — SCORE shrinks first (it stays the biggest), BEST keeps its label, the
+   version tag keeps its own middle column and is never hidden. */
+@media (max-width: 460px) {
+  .topbar { column-gap: 5px; padding: 0 3vw; }
+  .topbar .score-chip { min-width: 118px; padding: 6px 12px 7px; gap: 7px; }
+  .score-chip-label { font-size: .6rem; }
+  .score-chip-value { font-size: 1.4rem; }
+  .app-version { padding: 2px 6px; font-size: .5rem; }
+  .chain-chip { padding: 4px 8px 5px; gap: 5px; }
+  .chain-chip-label { display: none; }
+  .chain-chip-bar { width: 24px; }
+  .best-chip { padding: 4px 9px 5px; gap: 4px; }
+  .best-chip-label { font-size: .48rem; }
+  .best-chip-value { font-size: .82rem; }
+  .topbar .icon-button { width: 40px; height: 40px; font-size: 1.2rem; }
+  .modal-content { padding: 22px 18px; }
+  .game-over-card { padding: 24px 18px; }
+  .leaderboard-card { padding: 20px 16px; }
+}
