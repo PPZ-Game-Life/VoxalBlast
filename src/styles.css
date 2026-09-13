@@ -583,6 +583,206 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #settings-modal { z-index: 12; }
 
 /* ============================================================
+   v0.4.1 — PC keyboard controls (03 §13)
+   The legend is DRAWN, not written: each row is a keycap pair,
+   a real CSS 3D cube carrying the ring of the world axis that
+   pair turns, and a two-word caption. Pressing a key turns the
+   mini cube of its row by the same quarter the real one takes.
+   ============================================================ */
+#controls-button { display: none; }
+/* 641px and up = a keyboard-sized window (01 §1 PC 优先). Narrow windows hide the
+   entry, not the bindings: the keys keep working, and the card is still reachable
+   from the settings panel. */
+@media (min-width: 641px) { .topbar #controls-button { display: grid; } }
+
+.controls-card { width: min(430px, 100%); padding: 26px; text-align: left; }
+.controls-card h1 { margin: 5px 0 18px; font-size: 1.55rem; }
+.controls-list { display: grid; gap: 10px; }
+.ctrl-row {
+  display: grid;
+  grid-template-columns: 64px 66px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(23,40,79,.12);
+  border-radius: 16px;
+  background: rgba(255,255,255,.62);
+}
+/* One colour per world axis, shared by the keycap flash, the ring and the arrowhead
+   (and mirrored by #axis-hint, which draws the same ring on the board). */
+.ctrl-row[data-axis="pitch"], #axis-hint[data-axis="pitch"] { --axis-color: #ff8a2a; }
+.ctrl-row[data-axis="yaw"], #axis-hint[data-axis="yaw"] { --axis-color: #2f8bff; }
+.ctrl-row[data-axis="roll"], #axis-hint[data-axis="roll"] { --axis-color: #00c2a0; }
+.ctrl-keys { display: flex; gap: 6px; justify-content: flex-start; }
+/* W over S reads as up/down; A D and Q E read as left/right, so only the pitch row
+   stacks. */
+.ctrl-row[data-axis="pitch"] .ctrl-keys { flex-direction: column; }
+kbd {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  color: #203c7b;
+  background: #fff;
+  border: 2px solid rgba(23,40,79,.16);
+  border-radius: 8px;
+  box-shadow: 0 3px 0 rgba(35,55,111,.18);
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  transition: transform .1s ease, background .1s ease, color .1s ease, box-shadow .1s ease;
+}
+kbd.active {
+  color: #fff;
+  background: var(--axis-color, var(--navy));
+  border-color: #fff;
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(35,55,111,.18);
+}
+.ctrl-diagram {
+  position: relative;
+  width: 76px;
+  height: 64px;
+  perspective: 340px;
+  perspective-origin: 50% 46%;
+}
+/* The mini cube: four faces are enough (front / right / top are what the pose shows,
+   the back one keeps the silhouette solid when a row has spun). Presentation tilt is
+   baked into every row's transform; --spin is the key-driven quarter, so pressing W
+   turns this cube exactly the way it turns the real one. */
+.ctrl-cube {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  transform-style: preserve-3d;
+  transition: transform .26s cubic-bezier(.34, 1.42, .5, 1);
+}
+.ctrl-row[data-axis="pitch"] .ctrl-cube { transform: rotateX(calc(-20deg + var(--spin, 0deg))) rotateY(-32deg); }
+.ctrl-row[data-axis="yaw"] .ctrl-cube { transform: rotateX(-20deg) rotateY(calc(-32deg + var(--spin, 0deg))); }
+.ctrl-row[data-axis="roll"] .ctrl-cube { transform: rotateX(-20deg) rotateY(-32deg) rotateZ(var(--spin, 0deg)); }
+.ctrl-face { position: absolute; inset: 0; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
+.ctrl-top { background: #ffd85e; transform: rotateX(90deg) translateZ(11px); }
+.ctrl-left { background: #35c3ff; transform: rotateY(-90deg) translateZ(11px); }
+.ctrl-right { background: #a349ff; transform: rotateY(90deg) translateZ(11px); }
+.ctrl-back { background: #4a6cff; transform: translateZ(-11px); }
+/* The axis ring. A circle with only its top and right borders painted is a 180° arc
+   (10:30 → 4:30 through 12 and 3); the arrowhead sits at the 4:30 end and points
+   along the clockwise tangent. Rotating the whole ring in 3D is what turns it into
+   the axis it stands for: flat = world Z (screen normal), tipped fore-and-aft = X,
+   tipped left-and-right = Y — the same three fixed world axes the gestures use.
+   The tilt stays at 46° ON PURPOSE: a flatter hoop (68°+) squashes the ring onto the
+   cube's silhouette and reads as a line drawn across the face, whereas 46° keeps the
+   minor axis (~24px) clear of it (~15px) while still saying which way the plane lies. */
+.ctrl-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 68px;
+  height: 68px;
+  margin: -34px 0 0 -34px;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  border-top-color: var(--axis-color);
+  border-right-color: var(--axis-color);
+  pointer-events: none;
+}
+.ctrl-row[data-axis="pitch"] .ctrl-ring { transform: rotateX(46deg); }
+.ctrl-row[data-axis="yaw"] .ctrl-ring { transform: rotateY(46deg); }
+.ctrl-ring i {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 8px solid var(--axis-color);
+  transform: rotate(45deg);
+}
+.ctrl-copy { display: grid; gap: 2px; min-width: 0; }
+.ctrl-copy strong { color: #203c7b; font-size: .84rem; font-weight: 900; letter-spacing: .02em; }
+.ctrl-copy small { color: #61789b; font-size: .62rem; font-weight: 800; }
+.controls-note { margin: 14px 0 0; color: #7d92b5; font-size: .62rem; font-weight: 800; line-height: 1.6; }
+
+/* The settings row that opens the card: the six keys are the whole story, so they are
+   printed on the row itself (a PC player reads "W A S D Q E" and knows what it is). */
+.setting-hint {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid rgba(23,40,79,.14);
+  border-radius: 8px;
+  color: #55719b;
+  background: rgba(255,255,255,.7);
+  font-size: .58rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+/* Above the settings panel (12): the card is opened FROM that panel, and a legend
+   that opens behind the thing you clicked is a legend nobody sees. */
+#controls-modal { z-index: 13; }
+
+/* Transient "which axis just turned" badge (03 §13.2). Anchored bottom-LEFT, mirroring
+   the status pill at top-left: the centre of the board is where the cube's corners
+   reach when it is turned, and a hint that covers the board would break the same rule
+   the honour banner obeys. Takes no pointer event, fades on its own. */
+.axis-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 14px 5px 9px;
+  border: 2px solid rgba(255,255,255,.34);
+  border-radius: 999px;
+  background: rgba(23,40,79,.42);
+  box-shadow: 0 8px 22px rgba(23,40,79,.26);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+  perspective: 220px;
+}
+.axis-hint.visible { opacity: 1; transform: translateY(0); }
+.axis-hint kbd { min-width: 24px; height: 24px; box-shadow: 0 2px 0 rgba(23,40,79,.3); }
+.axis-hint-ring {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  border-top-color: var(--axis-color, #fff);
+  border-right-color: var(--axis-color, #fff);
+}
+#axis-hint[data-axis="pitch"] .axis-hint-ring { transform: rotateX(66deg); }
+#axis-hint[data-axis="yaw"] .axis-hint-ring { transform: rotateY(66deg); }
+.axis-hint-ring i {
+  position: absolute;
+  right: -1px;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid var(--axis-color, #fff);
+  transform: rotate(45deg);
+}
+.axis-hint-axis { color: #fff; font-size: .8rem; font-weight: 900; letter-spacing: .04em; }
+@media (max-width: 700px) {
+  /* No keyboard legend on a phone, and no room for the badge either. */
+  .axis-hint { display: none; }
+}
+@media (max-width: 460px) {
+  .controls-card { padding: 20px 16px; }
+  .ctrl-row { grid-template-columns: 56px 68px minmax(0, 1fr); gap: 8px; padding: 9px 10px; }
+}
+
+/* ============================================================
    v0.4 — home screen (03 §「主页与断点续玩」)
    The game opens here: brand, the record, one big play button
    (继续游戏 when a run is open, 新游戏 otherwise), and the two

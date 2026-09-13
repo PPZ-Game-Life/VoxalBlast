@@ -34,6 +34,7 @@ import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
+import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 
 const board = new Board()
@@ -76,6 +77,17 @@ const homeResumeNoteEl = document.querySelector('#home-resume-note')
 const homeLeaderboardEl = document.querySelector('#home-leaderboard')
 const homeSettingsEl = document.querySelector('#home-settings')
 const homeSettingEl = document.querySelector('#home-setting')
+const controlsButtonEl = document.querySelector('#controls-button')
+const controlsSettingEl = document.querySelector('#controls-setting')
+const controlsEl = document.querySelector('#controls-modal')
+const controlsCloseEl = document.querySelector('#controls-close')
+const axisHintEl = document.querySelector('#axis-hint')
+const axisHintKeyEl = document.querySelector('#axis-hint-key')
+const axisHintAxisEl = document.querySelector('#axis-hint-axis')
+// axis -> the legend row that carries that axis's mini cube and keycaps.
+const controlRows = new Map(
+  [...document.querySelectorAll('.ctrl-row')].map((row) => [row.dataset.axis, row]),
+)
 
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
@@ -94,10 +106,17 @@ let settingsOpen = false
 // there would offer 继续游戏 on a board nobody has touched.
 let homeOpen = false
 let runLive = false
+// v0.4.1 PC keyboard legend. The card pauses the board like the settings panel, but
+// the rotation keys keep working inside it — they drive the mini cube of their own
+// row, so the mapping can be tried out without leaving the legend (03 §13.3).
+let controlsOpen = false
+// Per-axis quarter-turn counters behind the legend's mini cubes (--spin on each row).
+const controlSpin = { pitch: 0, yaw: 0, roll: 0 }
 let soundOn = localStorage.getItem(soundKey) !== 'off'
 let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
 let audioContext
 let toastTimer
+let axisHintTimer
 let cameraShake = 0
 let transientEffects = []
 let suppressPieceClickUntil = 0
@@ -1007,7 +1026,7 @@ function cancelActiveDrag(showFeedback = true) {
 // moment a screen is added — and the home screen is that screen. Returns the new
 // value so a caller can branch on it in the same statement.
 function syncPause() {
-  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen
+  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen || controlsOpen
   return isPaused
 }
 
@@ -1044,6 +1063,105 @@ function closeSettings() {
     setStatus('Pick a shape')
   }
   settingsButtonEl.focus()
+}
+
+// ============================================================
+// PC keyboard rotation + its legend (v0.4.1, 03 §13)
+// ============================================================
+// A key press is not a second rotation model: it builds the very steps a committed
+// one-face swipe builds — beginAxisGesture() snapshots the pose to turn from,
+// setLiveAngle() writes the angle with the same per-axis direction knob
+// swipeAngle() multiplies, and startCubeSnap() planes it onto the 90° grid with the
+// same spring. Turn the cube with W and with an upward swipe and it lands on the
+// same pose, to the bit (asserted in the headless run: the pose delta is exactly a
+// 90° rotation about the world axis).
+function rotateCubeByKey(axis, direction) {
+  // A turn still in flight is settled instantly rather than queued: fast repeated
+  // presses stay with the fingers instead of lagging behind a backlog.
+  if (cubeSnapAnim.active) settleCubeSnap()
+  if (cubeLive) return false // a drag owns the pose right now
+  beginAxisGesture(axis)
+  const knob = axis === 'yaw' ? rotateStyle.yawDirection
+    : axis === 'pitch' ? rotateStyle.pitchDirection : rotateStyle.rollDirection
+  setLiveAngle(cubeLive.start + direction * knob * ROT_STEP)
+  startCubeSnap(cubeLive)
+  return true
+}
+
+// The legend's own feedback: the row's mini cube takes the same quarter the real one
+// just took, and the keycap that caused it sinks. Also the only feedback available
+// while the card is open, because the board behind it is paused on purpose.
+// `--spin` is degrees (CSS angles), the same sign convention the mini cube's rotation
+// uses for all three axes — see the v0.4.1 block in styles.css.
+function spinControlCube(axis, direction, key) {
+  const row = controlRows.get(axis)
+  if (!row) return
+  controlSpin[axis] += direction * 90
+  row.style.setProperty('--spin', `${controlSpin[axis]}deg`)
+  const cap = row.querySelector(`kbd[data-key="${key.toLowerCase()}"]`)
+  if (!cap) return
+  cap.classList.add('active')
+  setTimeout(() => cap.classList.remove('active'), 180)
+}
+
+// Which axis just turned, as a badge under the cube: the axis ring the legend uses,
+// plus the keycap that did it. Half a second of confirmation, then gone.
+function showAxisHint(key, axis) {
+  axisHintKeyEl.textContent = key.toUpperCase()
+  axisHintAxisEl.textContent = { pitch: 'X', yaw: 'Y', roll: 'Z' }[axis] || '?'
+  axisHintEl.dataset.axis = axis
+  axisHintEl.classList.add('visible')
+  clearTimeout(axisHintTimer)
+  axisHintTimer = setTimeout(() => axisHintEl.classList.remove('visible'), 700)
+}
+
+// Returns true when the event was a rotation binding and has been consumed.
+function handleRotateKey(event) {
+  if (event.metaKey || event.ctrlKey || event.altKey) return false
+  const binding = axisForKey(event.key)
+  if (!binding) return false
+  if (controlsOpen) {
+    spinControlCube(binding.axis, binding.direction, event.key)
+    return true
+  }
+  // Hold-to-repeat is off: one press = one face, exactly like one gesture = one face
+  // (§3). A held key that spun the cube would be the only input in the game that can
+  // outrun what the player sees.
+  if (event.repeat) return true
+  if (isPaused || drag || itemActive || homeOpen || settingsOpen) return false
+  if (!rotateCubeByKey(binding.axis, binding.direction)) return true
+  showAxisHint(event.key, binding.axis)
+  return true
+}
+
+let controlsOpener = null
+function openControls() {
+  if (controlsOpen) return
+  controlsOpen = true
+  // NOT closing the settings panel: the card is opened from a row inside it, and
+  // closing that row's panel would leave the player back on the board after reading
+  // the legend.
+  controlsOpener = document.activeElement
+  controlsEl.classList.remove('hidden')
+  syncPause()
+  platform.gameplayStop()
+  setStatus('Paused')
+  controlsCloseEl.focus()
+}
+
+function closeControls() {
+  if (!controlsOpen) return
+  controlsOpen = false
+  controlsEl.classList.add('hidden')
+  syncPause()
+  if (!isPaused) {
+    platform.gameplayStart()
+    setStatus('Pick a shape')
+  }
+  const opener = controlsOpener
+  controlsOpener = null
+  if (opener instanceof HTMLElement && opener.isConnected && !opener.closest('.hidden')) opener.focus()
+  else if (settingsOpen) controlsSettingEl.focus()
 }
 
 function playTone(frequency, duration = 0.08, volume = 0.045, delay = 0) {
@@ -2332,10 +2450,14 @@ renderer.domElement.addEventListener('wheel', (event) => {
 }, { passive: false })
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
+  if (event.key === 'Escape' && controlsOpen) { event.preventDefault(); closeControls(); return }
   if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
-  if (settingsOpen) return
+  // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
+  // can be learned while it is open, and before the rocket keys so nothing steals them.
+  if (handleRotateKey(event)) { event.preventDefault(); return }
+  if (settingsOpen || controlsOpen) return
   if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
     itemActive.orientation = event.key.toLowerCase() === 'c' ? 'col' : 'row'
     lastItemHoverKey = null
@@ -2358,6 +2480,12 @@ leaderboardCloseEl.addEventListener('click', () => {
 leaderboardEl.addEventListener('click', (event) => {
   if (event.target === leaderboardEl) closeLeaderboard()
 })
+// v0.4.1 controls card: the top bar entry (PC widths only), the settings row, and the
+// backdrop/Escape ways out — the same three ways in as the other panels have.
+controlsButtonEl.addEventListener('click', () => openControls())
+controlsSettingEl.addEventListener('click', () => openControls())
+controlsCloseEl.addEventListener('click', () => closeControls())
+controlsEl.addEventListener('click', (event) => { if (event.target === controlsEl) closeControls() })
 // v0.4 home screen. 排行榜 opens the same Layer-1 panel the Game Over screen opens
 // (the 总榜 reading of the board: 单局最高分 + 最近十局 + 荣誉收集), plus the platform
 // entry at the bottom of the card.
@@ -2565,6 +2693,15 @@ globalThis.__voxalblast = Object.freeze({
     persistent: sessionStore.persistent,
   }),
   session: () => sessionStore.read(),
+  // v0.4.1: the keyboard bindings the game actually honours. The headless check reads
+  // this and compares it against the keycaps printed in the controls card, so a legend
+  // can never advertise a key that does nothing (and vice versa).
+  keys: () => KEY_BINDINGS.map((binding) => ({ axis: binding.axis, keys: [...binding.keys] })),
+  controls: () => ({
+    open: controlsOpen,
+    axes: [...controlRows.keys()],
+    spin: { ...controlSpin },
+  }),
   // The candidate pool itself: name, color and cell count per type.
   shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
 })

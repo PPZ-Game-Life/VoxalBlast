@@ -17,6 +17,7 @@ import {
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
 import { createRecordStore, weekKey, migrate, RECORD_FIELDS } from '../src/game/records.js'
 import { createSessionStore, migrate as migrateSession, SESSION_VERSION } from '../src/game/session.js'
+import { KEY_BINDINGS, axisForKey } from '../src/rendering/keyboard.js'
 import { TIERS, TIER_CUTS, tiersReady, tierForScore } from '../src/game/tiers.js'
 
 let passed = 0
@@ -431,6 +432,40 @@ group('session', () => {
   check('a storage-less save reports that it was not persisted', memory.save(snapshot) === false)
   equal('a run saved without storage still resumes this session', memory.read().board.cells.length, live.length)
   check('a storage-less slot reports itself as not persistent', !memory.persistent)
+})
+
+// ---------------------------------------------------------------- keyboard (PC)
+// v0.4.1: the six PC bindings. The keys are a second way into the SAME model as the
+// swipes (03 §13), so what matters is that each key names a real world axis and that
+// the pair covers both directions of it.
+group('keyboard', () => {
+  equal('W is world X (pitch)', axisForKey('w').axis, 'pitch')
+  equal('S is world X (pitch)', axisForKey('s').axis, 'pitch')
+  equal('A is world Y (yaw)', axisForKey('a').axis, 'yaw')
+  equal('D is world Y (yaw)', axisForKey('d').axis, 'yaw')
+  equal('Q is world Z (roll)', axisForKey('q').axis, 'roll')
+  equal('E is world Z (roll)', axisForKey('e').axis, 'roll')
+  equal('W and S are opposite directions', axisForKey('w').direction, -axisForKey('s').direction)
+  equal('A and D are opposite directions', axisForKey('a').direction, -axisForKey('d').direction)
+  equal('Q and E are opposite directions', axisForKey('q').direction, -axisForKey('e').direction)
+  // The pair that reads as "with the finger" carries +1: S/right/D and E are what a
+  // committed down/right/clockwise drag does, so the keys and the swipe agree.
+  equal('D matches a rightward drag', axisForKey('d').direction, 1)
+  equal('S matches a downward drag', axisForKey('s').direction, 1)
+  check('a shifted key still rotates', axisForKey('W')?.axis === 'pitch')
+  equal('an unbound key is not a rotation', axisForKey('x'), null)
+  equal('a named key is not a rotation', axisForKey('ArrowUp'), null)
+  equal('a non-string key is not a rotation', axisForKey(undefined), null)
+
+  // The legend is data: three rows, two keycaps each, and every printed key must be one
+  // the handler honours (04 断言：说明里出现的键都要真的有效).
+  equal('three binding rows are printed', KEY_BINDINGS.length, 3)
+  equal('every row has two keycaps', KEY_BINDINGS.every((binding) => binding.primary && binding.secondary), true)
+  const printed = KEY_BINDINGS.flatMap((binding) => binding.keys)
+  equal('six keys are bound', printed.length, 6)
+  check('every printed key resolves to a binding', printed.every((key) => axisForKey(key)))
+  check('every printed key belongs to its own row', KEY_BINDINGS.every((binding) => binding.keys.every((key) => axisForKey(key).axis === binding.axis)))
+  check('no key is printed twice', new Set(printed).size === printed.length)
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

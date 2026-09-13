@@ -27,6 +27,10 @@
           <span class="best-chip-label">BEST</span>
           <span id="best" class="best-chip-value">0</span>
         </div>
+        <!-- PC keyboard legend (v0.4.1, 03 §13). Rendered from 641px up only: below
+             that the pointer is a thumb, and the swipe model already covers those
+             axes. The bindings themselves work at any width. -->
+        <button id="controls-button" class="icon-button" type="button" aria-label="Open controls" title="Controls"><span aria-hidden="true">⌨</span></button>
         <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
       </header>
       <main class="game-layout">
@@ -39,6 +43,15 @@
           <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket line">
             <button type="button" data-axis="row">Row</button>
             <button type="button" data-axis="col">Col</button>
+          </div>
+          <!-- Transient "which axis just turned" badge for the keyboard (03 §13.3):
+               a keycap plus the same axis ring the controls card draws, so a PC
+               player learns W/S vs Q/E without reading a list. Fades on its own and
+               never takes a pointer event. -->
+          <div id="axis-hint" class="axis-hint" aria-hidden="true">
+            <kbd id="axis-hint-key">W</kbd>
+            <span id="axis-hint-ring" class="axis-hint-ring"><i></i></span>
+            <span id="axis-hint-axis" class="axis-hint-axis">X</span>
           </div>
           <div id="toast" class="toast" aria-live="polite"></div>
         </section>
@@ -84,6 +97,48 @@
           </div>
         </div>
       </div>
+      <!-- Controls card (v0.4.1, 03 §13): the PC keyboard legend, drawn rather than
+           written. Each row is a keycap pair, a mini cube with the ring of the world
+           axis that key turns, and a two-word caption. The mini cube is a real CSS
+           3D cube and it TURNS when the matching key is pressed, so the card teaches
+           the mapping by doing it. Markup stays static (hand-tuned art); the headless
+           check compares the printed keycaps against KEY_BINDINGS in
+           src/rendering/keyboard.js, so the legend can never advertise a dead key. -->
+      <div id="controls-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="controls-title">
+        <div class="modal-content controls-card">
+          <div class="settings-header">
+            <div><div class="eyebrow">PC KEYBOARD</div><h1 id="controls-title">操作说明</h1></div>
+            <button id="controls-close" class="modal-close" type="button" aria-label="Close controls">×</button>
+          </div>
+          <div class="controls-list">
+            <div class="ctrl-row" data-axis="pitch">
+              <div class="ctrl-keys"><kbd data-key="w">W</kbd><kbd data-key="s">S</kbd></div>
+              <div class="ctrl-diagram" aria-hidden="true">
+                <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
+                <span class="ctrl-ring"><i></i></span>
+              </div>
+              <div class="ctrl-copy"><strong>上下翻面</strong><small>绕 X 轴（屏幕横轴）</small></div>
+            </div>
+            <div class="ctrl-row" data-axis="yaw">
+              <div class="ctrl-keys"><kbd data-key="a">A</kbd><kbd data-key="d">D</kbd></div>
+              <div class="ctrl-diagram" aria-hidden="true">
+                <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
+                <span class="ctrl-ring"><i></i></span>
+              </div>
+              <div class="ctrl-copy"><strong>左右翻转</strong><small>绕 Y 轴（屏幕纵轴）</small></div>
+            </div>
+            <div class="ctrl-row" data-axis="roll">
+              <div class="ctrl-keys"><kbd data-key="q">Q</kbd><kbd data-key="e">E</kbd></div>
+              <div class="ctrl-diagram" aria-hidden="true">
+                <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
+                <span class="ctrl-ring"><i></i></span>
+              </div>
+              <div class="ctrl-copy"><strong>平面自转</strong><small>绕 Z 轴（屏幕法线）</small></div>
+            </div>
+          </div>
+          <p class="controls-note">每个键 = 一次翻面，与鼠标拖拽 / 单指滑动完全同轴同向；按住不连发。</p>
+        </div>
+      </div>
       <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content settings-card">
           <div class="settings-header">
@@ -93,6 +148,7 @@
           <div class="settings-list">
             <button id="sound-setting" class="setting-row" type="button"><span><strong>SOUND</strong><small>Game audio</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
             <button id="haptics-setting" class="setting-row" type="button"><span><strong>HAPTICS</strong><small>Touch vibration</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="controls-setting" class="setting-row" type="button"><span><strong>操作说明</strong><small>PC keyboard shortcuts</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
             <!-- v0.4: the way home from anywhere, including the Game Over panel. The
                  run in progress is snapshotted first, so this never costs progress. -->
             <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong>回到主页</strong></button>
