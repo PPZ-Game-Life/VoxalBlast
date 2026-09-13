@@ -1069,12 +1069,20 @@ function closeSettings() {
 // PC keyboard rotation + its legend (v0.4.1, 03 §13)
 // ============================================================
 // A key press is not a second rotation model: it builds the very steps a committed
-// one-face swipe builds — beginAxisGesture() snapshots the pose to turn from,
-// setLiveAngle() writes the angle with the same per-axis direction knob
-// swipeAngle() multiplies, and startCubeSnap() planes it onto the 90° grid with the
-// same spring. Turn the cube with W and with an upward swipe and it lands on the
-// same pose, to the bit (asserted in the headless run: the pose delta is exactly a
-// 90° rotation about the world axis).
+// one-face swipe builds — beginAxisGesture() snapshots the pose to turn from and the
+// per-axis direction knob swipeAngle() multiplies, and startCubeSnap() planes it onto
+// the 90° grid with the same spring. Turn the cube with W and with an upward swipe and
+// it lands on the same pose, to the bit (asserted in the headless run: the pose delta
+// is exactly a 90° rotation about the world axis).
+//
+// The one thing a key must NOT copy from a release is where the pose already is. A
+// release hands over an angle the finger has spent 260ms pulling, so there is nothing
+// left to animate; a key has no finger, and writing the angle through setLiveAngle()
+// would put the cube straight onto the target pose — the settle would then animate
+// pose-to-pose over zero distance and the cube would TELEPORT (v0.4.1 first pass, seen
+// in the shot run). So the angle is written onto the gesture without rendering it, and
+// the settle animates from the pose the cube is actually in, exactly like a drag that
+// ends mid-flight — same duration, same easeOutBack spring.
 function rotateCubeByKey(axis, direction) {
   // A turn still in flight is settled instantly rather than queued: fast repeated
   // presses stay with the fingers instead of lagging behind a backlog.
@@ -1083,7 +1091,7 @@ function rotateCubeByKey(axis, direction) {
   beginAxisGesture(axis)
   const knob = axis === 'yaw' ? rotateStyle.yawDirection
     : axis === 'pitch' ? rotateStyle.pitchDirection : rotateStyle.rollDirection
-  setLiveAngle(cubeLive.start + direction * knob * ROT_STEP)
+  cubeLive.angle = cubeLive.start + direction * knob * ROT_STEP
   startCubeSnap(cubeLive)
   return true
 }
