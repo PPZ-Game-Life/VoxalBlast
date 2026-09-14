@@ -76,7 +76,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
    pointing at `.bottom-panel` while only `.pieces-panel` had the reveal rules,
    so from v0.2.17 to v0.2.24 a drag dimmed the strip but the cancel card never
    became visible. Keep both class names in sync with `setCancelZone()`. */
-.bottom-panel.cancel-mode .piece-slots, .bottom-panel.cancel-mode #item-bar { opacity: .1; filter: saturate(.35); }
+.bottom-panel.cancel-mode .piece-slots, .bottom-panel.cancel-mode ~ #item-bar { opacity: .1; filter: saturate(.35); }
 .bottom-panel.cancel-mode .cancel-zone { opacity: .88; visibility: visible; transform: scale(1); }
 .bottom-panel.cancel-hot .cancel-zone { opacity: 1; filter: saturate(1.2) brightness(1.08); transform: scale(1.025); }
 .bottom-panel.cancel-hot .cancel-icon { animation: cancelPulse .5s ease-in-out infinite alternate; }
@@ -116,7 +116,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .final-best { padding-bottom: 28px; font-size: .68rem; font-weight: 800; letter-spacing: .1em; }
 .final-best span { color: var(--navy); }
 @media (max-width: 1000px) { .game-layout { grid-template-columns: 155px minmax(360px, 1fr) 224px; gap: 20px; } .piece-slot { grid-template-columns: 70px 1fr; } .piece-thumb { transform: scale(.86); transform-origin: left center; margin-right: -10px; } }
-@media (max-width: 900px) { .game-layout { width: min(680px, 92vw); max-width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 12px; } .score-panel { display: grid; grid-template-columns: 1fr auto; align-items: center; } .score-value { grid-row: 2; margin: 3px 0 0; font-size: 2.25rem; } .best-label { grid-column: 2; grid-row: 2; border: 0; padding: 0; } .best-label span { float: none; margin-left: 6px; } .status-line, .help-copy { display: none; } .board-section { order: 2; } .pieces-panel { order: 3; } .pieces-panel .panel-heading, .controls-block, .restart-button { display: none; } .cancel-zone { inset: 0; min-height: 86px; padding: 12px 18px; border-radius: 19px; } .cancel-icon { width: 44px; height: 44px; font-size: 1.8rem; } .cancel-arrow { font-size: 1.65rem; } .piece-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; } .piece-slot { min-width: 0; min-height: 86px; display: flex; flex-direction: column; align-items: stretch; gap: 1px; padding: 7px; border-radius: 17px; overflow: hidden; } .piece-thumb { align-self: center; transform: scale(.8); transform-origin: center top; height: 57px; margin: 0 0 -9px; } .piece-meta { display: grid; grid-template-columns: 22px 1fr; min-height: 28px; } .piece-name { font-size: .7rem; } .piece-count { font-size: .48rem; } .mobile-controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: min(680px, 92vw); margin: 0 auto; padding: 0 0 max(18px, env(safe-area-inset-bottom)); } .rotate-button { min-height: 44px; border: 0; border-radius: 13px; color: var(--navy-deep); background: #fff; box-shadow: 0 5px 0 rgba(23,40,79,.14); font-size: .63rem; font-weight: 900; letter-spacing: .04em; } .rotate-button:nth-child(1) { box-shadow: 0 5px 0 rgba(245,78,88,.42); } .rotate-button:nth-child(2) { box-shadow: 0 5px 0 rgba(255,211,42,.62); } .rotate-button:nth-child(3) { box-shadow: 0 5px 0 rgba(33,217,87,.5); } .rotate-button:nth-child(4) { box-shadow: 0 5px 0 rgba(37,66,127,.42); } }
+@media (max-width: 900px) { .game-layout { width: min(680px, 92vw); max-width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 12px; } .score-panel { display: grid; grid-template-columns: 1fr auto; align-items: center; } .score-value { grid-row: 2; margin: 3px 0 0; font-size: 2.25rem; } .best-label { grid-column: 2; grid-row: 2; border: 0; padding: 0; } .best-label span { float: none; margin-left: 6px; } .status-line, .help-copy { display: none; } .pieces-panel .panel-heading, .controls-block, .restart-button { display: none; } .cancel-zone { inset: 0; min-height: 86px; padding: 12px 18px; border-radius: 19px; } .cancel-icon { width: 44px; height: 44px; font-size: 1.8rem; } .cancel-arrow { font-size: 1.65rem; } .piece-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; } .piece-slot { min-width: 0; min-height: 86px; display: flex; flex-direction: column; align-items: stretch; gap: 1px; padding: 7px; border-radius: 17px; overflow: hidden; } .piece-thumb { align-self: center; transform: scale(.8); transform-origin: center top; height: 57px; margin: 0 0 -9px; } .piece-meta { display: grid; grid-template-columns: 22px 1fr; min-height: 28px; } .piece-name { font-size: .7rem; } .piece-count { font-size: .48rem; } .mobile-controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: min(680px, 92vw); margin: 0 auto; padding: 0 0 max(18px, env(safe-area-inset-bottom)); } .rotate-button { min-height: 44px; border: 0; border-radius: 13px; color: var(--navy-deep); background: #fff; box-shadow: 0 5px 0 rgba(23,40,79,.14); font-size: .63rem; font-weight: 900; letter-spacing: .04em; } .rotate-button:nth-child(1) { box-shadow: 0 5px 0 rgba(245,78,88,.42); } .rotate-button:nth-child(2) { box-shadow: 0 5px 0 rgba(255,211,42,.62); } .rotate-button:nth-child(3) { box-shadow: 0 5px 0 rgba(33,217,87,.5); } .rotate-button:nth-child(4) { box-shadow: 0 5px 0 rgba(37,66,127,.42); } }
 @media (max-width: 500px) { .topbar { height: 58px; padding: 0 4vw; } .brand { gap: 8px; font-size: 1rem; } .brand-mark { width: 30px; height: 30px; } .app-version { font-size: .5rem; } .game-layout { padding-bottom: 8px; } .scene-wrap { min-height: 300px; height: 50vh; } .board-heading { margin-top: 0; } .piece-name { font-size: .64rem; } .piece-count { display: none; } .modal-content { padding: 28px 22px; } }
 /* Toy refresh (v0.2.10): bigger blocks, fewer engineering labels */
 @media (max-width: 1000px) {
@@ -190,7 +190,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .status-dot { width: 8px; height: 8px; }
 .board-heading { display: none; }
 .bottom-panel { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; }
-.bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 52px); gap: 8px; }
+/* The item strip is a flex sibling of `.board-section` / `.bottom-panel` (v0.4.3), so
+   it must center itself: `.game-layout` stretches its children, and a stretched grid
+   would push the four round buttons to the left edge on desktop. */
+#item-bar.item-bar { grid-template-columns: repeat(4, 52px); gap: 8px; align-self: center; }
 .bottom-panel #piece-slots.piece-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: 100%; max-width: 820px; }
 .piece-slot { min-height: 116px; padding: 9px; border-radius: 20px; }
 .piece-thumb { width: 100%; height: 98px; border-radius: 14px; transform: none; margin: 0; }
@@ -198,8 +201,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .scene-wrap canvas { cursor: grab; }
 .scene-wrap canvas:active { cursor: grabbing; }
 @media (max-width: 700px) {
-  .bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .bottom-panel #item-bar { max-width: 340px; }
+  #item-bar.item-bar { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  #item-bar { max-width: 340px; }
   .bottom-panel #piece-slots { max-width: 560px; gap: 8px; }
   .piece-slot { min-height: 92px; }
   .piece-thumb { height: 74px; }
@@ -220,11 +223,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .piece-slot::after { display: none; }
 .piece-slot:hover, .piece-slot:focus-visible, .piece-slot.selected { transform: translateY(-3px); background: rgba(255,255,255,.3); box-shadow: none; }
 .piece-thumb { background: transparent; height: 84px; border-radius: 14px; }
-.bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 56px); }
+#item-bar.item-bar { grid-template-columns: repeat(4, 56px); }
 .item-button { width: 56px; height: 56px; border-radius: 50%; padding: 0; box-shadow: 0 5px 0 rgba(36,52,93,.14), 0 8px 16px rgba(23,40,79,.16); }
 .item-button .item-count { top: -2px; right: -2px; }
 @media (max-width: 700px) {
-  .bottom-panel #item-bar.item-bar { grid-template-columns: repeat(4, 54px); }
+  #item-bar.item-bar { grid-template-columns: repeat(4, 54px); }
   .item-button { width: 54px; height: 54px; }
   .piece-slot { min-height: 84px; }
   .piece-thumb { height: 72px; }
@@ -581,6 +584,32 @@ button { font: inherit; color: inherit; cursor: pointer; }
    (v0.3 ruled that the settings gear is dead once a run ends). Same stacking order
    as the leaderboard, which already draws over the Game Over card. */
 #settings-modal { z-index: 12; }
+
+/* ============================================================
+   v0.4.3 — mobile thumb order (03 §2 竖屏手机布局)
+   Portrait phones read items → cube → candidates, top to
+   bottom: the candidate strip is the drag SOURCE, so it sits in
+   the thumb zone at the bottom instead of above the cube.
+   Desktop keeps cube → candidates → items (Block Blast reading)
+   from the same DOM — only flex `order` differs, which is why
+   the item strip had to become a sibling of the board.
+   ============================================================ */
+@media (max-width: 900px) {
+  #item-bar { order: 1; }
+  .board-section { order: 2; }
+  .bottom-panel { order: 3; }
+  /* The candidate strip is now the bottom-most element, so it is the row that has to
+     clear a notched phone's home indicator. */
+  .game-layout { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  /* The item strip keeps a fixed gap from the top bar: it is a toolbar here, not the
+     start of the play area. */
+  #item-bar { margin-top: 2px; margin-bottom: 2px; }
+}
+@media (max-width: 700px) {
+  /* Slightly deeper thumb zone on short screens (the strip must stay reachable with
+     the phone held in one hand). */
+  .bottom-panel { gap: 6px; }
+}
 
 /* ============================================================
    v0.4.1 — PC keyboard controls (03 §13)

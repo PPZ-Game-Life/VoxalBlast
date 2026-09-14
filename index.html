@@ -57,18 +57,23 @@
         </section>
         <section class="bottom-panel">
           <div id="piece-slots" class="piece-slots"></div>
-          <div id="item-bar" class="item-bar" aria-label="Items">
-            <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span></button>
-            <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span></button>
-          </div>
           <div id="cancel-zone" class="cancel-zone" aria-hidden="true">
             <span class="cancel-icon" aria-hidden="true">×</span>
             <span class="cancel-copy"><strong>Cancel</strong><small>placement</small></span>
             <span class="cancel-arrow" aria-hidden="true">↩</span>
           </div>
         </section>
+        <!-- The item strip is a SIBLING of the board, not a child of the candidate panel
+             (v0.4.3). On a phone the three blocks have to be able to sit in the order
+             items → cube → candidates for one-handed play, and CSS `order` can only
+             arrange siblings. Desktop keeps the Block Blast reading (cube, candidates,
+             items) with the same DOM. -->
+        <div id="item-bar" class="item-bar" aria-label="Items">
+          <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span></button>
+        </div>
       </main>
       <!-- Home screen (v0.4, 03 §「主页与断点续玩」): the game opens here instead of on
            a live board. An OPAQUE COVER, not a hidden game layer — the 3D canvas keeps

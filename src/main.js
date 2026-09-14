@@ -995,9 +995,16 @@ function setCancelZone(active, highlighted = false) {
   cancelZoneEl.setAttribute('aria-hidden', String(!active))
 }
 
+// The cancel target is the UI strip the drag came from, not one element: since v0.4.3
+// the item bar is a sibling of the candidate panel (it moves to the top on phones), and
+// releasing a piece over either strip has always meant "put it back".
 function isInsidePieceArea(event) {
-  const rect = piecesPanelEl.getBoundingClientRect()
-  return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+  return [piecesPanelEl, itemBarEl].some((element) => {
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || !rect.height) return false
+    return event.clientX >= rect.left && event.clientX <= rect.right
+      && event.clientY >= rect.top && event.clientY <= rect.bottom
+  })
 }
 
 function cancelActiveDrag(showFeedback = true) {
