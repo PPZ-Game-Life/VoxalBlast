@@ -30,8 +30,8 @@
         <!-- PC keyboard legend (v0.4.1, 03 §13). Rendered from 641px up only: below
              that the pointer is a thumb, and the swipe model already covers those
              axes. The bindings themselves work at any width. -->
-        <button id="controls-button" class="icon-button" type="button" aria-label="Open controls" title="Controls"><span aria-hidden="true">⌨</span></button>
-        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true">⚙</span></button>
+        <button id="controls-button" class="icon-button" type="button" aria-label="Open controls" title="Controls"><span aria-hidden="true"></span></button>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true"></span></button>
       </header>
       <main class="game-layout">
         <section class="board-section">
@@ -70,9 +70,9 @@
              items) with the same DOM. -->
         <div id="item-bar" class="item-bar" aria-label="Items">
           <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
         </div>
       </main>
       <!-- Home screen (v0.4, 03 §「主页与断点续玩」): the game opens here instead of on
@@ -83,7 +83,7 @@
       <div id="home" class="home-screen" role="dialog" aria-modal="true" aria-labelledby="home-title">
         <div class="home-inner">
           <div class="home-brand">
-            <span class="home-mark" aria-hidden="true">V</span>
+            <div id="home-hero" class="home-hero" aria-hidden="true"></div>
             <h1 id="home-title">VoxalBlast</h1>
             <p class="home-tagline">立体消除 · 六面连爆</p>
           </div>
@@ -97,8 +97,8 @@
           </button>
           <p id="home-resume-note" class="home-resume-note" aria-live="polite"></p>
           <div class="home-secondary-row">
-            <button id="home-leaderboard" class="home-secondary" type="button"><span aria-hidden="true">🏆</span>排行榜</button>
-            <button id="home-settings" class="home-secondary" type="button"><span aria-hidden="true">⚙</span>设置</button>
+            <button id="home-leaderboard" class="home-secondary" type="button"><span aria-hidden="true"></span>排行榜</button>
+            <button id="home-settings" class="home-secondary" type="button"><span aria-hidden="true"></span>设置</button>
           </div>
         </div>
       </div>
@@ -147,17 +147,17 @@
       <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content settings-card">
           <div class="settings-header">
-            <div><div class="eyebrow">GAME OPTIONS</div><h1 id="settings-title">SETTINGS</h1></div>
+            <div><h1 id="settings-title">设置</h1></div>
             <button id="settings-close" class="modal-close" type="button" aria-label="Close settings">×</button>
           </div>
           <div class="settings-list">
-            <button id="sound-setting" class="setting-row" type="button"><span><strong>SOUND</strong><small>Game audio</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="haptics-setting" class="setting-row" type="button"><span><strong>HAPTICS</strong><small>Touch vibration</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="controls-setting" class="setting-row" type="button"><span><strong>操作说明</strong><small>PC keyboard shortcuts</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
+            <button id="sound-setting" class="setting-row" type="button"><span><strong>声音</strong><small>放置与消除音效</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="haptics-setting" class="setting-row" type="button"><span><strong>触感</strong><small>触摸震动反馈</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="controls-setting" class="setting-row" type="button"><span><strong>操作说明</strong><small>键盘与旋转操作</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
             <!-- v0.4: the way home from anywhere, including the Game Over panel. The
                  run in progress is snapshotted first, so this never costs progress. -->
             <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong>回到主页</strong></button>
-            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong>RESTART GAME</strong></button>
+            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong>重新开始</strong></button>
           </div>
         </div>
       </div>
@@ -165,15 +165,15 @@
            goal (六面制霸), then what was earned this run. -->
       <div id="game-over" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <div class="modal-content game-over-card">
-          <div class="eyebrow">RUN COMPLETE</div>
-          <h1 id="game-over-title">GAME OVER</h1>
-          <div class="final-score"><span id="final-score">0000</span><small>POINTS</small></div>
+          <div class="eyebrow">本局完成</div>
+          <h1 id="game-over-title">再挑战一次</h1>
+          <div class="final-score"><span id="final-score">0000</span><small>本局得分</small></div>
           <p id="game-over-best" class="game-over-best"></p>
           <div id="game-over-faces" class="game-over-faces"></div>
           <div id="game-over-honors" class="game-over-honors"></div>
           <div id="game-over-stats" class="game-over-stats"></div>
           <div class="game-over-actions">
-            <button id="reset-modal" class="restart-button" type="button"><span>↻</span> PLAY AGAIN</button>
+            <button id="reset-modal" class="restart-button" type="button"><span>↻</span> 再来一局</button>
             <button id="leaderboard-button" class="ghost-button" type="button">排行榜</button>
           </div>
         </div>

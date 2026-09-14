@@ -36,6 +36,11 @@ import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT
 import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
 import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
+import './toy.css'
+import { addToyLights } from './rendering/toyLights.js'
+import { installToyIcons } from './ui/icons.js'
+
+installToyIcons()
 
 const board = new Board()
 const platform = createCrazyGamesAdapter()
@@ -92,6 +97,7 @@ const controlRows = new Map(
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
 versionEl.textContent = `v${packageInfo.version}`
+versionEl.hidden = !import.meta.env.DEV
 let pieces = []
 let selectedPiece = null
 let drag = null
@@ -158,7 +164,7 @@ const quality = getRenderQuality()
 
 const scene = new THREE.Scene()
 scene.background = null
-scene.fog = new THREE.Fog(palette.background, 17, 30)
+// The opaque toy shell supplies depth; blue fog used to wash out the blocks.
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraZoom = 1
@@ -187,26 +193,20 @@ const cellsGroup = new THREE.Group()
 cubeGroup.add(cellsGroup)
 scene.add(cubeGroup)
 
-// Floating space board (v0.2.23): the old near-solid cube body is gone. What
-// remains is a barely-there deep-navy volume tint that still hints at the
-// 5×5×5 space on an empty board, plus a faint space-boundary cage. Placed
-// blocks are pushed slightly out of the shell and carry the depth.
+// Opaque toy body: the six placement faces read as one physical object.
 const cubeBodyMaterial = new THREE.MeshStandardMaterial({
   color: style.hullColor,
   roughness: style.hullRoughness,
   metalness: 0,
-  transparent: true,
+  transparent: false,
   opacity: style.hullOpacity,
-  depthWrite: false,
+  depthWrite: true,
 })
 const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.16), cubeBodyMaterial)
 cubeBody.renderOrder = -2
 cubeBody.castShadow = false
 cubeBody.receiveShadow = true
 cubeGroup.add(cubeBody)
-const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(cubeBody.geometry), new THREE.LineBasicMaterial({ color: style.edgeColor, transparent: true, opacity: style.edgeOpacity, depthWrite: false }))
-cubeEdge.renderOrder = -1
-cubeGroup.add(cubeEdge)
 
 function cubeVector(face, axis) {
   const b = FACE_PLANE[face]
@@ -248,44 +248,31 @@ function placedLocal(x, y, z) {
   return cellToWorld(x, y, z).add(shellRaise(x, y, z))
 }
 
-// Build the faint N×N grid overlay on every face.
+// Build reusable rounded sockets on all six placement faces.
 const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
-function buildFaceGridLines() {
-  const off = half + 0.005
-  const halfG = (SH * cs) / 2
-  const positions = []
+function buildFaceTiles() {
+  const tile = new RoundedBoxGeometry(0.89, 0.89, 0.045, 2, 0.02)
   for (const face of FACES) {
-    const b = FACE_PLANE[face]
-    for (let i = 0; i <= SH; i += 1) {
-      const cu = i * cs - halfG
-      positions.push(
-        b.u[0] * cu + b.v[0] * -halfG + b.n[0] * off,
-        b.u[1] * cu + b.v[1] * -halfG + b.n[1] * off,
-        b.u[2] * cu + b.v[2] * -halfG + b.n[2] * off,
-        b.u[0] * cu + b.v[0] * halfG + b.n[0] * off,
-        b.u[1] * cu + b.v[1] * halfG + b.n[1] * off,
-        b.u[2] * cu + b.v[2] * halfG + b.n[2] * off,
-      )
+    const normal = cubeVector(face, 'n')
+    const material = new THREE.MeshStandardMaterial({ color: style.gridColor, roughness: 0.78 })
+    const group = new THREE.Group()
+    group.userData.face = face
+    group.userData.material = material
+    for (let u = 0; u < SH; u += 1) {
+      for (let v = 0; v < SH; v += 1) {
+        const mesh = new THREE.Mesh(tile, material)
+        mesh.position.copy(cellLocal(face, u, v)).addScaledVector(normal, 0.48)
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
+        mesh.receiveShadow = true
+        mesh.userData.cell = faceLattice(face, u, v)
+        group.add(mesh)
+      }
     }
-    for (let j = 0; j <= SH; j += 1) {
-      const cv = j * cs - halfG
-      positions.push(
-        b.u[0] * -halfG + b.v[0] * cv + b.n[0] * off,
-        b.u[1] * -halfG + b.v[1] * cv + b.n[1] * off,
-        b.u[2] * -halfG + b.v[2] * cv + b.n[2] * off,
-        b.u[0] * halfG + b.v[0] * cv + b.n[0] * off,
-        b.u[1] * halfG + b.v[1] * cv + b.n[1] * off,
-        b.u[2] * halfG + b.v[2] * cv + b.n[2] * off,
-      )
-    }
+    gridGroup.add(group)
   }
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  const mat = new THREE.LineBasicMaterial({ color: style.gridColor, transparent: true, opacity: style.gridOpacity, depthWrite: false })
-  gridGroup.add(new THREE.LineSegments(geo, mat))
 }
-buildFaceGridLines()
+buildFaceTiles()
 
 // ============================================================
 // Camera fit (cube rotates; camera stays put)
@@ -444,7 +431,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPr
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.02
+renderer.toneMappingExposure = style.exposure
 renderer.setClearColor(0x000000, 0)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -465,24 +452,7 @@ const effectPass = new EffectPass(camera, bloomEffect, smaaEffect)
 composer.addPass(renderPass)
 composer.addPass(effectPass)
 
-const hemiLight = new THREE.HemisphereLight(0xf4fbff, 0x1d3264, 2.55)
-scene.add(hemiLight)
-const keyLight = new THREE.DirectionalLight(0xffffff, 4.6)
-keyLight.position.set(5.5, 10, 7)
-keyLight.castShadow = true
-keyLight.shadow.mapSize.set(2048, 2048)
-keyLight.shadow.camera.left = -8
-keyLight.shadow.camera.right = 8
-keyLight.shadow.camera.top = 8
-keyLight.shadow.camera.bottom = -8
-keyLight.shadow.bias = -0.0004
-scene.add(keyLight)
-const rimLight = new THREE.DirectionalLight(0x72aaff, 1.25)
-rimLight.position.set(-8, 4, -6)
-scene.add(rimLight)
-const fillLight = new THREE.PointLight(0x9de8ff, 10, 15, 2)
-fillLight.position.set(0, 5, 2)
-scene.add(fillLight)
+addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
 
 const previewGroup = new THREE.Group()
 const candidateGroup = new THREE.Group()
@@ -782,7 +752,7 @@ function makeMaterial(color, opacity = 1) {
   })
 }
 
-const cubeGeometry = new RoundedBoxGeometry(0.92, 0.92, 0.92, 4, 0.105)
+const cubeGeometry = new RoundedBoxGeometry(0.92, 0.92, 0.92, 4, style.voxelRadius)
 const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
 const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
 const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
@@ -834,6 +804,11 @@ function cellWorld(face, u, v) {
 }
 
 function renderBoard() {
+  // Edge/corner cells belong to several faces. Remove every corresponding slot
+  // surface so adjacent-face tiles never paint over the colored shared voxel.
+  gridGroup.children.forEach((group) => group.children.forEach((tile) => {
+    tile.visible = !board.has(...tile.userData.cell)
+  }))
   clearGroup(cellsGroup)
   board.occupied().forEach((cell) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
@@ -906,17 +881,11 @@ function createPiecePreview(piece, canvas, slot) {
   previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
   previewRenderer.outputColorSpace = THREE.SRGBColorSpace
   previewRenderer.toneMapping = THREE.ACESFilmicToneMapping
-  previewRenderer.toneMappingExposure = 1.16
+  previewRenderer.toneMappingExposure = style.exposure
   previewRenderer.setClearColor(0x000000, 0)
 
   const previewScene = new THREE.Scene()
-  previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6f82b7, 2.8))
-  const previewKey = new THREE.DirectionalLight(0xffffff, 4.4)
-  previewKey.position.set(2, 3, 6)
-  previewScene.add(previewKey)
-  const previewRim = new THREE.DirectionalLight(0x7ec8ff, 1.2)
-  previewRim.position.set(-3, 1, 4)
-  previewScene.add(previewRim)
+  addToyLights(previewScene)
 
   const previewCamera = new THREE.OrthographicCamera(-2.5, 2.5, 2.2, -2.2, 0.1, 40)
   previewCamera.position.set(2.5, 2.9, 5.4)
@@ -932,7 +901,7 @@ function createPiecePreview(piece, canvas, slot) {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(piece.shape.color))
     mesh.scale.setScalar(0.7)
     mesh.position.copy(position)
-    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: 0.66 })))
+    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
     root.add(mesh)
     return mesh
   })
@@ -952,7 +921,8 @@ function updatePiecePreviews() {
     const height = Math.max(preview.renderer.domElement.clientHeight, 1)
     if (preview.renderer.domElement.width !== Math.round(width * preview.renderer.getPixelRatio()) || preview.renderer.domElement.height !== Math.round(height * preview.renderer.getPixelRatio())) {
       preview.renderer.setSize(width, height, false)
-      const halfHeight = 1.6
+      // Keep the same scale on wide trays, fit the full piece on narrow cards.
+      const halfHeight = 1.6 * Math.max(1, height / width)
       const halfWidth = halfHeight * width / height
       preview.camera.left = -halfWidth
       preview.camera.right = halfWidth
@@ -1280,7 +1250,7 @@ function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = fals
 function updateChainHud() {
   const visible = run.chain >= HUD_STYLE.chainMinVisible
   chainEl.classList.toggle('visible', visible)
-  chainEl.classList.toggle('hot', run.chain >= 5)
+  chainEl.classList.toggle('hot', run.chain >= HUD_STYLE.chainMinVisible)
   chainEl.setAttribute('aria-hidden', String(!visible))
   chainValueEl.textContent = String(run.chain)
   chainBarEl.style.transform = `scaleX(${Math.min(1, run.chain / HUD_STYLE.chainBarCap)})`
@@ -1563,6 +1533,7 @@ function emitItemBurst(cells, axisHint) {
   const worldCenter = new THREE.Vector3()
   cells.forEach(([x, y, z]) => worldCenter.add(cellToWorld(x, y, z).applyMatrix4(cubeGroup.matrixWorld)))
   worldCenter.multiplyScalar(1 / cells.length)
+  worldCenter.addScaledVector(cubeVector(frontFace, 'n').applyQuaternion(cubeGroup.quaternion), style.feedbackSurfaceOffset)
   const count = THREE.MathUtils.clamp(cells.length * 6, 6, 48)
   const direction = uDir.clone().add(vDir).normalize()
   const warm = new THREE.Vector3(1, 0.83, 0.16)
@@ -1950,7 +1921,9 @@ function spawnLineParticles(line, scale = 1) {
 
 function lineCenterWorld(line) {
   const cell = line.cells[Math.floor(line.cells.length / 2)]
-  return cellToWorld(cell[0], cell[1], cell[2]).applyMatrix4(cubeGroup.matrixWorld)
+  return cellToWorld(cell[0], cell[1], cell[2])
+    .addScaledVector(cubeVector(line.face, 'n'), style.feedbackSurfaceOffset)
+    .applyMatrix4(cubeGroup.matrixWorld)
 }
 
 function spawnLineBeam(line, index, scale = 1) {
@@ -2270,7 +2243,40 @@ function clearSession() {
   return sessionStore.clear()
 }
 
+let homeRenderer
+let homeScene
+let homeCamera
+let homeModel
+function renderHomeBoard() {
+  const host = document.querySelector('#home-hero')
+  if (!host || !host.clientWidth || !host.clientHeight) return
+  if (!homeRenderer) {
+    homeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
+    homeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+    homeRenderer.outputColorSpace = THREE.SRGBColorSpace
+    homeRenderer.toneMapping = THREE.ACESFilmicToneMapping
+    homeRenderer.toneMappingExposure = style.exposure
+    host.appendChild(homeRenderer.domElement)
+    homeScene = new THREE.Scene()
+    addToyLights(homeScene)
+    homeCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
+    homeCamera.position.set(9, 7, 12)
+    homeCamera.lookAt(0, 0, 0)
+    new ResizeObserver(renderHomeBoard).observe(host)
+  }
+  if (homeModel) homeScene.remove(homeModel)
+  homeModel = new THREE.Group()
+  // Clones share owned geometry/materials; do not dispose shared resources here.
+  homeModel.add(cubeBody.clone(), gridGroup.clone(true), cellsGroup.clone(true))
+  homeScene.add(homeModel)
+  homeRenderer.setSize(host.clientWidth, host.clientHeight, false)
+  homeCamera.aspect = host.clientWidth / host.clientHeight
+  homeCamera.updateProjectionMatrix()
+  homeRenderer.render(homeScene, homeCamera)
+}
+
 function refreshHome() {
+  requestAnimationFrame(renderHomeBoard)
   const saved = sessionStore.read()
   homePrimaryEl.classList.toggle('resume', Boolean(saved))
   homePrimaryLabelEl.textContent = saved ? '继续游戏' : '新游戏'
@@ -2834,6 +2840,10 @@ function animate() {
     updateTransientEffects(delta)
     updateCubeSnap(delta)
   }
+  const front = findFrontFace()
+  gridGroup.children.forEach((group) => {
+    group.userData.material.color.setHex(group.userData.face === front ? style.gridActiveColor : style.gridColor)
+  })
   updatePiecePreviews()
   updateCameraShake(delta)
   composer.render(delta)

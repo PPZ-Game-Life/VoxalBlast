@@ -1,5 +1,5 @@
 export const RENDER_PALETTE = Object.freeze({
-  background: 0x69a5ff,
+  background: 0xe6f0ff,
   navy: 0x24345d,
   navyDeep: 0x17284f,
   grid: 0x2d3e69,
@@ -10,24 +10,21 @@ export const RENDER_PALETTE = Object.freeze({
   line: Object.freeze({ x: 0xffed78, y: 0x63f08a, z: 0x6bd5ff }),
 })
 
-// v0.2.23 "floating space board": the cube reads as a light spatial skeleton
-// (deep-navy tint + faint grids + space-boundary edges) and the saturated,
-// rounded voxels — slightly pushed out of the shell — are the visual subject.
+// v0.5: opaque toy shell, six tiled faces, saturated raised pieces.
 export const BOARD_STYLE = Object.freeze({
-  // Near-invisible volume tint left in place of the old solid body, so empty
-  // boards still hint at the 5×5×5 space without looking like a dark block.
-  hullColor: 0x16295c,
-  hullOpacity: 0.05,
-  hullRoughness: 0.55,
-  // Space-boundary cage (was a strong 12-edge frame).
-  edgeColor: 0x2e5396,
-  edgeOpacity: 0.11,
-  // Per-face N×N grid hint (was a loud 0.3 engineering overlay).
-  gridColor: 0xaac4ee,
-  gridOpacity: 0.13,
+  // Solid shell receives shadows and occludes the far faces.
+  hullColor: 0x243c68,
+  hullOpacity: 1,
+  hullRoughness: 0.72,
+  // Opaque sockets; the camera-facing placement surface has the lighter value.
+  gridColor: 0x345785,
+  gridActiveColor: 0x547ab0,
   // Placed-voxel shell: outward float offset, rounded body and softer lit plastic.
   voxelRaise: 0.17,
-  voxelRoughness: 0.46,
+  voxelRoughness: 0.52,
+  voxelRadius: 0.09,
+  exposure: 1.0,
+  feedbackSurfaceOffset: 0.58, // line/item effects sit outside the opaque shell
   voxelEdgeColor: 0x24427d,
   voxelEdgeOpacity: 0.1,
   // Camera framing: higher = the cube fills more of the central canvas. The
