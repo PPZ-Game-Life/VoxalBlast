@@ -188,11 +188,19 @@ export const DRAG_GHOST = Object.freeze({
   // silhouette ÷ SH). 0.9 lands a carried cell at ≈53px on a 390px phone — a
   // touch larger than the slot preview it came from, the same read as the board.
   cellRatio: 0.9,
-  // A FIXED lift, the same for every shape: a thumb is ~44px across and its
-  // contact point sits under the middle of it, so 26px puts the piece's centre
-  // just clear of the fingertip while still tracking the finger 1:1.
-  liftTouchPx: 26,
-  liftMousePx: 0, // a mouse cursor is a few px and is drawn on top of the canvas anyway
+  // TOUCH: the piece rides half its own height plus a small clearance above the
+  // contact point, so its BOTTOM EDGE stays just clear of the thumb — the "held
+  // above the fingertip" read. A fixed offset cannot do this: a 2-row piece
+  // centred 26px above the finger still had its whole bottom row under it.
+  liftTouchPx: 12, // clearance between the piece's bottom edge and the contact point
+  liftRatio: 0.5, // the "half its own height" term
+  liftMaxPx: 120, // capped, so a 4-long piece never floats away from the gesture
+  // MOUSE: a small FIXED lift, with no shape term. A cursor is a few px across and
+  // is drawn on top of the canvas anyway; the offset that reads as "held in the
+  // hand" on a touch screen reads as "the piece is not following the drag" when the
+  // driver is a mouse (v0.4.4 pushed a 4-cell piece 107px above the cursor on
+  // desktop — the producer's "不跟手").
+  liftMousePx: 10,
   // How close the pointer has to get to the cube's screen silhouette before the
   // piece attaches to a face. Inside it the piece is on the board; outside it is
   // still in hand. Small on purpose: the handoff must happen where the finger

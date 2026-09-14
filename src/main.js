@@ -1636,6 +1636,10 @@ function beginDrag(event, piece) {
     inCancelZone: false,
     startX: event.clientX,
     startY: event.clientY,
+    // Where the piece was grabbed on the face (pointer px + the origin it attached
+    // at). The piece then follows the finger RELATIVELY from here — see
+    // updatePreview(). Null means "not attached": set on attach, cleared on detach.
+    anchor: null,
   }
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -1663,28 +1667,83 @@ function isPointerOnCube(ndc) {
     && clientY >= bounds.minY - margin && clientY <= bounds.maxY + margin
 }
 
+// One lattice step of a face, in client pixels. A finger delta is converted into
+// (du, dv) on THIS basis, which is what makes the piece follow the finger's own
+// direction on the face — including when the cube has been rotated to another face.
+function faceStepScreen(face) {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const toClient = (v) => {
+    const p = v.project(camera)
+    return { x: rect.left + (p.x * 0.5 + 0.5) * rect.width, y: rect.top + (-p.y * 0.5 + 0.5) * rect.height }
+  }
+  const base = toClient(cellWorld(face, 0, 0))
+  const stepU = toClient(cellWorld(face, 1, 0))
+  const stepV = toClient(cellWorld(face, 0, 1))
+  return {
+    u: { x: stepU.x - base.x, y: stepU.y - base.y },
+    v: { x: stepV.x - base.x, y: stepV.y - base.y },
+  }
+}
+
+// Keep an origin inside the face's own bounds before asking the board about it.
+function clampOrigin(cells, u, v) {
+  const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+  return {
+    u: THREE.MathUtils.clamp(u, 0, Math.max(uMax - 1, 0)),
+    v: THREE.MathUtils.clamp(v, 0, Math.max(vMax - 1, 0)),
+  }
+}
+
 // Returns true when a landing preview was actually drawn (i.e. the piece is
 // attached to a face). Every field it owns is reset first: `finishDrag()` reads
 // them as the drop decision, so "not attached" has to be a real, empty state.
-function updatePreview(ndc) {
+//
+// v0.4.6 — RELATIVE movement once attached. The piece is anchored where the finger
+// first grabbed the face, and then follows the finger's own travel: one lattice
+// step per cell of movement measured on the face's screen axes. Re-picking "the
+// origin nearest the pointer" every frame (up to v0.4.5) meant the piece only moved
+// once the finger had travelled all the way to the NEXT cell's centre — and with
+// occupied cells in the way it could jump a long way, because the nearest LEGAL
+// origin was no longer the nearest origin.
+function updatePreview(event, ndc) {
   clearGroup(previewGroup)
+  const previous = drag?.origin ?? null
   drag.face = null
   drag.origin = null
   drag.cells = null
   drag.valid = false
-  if (!selectedPiece || !ndc || !drag?.active) return false
-  if (!isPointerOnCube(ndc)) return false
+  if (!selectedPiece || !ndc || !drag?.active) { drag.anchor = null; return false }
+  // Off the cube the piece goes back to being carried, and the next grab re-anchors.
+  if (!isPointerOnCube(ndc)) { drag.anchor = null; return false }
   const face = findFrontFace()
   // Laid out on the front face the way the slot drew it — see
   // faceOrientedCells(). The board gets these exact cells on release.
   const cells = faceOrientedCells(face, currentCells(selectedPiece))
-  const origin = nearestOriginOnFace(face, ndc, cells)
   drag.face = face
+  drag.cells = cells
+
+  const step = faceStepScreen(face)
+  const det = step.u.x * step.v.y - step.u.y * step.v.x
+  let origin = null
+  if (drag.anchor && Math.abs(det) > 1e-3) {
+    const dx = event.clientX - drag.anchor.x
+    const dy = event.clientY - drag.anchor.y
+    const u = drag.anchor.u + Math.round((dx * step.v.y - dy * step.v.x) / det)
+    const v = drag.anchor.v + Math.round((step.u.x * dy - step.u.y * dx) / det)
+    const target = clampOrigin(cells, u, v)
+    // Sticky: an unreachable target leaves the piece where the player last had it.
+    // It never re-snaps somewhere else, so the piece cannot jump out from under the
+    // finger — and because the mapping stays anchored, it resumes exactly in step
+    // with the finger once the way is clear again.
+    origin = board.canPlace(face, cells, target) ? target : previous
+  }
+  if (!origin) origin = nearestOriginOnFace(face, ndc, cells)
   if (!origin) return false
+  if (!drag.anchor) drag.anchor = { x: event.clientX, y: event.clientY, u: origin.u, v: origin.v }
+
   const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
-  drag.cells = cells
   cells.forEach(([u, v]) => {
     const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.52))
     mesh.position.copy(placedLocal(...faceLattice(face, u + origin.u, v + origin.v)))
@@ -1717,7 +1776,10 @@ function buildDragGhost(piece) {
   clearGroup(dragGhost)
   const fill = new THREE.Color(piece.shape.color)
   const outline = fill.clone().multiplyScalar(0.58)
-  for (const position of flatPreviewPositions(currentCells(piece), 1)) {
+  const cells = currentCells(piece)
+  // Rows the shape spans on screen: what the fingertip clearance is measured from.
+  dragGhost.userData.rows = cells.reduce((max, [, v]) => Math.max(max, v), 0) + 1
+  for (const position of flatPreviewPositions(cells, 1)) {
     const material = makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
     // Fog is a depth cue for the board; at the ghost plane it would only wash the
     // piece out as the camera zooms.
@@ -1802,11 +1864,14 @@ function syncDragGhost(event, mode) {
   const bounds = cubeScreenBounds()
   const cellPx = Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio
   const ndc = eventNdc(event)
-  // A small FIXED lift: enough to clear the fingertip, small enough that the piece
-  // still reads as being carried by the finger (a lift proportional to the shape,
-  // tried first, pushed a 4-cell piece ~107px clear of the cursor on desktop and
-  // felt like it was not following the drag at all).
-  const liftPx = event.pointerType === 'mouse' ? DRAG_GHOST.liftMousePx : DRAG_GHOST.liftTouchPx
+  // Touch carries the piece just above the fingertip: half its own height plus a
+  // small clearance, so the whole shape clears the thumb instead of losing its
+  // bottom row under it. The mouse gets a small fixed lift only — a shape-scaled
+  // offset under a mouse reads as "not following the drag" (see DRAG_GHOST).
+  const rows = dragGhost.userData.rows || 1
+  const liftPx = event.pointerType === 'mouse'
+    ? DRAG_GHOST.liftMousePx
+    : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
 
   dragGhost.visible = true
   dragGhost.scale.setScalar(cellPx * worldPerPx)
@@ -2600,6 +2665,9 @@ window.addEventListener('pointermove', (event) => {
     drag.valid = false
     drag.origin = null
     drag.cells = null
+    // Back in the strip the piece is being put down, not held over a face: the next
+    // arrival on the cube re-grabs wherever the finger is (v0.4.6).
+    drag.anchor = null
     clearGroup(previewGroup)
     syncDragGhost(event, 'cancel')
     setStatus('Release to cancel')
@@ -2607,7 +2675,7 @@ window.addEventListener('pointermove', (event) => {
   }
   const ndc = eventNdc(event)
   drag.ndc = ndc
-  const attached = updatePreview(ndc)
+  const attached = updatePreview(event, ndc)
   // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
   // carried. Once it is attached to a face the board draws it and the carried copy
   // disappears; if the pointer is on the cube but this face has no room, the piece
@@ -2875,6 +2943,14 @@ globalThis.__voxalblast = Object.freeze({
       // How many landing cells the board is drawing right now. The whole point of
       // the v0.4.5 revision is that this and `visible` are never both non-zero.
       previewCells: previewGroup.children.length,
+      // Where the snapped piece is anchored on the face, and the grab point the
+      // relative movement is measured from (v0.4.6).
+      previewOrigin: drag?.origin ?? null,
+      anchor: drag?.anchor ?? null,
+      // The face's own lattice basis in client pixels — the basis the relative
+      // movement is solved in. Exposed so a check can reproduce the mapping
+      // exactly instead of assuming it.
+      stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
     }
   },
   framing: () => {
