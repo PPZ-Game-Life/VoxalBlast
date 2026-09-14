@@ -1636,8 +1636,6 @@ function beginDrag(event, piece) {
     inCancelZone: false,
     startX: event.clientX,
     startY: event.clientY,
-    // Rows the ghost spans, for the finger clearance in syncDragGhost().
-    ghostRows: currentCells(piece).reduce((max, [, v]) => Math.max(max, v), 0) + 1,
   }
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -1651,22 +1649,38 @@ function beginDrag(event, piece) {
   setStatus('Drag to a face')
 }
 
+// Is the pointer on (or within snapMarginPx of) the cube's silhouette? The drag
+// has exactly two states and this is the line between them: off the cube the
+// piece is still IN HAND (only the ghost exists), on it the piece has ATTACHED to
+// a face (only the landing preview exists). See DRAG_GHOST in rendering/config.js.
+function isPointerOnCube(ndc) {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const clientX = rect.left + (ndc.x * 0.5 + 0.5) * rect.width
+  const clientY = rect.top + (-ndc.y * 0.5 + 0.5) * rect.height
+  const bounds = cubeScreenBounds()
+  const margin = DRAG_GHOST.snapMarginPx
+  return clientX >= bounds.minX - margin && clientX <= bounds.maxX + margin
+    && clientY >= bounds.minY - margin && clientY <= bounds.maxY + margin
+}
+
+// Returns true when a landing preview was actually drawn (i.e. the piece is
+// attached to a face). Every field it owns is reset first: `finishDrag()` reads
+// them as the drop decision, so "not attached" has to be a real, empty state.
 function updatePreview(ndc) {
   clearGroup(previewGroup)
-  if (!selectedPiece || !ndc || !drag?.active) return
+  drag.face = null
+  drag.origin = null
+  drag.cells = null
+  drag.valid = false
+  if (!selectedPiece || !ndc || !drag?.active) return false
+  if (!isPointerOnCube(ndc)) return false
   const face = findFrontFace()
   // Laid out on the front face the way the slot drew it — see
   // faceOrientedCells(). The board gets these exact cells on release.
   const cells = faceOrientedCells(face, currentCells(selectedPiece))
   const origin = nearestOriginOnFace(face, ndc, cells)
   drag.face = face
-  if (!origin) {
-    drag.valid = false
-    drag.origin = null
-    drag.cells = null
-    setStatus('No room on this face')
-    return
-  }
+  if (!origin) return false
   const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
@@ -1682,7 +1696,7 @@ function updatePreview(ndc) {
     })))
     previewGroup.add(mesh)
   })
-  setStatus(valid ? 'Release to place' : 'No room here')
+  return true
 }
 
 // ---- Drag ghost (v0.4.4) ----------------------------------------------------
@@ -1733,12 +1747,15 @@ function buildDragGhost(piece) {
   dragGhost.visible = false
 }
 
-// `mode` is the state the drop is in: 'place' (legal landing), 'invalid' (the
-// face has no room) or 'cancel' (dragged back over the candidate/item strip).
+// `mode` is the state the drag is in: 'carry' (in hand, off the cube), 'snap' (the
+// piece is on the board now — the ghost goes away, the landing preview is the
+// piece), 'invalid' (on the cube but this face has no room) or 'cancel' (dragged
+// back over the candidate/item strip).
 function tintDragGhost(mode) {
   const invalid = mode === 'invalid'
   const opacity = mode === 'cancel' ? DRAG_GHOST.cancelOpacity
     : invalid ? DRAG_GHOST.invalidOpacity : DRAG_GHOST.opacity
+  dragGhost.userData.mode = mode
   for (const mesh of dragGhost.children) {
     mesh.material.color.copy(invalid ? dragGhostInvalid : mesh.userData.fillColor)
     mesh.material.opacity = opacity
@@ -1748,36 +1765,55 @@ function tintDragGhost(mode) {
 }
 
 // Put the ghost where the finger is. It lives in the camera's frame, so "at this
-// pixel, this big" is linear algebra rather than a raycast: at camera-space depth
-// d the visible half-height is tan(fov/2)·d, which maps 1:1 onto ±1 NDC, and
-// world-units-per-pixel falls straight out of the canvas height. The cell size is
-// measured off the board's own silhouette (÷ SH) rather than hard-coded, so the
-// carried piece stays the same size as the piece it is about to become on every
-// viewport, zoom and platform.
+// pixel, this big" is linear algebra rather than a raycast — but the two corner
+// rays are taken from the REAL projection matrices (unproject + worldToLocal)
+// instead of a hand-rolled tan(fov/2). The camera's aspect belongs to the canvas
+// the renderer actually draws into; whenever that disagreed with the CSS box, a
+// hand-rolled formula sized and placed the ghost by the wrong factor with no
+// error anywhere (v0.4.5: it was 16% off on desktop, which is part of what made
+// the first version feel like it was not following the drag). unproject() cannot
+// disagree with the renderer, because it is the renderer's own matrices.
+const ghostPlaneMin = new THREE.Vector3()
+const ghostPlaneMax = new THREE.Vector3()
+
 function syncDragGhost(event, mode) {
   if (!drag || !dragGhost.children.length) return
+  // v0.4.5: ONE piece per turn. The moment the piece attaches to a face the board
+  // draws it, and the one in hand must not be there as well — the player read the
+  // pair as "two blocks", which is exactly what it was.
+  if (mode === 'snap') {
+    dragGhost.visible = false
+    dragGhost.userData.mode = mode
+    return
+  }
   const rect = renderer.domElement.getBoundingClientRect()
   const canvasHeight = Math.max(rect.height, 1)
   const distance = DRAG_GHOST.planeDistance
-  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * distance
-  const halfWidth = halfHeight * (rect.width / canvasHeight)
+  camera.updateMatrixWorld(true)
+  ghostPlaneMin.set(-1, -1, 0.5).unproject(camera)
+  camera.worldToLocal(ghostPlaneMin)
+  ghostPlaneMax.set(1, 1, 0.5).unproject(camera)
+  camera.worldToLocal(ghostPlaneMax)
+  const toPlane = distance / Math.max(-ghostPlaneMin.z, 1e-6)
+  const halfWidth = (ghostPlaneMax.x - ghostPlaneMin.x) * 0.5 * toPlane
+  const halfHeight = (ghostPlaneMax.y - ghostPlaneMin.y) * 0.5 * toPlane
   const worldPerPx = (2 * halfHeight) / canvasHeight
 
   const bounds = cubeScreenBounds()
   const cellPx = Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio
   const ndc = eventNdc(event)
-  // The piece rides a half of its own height above the contact point, so the whole
-  // shape sits just clear of the thumb that is carrying it AND clear of the landing
-  // preview on the board underneath — at zero lift the ghost would lie exactly on
-  // the cells it is about to occupy and hide the green/red feedback that says
-  // whether the drop is legal. Capped, because a 4-long piece offset by its full
-  // half-height would float away from the gesture driving it.
-  const liftPx = (event.pointerType === 'mouse' ? DRAG_GHOST.liftMouseBasePx : DRAG_GHOST.liftBasePx)
-    + Math.min(drag.ghostRows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
+  // A small FIXED lift: enough to clear the fingertip, small enough that the piece
+  // still reads as being carried by the finger (a lift proportional to the shape,
+  // tried first, pushed a 4-cell piece ~107px clear of the cursor on desktop and
+  // felt like it was not following the drag at all).
+  const liftPx = event.pointerType === 'mouse' ? DRAG_GHOST.liftMousePx : DRAG_GHOST.liftTouchPx
 
   dragGhost.visible = true
   dragGhost.scale.setScalar(cellPx * worldPerPx)
-  dragGhost.position.set(-ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
+  // Camera space: +X is screen-right and +Y is screen-up, exactly as NDC. (The X
+  // term used to be negated — invisible in every check because they all aimed at
+  // the canvas centre, where ndc.x is 0.)
+  dragGhost.position.set(ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
   tintDragGhost(mode)
 }
 
@@ -2571,11 +2607,14 @@ window.addEventListener('pointermove', (event) => {
   }
   const ndc = eventNdc(event)
   drag.ndc = ndc
-  updatePreview(ndc)
-  // Tinted after updatePreview so the ghost agrees with the cells the board just
-  // drew: green-ish piece in hand, red piece when this face has no room.
-  syncDragGhost(event, drag.valid ? 'place' : 'invalid')
-  setStatus(drag.valid ? 'Release to place' : 'No room here')
+  const attached = updatePreview(ndc)
+  // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
+  // carried. Once it is attached to a face the board draws it and the carried copy
+  // disappears; if the pointer is on the cube but this face has no room, the piece
+  // stays in hand and turns red instead of silently vanishing.
+  syncDragGhost(event, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
+  if (attached) setStatus(drag.valid ? 'Release to place' : 'No room here')
+  else setStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
   finishViewDrag(event)
@@ -2677,15 +2716,32 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', cancelViewDrag)
 updateSettingsUi()
 
+// The canvas is sized from the wrap's client box, but that box keeps changing
+// AFTER the boot-time resize(): resetGame() is what fills `#piece-slots` and
+// `#item-bar`, and those panels share the flex column with the board — so the wrap
+// ends up ~100px shorter than it was when the renderer was last sized, and a
+// content change fires no window `resize`. v0.4.5 found the consequence: on
+// desktop the drawing buffer stayed 1048×720 while the CSS box was 1048×620, so
+// the whole scene was displayed squashed ~14% vertically, and EVERY screen-space
+// calculation (camera aspect, gesture ruler, drag ghost) was off by the same 16%.
+// A ResizeObserver on the wrap is what actually tracks the layout. `setSize` runs
+// with updateStyle=false, so re-running it cannot feed back into the observer.
+let appliedCanvasSize = { width: 0, height: 0 }
 function resize() {
   const width = sceneWrap.clientWidth
   const height = sceneWrap.clientHeight
+  // A container that is momentarily 0 (display:none, a detaching layout) must not
+  // push a degenerate projection into the camera; the next observation fixes it.
+  if (width < 1 || height < 1) return
+  if (width === appliedCanvasSize.width && height === appliedCanvasSize.height) return
+  appliedCanvasSize = { width, height }
   renderer.setSize(width, height, false)
   composer.setSize(width, height)
   refreshCameraProjection()
   fitCameraToPlaySpace()
 }
 window.addEventListener('resize', resize)
+if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(sceneWrap)
 resize()
 // v0.4: the game opens on the home screen. resetGame() still runs first so the scene
 // under the cover is a real, fitted board (opening layout and all) instead of an empty
@@ -2796,6 +2852,12 @@ globalThis.__voxalblast = Object.freeze({
     }
     const cells = dragGhost.children.map((mesh) => toScreen(mesh.getWorldPosition(new THREE.Vector3())))
     const fill = dragGhost.children[0]?.material
+    // MEASURED cell pitch, not the number the placement code intended: project the
+    // ghost's own +X axis (its layout pitch is exactly 1.0 local unit) and read the
+    // pixels back off the screen. This is what catches a projection that disagrees
+    // with the canvas the renderer is drawing into.
+    const pitchFrom = toScreen(dragGhost.localToWorld(new THREE.Vector3(0, 0, 0)))
+    const pitchTo = toScreen(dragGhost.localToWorld(new THREE.Vector3(1, 0, 0)))
     return {
       visible: dragGhost.visible,
       count: dragGhost.children.length,
@@ -2803,12 +2865,16 @@ globalThis.__voxalblast = Object.freeze({
       // The ghost's own origin: what the lift is measured against (the cells'
       // centroid is not the group centre — an L or T piece is lopsided).
       center: toScreen(dragGhost.getWorldPosition(new THREE.Vector3())),
-      cellPx: dragGhost.scale.x * rect.height
-        / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * DRAG_GHOST.planeDistance),
+      cellPx: pitchTo.x - pitchFrom.x,
       opacity: fill ? fill.opacity : 0,
       color: fill ? `#${fill.color.getHexString()}` : null,
-      mode: !drag ? null : drag.inCancelZone ? 'cancel' : drag.valid ? 'place' : 'invalid',
-      lifted: Boolean(drag),
+      // 'carry' | 'snap' | 'invalid' | 'cancel' — the state the drag is in. 'snap'
+      // is the handoff: the ghost is hidden because the board is drawing the piece.
+      mode: dragGhost.userData.mode ?? null,
+      attached: Boolean(drag),
+      // How many landing cells the board is drawing right now. The whole point of
+      // the v0.4.5 revision is that this and `visible` are never both non-zero.
+      previewCells: previewGroup.children.length,
     }
   },
   framing: () => {

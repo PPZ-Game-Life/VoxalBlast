@@ -171,30 +171,38 @@ export const VFX_CONFIG = Object.freeze({
 // Until now a drag only lit the landing cells on the board: the piece itself
 // vanished the moment the finger left the slot, so on a phone — where the thumb
 // covers the very slot it came from — there was nothing on screen that said
-// WHICH shape was in hand or where it was. The ghost is that piece: the same
-// rounded voxel geometry, roughness and lighting as the board and the slot
-// preview (05「候选预览与棋盘同源」), drawn in the CAMERA's frame so it always
-// faces the player and never inherits the cube's rotation, and lifted just clear
-// of the fingertip so the finger that is dragging it cannot hide it.
+// WHICH shape was in hand. The ghost is that piece: the same rounded voxel
+// geometry, roughness and lighting as the board and the slot preview
+// (05「候选预览与棋盘同源」), drawn in the CAMERA's frame so it always faces the
+// player and never inherits the cube's rotation.
+//
+// v0.4.4 修订（制作人实测反馈）：一个回合里画面上**只能有一个方块**。
+//   ① 抬升改成固定的小常量。原先是"半个方块高度"，桌面 1440×900 上 4 格块被
+//      顶到光标上方 107px，方块不再像"手里拿着的东西"，读起来就是"不跟手"。
+//   ② 方块一旦吸附到六面体面上，手里的幽灵立刻消失——棋盘上的落点预览**就是**
+//      那个方块。之前幽灵和预览同时在屏，玩家看到"两个方块"。
+//   ③ 因为 ②，吸附（以及落点预览）只在指针真正到达六面体附近时才发生；指针还在
+//      画布空白区时，方块仍然"在手上"，只画幽灵。
 export const DRAG_GHOST = Object.freeze({
   // Cell edge as a fraction of the board's own cell pitch on screen (the cube
   // silhouette ÷ SH). 0.9 lands a carried cell at ≈53px on a 390px phone — a
   // touch larger than the slot preview it came from, the same read as the board.
   cellRatio: 0.9,
-  // The lift is half the piece's own height, so the whole shape sits just above
-  // the contact point with its bottom edge on it — the "holding it in your hand"
-  // read. It is also what keeps the ghost off the landing preview underneath:
-  // at zero lift the piece would sit exactly on the cells it is about to occupy
-  // and hide the very feedback (green / red) that says whether the drop is legal.
-  liftBasePx: 12, // clearance over the contact point (touch)...
-  liftMouseBasePx: 6, // ...and over a mouse cursor, which is a few px, not a thumb
-  liftRatio: 0.5, // half the piece's own height
-  liftMaxPx: 140, // capped, so a 4-long piece never floats away from the gesture
+  // A FIXED lift, the same for every shape: a thumb is ~44px across and its
+  // contact point sits under the middle of it, so 26px puts the piece's centre
+  // just clear of the fingertip while still tracking the finger 1:1.
+  liftTouchPx: 26,
+  liftMousePx: 0, // a mouse cursor is a few px and is drawn on top of the canvas anyway
+  // How close the pointer has to get to the cube's screen silhouette before the
+  // piece attaches to a face. Inside it the piece is on the board; outside it is
+  // still in hand. Small on purpose: the handoff must happen where the finger
+  // reaches the cube, not a noticeable distance before it.
+  snapMarginPx: 18,
   // Camera-space depth of the ghost plane. Immaterial to how it looks (the scale
   // below compensates exactly) and only has to sit nearer than the cube.
   planeDistance: 8,
-  opacity: 0.96, // over the board it must still read as the piece, not as a landing cell
-  invalidOpacity: 0.82, // red tint: no room here (05「非法预览」)
+  opacity: 0.96, // over the canvas it must still read as the piece, not as a landing cell
+  invalidOpacity: 0.82, // red tint: on the cube but no room here (05「非法预览」)
   cancelOpacity: 0.34, // dragged back into the cancel strip: the UI there is the answer
 })
 
