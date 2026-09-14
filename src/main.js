@@ -32,7 +32,7 @@ import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
 import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
@@ -492,6 +492,21 @@ const fxGroup = new THREE.Group()
 cubeGroup.add(previewGroup)
 scene.add(candidateGroup, fxGroup)
 
+// ---- Drag ghost (v0.4.4) ----------------------------------------------------
+// The piece the finger is carrying (see DRAG_GHOST in rendering/config.js). It
+// hangs off the CAMERA rather than the cube: it must always face the player and
+// never inherit the cube's rotation, and camera space turns "put it at this
+// pixel, this big" into plain arithmetic (syncDragGhost). depthTest is off on
+// every ghost material because the ghost is the one thing a drag may never hide:
+// whatever it overlaps, the player has to be able to see the shape in hand.
+const dragGhost = new THREE.Group()
+dragGhost.visible = false
+camera.add(dragGhost)
+scene.add(camera) // the ghost rides the camera, so the camera joins the graph
+// Reused per drag so tinting an invalid drop never reallocates a Color.
+const dragGhostInvalid = new THREE.Color(palette.invalid)
+const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
+
 // ---- Cube rotation state (v0.2.28: fixed axes + strict Z settle) ------------
 // The three gesture axes are FIXED to the screen/world and never follow the
 // cube: yaw is always world Y, pitch always world X, roll always world Z. Each
@@ -864,12 +879,14 @@ function colorHex(color) {
 }
 
 // Flat, face-on preview positions: (u,v) -> screen space (x right, y down).
-function flatPreviewPositions(cells) {
+// `pitch` is the cell edge: the slot thumbnails pack the cells tighter (0.8) so
+// the outline fits the card, the drag ghost uses the board's own 1.0 pitch.
+function flatPreviewPositions(cells, pitch = 0.8) {
   const maxU = Math.max(...cells.map(([u]) => u))
   const maxV = Math.max(...cells.map(([, v]) => v))
   const cx = maxU / 2
   const cy = maxV / 2
-  return cells.map(([u, v]) => new THREE.Vector3((u - cx) * 0.8, (cy - v) * 0.8, 0))
+  return cells.map(([u, v]) => new THREE.Vector3((u - cx) * pitch, (cy - v) * pitch, 0))
 }
 
 function disposePiecePreviews() {
@@ -1013,6 +1030,7 @@ function cancelActiveDrag(showFeedback = true) {
   drag = null
   releaseDragPointer(currentDrag.source, currentDrag.pointerId)
   clearGroup(previewGroup)
+  clearDragGhost()
   selectedPiece = null
   suppressPieceClickUntil = performance.now() + 260
   setCancelZone(false)
@@ -1052,6 +1070,7 @@ function openSettings() {
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
   clearGroup(previewGroup)
+  clearDragGhost()
   settingsEl.classList.remove('hidden')
   syncPause()
   platform.gameplayStop()
@@ -1617,12 +1636,17 @@ function beginDrag(event, piece) {
     inCancelZone: false,
     startX: event.clientX,
     startY: event.clientY,
+    // Rows the ghost spans, for the finger clearance in syncDragGhost().
+    ghostRows: currentCells(piece).reduce((max, [, v]) => Math.max(max, v), 0) + 1,
   }
   try {
     event.currentTarget.setPointerCapture?.(event.pointerId)
   } catch {
     // Some embedded browsers reject capture during an interrupted gesture.
   }
+  // Built here (hidden) so the first pointermove that crosses the drag threshold
+  // has the piece ready instead of popping it in a frame late.
+  buildDragGhost(piece)
   event.currentTarget.classList.add('selected')
   setStatus('Drag to a face')
 }
@@ -1659,6 +1683,102 @@ function updatePreview(ndc) {
     previewGroup.add(mesh)
   })
   setStatus(valid ? 'Release to place' : 'No room here')
+}
+
+// ---- Drag ghost (v0.4.4) ----------------------------------------------------
+// 03 §4 has always asked for「鼠标按下方块后进入拖拽态，方块跟随光标移动」; until
+// v0.4.4 the drag drew the landing cells on the board and nothing else, so the
+// piece the player was holding had no on-screen existence at all. These four
+// helpers are the whole feature: build it once when the gesture starts, place it
+// on every pointermove, tint it by the drop state, drop it when the gesture ends.
+function clearDragGhost() {
+  dragGhost.visible = false
+  clearGroup(dragGhost)
+}
+
+// One rounded voxel per cell, in the piece's own colour, with the slot preview's
+// darkened outline — the ghost must read as the SAME object the player picked up
+// (05「候选预览与棋盘同源」), not as a second visual language for dragging.
+function buildDragGhost(piece) {
+  clearGroup(dragGhost)
+  const fill = new THREE.Color(piece.shape.color)
+  const outline = fill.clone().multiplyScalar(0.58)
+  for (const position of flatPreviewPositions(currentCells(piece), 1)) {
+    const material = makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
+    // Fog is a depth cue for the board; at the ghost plane it would only wash the
+    // piece out as the camera zooms.
+    material.fog = false
+    // Always on top: the ghost may never be swallowed by the cube it is about to
+    // land on. Kept transparent from the start so tinting never has to rebuild
+    // the material.
+    material.depthTest = false
+    material.depthWrite = false
+    material.transparent = true
+    const mesh = new THREE.Mesh(cubeGeometry, material)
+    mesh.position.copy(position)
+    mesh.renderOrder = 12
+    mesh.userData.fillColor = fill.clone()
+    mesh.userData.edgeColor = outline.clone()
+    const edges = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
+      color: outline,
+      transparent: true,
+      opacity: 0.7,
+      depthTest: false,
+      depthWrite: false,
+    }))
+    edges.renderOrder = 13
+    mesh.add(edges)
+    dragGhost.add(mesh)
+  }
+  dragGhost.visible = false
+}
+
+// `mode` is the state the drop is in: 'place' (legal landing), 'invalid' (the
+// face has no room) or 'cancel' (dragged back over the candidate/item strip).
+function tintDragGhost(mode) {
+  const invalid = mode === 'invalid'
+  const opacity = mode === 'cancel' ? DRAG_GHOST.cancelOpacity
+    : invalid ? DRAG_GHOST.invalidOpacity : DRAG_GHOST.opacity
+  for (const mesh of dragGhost.children) {
+    mesh.material.color.copy(invalid ? dragGhostInvalid : mesh.userData.fillColor)
+    mesh.material.opacity = opacity
+    const edges = mesh.children[0]
+    if (edges) edges.material.color.copy(invalid ? dragGhostInvalidEdge : mesh.userData.edgeColor)
+  }
+}
+
+// Put the ghost where the finger is. It lives in the camera's frame, so "at this
+// pixel, this big" is linear algebra rather than a raycast: at camera-space depth
+// d the visible half-height is tan(fov/2)·d, which maps 1:1 onto ±1 NDC, and
+// world-units-per-pixel falls straight out of the canvas height. The cell size is
+// measured off the board's own silhouette (÷ SH) rather than hard-coded, so the
+// carried piece stays the same size as the piece it is about to become on every
+// viewport, zoom and platform.
+function syncDragGhost(event, mode) {
+  if (!drag || !dragGhost.children.length) return
+  const rect = renderer.domElement.getBoundingClientRect()
+  const canvasHeight = Math.max(rect.height, 1)
+  const distance = DRAG_GHOST.planeDistance
+  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * distance
+  const halfWidth = halfHeight * (rect.width / canvasHeight)
+  const worldPerPx = (2 * halfHeight) / canvasHeight
+
+  const bounds = cubeScreenBounds()
+  const cellPx = Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio
+  const ndc = eventNdc(event)
+  // The piece rides a half of its own height above the contact point, so the whole
+  // shape sits just clear of the thumb that is carrying it AND clear of the landing
+  // preview on the board underneath — at zero lift the ghost would lie exactly on
+  // the cells it is about to occupy and hide the green/red feedback that says
+  // whether the drop is legal. Capped, because a 4-long piece offset by its full
+  // half-height would float away from the gesture driving it.
+  const liftPx = (event.pointerType === 'mouse' ? DRAG_GHOST.liftMouseBasePx : DRAG_GHOST.liftBasePx)
+    + Math.min(drag.ghostRows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
+
+  dragGhost.visible = true
+  dragGhost.scale.setScalar(cellPx * worldPerPx)
+  dragGhost.position.set(-ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
+  tintDragGhost(mode)
 }
 
 class AxisEmitter {
@@ -1889,6 +2009,7 @@ function finishDrag(event) {
   drag = null
   releaseDragPointer(currentDrag.source, currentDrag.pointerId)
   clearGroup(previewGroup)
+  clearDragGhost()
   setCancelZone(false)
   if (!currentDrag.active) {
     selectedPiece = currentDrag.piece
@@ -2064,6 +2185,7 @@ function openHome() {
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
   clearGroup(previewGroup)
+  clearDragGhost()
   // The panel is closed rather than kept behind the cover: it would otherwise still
   // be open (and still holding the socket) the next time the player opens it.
   settingsOpen = false
@@ -2128,6 +2250,7 @@ function applySession(saved) {
   cameraShake = 0
   slowMo = null
   drag = null
+  clearDragGhost()
   selectedPiece = null
   gameEnded = false
   setCancelZone(false)
@@ -2329,6 +2452,7 @@ function resetGame() {
   gameOverEl.classList.add('hidden')
   selectedPiece = null
   drag = null
+  clearDragGhost()
   setCancelZone(false)
   resetCubeRotation()
   nextPieces()
@@ -2441,12 +2565,16 @@ window.addEventListener('pointermove', (event) => {
     drag.origin = null
     drag.cells = null
     clearGroup(previewGroup)
+    syncDragGhost(event, 'cancel')
     setStatus('Release to cancel')
     return
   }
   const ndc = eventNdc(event)
   drag.ndc = ndc
   updatePreview(ndc)
+  // Tinted after updatePreview so the ghost agrees with the cells the board just
+  // drew: green-ish piece in hand, red piece when this face has no room.
+  syncDragGhost(event, drag.valid ? 'place' : 'invalid')
   setStatus(drag.valid ? 'Release to place' : 'No room here')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
@@ -2647,6 +2775,40 @@ globalThis.__voxalblast = Object.freeze({
       oriented: piece ? faceOrientedCells(face, currentCells(piece)) : [],
       uAxis: stepScreen([[0, 0], [1, 0]]),
       vAxis: stepScreen([[0, 0], [0, 1]]),
+    }
+  },
+  // v0.4.4 drag ghost: where the piece in hand actually is on screen. `cells` are
+  // the client-pixel centres of the ghost's voxels (so a check can assert that the
+  // ghost tracks the pointer within the lift offset and that a 3-cell piece really
+  // drew three voxels), `cellPx` is the on-screen cell edge, and `mode` is the
+  // state the drop is in. Read-only; no gameplay path reads it.
+  ghost: () => {
+    if (!dragGhost.parent) return { visible: false, count: 0, cells: [] }
+    camera.updateMatrixWorld()
+    dragGhost.updateWorldMatrix(true, true)
+    const rect = renderer.domElement.getBoundingClientRect()
+    const toScreen = (v) => {
+      const p = v.clone().project(camera)
+      return {
+        x: rect.left + (p.x * 0.5 + 0.5) * rect.width,
+        y: rect.top + (-p.y * 0.5 + 0.5) * rect.height,
+      }
+    }
+    const cells = dragGhost.children.map((mesh) => toScreen(mesh.getWorldPosition(new THREE.Vector3())))
+    const fill = dragGhost.children[0]?.material
+    return {
+      visible: dragGhost.visible,
+      count: dragGhost.children.length,
+      cells,
+      // The ghost's own origin: what the lift is measured against (the cells'
+      // centroid is not the group centre — an L or T piece is lopsided).
+      center: toScreen(dragGhost.getWorldPosition(new THREE.Vector3())),
+      cellPx: dragGhost.scale.x * rect.height
+        / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * DRAG_GHOST.planeDistance),
+      opacity: fill ? fill.opacity : 0,
+      color: fill ? `#${fill.color.getHexString()}` : null,
+      mode: !drag ? null : drag.inCancelZone ? 'cancel' : drag.valid ? 'place' : 'invalid',
+      lifted: Boolean(drag),
     }
   },
   framing: () => {

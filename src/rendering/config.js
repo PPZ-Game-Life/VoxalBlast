@@ -167,6 +167,37 @@ export const VFX_CONFIG = Object.freeze({
   }),
 })
 
+// v0.4.4 drag ghost (03 §4「方块跟随光标移动」，v0.2.24~v0.4.3 一直缺实现).
+// Until now a drag only lit the landing cells on the board: the piece itself
+// vanished the moment the finger left the slot, so on a phone — where the thumb
+// covers the very slot it came from — there was nothing on screen that said
+// WHICH shape was in hand or where it was. The ghost is that piece: the same
+// rounded voxel geometry, roughness and lighting as the board and the slot
+// preview (05「候选预览与棋盘同源」), drawn in the CAMERA's frame so it always
+// faces the player and never inherits the cube's rotation, and lifted just clear
+// of the fingertip so the finger that is dragging it cannot hide it.
+export const DRAG_GHOST = Object.freeze({
+  // Cell edge as a fraction of the board's own cell pitch on screen (the cube
+  // silhouette ÷ SH). 0.9 lands a carried cell at ≈53px on a 390px phone — a
+  // touch larger than the slot preview it came from, the same read as the board.
+  cellRatio: 0.9,
+  // The lift is half the piece's own height, so the whole shape sits just above
+  // the contact point with its bottom edge on it — the "holding it in your hand"
+  // read. It is also what keeps the ghost off the landing preview underneath:
+  // at zero lift the piece would sit exactly on the cells it is about to occupy
+  // and hide the very feedback (green / red) that says whether the drop is legal.
+  liftBasePx: 12, // clearance over the contact point (touch)...
+  liftMouseBasePx: 6, // ...and over a mouse cursor, which is a few px, not a thumb
+  liftRatio: 0.5, // half the piece's own height
+  liftMaxPx: 140, // capped, so a 4-long piece never floats away from the gesture
+  // Camera-space depth of the ghost plane. Immaterial to how it looks (the scale
+  // below compensates exactly) and only has to sit nearer than the cube.
+  planeDistance: 8,
+  opacity: 0.96, // over the board it must still read as the piece, not as a landing cell
+  invalidOpacity: 0.82, // red tint: no room here (05「非法预览」)
+  cancelOpacity: 0.34, // dragged back into the cancel strip: the UI there is the answer
+})
+
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
 // honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
 // banner is owed); the seconds, shake and particle strength behind each level are
