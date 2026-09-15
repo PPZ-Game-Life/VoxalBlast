@@ -153,6 +153,29 @@ export class Board {
     return removed
   }
 
+  // Undo support for the item tools (07 §3.1 A9). `removeCells` hands back bare
+  // coordinates, which is enough to count and to burst particles but not enough to
+  // put a cube back: the colour lives in the stored record. `peekCells` reads those
+  // records BEFORE the removal and `addCells` writes them back afterwards, both
+  // through the same bounds check the rest of the board uses, so a stale undo can
+  // never seed a cell inside the core or outside the shell.
+  peekCells(list) {
+    return list
+      .map(([x, y, z]) => this.cells.get(this.key(x, y, z)))
+      .filter(Boolean)
+      .map((cell) => ({ ...cell }))
+  }
+
+  addCells(records) {
+    let restored = 0
+    records.forEach((cell) => {
+      if (!cell || !this.inBounds(cell.x, cell.y, cell.z)) return
+      this.cells.set(this.key(cell.x, cell.y, cell.z), { ...cell })
+      restored += 1
+    })
+    return restored
+  }
+
   // Every full row/column on this one face.
   findFullLines(face) {
     const lines = []

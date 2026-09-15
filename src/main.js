@@ -53,6 +53,7 @@ const piecesPanelEl = document.querySelector('.bottom-panel')
 const cancelZoneEl = document.querySelector('#cancel-zone')
 const itemBarEl = document.querySelector('#item-bar')
 const axisPickEl = document.querySelector('#axis-pick')
+const axisCancelEl = document.querySelector('#axis-cancel')
 const gameOverEl = document.querySelector('#game-over')
 const finalScoreEl = document.querySelector('#final-score')
 const versionEl = document.querySelector('#app-version')
@@ -969,11 +970,11 @@ function renderPieceSlots() {
 }
 
 function setStatus(text) { statusEl.textContent = text }
-function showToast(text) {
+function showToast(text, duration = 1500) {
   toastEl.textContent = text
   toastEl.classList.add('visible')
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 1500)
+  toastTimer = setTimeout(() => toastEl.classList.remove('visible'), duration)
 }
 
 function setCancelZone(active, highlighted = false) {
@@ -1308,9 +1309,27 @@ const ITEM_TOOLS = Object.freeze([
 const itemPreviewGroup = new THREE.Group()
 cubeGroup.add(itemPreviewGroup)
 let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
-let itemActive = null // { id, face, u, v }
+let itemActive = null // { id, face, u, v, orientation }
 let itemBusyUntil = 0
 let lastItemHoverKey = null
+// A press that has not moved far enough to become a cube turn (07 §3.1 A1/A2). An
+// armed tool fires on RELEASE, not on press, so a mis-touch can still be turned into
+// a rotation by moving the finger instead of spending the item; `itemUndo` below is
+// the second safety net for everything the slop cannot catch.
+let itemTap = null
+// { id, records } while the 3s undo window is open (07 §3.1 A9).
+let itemUndo = null
+let itemUndoTimer = 0
+// Same 6px slop the candidate drag uses to tell a tap from a gesture.
+const ITEM_TAP_SLOP = 6
+
+function itemTool(id) {
+  return ITEM_TOOLS.find((tool) => tool.id === id)
+}
+
+function clampCellIndex(value) {
+  return THREE.MathUtils.clamp(value, 0, SH - 1)
+}
 
 function canUseItemsNow() {
   return !gameEnded && !isPaused && !drag && !settingsOpen && performance.now() >= itemBusyUntil
@@ -1329,7 +1348,61 @@ function renderItemBar() {
   })
 }
 
+// The Row/Col panel doubles as the readout for the line the pointer auto-picked
+// (07 §3.1 A5), so it is re-rendered whenever the orientation changes.
+function renderAxisPick() {
+  axisPickEl.querySelectorAll('button[data-axis]').forEach((button) => {
+    const axis = button.dataset.axis === 'col' ? 'col' : 'row'
+    const on = itemActive?.id === 'rocket' && itemActive.orientation === axis
+    button.classList.toggle('active', on)
+    button.setAttribute('aria-pressed', String(on))
+  })
+}
+
+function setRocketOrientation(axis) {
+  if (itemActive?.id !== 'rocket') return
+  itemActive.orientation = axis === 'col' ? 'col' : 'row'
+  lastItemHoverKey = null
+  if (itemActive.u !== undefined) rebuildItemOverlay()
+  renderAxisPick()
+  setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
+}
+
+// Closing the undo window also un-arms the toast, so a stale window can never keep a
+// clickable "Undo" on screen after a placement or a new clear.
+function clearItemUndo() {
+  itemUndo = null
+  if (itemUndoTimer) clearTimeout(itemUndoTimer)
+  itemUndoTimer = 0
+  toastEl.classList.remove('undoable')
+}
+
+// v0.6 (07 §3.1 A9): a clear is the one irreversible thing a mis-tap can do — the
+// cubes come back with their original colours, the charge comes back, and the save
+// slot is rewritten, so the undo is exact rather than cosmetic.
+function undoItem() {
+  if (!itemUndo) return
+  const { id, records } = itemUndo
+  clearItemUndo()
+  toastEl.classList.remove('visible')
+  const restored = board.addCells(records)
+  const tool = itemTool(id)
+  itemCounts[id] = Math.min(tool ? tool.cap : itemCounts[id] + 1, itemCounts[id] + 1)
+  itemBusyUntil = 0
+  renderBoard()
+  renderItemBar()
+  saveSession()
+  playHaptic(8)
+  setStatus('Pick a shape')
+  showToast(restored ? `${restored} restored` : 'Nothing to restore')
+  // Undoing back into the stuck board the clear had rescued is a real state, and the
+  // only honest answer is the same check a placement runs: the run is over unless
+  // something can still be played (07 §1.3).
+  checkStuckAndPrompt()
+}
+
 function cancelItemSelection(silent = false) {
+  itemTap = null
   if (!itemActive) {
     axisPickEl.classList.add('hidden')
     clearGroup(itemPreviewGroup)
@@ -1346,10 +1419,12 @@ function cancelItemSelection(silent = false) {
 function resetItems() {
   itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
   itemActive = null
+  itemTap = null
   itemBusyUntil = 0
   lastItemHoverKey = null
   clearGroup(itemPreviewGroup)
   axisPickEl.classList.add('hidden')
+  clearItemUndo()
   renderItemBar()
 }
 
@@ -1375,7 +1450,9 @@ function ndcToCell(face, ndc) {
   const rel = localP.sub(facePlaneLocalCenter(face))
   const uF = rel.dot(cubeVector(face, 'u')) / cs + (SH - 1) / 2
   const vF = rel.dot(cubeVector(face, 'v')) / cs + (SH - 1) / 2
-  return { u: Math.round(uF), v: Math.round(vF) }
+  // `fu`/`fv` are the unrounded lattice coordinates: where inside the cell the
+  // pointer landed, which is what the rocket reads to pick its line (07 §3.1 A5).
+  return { u: Math.round(uF), v: Math.round(vF), fu: uF, fv: vF }
 }
 
 // For a placed set of cells, enumerate legal origins on the front face and pick
@@ -1427,13 +1504,29 @@ function rebuildItemOverlay() {
   })
 }
 
-function updateItemHover(ndc) {
+// v0.6 (07 §3.1 A1/A2/A5/A8). Two fixes live here. The pointer only counts as a
+// target when it is actually over the cube's screen silhouette — v0.5 intersected
+// the front face's infinite plane instead, so aiming past the cube dragged the
+// highlight onto a corner cell the player never pointed at. And the rocket picks
+// Row/Col from where inside the cell the pointer sits (on the vertical centreline it
+// reads as a column), with the panel left in place as the manual override.
+function updateItemHover(ndc, allowOrientation = true) {
   if (!itemActive || itemActive.id === 'refresh') return
   const frontFace = findFrontFace()
-  const cellAt = ndcToCell(frontFace, ndc)
+  const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+  if (!cellAt) return
   itemActive.face = frontFace
-  itemActive.u = cellAt ? cellAt.u : 0
-  itemActive.v = cellAt ? cellAt.v : 0
+  itemActive.u = clampCellIndex(cellAt.u)
+  itemActive.v = clampCellIndex(cellAt.v)
+  if (allowOrientation && itemActive.id === 'rocket') {
+    const du = cellAt.fu - cellAt.u
+    const dv = cellAt.fv - cellAt.v
+    const want = Math.abs(du) < Math.abs(dv) ? 'col' : 'row'
+    if (want !== itemActive.orientation) {
+      itemActive.orientation = want
+      renderAxisPick()
+    }
+  }
   const key = `${itemActive.id}:${frontFace}:${itemActive.u},${itemActive.v}:${itemActive.orientation || ''}`
   if (key !== lastItemHoverKey) {
     lastItemHoverKey = key
@@ -1444,11 +1537,16 @@ function updateItemHover(ndc) {
 function selectItemAt(event) {
   const ndc = eventNdc(event)
   const frontFace = findFrontFace()
-  const cellAt = ndcToCell(frontFace, ndc)
-  if (!cellAt) { setStatus('Pick a face cell'); return }
+  const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+  if (!cellAt) {
+    // Releasing off the cube is a miss, not a confirmation on some corner cell.
+    setStatus('Tap a face cell')
+    showToast('Tap a face cell')
+    return
+  }
   itemActive.face = frontFace
-  itemActive.u = cellAt.u
-  itemActive.v = cellAt.v
+  itemActive.u = clampCellIndex(cellAt.u)
+  itemActive.v = clampCellIndex(cellAt.v)
   confirmItem()
 }
 
@@ -1456,9 +1554,16 @@ function confirmItem() {
   const { id, face, u, v } = itemActive
   if (u === undefined || v === undefined) return
   const scope = toolScopeCells(id, face, u, v)
+  // Read the records before the removal: undo needs the colours, and `removeCells`
+  // only hands back coordinates (07 §3.1 A9).
+  const records = board.peekCells(scope)
   const removed = board.removeCells(scope)
   if (!removed.length) {
+    // A silent miss read as "the button is broken" (07 §3.1 A6), so the failure now
+    // says so on the toast and buzzes as well as setting the status line.
     setStatus('Nothing to clear there')
+    showToast('Nothing to clear there')
+    playHaptic(24)
     return
   }
   consumeItem(id)
@@ -1470,6 +1575,15 @@ function confirmItem() {
   setStatus('Pick a shape')
   renderItemBar()
   saveSession()
+  clearItemUndo()
+  itemUndo = { id, records }
+  showToast(`Cleared ${removed.length} - Undo`, 3000)
+  toastEl.classList.add('undoable')
+  itemUndoTimer = setTimeout(() => {
+    clearItemUndo()
+    toastEl.classList.remove('visible')
+  }, 3000)
+  playHaptic(12)
   checkStuckAndPrompt()
 }
 
@@ -1478,8 +1592,22 @@ function consumeItem(id) {
 }
 
 function activateItem(id) {
+  // Tapping the armed tool again puts it away (07 §3.1 A3). Before v0.6 the same tap
+  // cancelled and immediately re-armed, so a phone player — who has no Esc — could
+  // not leave the mode without spending the item.
+  if (itemActive?.id === id) {
+    cancelItemSelection()
+    return
+  }
   if (itemActive) cancelItemSelection(true)
-  if (!canUseItemsNow() || itemCounts[id] <= 0) {
+  if (!canUseItemsNow()) {
+    renderItemBar()
+    return
+  }
+  if (itemCounts[id] <= 0) {
+    // Silence here is what made an empty slot feel broken (07 §3.1 A4).
+    showToast(`No ${itemTool(id)?.name ?? id} left`)
+    playHaptic(20)
     renderItemBar()
     return
   }
@@ -1489,13 +1617,20 @@ function activateItem(id) {
     return
   }
   itemActive = { id, face: null, u: undefined, v: undefined, orientation: id === 'bomb' ? '2x2' : 'row' }
+  itemTap = null
   lastItemHoverKey = null
+  // Arming a tool is moving on: a live undo toast must not stay clickable underneath
+  // the targeting mode that is about to replace it (07 §3.1 A9).
+  clearItemUndo()
   axisPickEl.classList.toggle('hidden', id !== 'rocket')
-  setStatus(id === 'hammer' ? 'Pick a block to remove' : id === 'rocket' ? 'Pick a line to clear' : 'Pick a 2×2 area')
+  renderAxisPick()
+  setStatus(id === 'hammer' ? 'Tap a block to remove' : id === 'rocket' ? 'Tap a line to clear' : 'Tap a 2x2 area')
   renderItemBar()
 }
 
 function rerollPieces() {
+  // A refresh replaces the batch the undo was recorded against, so the window closes.
+  clearItemUndo()
   const before = pieces.map((piece) => piece.shape.name).join('|')
   for (let attempt = 0; attempt < 24; attempt += 1) {
     pieces = Array.from({ length: 3 }, () => makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
@@ -1573,15 +1708,11 @@ function emitItemBurst(cells, axisHint) {
 for (const button of itemBarEl.querySelectorAll('.item-button')) {
   button.addEventListener('click', () => activateItem(button.dataset.item))
 }
-for (const button of axisPickEl.querySelectorAll('button')) {
-  button.addEventListener('click', () => {
-    if (!itemActive || itemActive.id !== 'rocket') return
-    itemActive.orientation = button.dataset.axis === 'col' ? 'col' : 'row'
-    lastItemHoverKey = null
-    if (itemActive.u !== undefined) rebuildItemOverlay()
-    setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
-  })
+for (const button of axisPickEl.querySelectorAll('button[data-axis]')) {
+  button.addEventListener('click', () => setRocketOrientation(button.dataset.axis))
 }
+axisCancelEl.addEventListener('click', () => cancelItemSelection())
+toastEl.addEventListener('click', () => { if (itemUndo) undoItem() })
 
 // ============================================================
 // Piece placement drag
@@ -2048,6 +2179,9 @@ function releaseDragPointer(source, pointerId) {
 // sequence here is what makes the HUD number auditable — it is the sum of the
 // named parts, and the parts are the ones the docs name.
 function settlePlacement(face, cells, origin, color) {
+  // A placement changes the board the undo was recorded against, so the window closes
+  // before anything else happens (07 §3.1 A9).
+  clearItemUndo()
   const result = board.place(face, cells, origin, color)
   const lines = result.lines
   const lineCount = lines.length
@@ -2506,6 +2640,7 @@ function triggerSlowMo(level) {
 function endGame() {
   if (gameEnded) return
   gameEnded = true
+  clearItemUndo()
   syncPause()
   platform.gameplayStop()
   clearHonorLayer()
@@ -2626,8 +2761,17 @@ function cancelViewDrag() {
 renderer.domElement.addEventListener('pointerdown', (event) => {
   if (itemActive) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
+    // Armed tool (v0.6, 07 §3.1 A1/A2). The press now does two things at once: it
+    // aims (so a touch player, who has no hover, sees the highlight under their
+    // finger before committing) and it hands the gesture to the view drag, so the
+    // cube can still be turned to reach the face they want. Nothing fires here — the
+    // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
+    itemTap = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    updateItemHover(eventNdc(event))
+    // beginViewDrag() prevents the default itself, but it bails out early while paused
+    // or mid-drag — the item branch used to prevent unconditionally, so keep that.
     event.preventDefault()
-    selectItemAt(event)
+    beginViewDrag(event)
     return
   }
   beginViewDrag(event)
@@ -2635,6 +2779,11 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
 window.addEventListener('pointermove', (event) => {
   if (viewDrag && event.pointerId === viewDrag.pointerId) {
     event.preventDefault()
+    // Keep the armed target under the pointer, including while the cube turns to
+    // bring another face round (07 §3.1 A1). The rocket only re-reads its Row/Col
+    // from the cell offset while the gesture is still a tap: during a committed turn
+    // the offsets change for reasons that have nothing to do with what was aimed at.
+    if (itemActive) updateItemHover(eventNdc(event), !viewDrag.axis)
     const dx = event.clientX - viewDrag.startX
     const dy = event.clientY - viewDrag.startY
     if (!viewDrag.axis) {
@@ -2691,10 +2840,17 @@ window.addEventListener('pointermove', (event) => {
   else setStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
+  const tap = itemTap
+  itemTap = null
   finishViewDrag(event)
   finishDrag(event)
+  if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
+  // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
+  if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) >= ITEM_TAP_SLOP) return
+  selectItemAt(event)
 })
 window.addEventListener('pointercancel', (event) => {
+  itemTap = null
   finishViewDrag(event)
   if (!drag || event.pointerId !== drag.pointerId) return
   cancelActiveDrag(false)
@@ -2715,10 +2871,7 @@ document.addEventListener('keydown', (event) => {
   if (handleRotateKey(event)) { event.preventDefault(); return }
   if (settingsOpen || controlsOpen) return
   if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
-    itemActive.orientation = event.key.toLowerCase() === 'c' ? 'col' : 'row'
-    lastItemHoverKey = null
-    rebuildItemOverlay()
-    setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
+    setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
   }
 })
 window.addEventListener('contextmenu', (event) => {
@@ -2775,6 +2928,9 @@ document.querySelector('#restart-setting').addEventListener('click', beginRun)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
   if (document.hidden && drag) cancelActiveDrag(false)
+  // The undo toast is a pointer target, and a backgrounded tab must not leave a live
+  // one behind for a click that will never come (07 §3.1 A9).
+  if (document.hidden) clearItemUndo()
   // A page that goes hidden never delivers the pointerup of a finger that was
   // down, so the rotation gesture has to be ended here (see cancelViewDrag()).
   if (document.hidden) cancelViewDrag()
