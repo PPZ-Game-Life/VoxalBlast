@@ -12,17 +12,23 @@
 // without the producer asking for it.
 //
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
+//
+// v0.7 「田园木作」recoloured the pool to CRAYON PAINT: colours a wooden toy would
+// actually be painted, rather than the fluorescent v0.5 set. Chroma comes down a
+// step and the hues spread out, so ten pieces stay distinguishable against a warm
+// timber board AND against a green meadow. Keep them in the paint family — a neon
+// colour here is what makes the whole scene read as "3D render" instead of "toy".
 export const SHAPES = [
-  { name: 'Dot',    color: 0xff6d5c, cells: [[0, 0]] },
-  { name: 'Line 2', color: 0x35c3ff, cells: [[0, 0], [1, 0]] },
-  { name: 'Line 3', color: 0xffcb1f, cells: [[0, 0], [1, 0], [2, 0]] },
-  { name: 'Square', color: 0xa349ff, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
-  { name: 'L',      color: 0xff8a2a, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
-  { name: 'J',      color: 0x4a6cff, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
-  { name: 'T',      color: 0xff5d6f, cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
-  { name: 'S',      color: 0x00c2a0, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] },
-  { name: 'Z',      color: 0xc24bff, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] },
-  { name: 'Corner', color: 0x45d8f1, cells: [[0, 0], [1, 0], [0, 1]] },
+  { name: 'Dot',    color: 0xe8543f, cells: [[0, 0]] },
+  { name: 'Line 2', color: 0x3f8fe0, cells: [[0, 0], [1, 0]] },
+  { name: 'Line 3', color: 0xf2b52b, cells: [[0, 0], [1, 0], [2, 0]] },
+  { name: 'Square', color: 0x8b57c9, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
+  { name: 'L',      color: 0xef9127, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'J',      color: 0x2f5fc4, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'T',      color: 0xe0658f, cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'S',      color: 0x4faa4a, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] },
+  { name: 'Z',      color: 0xc03fa0, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] },
+  { name: 'Corner', color: 0x35b6c9, cells: [[0, 0], [1, 0], [0, 1]] },
 ]
 
 // Normalize a set of 2D cells so the minimum u/v is 0 (top-left origin).

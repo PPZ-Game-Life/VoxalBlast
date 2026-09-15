@@ -104,3 +104,221 @@ button:focus-visible { outline: 3px solid #3463a4; outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) {
   .home-primary, .piece-slot, .item-button, .setting-switch, .setting-switch i { transition: none; }
 }
+
+/* ============================================================
+   v0.7 銆岀敯鍥湪浣溿€?鈥?WOODEN TOY / PASTORAL
+   ------------------------------------------------------------
+   Appended after every v0.5 rule and after the v0.5 media queries, so this block
+   is the live authority for COLOUR, BORDER, SHADOW and MATERIAL. It deliberately
+   never touches height, width, gap, padding or order: layout is still owned by
+   styles.css plus the v0.5 media queries above, and re-declaring any of those here
+   would silently undo the phone layout.
+   One material rule: everything the player can touch is WOOD (grain + a darker
+   bottom edge = thickness), everything the game shows on a wooden surface is
+   CREAM paper-inset. No white plastic anywhere.
+   ============================================================ */
+:root {
+  --wood-grain: none;      /* replaced at boot by rendering/woodTexture.js */
+  --wood-grain-post: none;
+  --wood-1: #eccb98;       /* lit plank */
+  --wood-2: #dcae72;       /* plank */
+  --wood-3: #c6914f;       /* plank, shaded */
+  --wood-4: #a2743d;       /* rail */
+  --wood-5: #7d5528;       /* deep edge: the "thickness" of a board */
+  --wood-6: #5b3c19;       /* outline */
+  --cream-1: #fffaf0;      /* paper inset */
+  --cream-2: #f7ebd5;
+  --cream-3: #e9d7b6;
+  --bark-ink: #452e13;     /* every label, on wood or on cream */
+  --bark-ink-soft: #7d5c33;
+  --leaf: #4faa4a;
+  --sun: #f7c13c;
+  --toy-edge: #a2743d;
+  --toy-ink: #452e13;
+  --birch-shadow: inset 0 2px 0 #ffffff70, 0 5px 0 var(--wood-5), 0 12px 22px #4b3a1a2e;
+}
+html, body { background: #bfe3fa; }
+body { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%); }
+
+/* The landscape. A DOM layer rather than a skybox: it costs a few kB of SVG
+   (rendering/pastoralBackdrop.js) and stays sharp at any device pixel ratio.
+   `z-index: -1` puts it above the page background and below every game layer,
+   which is exactly where a backdrop belongs. */
+.pastoral-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.pastoral-backdrop svg { display: block; width: 100%; height: 100%; }
+
+/* --- Signboards: the HUD is carved timber ------------------------------- */
+.score-chip, .best-chip, .chain-chip {
+  color: var(--bark-ink);
+  background-image: var(--wood-grain), linear-gradient(180deg, var(--wood-1), var(--wood-2) 58%, var(--wood-3));
+  background-size: 190% 190%, auto;
+  background-position: center;
+  border: 3px solid #ffffff8c;
+  border-bottom: 5px solid var(--wood-5);
+  box-shadow: var(--birch-shadow);
+  text-shadow: 0 1px 0 #ffe9c6;
+}
+.score-chip-label, .best-chip-label, .chain-chip-label { color: var(--bark-ink-soft); }
+.score-chip-value, .best-chip-value, .chain-chip-value { color: var(--bark-ink); text-shadow: 0 1px 0 #fff0d4; }
+.chain-chip-bar { background: #ffffff7a; box-shadow: inset 0 1px 2px #7d552855; }
+.chain-chip-bar i { background: linear-gradient(90deg, #ffd85e, #f2913a); }
+.chain-chip.hot { color: var(--bark-ink); background-image: linear-gradient(180deg, #ffd97a, #f5ab3a); border-color: #fff3d0; }
+.app-version { color: #ffffffd9; background: #6a4c2480; border: 1px solid #ffffff5c; }
+
+/* --- Wooden buttons ------------------------------------------------------ */
+.icon-button, .item-button, .modal-close {
+  color: var(--bark-ink);
+  background-image: var(--wood-grain-post), linear-gradient(180deg, var(--wood-1), var(--wood-2) 60%, var(--wood-3));
+  background-size: 150% 150%, auto;
+  background-position: center;
+  border: 3px solid #ffffff8c;
+  border-bottom: 5px solid var(--wood-5);
+  box-shadow: inset 0 2px 0 #ffffff70, 0 4px 0 var(--wood-5), 0 9px 16px #4b3a1a2b;
+}
+.icon-button:hover, .icon-button:focus-visible { background: #fff0d4; background-image: var(--wood-grain-post), linear-gradient(180deg, #f7ddb1, var(--wood-2)); }
+.item-button .toy-icon, .modal-close { color: var(--bark-ink); }
+.item-button .item-count {
+  color: #fff8e6;
+  background: linear-gradient(180deg, #f2994a, #e2762a);
+  border: 2px solid #fff4dc;
+  box-shadow: 0 2px 0 #a9531a;
+}
+.item-button.active { outline: 3px solid var(--sun); background-image: var(--wood-grain-post), linear-gradient(180deg, #ffe6a6, #f7c95c); }
+.item-button.disabled { opacity: .42; filter: grayscale(.7); }
+
+/* --- Status line: a small paper tag on the meadow ------------------------ */
+.status-line { color: var(--bark-ink); background: #fffaf0e0; box-shadow: 0 2px 0 var(--wood-4), 0 6px 14px #4b3a1a26; border: 2px solid #ffffffd0; }
+.status-dot { background: var(--leaf); box-shadow: 0 0 0 2px #ffffffb8; }
+
+/* --- Candidate tray: a wooden frame holding paper insets ----------------- */
+.bottom-panel {
+  background-image: var(--wood-grain), linear-gradient(180deg, var(--wood-2), var(--wood-3) 62%, var(--wood-4));
+  background-size: 160% 160%, auto;
+  background-position: center;
+  border: 3px solid #ffffff70;
+  border-bottom: 7px solid var(--wood-5);
+  border-radius: 26px;
+  box-shadow: inset 0 2px 0 #ffffff5e, 0 7px 0 #6f4c22, 0 16px 30px #3d2c1238;
+}
+.piece-slot {
+  background-image: linear-gradient(180deg, var(--cream-1), var(--cream-2) 70%, var(--cream-3));
+  border: 3px solid #ffffffc4;
+  border-bottom: 5px solid var(--wood-4);
+  box-shadow: inset 0 6px 12px #a2743d26, 0 5px 12px #4b3a1a1f;
+}
+.piece-slot.selected, .piece-slot:hover, .piece-slot:focus-visible {
+  background-image: linear-gradient(180deg, #fffbef, #fbe6bd);
+  border-bottom-color: var(--sun);
+  box-shadow: inset 0 6px 12px #a2743d1f, 0 8px 18px #4b3a1a2b;
+}
+.piece-slot.used { background: #d8c8ab; opacity: .48; }
+.piece-thumb { background: transparent; }
+
+/* Cancel strip: warm terracotta rather than the v0.5 candy gradient 鈥?it reads
+   as "put it back" instead of as a reward. */
+.cancel-zone {
+  border: 3px solid #ffffffced;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #e2854a 0%, #c65c3c 58%, #a2432c 100%);
+  box-shadow: 0 10px 0 #7d3117, 0 20px 32px #3d2c1245;
+}
+
+/* --- Panels: modals and cards are boards, not glass ---------------------- */
+.modal { background: #3d2c1259; backdrop-filter: blur(5px); }
+.modal-content {
+  color: var(--bark-ink);
+  background-image: var(--wood-grain), linear-gradient(180deg, var(--cream-1), var(--cream-2));
+  background-size: 170% 170%, auto;
+  background-position: center;
+  border: 4px solid #ffffffb8;
+  border-bottom: 8px solid var(--wood-4);
+  border-radius: 28px;
+  box-shadow: 0 8px 0 #6f4c22, 0 22px 48px #2b1f0c4d;
+}
+.modal-content h1 { color: var(--bark-ink); }
+.modal-content .eyebrow, .modal-content .final-best { color: var(--bark-ink-soft); }
+.settings-header h1 { color: var(--bark-ink); }
+.setting-row, .setting-action {
+  background-image: linear-gradient(180deg, #fffdf7, #f3e6cd);
+  border: 0;
+  border-bottom: 3px solid var(--wood-4);
+  border-radius: 16px;
+  color: var(--bark-ink);
+  box-shadow: inset 0 2px 0 #ffffff;
+}
+.setting-row strong, .setting-action strong { color: var(--bark-ink); }
+.setting-row small { color: var(--bark-ink-soft); }
+.setting-switch { background: #b39a76; border-bottom: 3px solid #8f7856; }
+.setting-switch i { box-shadow: 0 2px 0 #cdbda3; }
+.setting-row.enabled .setting-switch { background: var(--sun); border-bottom-color: #c8912a; }
+.setting-action.danger { color: #fff6ea; background-image: linear-gradient(180deg, #e07a55, #c8552f); border-bottom-color: #983d1e; }
+.setting-action.danger > span { background: #b24a26; }
+.restart-button { color: #fff8ea; background: linear-gradient(135deg, #7cae4f, #4d8c34); box-shadow: 0 7px 0 #35641f; border-radius: 18px; }
+.restart-button:hover, .restart-button:focus-visible { background: linear-gradient(135deg, #8dc25c, #5a9a3c); }
+.ghost-button { color: var(--bark-ink); background: var(--cream-1); border: 3px solid var(--wood-4); }
+.ghost-button:hover:not(.disabled) { background: #fff6e2; }
+
+/* --- Home screen: the same meadow, softened so the copy stays readable --- */
+.home-screen { background: linear-gradient(180deg, #b6e2f88c 0%, #e2f3e888 52%, #fbf3e2cf 100%); }
+.home-brand h1 {
+  color: var(--bark-ink);
+  -webkit-text-stroke: 2px #fffaf0;
+  text-shadow: 0 4px 0 #d9a86a, 0 10px 22px #4b3a1a3d;
+}
+.home-tagline { color: #6b5230; }
+.home-record { color: #6b5230; }
+.home-record strong { color: var(--bark-ink); }
+.home-primary {
+  color: #43300f;
+  background: linear-gradient(180deg, #ffdd85, #f2ab2d);
+  border-top: 3px solid #fff1c2;
+  border-bottom: 6px solid #c07d1c;
+  border-radius: 24px;
+  box-shadow: inset 0 2px 0 #fff6d8, 0 8px 0 #a5681a, 0 16px 28px #6b4a1530;
+  text-shadow: 0 1px 0 #ffeab4;
+}
+.home-primary.resume { background: linear-gradient(180deg, #7fc3f0, #4189cf); color: #fffaf0; border-top-color: #bfe3fb; border-bottom-color: #2a5f95; box-shadow: inset 0 2px 0 #d9efff, 0 8px 0 #275b8e, 0 16px 28px #1d426630; }
+.home-primary:active { box-shadow: 0 2px 0 #a5681a; }
+.home-resume-note { color: #6b5230; }
+.home-secondary {
+  color: var(--bark-ink);
+  background-image: var(--wood-grain), linear-gradient(180deg, var(--wood-1), var(--wood-3));
+  background-size: 180% 180%, auto;
+  background-position: center;
+  border: 3px solid #ffffff9e;
+  border-bottom: 6px solid var(--wood-5);
+  box-shadow: inset 0 2px 0 #ffffff70, 0 6px 0 #6f4c22, 0 12px 22px #4b3a1a30;
+  text-shadow: 0 1px 0 #ffeacb;
+}
+.home-hero::after { background: radial-gradient(ellipse, #4b3a1a3d, transparent 70%); }
+
+/* --- Board contact shadow: warm earth, not a blue glow ------------------- */
+.board-section::after { background: radial-gradient(ellipse at center, #5b3c1947 0%, #5b3c1900 72%); }
+
+/* --- Controls card: a carved legend ------------------------------------- */
+.controls-note { color: var(--bark-ink-soft); }
+.ctrl-copy strong { color: var(--bark-ink); }
+.ctrl-copy small { color: var(--bark-ink-soft); }
+kbd { color: var(--bark-ink); background: linear-gradient(180deg, #fffdf6, #f0e2c7); border: 2px solid var(--wood-4); border-bottom-width: 4px; border-radius: 9px; box-shadow: inset 0 2px 0 #fff; }
+.axis-pick { background: #fffaf0e6; box-shadow: 0 6px 0 var(--wood-4), 0 12px 22px #4b3a1a30; }
+.axis-pick button { color: var(--bark-ink); background: linear-gradient(180deg, var(--wood-1), var(--wood-3)); border-bottom: 3px solid var(--wood-5); border-radius: 11px; }
+.axis-hint { color: var(--bark-ink); }
+.toast { color: var(--bark-ink); background: #fffaf0f2; border: 2px solid #ffffffd0; box-shadow: 0 8px 0 var(--wood-4), 0 14px 26px #4b3a1a35; }
+.honor-banner { color: var(--bark-ink); }
+
+/* --- Focus ring: sunlight on wood --------------------------------------- */
+button:focus-visible { outline: 3px solid #ffb62e; outline-offset: 4px; }
+
+/* --- Backdrop paint order -------------------------------------------------
+   A negative z-index layer paints in step 2 of the root stacking context, and
+   BODY's own background paints in step 3 鈥?above it. So the sky gradient has to
+   live on `html` (which propagates to the canvas, below everything) and `body`
+   must stay transparent, or the landscape is silently painted over by a plain
+   gradient. This is the whole reason the first v0.7 build showed no scenery. */
+html { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%); }
+body { background: transparent; }
+
+/* Carved icons read better light-than-dark on timber (matches the reference's
+   wooden buttons). The count badge keeps its own warm/orange treatment. */
+.item-button, .icon-button, .modal-close { color: #fff4dc; }
+.item-button .toy-icon, .icon-button .toy-icon { filter: drop-shadow(0 1px 0 #5b3c1980); }

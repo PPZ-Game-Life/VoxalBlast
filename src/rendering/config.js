@@ -1,32 +1,64 @@
+// v0.7 「田园木作」colour system. Two families, and the split is the whole
+// direction: WARM WOOD is the object (the cube, the signboards, the frame), and
+// CRAYON PAINT is the only saturated thing on screen. Nothing else in the game is
+// allowed a high-chroma colour — that is what keeps the cube the first read at
+// 240px wide even with a full landscape behind it.
 export const RENDER_PALETTE = Object.freeze({
-  background: 0xe6f0ff,
-  navy: 0x24345d,
-  navyDeep: 0x17284f,
-  grid: 0x2d3e69,
-  gridGlow: 0x8fbaff,
-  candidate: 0xffc928,
-  valid: 0x63f08a,
-  invalid: 0xff5364,
-  line: Object.freeze({ x: 0xffed78, y: 0x63f08a, z: 0x6bd5ff }),
+  background: 0xdcefff,
+  navy: 0x4a3218, // bark ink: every label on a wooden sign is this brown, not blue
+  navyDeep: 0x2f1f0e,
+  grid: 0x3d2a14,
+  gridGlow: 0xd9ae72,
+  candidate: 0xf7c13c,
+  valid: 0x7ed957, // fresh leaf green: "it fits here"
+  invalid: 0xe8543f, // terracotta, not a UI error red (05「不要警告色」)
+  line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
-// v0.5: opaque toy shell, six tiled faces, saturated raised pieces.
+// v0.7: a WOODEN TOY. The cube is a solid block of natural beech; each face
+// carries 25 shallow rounded sockets carved into the grain, and a placed piece is
+// a painted chip standing proud of them.
+//
+// Two levels, and both are one number (05 §7.8「一切体积必须能写成一个数」):
+//   socket front face  = face plane + socketRaise   (0.04 — flush to the eye)
+//   chip front face    = face plane + voxelRaise    (0.30 — the only volume)
+// The v0.5 build had this upside down: the sockets stood 0.29 out of the shell
+// and the pieces only 0.24, so the dark grid was the object and the coloured
+// blocks read as stickers on it. Keep voxelRaise > socketRaise, always.
 export const BOARD_STYLE = Object.freeze({
   // Solid shell receives shadows and occludes the far faces.
-  hullColor: 0x243c68,
+  hullColor: 0xd7a86d, // natural beech. The deepest anchor on screen, never near-black
   hullOpacity: 1,
-  hullRoughness: 0.72,
-  // Opaque sockets; the camera-facing placement surface has the lighter value.
-  gridColor: 0x345785,
-  gridActiveColor: 0x547ab0,
-  // Placed-voxel shell: outward float offset, rounded body and softer lit plastic.
-  voxelRaise: 0.17,
-  voxelRoughness: 0.52,
-  voxelRadius: 0.09,
-  exposure: 1.0,
-  feedbackSurfaceOffset: 0.58, // line/item effects sit outside the opaque shell
-  voxelEdgeColor: 0x24427d,
-  voxelEdgeOpacity: 0.1,
+  hullRoughness: 0.66, // raw timber: matte, and the sheen comes from the grain map
+  hullClearcoat: 0.12,
+  // Sockets carved into the face: the same timber, one step down, so they read as
+  // hollows rather than as a second material. The camera-facing placement surface
+  // lifts back toward the shell value — the only "you can play here" cue.
+  gridColor: 0xba8b55,
+  gridActiveColor: 0xdcb47c,
+  socketRadius: 0.18,
+  // A carved well, not a raised plate: outer face 0.04 above the shell plane, and
+  // the body is buried back into the shell so no side wall is ever visible.
+  socketRaise: 0.04,
+  socketDepth: 0.10,
+  socketGap: 0.94, // in-plane width of a socket, in cells (1.0 - a visible seam)
+  // Placed chip: the paint. voxelRaise is the standoff of the FRONT face, so the
+  // visible side wall is voxelRaise - socketRaise ≈ 0.26 (05 §8 wants ≥ 0.20).
+  voxelRaise: 0.3,
+  voxelDepth: 0.3,
+  voxelRadius: 0.12,
+  voxelWidth: 0.92,
+  voxelRoughness: 0.34,
+  voxelClearcoat: 0.55,
+  voxelClearcoatRoughness: 0.22,
+  exposure: 1.02,
+  feedbackSurfaceOffset: 0.92, // particles/lines start clear of the 0.30 chip, not inside it
+  voxelEdgeColor: 0x6b4620,
+  voxelEdgeOpacity: 0,
+  // Wood grain is ONE canvas texture (rendering/woodTexture.js) reused at
+  // different tile counts: the shell is a huge surface, a socket is 0.94 units.
+  hullGrainRepeat: 2.2,
+  voxelGrainRepeat: 0.5,
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
   // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the

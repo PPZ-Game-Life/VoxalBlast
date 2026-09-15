@@ -38,6 +38,11 @@ import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
+// v0.7 「田园木作」: the two halves of the new art direction. `installWoodSkin`
+// paints the CSS grain for the signboards, `installPastoralBackdrop` draws the
+// landscape behind the canvas. Both are code, no image files (05「资产边界」).
+import { installWoodSkin, woodGrainTextureRepeating } from './rendering/woodTexture.js'
+import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 
 installToyIcons()
@@ -163,9 +168,15 @@ function resetRun() {
 
 const quality = getRenderQuality()
 
+// Wood grain is a canvas texture, and the signboards are DOM: paint them before
+// the first frame so nothing pops in a frame late.
+installWoodSkin()
+installPastoralBackdrop(document.querySelector('#app'))
+
 const scene = new THREE.Scene()
 scene.background = null
-// The opaque toy shell supplies depth; blue fog used to wash out the blocks.
+// The opaque wooden shell supplies depth; the landscape behind the canvas is DOM,
+// not a skybox, so it stays crisp at any device pixel ratio for a few kB of SVG.
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraZoom = 1
@@ -194,16 +205,21 @@ const cellsGroup = new THREE.Group()
 cubeGroup.add(cellsGroup)
 scene.add(cubeGroup)
 
-// Opaque toy body: the six placement faces read as one physical object.
-const cubeBodyMaterial = new THREE.MeshStandardMaterial({
+// Opaque timber body: the six placement faces read as one carved block of wood.
+// The grain map is the same canvas the chips and the signboards use, tiled coarsely
+// across the whole shell so the 5-unit block never reads as a plastic mould.
+const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
   color: style.hullColor,
+  map: woodGrainTextureRepeating(style.hullGrainRepeat),
   roughness: style.hullRoughness,
+  clearcoat: style.hullClearcoat,
+  clearcoatRoughness: 0.42,
   metalness: 0,
   transparent: false,
   opacity: style.hullOpacity,
   depthWrite: true,
 })
-const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.16), cubeBodyMaterial)
+const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.18), cubeBodyMaterial)
 cubeBody.renderOrder = -2
 cubeBody.castShadow = false
 cubeBody.receiveShadow = true
@@ -236,35 +252,77 @@ function facePlaneLocalCenter(face) {
   return cubeVector(face, 'n').multiplyScalar(half)
 }
 
-// Outward direction from the cube centre for a shell cell (radial: face cells
-// push along their face normal, shared edge/corner cells push along the
-// diagonal). Placed voxels float this far off the shell.
-function shellRaise(x, y, z) {
-  const base = cellToWorld(x, y, z)
-  return base.normalize().multiplyScalar(style.voxelRaise)
+// Every surface thickness in the cube is measured from the same reference: a cell
+// centre sits `cs / 2` inside the placement plane, so the plane itself is at
+// `cs / 2` along the face normal. These three constants are the only place that
+// arithmetic is written (05 §7.8「一切体积必须能写成一个数」).
+const FACE_GAP = cs / 2 // cell centre -> placement plane (0.5)
+const SOCKET_CENTER = FACE_GAP + style.socketRaise - style.socketDepth / 2 // carved well
+const CHIP_CENTER = FACE_GAP + style.voxelRaise - style.voxelDepth / 2 // painted block
+const PLATE_CENTER = FACE_GAP + style.socketRaise + 0.02 // landing marker: ON the socket
+const FACE_NORMAL_Z = new THREE.Vector3(0, 0, 1)
+
+// Which of the six faces actually see this cell. A shell cell in the core has
+// none; an edge cell has two and a corner cell three. Used to give a shared block
+// one chip per exposed face instead of a single block that juts sideways off one
+// edge (05 §2.1 — the v0.5 build picked a "prefer Z" axis and the corner blocks
+// visibly jumped toward the camera).
+function exposedFaces(x, y, z) {
+  const faces = []
+  if (x === SH - 1) faces.push('+x')
+  if (x === 0) faces.push('-x')
+  if (y === SH - 1) faces.push('+y')
+  if (y === 0) faces.push('-y')
+  if (z === SH - 1) faces.push('+z')
+  if (z === 0) faces.push('-z')
+  return faces
 }
 
-// Cube-local position of a rendered voxel (lattice cell raised off the shell).
-function placedLocal(x, y, z) {
-  return cellToWorld(x, y, z).add(shellRaise(x, y, z))
+// Unit outward direction for a shell cell, and the fallback for overlay meshes
+// that only need one: the camera-facing axis wins on an edge, so a translucent
+// marker still lands on the face the player is looking at.
+function shellNormal(x, y, z) {
+  const outward = (coordinate) => coordinate === 0 ? -1 : coordinate === SH - 1 ? 1 : 0
+  const offset = [outward(x), outward(y), outward(z)]
+  const axis = offset.reduce((best, value, index) => Math.abs(value) >= Math.abs(offset[best]) ? index : best, 0)
+  return new THREE.Vector3(axis === 0 ? offset[0] : 0, axis === 1 ? offset[1] : 0, axis === 2 ? offset[2] : 0)
 }
 
-// Build reusable rounded sockets on all six placement faces.
+// Cube-local centre of the painted chip that belongs to (cell, face).
+function chipLocal(x, y, z, face = null) {
+  const normal = face ? cubeVector(face, 'n') : shellNormal(x, y, z)
+  return cellToWorld(x, y, z).addScaledVector(normal, CHIP_CENTER)
+}
+
+// Build the twenty-five carved sockets on each of the six faces. A socket is a
+// shallow rounded well whose front face sits 0.04 above the shell plane — flush
+// to the eye. It is NOT a raised plate: in v0.5 each face was 25 rounded blocks
+// standing 0.29 out of the shell, which made the dark grid the object and the
+// coloured pieces stickers on it, and turned the cube's silhouette into a waffle.
 const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
+// Two shared socket materials, not one per tile: the only thing that ever changes
+// is whether the face under the camera is the one being played, so swapping the
+// material is enough and 150 materials never have to be kept in sync.
+const socketMaterialPlain = new THREE.MeshStandardMaterial({
+  color: style.gridColor,
+  map: woodGrainTextureRepeating(style.voxelGrainRepeat),
+  roughness: 0.7,
+  metalness: 0,
+})
+const socketMaterialActive = socketMaterialPlain.clone()
+socketMaterialActive.color.set(style.gridActiveColor)
 function buildFaceTiles() {
-  const tile = new RoundedBoxGeometry(0.89, 0.89, 0.045, 2, 0.02)
+  const tile = new RoundedBoxGeometry(style.socketGap, style.socketGap, style.socketDepth, 6, style.socketRadius)
   for (const face of FACES) {
     const normal = cubeVector(face, 'n')
-    const material = new THREE.MeshStandardMaterial({ color: style.gridColor, roughness: 0.78 })
     const group = new THREE.Group()
     group.userData.face = face
-    group.userData.material = material
     for (let u = 0; u < SH; u += 1) {
       for (let v = 0; v < SH; v += 1) {
-        const mesh = new THREE.Mesh(tile, material)
-        mesh.position.copy(cellLocal(face, u, v)).addScaledVector(normal, 0.48)
-        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
+        const mesh = new THREE.Mesh(tile, socketMaterialPlain)
+        mesh.position.copy(cellLocal(face, u, v)).addScaledVector(normal, SOCKET_CENTER)
+        mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
         mesh.receiveShadow = true
         mesh.userData.cell = faceLattice(face, u, v)
         group.add(mesh)
@@ -608,6 +666,30 @@ function findFrontFace() {
   return frontFaceOf(cubeGroup.quaternion)
 }
 
+// Which exposed face a SHARED block presents to the player.
+//
+// An edge cell is seen by two faces and a corner cell by three, so a block sitting
+// on one of them has to choose a side to stand proud of. Drawing a chip on every
+// exposed face (the first v0.7 cut) was geometrically thorough and looked wrong:
+// a front-bottom corner cell grew a cap on the underside as well, and those blocks
+// visibly hung off the bottom of the cube. Drawing only the one that faces the
+// CAMERA keeps the relief reading as "the block is in front of you" and leaves the
+// silhouette clean; `settleCubeSnap()` re-picks it once a turn finishes, so the
+// choice can never disagree with the pose on screen for longer than the settle.
+function primaryExposedFace(x, y, z) {
+  const faces = exposedFaces(x, y, z)
+  if (faces.length <= 1) return faces[0]
+  const toCamera = toCameraProbe.copy(camera.position).sub(cubeGroup.position).normalize()
+  let best = faces[0]
+  let bestDot = -Infinity
+  faces.forEach((face) => {
+    frontProbe.set(...FACE_PLANE[face].n).applyQuaternion(cubeGroup.quaternion)
+    const dot = frontProbe.dot(toCamera)
+    if (dot > bestDot) { bestDot = dot; best = face }
+  })
+  return best
+}
+
 // ---- Candidate orientation on the front face (v0.2.28) ----------------------
 // Shape data and the flat slot both use a top-left origin: piece +u points
 // screen-right and piece +v points screen-down. A face's own (u, v) lattice axes
@@ -699,6 +781,10 @@ function settleCubeSnap() {
   cubeSnapAnim.active = false
   cubeQuat.copy(cubeSnapAnim.to)
   applyCubeRotation()
+  // The pose changed, so a shared block may now show its proud cap toward a
+  // different face (see primaryExposedFace). Re-pick once the turn has settled —
+  // never mid-gesture, where it would read as the block sliding around.
+  renderBoard()
 }
 
 // Return to the face-aligned start pose (used by Reset Game).
@@ -713,6 +799,7 @@ function resetCubeRotation() {
   cubeRestYaw = 0
   cubeRestPitch = 0
   applyCubeRotation()
+  renderBoard()
 }
 
 // Settle animation: a slerp from wherever the finger left the pose to the exact
@@ -742,18 +829,31 @@ function colorToVector4(color, alpha = 1) {
   return new THREE.Vector4(normalized.r, normalized.g, normalized.b, alpha)
 }
 
+// A placed chip is PAINTED WOOD: opaque colour over the same grain the shell uses,
+// with a real varnish layer on top. The shared grain map is what ties the board to
+// the signboards — the UI and the cube are visibly the same material (05「同源」).
 function makeMaterial(color, opacity = 1) {
-  const materialColor = new THREE.Color(color)
-  return new THREE.MeshStandardMaterial({
-    color: materialColor,
+  return new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(color),
+    map: woodGrainTextureRepeating(style.voxelGrainRepeat),
     roughness: style.voxelRoughness,
+    clearcoat: style.voxelClearcoat,
+    clearcoatRoughness: style.voxelClearcoatRoughness,
     metalness: 0,
     transparent: opacity < 1,
     opacity,
   })
 }
 
-const cubeGeometry = new RoundedBoxGeometry(0.92, 0.92, 0.92, 4, style.voxelRadius)
+// A piece held in the hand is a CUBE (previews, slot thumbnails, drag ghost): the
+// player is picking up a block. A piece ON the board is a CHIP (0.30 thick), which
+// is what gives the six faces their flat, readable playfield.
+const cubeGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, style.voxelWidth, 6, style.voxelRadius)
+const chipGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, style.voxelDepth, 6, Math.min(style.voxelRadius, style.voxelDepth / 2 - 0.012))
+// Landing marker: a thin plate lying ON the socket, never a translucent cube
+// floating over it (05 §6「落点预览」).
+const plateGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, 0.06, 3, 0.03)
+const SHARED_BOARD_GEOMETRY = [cubeGeometry, chipGeometry, plateGeometry, cubeBody.geometry]
 const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
 const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
 const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
@@ -784,7 +884,7 @@ scene.add(particleRenderer)
 
 function disposeNode(node) {
   node.traverse((child) => {
-    if (child.geometry && child.geometry !== cubeGeometry && child.geometry !== edgeGeometry && child.geometry !== cubeBody.geometry) child.geometry.dispose()
+    if (child.geometry && !SHARED_BOARD_GEOMETRY.includes(child.geometry)) child.geometry.dispose()
     if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose())
     else if (child.material) child.material.dispose()
   })
@@ -805,23 +905,23 @@ function cellWorld(face, u, v) {
 }
 
 function renderBoard() {
-  // Edge/corner cells belong to several faces. Remove every corresponding slot
-  // surface so adjacent-face tiles never paint over the colored shared voxel.
-  gridGroup.children.forEach((group) => group.children.forEach((tile) => {
-    tile.visible = !board.has(...tile.userData.cell)
-  }))
+  // The socket under an occupied cell is hidden, and the cell is then drawn as a
+  // painted chip standing proud of the face it presents to the player (05 §2.1).
+  const occupied = new Map(board.occupied().map((cell) => [`${cell.x},${cell.y},${cell.z}`, cell]))
+  gridGroup.children.forEach((group) => {
+    group.children.forEach((tile) => {
+      tile.visible = !occupied.get(tile.userData.cell.join(','))
+    })
+  })
   clearGroup(cellsGroup)
-  board.occupied().forEach((cell) => {
-    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(cell.color))
-    mesh.position.copy(placedLocal(cell.x, cell.y, cell.z))
+  occupied.forEach((cell) => {
+    const face = primaryExposedFace(cell.x, cell.y, cell.z)
+    const normal = cubeVector(face, 'n')
+    const mesh = new THREE.Mesh(chipGeometry, makeMaterial(cell.color))
+    mesh.position.copy(cellToWorld(cell.x, cell.y, cell.z)).addScaledVector(normal, CHIP_CENTER)
+    mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
     mesh.castShadow = true
     mesh.receiveShadow = true
-    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
-      color: style.voxelEdgeColor,
-      transparent: true,
-      opacity: style.voxelEdgeOpacity,
-      depthWrite: false,
-    })))
     cellsGroup.add(mesh)
   })
   updateHud()
@@ -1497,9 +1597,11 @@ function rebuildItemOverlay() {
   const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v)
   scope.forEach(([x, y, z]) => {
     const occupied = board.has(x, y, z)
-    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(palette.valid, occupied ? 0.5 : 0.2))
+    const normal = shellNormal(x, y, z)
+    const mesh = new THREE.Mesh(chipGeometry, makeMaterial(palette.valid, occupied ? 0.5 : 0.2))
     mesh.scale.setScalar(occupied ? 1 : 0.72)
-    mesh.position.copy(placedLocal(x, y, z))
+    mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, CHIP_CENTER)
+    mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
     itemPreviewGroup.add(mesh)
   })
 }
@@ -1846,11 +1948,14 @@ function updatePreview(event, ndc) {
   const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
+  const faceNormal = cubeVector(face, 'n')
   cells.forEach(([u, v]) => {
-    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.52))
-    mesh.position.copy(placedLocal(...faceLattice(face, u + origin.u, v + origin.v)))
+    const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
+    const mesh = new THREE.Mesh(plateGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.72))
+    mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PLATE_CENTER)
+    mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, faceNormal)
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
-      color: valid ? 0x083c39 : 0x6b1024,
+      color: valid ? 0x2f6b1f : 0x7a2a17,
       transparent: true,
       opacity: 0.92,
       depthWrite: false,
@@ -2996,9 +3101,16 @@ function animate() {
     updateTransientEffects(delta)
     updateCubeSnap(delta)
   }
+  // The face a player is working on is the lighter timber (05 §2). Swapping the
+  // shared material is the whole cue, and the per-group cache means this costs
+  // nothing on the 149 frames in 150 where the front face has not changed.
   const front = findFrontFace()
   gridGroup.children.forEach((group) => {
-    group.userData.material.color.setHex(group.userData.face === front ? style.gridActiveColor : style.gridColor)
+    const active = group.userData.face === front
+    if (group.userData.active === active) return
+    group.userData.active = active
+    const material = active ? socketMaterialActive : socketMaterialPlain
+    group.children.forEach((tile) => { tile.material = material })
   })
   updatePiecePreviews()
   updateCameraShake(delta)

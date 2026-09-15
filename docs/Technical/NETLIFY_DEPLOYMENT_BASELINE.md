@@ -1,6 +1,6 @@
 # 构建与部署现状
 
-> v0.5.0 / 2026-09-14。依据 package.json、vite.config.js、netlify.toml；未查询远端平台配置。
+> v0.7.0 / 2026-09-14。依据 package.json、vite.config.js、netlify.toml；未查询远端平台配置。
 
 ## 仓库实际配置
 
