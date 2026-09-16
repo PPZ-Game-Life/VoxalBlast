@@ -27,22 +27,32 @@ export const RENDER_PALETTE = Object.freeze({
 // cell the slab had to pick a side, and on a face seen at a glancing angle it
 // looked bolted on rather than placed.
 export const BOARD_STYLE = Object.freeze({
-  // Solid shell receives shadows and occludes the far faces.
-  hullColor: 0xd7a86d, // natural beech. The deepest anchor on screen, never near-black
+  // Solid shell receives shadows and occludes the far faces. It is deliberately
+  // DARKER than the tiles: the 0.10 gap between blocks exposes this colour, so the
+  // shell IS the groove. An earlier cut had the shell lighter than the tiles, which
+  // read as light-coloured grout and made the whole cube look like one moulded
+  // crate instead of a stack of separate blocks.
+  hullColor: 0x9c6d37,
   hullOpacity: 1,
-  hullRoughness: 0.66, // raw timber: matte, and the sheen comes from the grain map
-  hullClearcoat: 0.12,
+  hullRoughness: 0.7, // raw timber: matte, and the sheen comes from the grain map
+  hullClearcoat: 0.1,
   hullGrainRepeat: 2.2,
-  // Face tiles: 150 IDENTICAL rounded tiles, six grids of 5×5. Every one of them
-  // is inset into the shell by the same amount, so no tile can ever look taller
-  // than its neighbour. An occupied tile keeps this exact geometry and only swaps
-  // its material for paint.
-  tileColor: 0xba8b55, // bare timber, one step down from the shell
-  tileActiveColor: 0xdcb47c, // the face the player is working on, lifted back up
-  tileSize: 0.94, // in-plane width, in cells (1.0 - a visible seam)
-  tileDepth: 0.1,
-  tileRadius: 0.18,
-  tileRaise: 0.04, // how far a tile's front face sits above the shell surface
+  // Face tiles: 150 IDENTICAL rounded blocks, six grids of 5×5. Every one of them
+  // is the same size and sits the same height off the shell, so no tile can ever
+  // look taller than its neighbour. An occupied tile keeps this exact geometry and
+  // only swaps its material for paint.
+  //
+  // The block is 0.30 thick even though only its top 0.20 is visible: a shallow
+  // tile would have its rounding clamped away by the geometry (radius can never
+  // exceed half the thickness) and read as a flat plate. The thickness is what buys
+  // the rounded, cushioned edge the reference art has, and 0.20 of it is buried.
+  tileColor: 0xd7ab74, // the MID tone of a bare block; the array below varies it
+  tileActiveColor: 0xe6c08d, // the face the player is working on
+  tileToneSteps: Object.freeze([0.93, 0.97, 1, 1.03, 1.06, 1.1]),
+  tileSize: 0.91, // in-plane width, in cells (1.0 - a visible groove)
+  tileDepth: 0.3,
+  tileRadius: 0.09, // real rounding now: depth / 2 is 0.15, so 0.09 survives
+  tileRaise: 0.13, // how far a block's top face sits above the face plane
   tileGrainRepeat: 0.5,
   // Paint on an occupied tile — and on the block held in the hand, so a piece
   // never changes material as it moves from the tray, through the drag, onto the
@@ -52,14 +62,14 @@ export const BOARD_STYLE = Object.freeze({
   paintClearcoatRoughness: 0.22,
   // Landing marker: a thin plate lying ON the tile, never a translucent cube
   // floating over it (05 §6「落点预览」).
-  previewRaise: 0.06,
+  previewRaise: 0.04,
   previewDepth: 0.06,
   // The block held in the hand (candidate thumbnails, drag ghost). A piece in the
   // hand is a CUBE; a piece on the board is a painted tile.
   voxelWidth: 0.92,
   voxelRadius: 0.12,
   exposure: 1.02,
-  feedbackSurfaceOffset: 0.56, // particles/lines start just outside the shell
+  feedbackSurfaceOffset: 0.7, // particles/lines start clear of the 0.13 tile standoff
   voxelEdgeColor: 0x6b4620,
   voxelEdgeOpacity: 0,
   // Camera framing: higher = the cube fills more of the central canvas. The

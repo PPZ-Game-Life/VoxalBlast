@@ -264,17 +264,22 @@ const FACE_NORMAL_Z = new THREE.Vector3(0, 0, 1)
 // add, grow or move anything.
 const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
-// One bare-timber material per state (idle / the face under the camera) plus one
-// cached paint material per colour. Tiles swap a MATERIAL, never a geometry, and
-// 150 tiles never need 150 materials kept in sync.
-const socketMaterialPlain = new THREE.MeshStandardMaterial({
-  color: style.tileColor,
-  map: woodGrainTextureRepeating(style.tileGrainRepeat),
-  roughness: 0.7,
-  metalness: 0,
-})
-const socketMaterialActive = socketMaterialPlain.clone()
-socketMaterialActive.color.set(style.tileActiveColor)
+// One material per (state × tone step): the idle timber, the lighter timber of the
+// face under the camera, and one cached paint per colour. A tile swaps a MATERIAL,
+// never a geometry, and 150 tiles never need 150 materials kept in sync.
+function tileWoodMaterial(baseColor, step) {
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(baseColor).multiplyScalar(step),
+    map: woodGrainTextureRepeating(style.tileGrainRepeat),
+    roughness: 0.72,
+    metalness: 0,
+  })
+}
+const TILE_TONES = style.tileToneSteps.length
+const tileWoodMaterials = style.tileToneSteps.map((step) => ({
+  idle: tileWoodMaterial(style.tileColor, step),
+  active: tileWoodMaterial(style.tileActiveColor, step),
+}))
 const paintMaterials = new Map()
 function paintMaterial(color) {
   const key = `${color}`
@@ -290,24 +295,38 @@ function paintMaterial(color) {
   paintMaterials.set(key, material)
   return material
 }
+
+// A bare cube whose 150 blocks are all one flat colour looks like ONE moulded
+// crate; the reference is visibly assembled from separate pieces of timber. So
+// every block gets its own tone step, picked from a deterministic hash of its
+// lattice cell — deterministic because the grain must be identical on every load,
+// or two screenshots of the same build would not compare (#N neighbours get
+// #N±6%, never a colour that could be mistaken for paint).
+function toneIndexFor(faceIndex, u, v) {
+  const hash = (u * 73856093) ^ (v * 19349663) ^ (faceIndex * 83492791)
+  return Math.abs(hash) % TILE_TONES
+}
+
 function buildFaceTiles() {
   const tile = new RoundedBoxGeometry(style.tileSize, style.tileSize, style.tileDepth, 6, style.tileRadius)
-  for (const face of FACES) {
+  FACES.forEach((face, faceIndex) => {
     const normal = cubeVector(face, 'n')
     const group = new THREE.Group()
     group.userData.face = face
     for (let u = 0; u < SH; u += 1) {
       for (let v = 0; v < SH; v += 1) {
-        const mesh = new THREE.Mesh(tile, socketMaterialPlain)
+        const mesh = new THREE.Mesh(tile, tileWoodMaterials[toneIndexFor(faceIndex, u, v)].idle)
         mesh.position.copy(cellLocal(face, u, v)).addScaledVector(normal, TILE_CENTER)
         mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
         mesh.receiveShadow = true
+        mesh.castShadow = true
         mesh.userData.cell = faceLattice(face, u, v)
+        mesh.userData.tone = toneIndexFor(faceIndex, u, v)
         group.add(mesh)
       }
     }
     gridGroup.add(group)
-  }
+  })
 }
 buildFaceTiles()
 
@@ -411,9 +430,10 @@ function centreCubeHorizontally() {
 // Screen-space box of the cube (client pixels). v0.2.25 uses it to split the
 // vertical swipe by region: a finger that lands inside the cube's horizontal
 // span pitches it (screen X), one that lands outside it rolls it (screen Z).
-// CUBE_SOLID_EXTENT is the visible body: the shell plus the one tile inset that
-// stands 0.04 proud of it. Nothing can stick out further, because nothing does.
-const CUBE_SOLID_EXTENT = half - cs / 2 + 0.5
+// CUBE_SOLID_EXTENT is the visible body: the shell plus the one uniform tile
+// standoff that every block shares. Nothing can stick out further, because
+// nothing does.
+const CUBE_SOLID_EXTENT = half - cs / 2 + 0.5 + style.tileRaise
 const cubeBoundsProbe = new THREE.Vector3()
 function projectCubeBounds(extent) {
   camera.updateMatrixWorld()
@@ -800,8 +820,9 @@ function makeMaterial(color, opacity = 1) {
 // the hand is a CUBE; a piece on the board is a painted tile.
 const cubeGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, style.voxelWidth, 6, style.voxelRadius)
 // Landing marker: a thin plate lying ON the tile, never a translucent cube
-// floating over it (05 §6「落点预览」).
-const plateGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, style.previewDepth, 3, 0.03)
+// floating over it (05 §6「落点预览」). Sized to the TILE, so it can never spill
+// onto a neighbour.
+const plateGeometry = new RoundedBoxGeometry(style.tileSize, style.tileSize, style.previewDepth, 3, 0.04)
 const SHARED_BOARD_GEOMETRY = [cubeGeometry, plateGeometry, cubeBody.geometry]
 const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
 const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
@@ -868,10 +889,11 @@ function applyTileMaterials() {
   const front = findFrontFace()
   tileFrontFace = front
   gridGroup.children.forEach((group) => {
-    const bare = group.userData.face === front ? socketMaterialActive : socketMaterialPlain
+    const active = group.userData.face === front
     group.children.forEach((tile) => {
       const color = occupiedColors.get(tile.userData.cell.join(','))
-      tile.material = color === undefined ? bare : paintMaterial(color)
+      if (color !== undefined) tile.material = paintMaterial(color)
+      else tile.material = tileWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
     })
   })
 }
