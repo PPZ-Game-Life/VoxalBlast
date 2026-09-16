@@ -1,8 +1,9 @@
 import packageInfo from '../package.json'
 import * as THREE from 'three'
 // Must come before the three.quarks import below: it bridges the r159 `updateRange`
-// removal that otherwise throws inside animate() and freezes the canvas.
-import './rendering/threeCompat.js'
+// removal that otherwise throws inside animate() and freezes the canvas. Its
+// `skipComposerDepthBlit` is used further down, at the composer.
+import { skipComposerDepthBlit } from './rendering/threeCompat.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import {
   BloomEffect,
@@ -11,6 +12,8 @@ import {
   RenderPass,
   SMAAEffect,
   SMAAPreset,
+  ToneMappingEffect,
+  ToneMappingMode,
 } from 'postprocessing'
 import {
   BatchedRenderer,
@@ -38,10 +41,7 @@ import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
-// v0.7 「田园木作」: the two halves of the new art direction. `installWoodSkin`
-// paints the CSS grain for the signboards, `installPastoralBackdrop` draws the
-// landscape behind the canvas. Both are code, no image files (05「资产边界」).
-import { installWoodSkin, woodGrainTextureRepeating } from './rendering/woodTexture.js'
+import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps } from './rendering/woodTexture.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 
@@ -177,7 +177,7 @@ const scene = new THREE.Scene()
 scene.background = null
 // The opaque wooden shell supplies depth; the landscape behind the canvas is DOM,
 // not a skybox, so it stays crisp at any device pixel ratio for a few kB of SVG.
-const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
+const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 0.1, 100)
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraZoom = 1
 const minCameraZoom = 0.7
@@ -274,10 +274,13 @@ cubeGroup.add(gridGroup)
 // face under the camera, and one cached paint per colour. A block swaps a MATERIAL,
 // never a geometry, and 150 blocks never need 150 materials kept in sync.
 function blockWoodMaterial(baseColor, step) {
-  return new THREE.MeshStandardMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(baseColor).multiplyScalar(step),
-    map: woodGrainTextureRepeating(style.blockGrainRepeat),
-    roughness: 0.72,
+    ...blockSurfaceMaps(),
+    bumpScale: style.woodBumpScale,
+    roughness: style.woodRoughness,
+    clearcoat: style.woodClearcoat,
+    clearcoatRoughness: style.woodClearcoatRoughness,
     metalness: 0,
   })
 }
@@ -290,14 +293,7 @@ const paintMaterials = new Map()
 function paintMaterial(color) {
   const key = `${color}`
   if (paintMaterials.has(key)) return paintMaterials.get(key)
-  const material = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(color),
-    map: woodGrainTextureRepeating(style.blockGrainRepeat),
-    roughness: style.paintRoughness,
-    clearcoat: style.paintClearcoat,
-    clearcoatRoughness: style.paintClearcoatRoughness,
-    metalness: 0,
-  })
+  const material = makeMaterial(color)
   paintMaterials.set(key, material)
   return material
 }
@@ -307,26 +303,35 @@ function paintMaterial(color) {
 // gets its own tone step, picked from a deterministic hash of its lattice cell —
 // deterministic because the grain must be identical on every load, or two
 // screenshots of the same build would not compare.
-function toneIndexFor(faceIndex, u, v) {
-  const hash = (u * 73856093) ^ (v * 19349663) ^ (faceIndex * 83492791)
+function toneIndexFor(x, y, z) {
+  const hash = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791)
   return Math.abs(hash) % BLOCK_TONES
 }
 
 function buildFaceTiles() {
-  FACES.forEach((face, faceIndex) => {
+  const cells = new Map()
+  FACES.forEach((face) => {
     const group = new THREE.Group()
     group.userData.face = face
     for (let u = 0; u < SH; u += 1) {
       for (let v = 0; v < SH; v += 1) {
-        const tone = toneIndexFor(faceIndex, u, v)
+        const cell = faceLattice(face, u, v)
+        const key = cell.join(',')
+        if (cells.has(key)) {
+          cells.get(key).userData.faces.push(face)
+          continue
+        }
+        const tone = toneIndexFor(...cell)
         const mesh = new THREE.Mesh(blockGeometry, blockWoodMaterials[tone].idle)
         // A block is a cube centred in its cell: no orientation needed, and its
         // outer face lands flush with the big cube's surface.
         mesh.position.copy(cellLocal(face, u, v))
         mesh.castShadow = true
         mesh.receiveShadow = true
-        mesh.userData.cell = faceLattice(face, u, v)
+        mesh.userData.cell = cell
+        mesh.userData.faces = [face]
         mesh.userData.tone = tone
+        cells.set(key, mesh)
         group.add(mesh)
       }
     }
@@ -338,7 +343,7 @@ buildFaceTiles()
 // ============================================================
 // Camera fit (cube rotates; camera stays put)
 // ============================================================
-const CAMERA_DIR = new THREE.Vector3(0.3, 0.4, 1.05).normalize()
+const CAMERA_DIR = new THREE.Vector3(...style.cameraDirection).normalize()
 // Fit bound covers the shell plus the one tile inset that stands proud of it.
 const CUBE_EXTENT = half + 0.55
 const frameCorner = new THREE.Vector3()
@@ -373,7 +378,7 @@ function distanceForViewDirection(direction) {
 
 function refreshCameraProjection() {
   const isMobile = sceneWrap.clientWidth < 700
-  camera.fov = isMobile ? 37 : 34
+  camera.fov = isMobile ? style.cameraFovMobile : style.cameraFov
   camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
   camera.updateProjectionMatrix()
   // Re-centre the cube inside the tall central canvas per platform.
@@ -491,14 +496,15 @@ function gestureSpan() {
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
 renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.toneMapping = THREE.ACESFilmicToneMapping
+// Composer renders linear HDR offscreen; tone-map exactly once in the final pass.
+renderer.toneMapping = THREE.NoToneMapping
 renderer.toneMappingExposure = style.exposure
 renderer.setClearColor(0x000000, 0)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 sceneWrap.appendChild(renderer.domElement)
 
-const composer = new EffectComposer(renderer, { multisampling: quality.multisampling })
+const composer = new EffectComposer(renderer, { multisampling: quality.multisampling, frameBufferType: THREE.HalfFloatType })
 const renderPass = new RenderPass(scene, camera)
 const bloomEffect = new BloomEffect({
   intensity: quality.bloomIntensity,
@@ -509,7 +515,12 @@ const bloomEffect = new BloomEffect({
   levels: quality.lowPower ? VFX_CONFIG.bloom.lowPowerLevels : VFX_CONFIG.bloom.levels,
 })
 const smaaEffect = new SMAAEffect({ preset: quality.lowPower ? SMAAPreset.LOW : SMAAPreset.HIGH })
-const effectPass = new EffectPass(camera, bloomEffect, smaaEffect)
+const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC })
+const effectPass = new EffectPass(camera, bloomEffect, toneMappingEffect, smaaEffect)
+// SMAA carries EffectAttribute.DEPTH, so this pass would otherwise ask the composer for
+// a depth texture it never reads. Cancel that request before addPass() sees it — the
+// reason, and the removal condition, are in threeCompat.js.
+skipComposerDepthBlit(effectPass)
 composer.addPass(renderPass)
 composer.addPass(effectPass)
 
@@ -810,7 +821,8 @@ function colorToVector4(color, alpha = 1) {
 function makeMaterial(color, opacity = 1) {
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(color),
-    map: woodGrainTextureRepeating(style.blockGrainRepeat),
+    ...blockSurfaceMaps(true),
+    bumpScale: style.paintBumpScale,
     roughness: style.paintRoughness,
     clearcoat: style.paintClearcoat,
     clearcoatRoughness: style.paintClearcoatRoughness,
@@ -886,8 +898,8 @@ function applyTileMaterials() {
   const front = findFrontFace()
   tileFrontFace = front
   gridGroup.children.forEach((group) => {
-    const active = group.userData.face === front
     group.children.forEach((tile) => {
+      const active = tile.userData.faces.includes(front)
       const color = occupiedColors.get(tile.userData.cell.join(','))
       if (color !== undefined) tile.material = paintMaterial(color)
       else tile.material = blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
@@ -3091,6 +3103,19 @@ function animate() {
 // mutable game state and is not used by any gameplay code path.
 globalThis.__voxalblast = Object.freeze({
   version: packageInfo.version,
+  rendering: () => {
+    const tiles = gridGroup.children.flatMap((group) => group.children)
+    return {
+      meshes: tiles.length,
+      uniqueCells: new Set(tiles.map((tile) => tile.userData.cell.join(','))).size,
+      trianglesPerBlock: blockGeometry.attributes.position.count / 3,
+      environment: Boolean(scene.environment),
+      hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
+      toneMapping: toneMappingEffect.mode,
+      programs: renderer.info.programs?.length,
+      lowPower: quality.lowPower,
+    }
+  },
   // `pose` is the rendered orientation; `base` is the grid pose it settles
   // around (a product of whole 90° steps about world axes, so it can never drift
   // off the grid); `tilt` is the ≤8° presentation tilt sitting on top of it. The

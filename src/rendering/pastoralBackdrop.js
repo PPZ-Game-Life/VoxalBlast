@@ -1,17 +1,14 @@
-// v0.7 「田园木作」背景 — a code-drawn pastoral landscape behind the cube.
-//
-// 05「资产边界」: the runtime picture never loads an image file. A hand-painted
-// countryside would normally be one big PNG; here it is one inline SVG built out
-// of parametric shapes at boot, so it stays a few kilobytes of source, scales to
-// any viewport without a second asset, and can be retuned by editing numbers
-// instead of re-exporting art.
+// 「田园木作」背景 — a painted landscape behind the realtime 3D cube.
+// The production illustration lives in public/art; its prompt and provenance
+// are documented there. Keep the original procedural SVG as an immediate,
+// network-independent fallback until the illustration has loaded successfully.
 //
 // The scene is deliberately READ-ONLY decoration: it sits behind the canvas, it
 // never takes a pointer event (05「背景不参与交互」), and the cube is always the
 // brightest, most saturated thing on screen. Every value below is muted on
 // purpose — a background that competes with the board is a bug, not a style.
 //
-// Layout note: the viewBox is 1440×1000 and the element uses
+// Fallback layout note: the viewBox is 1440×1000 and the element uses
 // `preserveAspectRatio="xMidYMid slice"`, so desktop crops the top and bottom
 // and a phone keeps the middle ~35% of the width. Everything that has to survive
 // that crop (hills, meadow, the river) spans the full width, and the village is
@@ -280,6 +277,25 @@ export function installPastoralBackdrop(container) {
   layer.className = 'pastoral-backdrop'
   layer.setAttribute('aria-hidden', 'true')
   layer.innerHTML = pastoralBackdropSvg()
+  const fallback = layer.querySelector('svg')
+  const painting = document.createElement('img')
+  painting.className = 'pastoral-backdrop-painting'
+  painting.alt = ''
+  painting.draggable = false
+  painting.decoding = 'async'
+  painting.fetchPriority = 'high'
+  painting.style.cssText = 'position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;pointer-events:none;visibility:hidden;'
+  painting.addEventListener('load', () => {
+    painting.style.visibility = 'visible'
+    fallback.style.visibility = 'hidden'
+  }, { once: true })
+  painting.addEventListener('error', () => {
+    painting.remove()
+    fallback.style.visibility = 'visible'
+  }, { once: true })
+  // Vite's BASE_URL also supports the project's relative production base './'.
+  painting.src = `${import.meta.env.BASE_URL}art/pastoral-valley.webp`
+  layer.append(painting)
   container.prepend(layer)
   return layer
 }

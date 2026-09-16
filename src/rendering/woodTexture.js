@@ -1,14 +1,7 @@
 import * as THREE from 'three'
 
-// v0.7 「木作工坊」— every wooden surface in the game comes from THIS file.
-//
-// 05「资产边界」 forbids shipping image files: the runtime picture is built from
-// parametric geometry, CSS, code-generated inline SVG, canvas textures and
-// shaders. So the wood is not a photograph of oak, it is a canvas painted at
-// boot by the recipes below, and every plank on screen — the cube body, the face
-// sockets, the signboards, the fence in the backdrop — is the same recipe at a
-// different scale and rotation. One generator is what makes the UI and the 3D
-// board read as the same material (05「同源」).
+// Deterministic, low-contrast timber and lacquer. Paint covers the timber's
+// fibres: it gets a soft pigment wash of its own, not the bare wood's line map.
 //
 // Everything is seeded and deterministic: the grain must be identical on every
 // load, or two screenshots of the same build would not compare, and the board
@@ -79,33 +72,61 @@ function makeCanvas(width, height) {
   return canvas
 }
 
-// The universal grain layer. A near-white canvas carrying faint dark streaks, so
-// it can be used as `map` on a MeshStandardMaterial of ANY colour: Three.js
-// multiplies `map` by `color`, which means one texture grains the natural-wood
-// shell, the recessed sockets and every painted chip at once. That single shared
-// map is what stops the board reading as "wood plus coloured plastic".
-const GRAIN_RECIPE = Object.freeze({ size: 512, seed: 20270915 })
+const GRAIN_RECIPE = Object.freeze({ size: 256 })
 let grainCanvas = null
 
-function buildGrainCanvas() {
-  if (grainCanvas) return grainCanvas
-  const { size, seed } = GRAIN_RECIPE
+function buildSurfaceCanvas(painted = false) {
+  const { size } = GRAIN_RECIPE
   const canvas = makeCanvas(size, size)
   const ctx = canvas.getContext('2d')
-  const random = mulberry32(seed)
-  paintBase(ctx, size, size, '#ffffff')
-  paintStreaks(ctx, size, size, random, { axis: 'x', count: 90, color: '#7a5a34', alpha: 0.16, width: 3.4 })
-  paintStreaks(ctx, size, size, random, { axis: 'x', count: 60, color: '#fff6e4', alpha: 0.5, width: 2.2 })
-  // Fine speckle: without it the streaks read as pen lines rather than fibre.
-  for (let i = 0; i < 900; i += 1) {
-    ctx.globalAlpha = 0.05 + random() * 0.07
-    ctx.fillStyle = random() > 0.5 ? '#6b4a26' : '#fffaf0'
-    ctx.fillRect(random() * size, random() * size, 1 + random() * 1.6, 1 + random() * 1.4)
+  const pixels = ctx.createImageData(size, size)
+  // Periodic, coherent bands avoid both texture seams and the old crossing
+  // scribbles. Broad pigment variation survives at real game size.
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size * Math.PI * 2
+      const v = y / size * Math.PI * 2
+      const wash = Math.sin(u + Math.sin(v)) * Math.cos(v * 2 - Math.sin(u))
+      const grain = Math.pow(0.5 + 0.5 * Math.sin(u * 9 + Math.sin(v) * 1.8 + Math.sin(v * 2) * 0.4), 12)
+      const fibre = Math.sin(u * 27 + Math.sin(v * 2) * 2)
+      const value = painted ? 248 + wash * 4 : 245 + wash * 5 - grain * 10 + fibre * 1.5
+      const i = (y * size + x) * 4
+      pixels.data[i] = value
+      pixels.data[i + 1] = value
+      pixels.data[i + 2] = value
+      pixels.data[i + 3] = 255
+    }
   }
-  ctx.globalAlpha = 1
-  paintSheen(ctx, size, size, 'x', 'rgba(255,255,255,0.10)', 'rgba(120,86,50,0.10)')
-  grainCanvas = canvas
+  ctx.putImageData(pixels, 0, 0)
   return canvas
+}
+
+function buildGrainCanvas() {
+  if (!grainCanvas) grainCanvas = buildSurfaceCanvas()
+  return grainCanvas
+}
+
+let paintedTexture
+let woodBumpTexture
+let paintBumpTexture
+export function blockSurfaceMaps(painted = false) {
+  if (!paintedTexture) {
+    paintedTexture = new THREE.CanvasTexture(buildSurfaceCanvas(true))
+    paintedTexture.colorSpace = THREE.SRGBColorSpace
+    paintedTexture.wrapS = paintedTexture.wrapT = THREE.RepeatWrapping
+    paintedTexture.anisotropy = 4
+    woodBumpTexture = new THREE.CanvasTexture(buildGrainCanvas())
+    paintBumpTexture = new THREE.CanvasTexture(paintedTexture.image)
+    for (const texture of [woodBumpTexture, paintBumpTexture]) {
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+      texture.anisotropy = 4
+      // Height is data; leave colorSpace at NoColorSpace.
+    }
+  }
+  return {
+    map: painted ? paintedTexture : woodGrainTextureRepeating(1),
+    bumpMap: painted ? paintBumpTexture : woodBumpTexture,
+  }
 }
 
 // One CanvasTexture per repeat value, because `repeat` lives on the Texture and the
@@ -147,8 +168,8 @@ function woodDataUrl({ width, height, axis, base, seed, streaks, alpha }) {
 
 // Horizontal planks (signboards, the candidate tray, the banner).
 export function installWoodSkin(root = document.documentElement) {
-  const panel = woodDataUrl({ width: 320, height: 120, axis: 'x', base: '#e0b57e', seed: 4471, streaks: 34, alpha: 0.5 })
-  const post = woodDataUrl({ width: 96, height: 320, axis: 'y', base: '#dcae74', seed: 9931, streaks: 26, alpha: 0.55 })
+  const panel = woodDataUrl({ width: 320, height: 120, axis: 'x', base: '#e0b57e', seed: 4471, streaks: 14, alpha: 0.1 })
+  const post = woodDataUrl({ width: 96, height: 320, axis: 'y', base: '#dcae74', seed: 9931, streaks: 12, alpha: 0.12 })
   root.style.setProperty('--wood-grain', `url("${panel}")`)
   root.style.setProperty('--wood-grain-post', `url("${post}")`)
 }

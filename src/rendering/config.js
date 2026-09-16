@@ -37,35 +37,45 @@ export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
   // It is therefore deliberately darker than the blocks — the groove IS this colour.
-  hullColor: 0x9c6d37,
+  hullColor: 0x765033,
   hullOpacity: 1,
   hullRoughness: 0.7,
   hullClearcoat: 0.1,
   hullGrainRepeat: 2.2,
-  hullInset: 0.22, // how far the shell surface sits behind the blocks' outer faces
+  hullInset: 0.68, // total width reduction; backing is recessed ~0.3 behind the blocks
   hullRadius: 0.08,
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
-  blockSize: 0.91, // gap to a neighbour = 1 - blockSize = 0.09
-  blockRadius: 0.05, // a small edge bevel; the six faces stay flat
-  blockSegments: 4,
-  blockColor: 0xd7ab74, // the MID tone of a bare block; the array below varies it
-  blockActiveColor: 0xe6c08d, // blocks on the face the player is working on
+  blockSize: 0.94, // narrow joints, with readable rounded shoulders
+  blockRadius: 0.075, // flat face remains 84% of the block width
+  blockSegments: 3,
+  blockColor: 0xe2af78,
+  blockActiveColor: 0xe6b67f,
   // A cube whose 150 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
-  blockToneSteps: Object.freeze([0.93, 0.97, 1, 1.03, 1.06, 1.1]),
-  blockGrainRepeat: 0.5,
+  blockToneSteps: Object.freeze([0.94, 0.97, 1, 1.02, 1.04, 1.06]),
+  blockGrainRepeat: 1,
+  woodRoughness: 0.48,
+  woodClearcoat: 0.26,
+  woodClearcoatRoughness: 0.38,
+  woodBumpScale: 0.012,
+  paintBumpScale: 0.004,
+  environmentIntensity: 0.5,
   // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.34,
-  paintClearcoat: 0.55,
-  paintClearcoatRoughness: 0.22,
+  paintRoughness: 0.29,
+  paintClearcoat: 0.72,
+  paintClearcoatRoughness: 0.2,
+  voxelEdgeOpacity: 0.12,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
   previewLift: 0.03,
-  exposure: 1.02,
+  exposure: 1.0,
+  cameraFov: 30,
+  cameraFovMobile: 34,
+  cameraDirection: Object.freeze([0.52, 0.48, 1.05]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
@@ -76,11 +86,32 @@ export const BOARD_STYLE = Object.freeze({
   // and 0.77~0.79 of the mobile canvas width, with equal roll bands on both sides
   // (302/220/376px on PC, 39~42px on mobile). `keepCubeInsideCanvas()`
   // additionally guarantees the cube cannot leave the canvas on any aspect.
-  safeFactorDesktop: 1.04,
+  safeFactorDesktop: 1.14,
   safeFactorMobile: 1.0,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0.1,
   targetYMobile: -0.3,
+})
+
+// The same sun / sky / reflection rig is used by the board, tray and home toy.
+export const LIGHTING_STYLE = Object.freeze({
+  sky: 0xfff4df,
+  ground: 0xa49a7b,
+  hemisphereIntensity: 0.65,
+  keyColor: 0xffefd6,
+  keyIntensity: 2.4,
+  keyPosition: Object.freeze([-3.5, 7, 5]),
+  fillColor: 0xc9e3ff,
+  fillIntensity: 0.5,
+  fillPosition: Object.freeze([5, 2, -4]),
+  rimColor: 0xffe6c4,
+  rimIntensity: 0.75,
+  rimPosition: Object.freeze([-4, 4, -5]),
+  shadowExtent: 4.8,
+  shadowBias: -0.00015,
+  shadowNormalBias: 0.012,
+  environmentWidth: 256,
+  environmentHeight: 128,
 })
 
 // Opening layout (v0.2.31): the cube no longer starts as a bare shell. A few
@@ -190,9 +221,9 @@ export const VFX_CONFIG = Object.freeze({
     starMaxScale: 1.3,
   }),
   bloom: Object.freeze({
-    intensity: 0.55,
-    lowPowerIntensity: 0.34,
-    luminanceThreshold: 0.9,
+    intensity: 0.18,
+    lowPowerIntensity: 0.1,
+    luminanceThreshold: 1.35,
     luminanceSmoothing: 0.22,
     radius: 0.72,
     levels: 6,
