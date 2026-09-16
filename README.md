@@ -12,7 +12,7 @@ npm run shot       # 桌面 + 移动端实机截图（需先跑 dev）
 npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手（需先跑 dev）
 ```
 
-当前版本 **0.8.1**：在 v0.8.0「木质田园」品质升级之上修一处手势方向——左右侧带的上下滑动自转现在都跟手（右侧带下滑顺时针、左侧带下滑逆时针），此前两带共用一个方向符号，左侧带是反的。规则、计分、存档与画面与 v0.8.0 相同。
+当前版本 **0.8.2**：只有测量工具与文档——`tools/reachability.mjs` 新增 `--pool=` / `--batch=` 覆盖与 `endedNaturallyPct`，并据此量出「现行候选池下单局不会自然结束、道具整局没有出手机会」（矩阵见 [难度与单局长度测量](docs/Technical/DIFFICULTY_BASELINE.md)）。玩法、数值、画面与存档与 v0.8.1 相同；v0.8.1 是左右侧带自转跟手的修复。
 
 ## 目录
 
@@ -39,3 +39,4 @@ npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手�
 - 视觉参数一律进 `src/rendering/config.js`，不在 `main.js` 散落魔法数字。
 - 每批改动验证：`npm test` + `npm run build` + `npm run shot`；动了手势/方向再加 `npm run probe:swipe`（实机断言三个手势的世界轴方向）。
 - 本轮验证记录：[v0.8.1 侧带自转方向修复验收](docs/Planning/04-MVP验收清单.md)；v0.8.0 渲染品质改版记录保留在 [04](docs/Planning/04-MVP验收清单.md)，旧版记录不代替本轮验证。
+- 难度与单局长度：动候选池或手牌大小之前先看 [v0.8.1 基线测量](docs/Technical/DIFFICULTY_BASELINE.md)（`npm run reachability` 加 `--pool=` / `--batch=` 可自行复现）。

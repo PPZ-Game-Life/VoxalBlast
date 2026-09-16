@@ -1,0 +1,312 @@
+﻿{
+    "generatedAt":  "2026-09-16",
+    "model":  "src/game/{board,shapes,scoring,honors}.js @ v0.8.1 (same-source import)",
+    "command":  "node tools/reachability.mjs p2 --strategy=\u003cs\u003e --games=\u003cn\u003e --batch=\u003cb\u003e --pool=\u003cp\u003e",
+    "note":  "Deterministic (seeded rnd, tools/reachability.mjs). No gameplay file was changed to produce these runs.",
+    "runs":  [
+                 {
+                     "label":  "A_shipped-greedy",
+                     "pool":  "Dot,Line 2,Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  400,
+                     "endedNaturallyPct":  0,
+                     "avgStepsPerGame":  601,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  166644,
+                     "scorePercentiles":  {
+                                              "p25":  162065,
+                                              "p50":  166170,
+                                              "p75":  170525,
+                                              "p90":  174755,
+                                              "p99":  184450
+                                          }
+                 },
+                 {
+                     "label":  "A_shipped-noise",
+                     "pool":  "Dot,Line 2,Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  400,
+                     "endedNaturallyPct":  0,
+                     "avgStepsPerGame":  601,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  170202,
+                     "scorePercentiles":  {
+                                              "p25":  163970,
+                                              "p50":  169805,
+                                              "p75":  175485,
+                                              "p90":  181660,
+                                              "p99":  192135
+                                          }
+                 },
+                 {
+                     "label":  "B_noDot-greedy",
+                     "pool":  "Line 2,Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  399,
+                     "endedNaturallyPct":  0.3,
+                     "avgStepsPerGame":  600.8,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  176804,
+                     "scorePercentiles":  {
+                                              "p25":  170935,
+                                              "p50":  176600,
+                                              "p75":  181365,
+                                              "p90":  186355,
+                                              "p99":  201550
+                                          }
+                 },
+                 {
+                     "label":  "B_noDot-noise",
+                     "pool":  "Line 2,Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  389,
+                     "endedNaturallyPct":  2.8,
+                     "avgStepsPerGame":  597.2,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  185618,
+                     "scorePercentiles":  {
+                                              "p25":  178880,
+                                              "p50":  184735,
+                                              "p75":  193065,
+                                              "p90":  200025,
+                                              "p99":  211080
+                                          }
+                 },
+                 {
+                     "label":  "C_noSmall-b4-noise",
+                     "pool":  "Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  4,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  386,
+                     "endedNaturallyPct":  3.5,
+                     "avgStepsPerGame":  592.6,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  203745,
+                     "scorePercentiles":  {
+                                              "p25":  196685,
+                                              "p50":  205645,
+                                              "p75":  213285,
+                                              "p90":  224355,
+                                              "p99":  243575
+                                          }
+                 },
+                 {
+                     "label":  "C_noSmall-greedy",
+                     "pool":  "Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  399,
+                     "endedNaturallyPct":  0.3,
+                     "avgStepsPerGame":  600.4,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  186669,
+                     "scorePercentiles":  {
+                                              "p25":  181385,
+                                              "p50":  186680,
+                                              "p75":  192145,
+                                              "p90":  195995,
+                                              "p99":  206400
+                                          }
+                 },
+                 {
+                     "label":  "C_noSmall-noise",
+                     "pool":  "Line 3,Square,L,J,T,S,Z,Corner",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  386,
+                     "endedNaturallyPct":  3.5,
+                     "avgStepsPerGame":  596.7,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  204274,
+                     "scorePercentiles":  {
+                                              "p25":  197335,
+                                              "p50":  205090,
+                                              "p75":  216225,
+                                              "p90":  223330,
+                                              "p99":  227485
+                                          }
+                 },
+                 {
+                     "label":  "D_noCorner-b4-noise",
+                     "pool":  "Line 3,Square,L,J,T,S,Z",
+                     "batch":  4,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  367,
+                     "endedNaturallyPct":  8.3,
+                     "avgStepsPerGame":  581.8,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  209701,
+                     "scorePercentiles":  {
+                                              "p25":  205920,
+                                              "p50":  214225,
+                                              "p75":  223095,
+                                              "p90":  234775,
+                                              "p99":  253185
+                                          }
+                 },
+                 {
+                     "label":  "D_noCorner-greedy",
+                     "pool":  "Line 3,Square,L,J,T,S,Z",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  396,
+                     "endedNaturallyPct":  1,
+                     "avgStepsPerGame":  598.6,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  192085,
+                     "scorePercentiles":  {
+                                              "p25":  186920,
+                                              "p50":  191925,
+                                              "p75":  197305,
+                                              "p90":  204175,
+                                              "p99":  223405
+                                          }
+                 },
+                 {
+                     "label":  "D_noCorner-noise",
+                     "pool":  "Line 3,Square,L,J,T,S,Z",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  361,
+                     "endedNaturallyPct":  9.8,
+                     "avgStepsPerGame":  574.2,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  203549,
+                     "scorePercentiles":  {
+                                              "p25":  202070,
+                                              "p50":  211530,
+                                              "p75":  220445,
+                                              "p90":  225725,
+                                              "p99":  244980
+                                          }
+                 },
+                 {
+                     "label":  "E_fourCell-greedy",
+                     "pool":  "Square,L,J,T,S,Z",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  384,
+                     "endedNaturallyPct":  4,
+                     "avgStepsPerGame":  591.2,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  201153,
+                     "scorePercentiles":  {
+                                              "p25":  197290,
+                                              "p50":  202940,
+                                              "p75":  209015,
+                                              "p90":  215615,
+                                              "p99":  231115
+                                          }
+                 },
+                 {
+                     "label":  "E_fourCell-noise",
+                     "pool":  "Square,L,J,T,S,Z",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  229,
+                     "endedNaturallyPct":  42.8,
+                     "avgStepsPerGame":  483.8,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  186909,
+                     "scorePercentiles":  {
+                                              "p25":  164295,
+                                              "p50":  215690,
+                                              "p75":  227490,
+                                              "p90":  242265,
+                                              "p99":  267915
+                                          }
+                 },
+                 {
+                     "label":  "E_noise_1000",
+                     "pool":  "Square,L,J,T,S,Z",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  1000,
+                     "gamesReachedStepCap":  577,
+                     "endedNaturallyPct":  42.3,
+                     "avgStepsPerGame":  486,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  187776,
+                     "scorePercentiles":  {
+                                              "p25":  164295,
+                                              "p50":  215690,
+                                              "p75":  227490,
+                                              "p90":  242265,
+                                              "p99":  267915
+                                          }
+                 },
+                 {
+                     "label":  "W80_noise",
+                     "pool":  "Square,L,J,T,S,Z,Square,L,J,T,S,Z,Square,L,J,T,S,Z,Line 3,Line 3,Corner,Dot",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  385,
+                     "endedNaturallyPct":  3.8,
+                     "avgStepsPerGame":  594.5,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  199849,
+                     "scorePercentiles":  {
+                                              "p25":  193240,
+                                              "p50":  200665,
+                                              "p75":  207310,
+                                              "p90":  217230,
+                                              "p99":  232515
+                                          }
+                 },
+                 {
+                     "label":  "W90_greedy",
+                     "pool":  "Square,L,J,T,S,Z,Square,L,J,T,S,Z,Square,L,J,T,S,Z,Line 3,Line 3",
+                     "batch":  3,
+                     "strategy":  "greedy",
+                     "games":  400,
+                     "gamesReachedStepCap":  391,
+                     "endedNaturallyPct":  2.3,
+                     "avgStepsPerGame":  597,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  194393,
+                     "scorePercentiles":  {
+                                              "p25":  189720,
+                                              "p50":  194755,
+                                              "p75":  200065,
+                                              "p90":  206710,
+                                              "p99":  221485
+                                          }
+                 },
+                 {
+                     "label":  "W90_noise",
+                     "pool":  "Square,L,J,T,S,Z,Square,L,J,T,S,Z,Square,L,J,T,S,Z,Line 3,Line 3",
+                     "batch":  3,
+                     "strategy":  "noise",
+                     "games":  400,
+                     "gamesReachedStepCap":  346,
+                     "endedNaturallyPct":  13.5,
+                     "avgStepsPerGame":  570.1,
+                     "maxStepsPerGame":  601,
+                     "avgScore":  207400,
+                     "scorePercentiles":  {
+                                              "p25":  207360,
+                                              "p50":  217010,
+                                              "p75":  225415,
+                                              "p90":  233875,
+                                              "p99":  250035
+                                          }
+                 }
+             ]
+}

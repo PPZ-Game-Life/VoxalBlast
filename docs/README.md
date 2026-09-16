@@ -17,6 +17,7 @@
 | [技术结构](Technical/ARCHITECTURE.md) | 模块、存档、渲染和调试入口在哪？ |
 | [构建与部署](Technical/NETLIFY_DEPLOYMENT_BASELINE.md) | 仓库如何构建，部署配置保证了什么？ |
 | [待办与验证边界](Technical/KNOWN_GAPS.md) | 哪些仍是提案、缺口或未验证能力？ |
+| [难度与单局长度测量](Technical/DIFFICULTY_BASELINE.md) | 现行候选池下对局为什么不会结束，改池/改手牌各能拉高多少难度？ |
 | [v0.5.0 验收记录](Technical/VISUAL_REFRESH_050.md) | 上一轮实际做过哪些检查？ |
 
 ## 目录职责

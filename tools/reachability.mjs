@@ -17,6 +17,8 @@
 //   node tools/reachability.mjs p1                                  # 仅完备穷举
 //   node tools/reachability.mjs p2 --strategy=noise --games=2000    # 仅对局模拟
 //   node tools/reachability.mjs all --out=tools/reachability-baseline.json
+//   node tools/reachability.mjs p2 --pool=Line 3,Square,L,J,T,S,Z   # 试一个候选池
+//   node tools/reachability.mjs p2 --batch=4                        # 试更大的手牌
 //
 // Phase 1（完备穷举）：对每个（拼块 × 朝向 × 落点）DFS 枚举所有可行缺口组合。
 //   结论是**可证明的**——搜索树里没出现的事件即不可达。
@@ -45,6 +47,18 @@ const STRATEGY = opt('strategy', 'noise')
 const GAMES = Number(opt('games', 2000))
 const STEP_CAP = Number(opt('stepCap', 600))
 const OUT = opt('out', '')
+
+// v0.8.2 difficulty tuning. The candidate pool and the hand size are the two knobs
+// that decide how often a hand is completely stuck, i.e. how long a run lasts — and
+// "how long a run lasts" is the difficulty complaint: the shipped pool produces runs
+// that never end at all (500/500 noise games hit the 600-placement cap), so items are
+// never needed. Both knobs are overridable HERE so a proposed pool can be measured
+// before it ships; the game draws three pieces uniformly from SHAPES (main.js
+// nextPieces / rerollPieces), which is exactly what this models, so a measured pool
+// transfers. `--pool=` takes shape names (see src/game/shapes.js), comma-separated:
+// unknown names are errors, not silent omissions.
+const POOL = (opt('pool', '') || '').split(',').map((name) => name.trim()).filter(Boolean)
+const BATCH = Math.max(1, Math.trunc(Number(opt('batch', 3))))
 
 // ---- 晶格索引 ------------------------------------------------------------
 const idx = new Map()
@@ -251,7 +265,18 @@ for (const pl of ALL_PLACEMENTS) {
   if (!PL_BY_SHAPE.has(pl.shape)) PL_BY_SHAPE.set(pl.shape, [])
   PL_BY_SHAPE.get(pl.shape).push(pl)
 }
-const SHAPE_NAMES = SHAPES.map((s) => s.name)
+const ALL_SHAPE_NAMES = SHAPES.map((s) => s.name)
+// `--pool=` narrows the pool; empty means the shipped one. The names keep the order
+// they are given in, which makes a run's own report readable.
+const SHAPE_NAMES = POOL.length
+  ? POOL.map((name) => {
+    const match = ALL_SHAPE_NAMES.find((candidate) => candidate.toLowerCase() === name.toLowerCase())
+    if (!match) throw new Error(`--pool: unknown shape "${name}"; the pool is ${ALL_SHAPE_NAMES.join(', ')}`)
+    return match
+  })
+  : ALL_SHAPE_NAMES
+// One hand, drawn the way the game draws it: uniformly, with replacement.
+const drawHand = () => Array.from({ length: BATCH }, () => SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)])
 
 function legalPlacements(state, shape) {
   const out = []
@@ -292,7 +317,7 @@ function phase2(games) {
   for (let g = 0; g < games; g++) {
     let state = 0n, steps = 0, score = 0, chain = 0, bestChain = 0
     const seenHere = new Set(), facesEverCleared = new Set(), legacyHere = new Set()
-    let hand = [SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)], SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)], SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)]]
+    let hand = drawHand()
 
     for (;;) {
       if (steps > STEP_CAP) { capped++; break }
@@ -331,7 +356,7 @@ function phase2(games) {
         break
       }
       if (!moved) break
-      if (hand.length === 0) hand = [SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)], SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)], SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)]]
+      if (hand.length === 0) hand = drawHand()
     }
 
     if (facesEverCleared.size >= 6) sixFaceGames++
@@ -350,7 +375,13 @@ function phase2(games) {
     strategy: STRATEGY,
     games,
     stepCap: STEP_CAP,
+    // What was measured, so a result file can never be read as "the shipped pool".
+    pool: SHAPE_NAMES,
+    batch: BATCH,
     gamesReachedStepCap: capped,
+    // A run that never ends is the difficulty bug: `gamesReachedStepCap` is how many
+    // games were still going at the cap, so 0 here means every run found a natural end.
+    endedNaturallyPct: +((100 * (games - capped)) / games).toFixed(1),
     avgStepsPerGame: +(stepsTotal / games).toFixed(1),
     maxStepsPerGame: maxSteps,
     avgScore: Math.round(scoreTotal / games),

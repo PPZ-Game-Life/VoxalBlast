@@ -53,7 +53,7 @@ records/session 有数据校验及存储失败后的内存降级；偏好的直�
 
 ## 开发和检查
 
-npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 216/216，v0.8.1 起 236/236，新增 swipe 组）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run probe:swipe 在无头 Edge 里走完三个手势并断言其世界轴方向；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）。
+npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 216/216，v0.8.1 起 236/236，新增 swipe 组）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run probe:swipe 在无头 Edge 里走完三个手势并断言其世界轴方向；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）；v0.8.2 起它还能在不改任何玩法代码的前提下试参数——`--pool=` 取形状子集（重名＝加权）、`--batch=` 改手牌大小，输出里带本次实际使用的 pool / batch 与 `endedNaturallyPct`（撞 600 手上限＝没结束），结果样本存 tools/reachability-pool-matrix.json，结论与判读边界见 [难度与单局长度测量](DIFFICULTY_BASELINE.md)。
 
 不在 npm scripts 里、需要直接 node 运行的脚本：tools/tier-calibration.mjs 把分数样本换算成阶位切点；tools/png-stats.mjs 统计截图尺寸与像素分布，用来证明截图不是空白帧；tools/organize-docs.mjs 是 2026-09-14 文档整理的一次性脚本，整理完不再执行。tools/push.cmd 是受控推送脚本（`tools\push.cmd` 推 main，可带分支名与 `--pause`），只做提交推送、不参与构建。
 
