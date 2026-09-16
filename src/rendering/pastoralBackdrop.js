@@ -100,7 +100,10 @@ function tuft(x, y, scale, fill) {
     + '</g>'
 }
 
-export function pastoralBackdropSvg() {
+// The scene itself. Module-private on purpose: `installPastoralBackdrop` is the only
+// entry point the game needs, and a second way to mount the same SVG would be a
+// second thing to keep in sync.
+function pastoralBackdropSvg() {
   const random = seeded(31415)
   const parts = []
 

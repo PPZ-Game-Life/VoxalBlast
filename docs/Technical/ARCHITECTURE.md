@@ -15,6 +15,8 @@
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光 |
+| src/rendering/woodTexture.js | 程序化木纹：一张固定种子的 Canvas 纹理，同时供 3D 的 `map` 与 UI 的 CSS data URL |
+| src/rendering/pastoralBackdrop.js | 程序化田园背景：启动时拼出的内联 SVG，插在画布之后的 `.pastoral-backdrop` 层 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴与键盘映射 |
 | src/rendering/threeCompat.js | three.quarks 与 Three.js 兼容处理，需先于粒子导入 |
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
@@ -41,11 +43,13 @@ records/session 有数据校验及存储失败后的内存降级；偏好的直�
 
 ## 开发和检查
 
-npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（2026-09-14 复核为 216/216）；npm run build 生成 dist；npm run preview 检查正式产物；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）。
+npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（2026-09-14 复核为 216/216）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）。
 
 不在 npm scripts 里、需要直接 node 运行的脚本：tools/tier-calibration.mjs 把分数样本换算成阶位切点；tools/png-stats.mjs 统计截图尺寸与像素分布，用来证明截图不是空白帧；tools/organize-docs.mjs 是 2026-09-14 文档整理的一次性脚本，整理完不再执行。tools/push.cmd 是受控推送脚本（`tools\push.cmd` 推 main，可带分支名与 `--pause`），只做提交推送、不参与构建。
 
-产物目录：artifacts/visual/ 存实机截图，artifacts/probe/ 是 v0.2.25 的一次性交互探针（自带 "delete after use" 标注，不属于构建或测试链路）。
+`tools/screenshot.mjs` 走 CDP 而不是 `msedge --screenshot`：后者只截首帧，而游戏开在主页遮罩上，裸 flag 永远拍不到棋盘。该脚本先点掉主页、再截图，并收集 `window.onerror` / `unhandledrejection` —— 本轮就是靠它在一次运行里抓到一处改名遗漏导致的整盘空白。它同时把两个已知陷阱固化在代码里：headless 的布局视口有约 500px 最小宽度（竖屏只能用 500×1082），以及刚退出的 Edge 会短暂占住调试端口与 profile 锁（每次抓图独立端口 + 独立 `%TEMP%` user-data-dir）。
+
+产物目录：artifacts/visual/ 存实机截图（`npm run shot` 输出），artifacts/ 整体不入库。
 
 main.js 保留 __voxalblast 只读观察接口和开发构建专用验证入口；它们是调试设施，不是游戏对外 API。检查接口实际定义后再使用，不依赖历史稿的旧探针结构。
 

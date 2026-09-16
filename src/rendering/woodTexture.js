@@ -85,7 +85,6 @@ function makeCanvas(width, height) {
 // shell, the recessed sockets and every painted chip at once. That single shared
 // map is what stops the board reading as "wood plus coloured plastic".
 const GRAIN_RECIPE = Object.freeze({ size: 512, seed: 20270915 })
-let grainTexture = null
 let grainCanvas = null
 
 function buildGrainCanvas() {
@@ -109,21 +108,11 @@ function buildGrainCanvas() {
   return canvas
 }
 
-export function woodGrainTexture() {
-  if (grainTexture) return grainTexture
-  const texture = new THREE.CanvasTexture(buildGrainCanvas())
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
-  texture.anisotropy = 4
-  grainTexture = texture
-  return texture
-}
-
-// Same canvas, but a separate CanvasTexture instance per repeat, because `repeat`
-// lives on the texture and the shell and a 0.9-unit socket cannot share one.
+// One CanvasTexture per repeat value, because `repeat` lives on the Texture and the
+// 5-unit shell, a 0.91 block and a signboard cannot share one. `repeat = 1` is a
+// valid recipe, so this is the only entry point the game needs.
 const repeatCache = new Map()
-export function woodGrainTextureRepeating(repeat) {
+export function woodGrainTextureRepeating(repeat = 1) {
   const key = Number(repeat.toFixed(4))
   if (repeatCache.has(key)) return repeatCache.get(key)
   const texture = new THREE.CanvasTexture(buildGrainCanvas())
