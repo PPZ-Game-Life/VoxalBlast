@@ -15,50 +15,53 @@ export const RENDER_PALETTE = Object.freeze({
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
-// v0.7: a WOODEN TOY. The cube is a solid block of natural beech; each face
-// carries 25 shallow rounded sockets carved into the grain, and a placed piece is
-// a painted chip standing proud of them.
+// v0.7: a WOODEN TOY. The cube is one carved block of natural beech; every face
+// carries the same 5×5 grid of identical rounded tiles, and a PLACED piece is
+// nothing more than a tile that has been PAINTED. No tile ever changes size,
+// position or height, so the cube keeps the clean continuous silhouette of the
+// reference art: the board reads as one object, and the colour is the only state.
 //
-// Two levels, and both are one number (05 §7.8「一切体积必须能写成一个数」):
-//   socket front face  = face plane + socketRaise   (0.04 — flush to the eye)
-//   chip front face    = face plane + voxelRaise    (0.30 — the only volume)
-// The v0.5 build had this upside down: the sockets stood 0.29 out of the shell
-// and the pieces only 0.24, so the dark grid was the object and the coloured
-// blocks read as stickers on it. Keep voxelRaise > socketRaise, always.
+// This replaces the "raised chip" model of the first v0.7 cut. That version gave
+// a placed piece its own 0.30-thick slab standing proud of the face, which read
+// as volume on the front face but was wrong everywhere else: on an edge/corner
+// cell the slab had to pick a side, and on a face seen at a glancing angle it
+// looked bolted on rather than placed.
 export const BOARD_STYLE = Object.freeze({
   // Solid shell receives shadows and occludes the far faces.
   hullColor: 0xd7a86d, // natural beech. The deepest anchor on screen, never near-black
   hullOpacity: 1,
   hullRoughness: 0.66, // raw timber: matte, and the sheen comes from the grain map
   hullClearcoat: 0.12,
-  // Sockets carved into the face: the same timber, one step down, so they read as
-  // hollows rather than as a second material. The camera-facing placement surface
-  // lifts back toward the shell value — the only "you can play here" cue.
-  gridColor: 0xba8b55,
-  gridActiveColor: 0xdcb47c,
-  socketRadius: 0.18,
-  // A carved well, not a raised plate: outer face 0.04 above the shell plane, and
-  // the body is buried back into the shell so no side wall is ever visible.
-  socketRaise: 0.04,
-  socketDepth: 0.10,
-  socketGap: 0.94, // in-plane width of a socket, in cells (1.0 - a visible seam)
-  // Placed chip: the paint. voxelRaise is the standoff of the FRONT face, so the
-  // visible side wall is voxelRaise - socketRaise ≈ 0.26 (05 §8 wants ≥ 0.20).
-  voxelRaise: 0.3,
-  voxelDepth: 0.3,
-  voxelRadius: 0.12,
+  hullGrainRepeat: 2.2,
+  // Face tiles: 150 IDENTICAL rounded tiles, six grids of 5×5. Every one of them
+  // is inset into the shell by the same amount, so no tile can ever look taller
+  // than its neighbour. An occupied tile keeps this exact geometry and only swaps
+  // its material for paint.
+  tileColor: 0xba8b55, // bare timber, one step down from the shell
+  tileActiveColor: 0xdcb47c, // the face the player is working on, lifted back up
+  tileSize: 0.94, // in-plane width, in cells (1.0 - a visible seam)
+  tileDepth: 0.1,
+  tileRadius: 0.18,
+  tileRaise: 0.04, // how far a tile's front face sits above the shell surface
+  tileGrainRepeat: 0.5,
+  // Paint on an occupied tile — and on the block held in the hand, so a piece
+  // never changes material as it moves from the tray, through the drag, onto the
+  // board (05「候选 / 拖拽 / 棋盘同源」).
+  paintRoughness: 0.34,
+  paintClearcoat: 0.55,
+  paintClearcoatRoughness: 0.22,
+  // Landing marker: a thin plate lying ON the tile, never a translucent cube
+  // floating over it (05 §6「落点预览」).
+  previewRaise: 0.06,
+  previewDepth: 0.06,
+  // The block held in the hand (candidate thumbnails, drag ghost). A piece in the
+  // hand is a CUBE; a piece on the board is a painted tile.
   voxelWidth: 0.92,
-  voxelRoughness: 0.34,
-  voxelClearcoat: 0.55,
-  voxelClearcoatRoughness: 0.22,
+  voxelRadius: 0.12,
   exposure: 1.02,
-  feedbackSurfaceOffset: 0.92, // particles/lines start clear of the 0.30 chip, not inside it
+  feedbackSurfaceOffset: 0.56, // particles/lines start just outside the shell
   voxelEdgeColor: 0x6b4620,
   voxelEdgeOpacity: 0,
-  // Wood grain is ONE canvas texture (rendering/woodTexture.js) reused at
-  // different tile counts: the shell is a huge surface, a socket is 0.94 units.
-  hullGrainRepeat: 2.2,
-  voxelGrainRepeat: 0.5,
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
   // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the
