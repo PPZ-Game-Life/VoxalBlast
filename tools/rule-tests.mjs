@@ -18,6 +18,8 @@ import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
 import { createRecordStore, weekKey, migrate, RECORD_FIELDS } from '../src/game/records.js'
 import { createSessionStore, migrate as migrateSession, SESSION_VERSION } from '../src/game/session.js'
 import { KEY_BINDINGS, axisForKey } from '../src/rendering/keyboard.js'
+import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../src/rendering/swipe.js'
+import { ROTATE_STYLE } from '../src/rendering/config.js'
 import { TIERS, TIER_CUTS, tiersReady, tierForScore } from '../src/game/tiers.js'
 
 let passed = 0
@@ -449,7 +451,9 @@ group('keyboard', () => {
   equal('A and D are opposite directions', axisForKey('a').direction, -axisForKey('d').direction)
   equal('Q and E are opposite directions', axisForKey('q').direction, -axisForKey('e').direction)
   // The pair that reads as "with the finger" carries +1: S/right/D and E are what a
-  // committed down/right/clockwise drag does, so the keys and the swipe agree.
+  // committed down/right/clockwise drag does, so the keys and the swipe agree. Since
+  // v0.8.1 the roll's "with the finger" is the RIGHT band's downward drag; the left
+  // band's downward drag is the same quarter the other way round (see the swipe group).
   equal('D matches a rightward drag', axisForKey('d').direction, 1)
   equal('S matches a downward drag', axisForKey('s').direction, 1)
   check('a shifted key still rotates', axisForKey('W')?.axis === 'pitch')
@@ -466,6 +470,54 @@ group('keyboard', () => {
   check('every printed key resolves to a binding', printed.every((key) => axisForKey(key)))
   check('every printed key belongs to its own row', KEY_BINDINGS.every((binding) => binding.keys.every((key) => axisForKey(key).axis === binding.axis)))
   check('no key is printed twice', new Set(printed).size === printed.length)
+})
+
+// ---------------------------------------------------------------- swipe (gesture axes)
+// v0.8.1: the gesture partition itself, straight out of rendering/swipe.js. The split
+// (inside the cube's span = pitch, outside = roll) is what the whole "swipe to turn the
+// cube" model hangs on, and the roll's SIGN is per band because a roll is an in-plane
+// spin: the edge under the finger is the edge that has to move. Both bands took one
+// sign until v0.8.1, which made the left band fight the finger — the regression this
+// group exists to catch (reported as "the right band is right, the left is reversed").
+group('swipe', () => {
+  const bounds = { minX: 300, maxX: 700, minY: 200, maxY: 600 }
+  const span = { x: 400, y: 400 }
+
+  equal('left of the cube is the left band', screenBand(280, bounds), 'left')
+  equal('right of the cube is the right band', screenBand(720, bounds), 'right')
+  equal('inside the cube span is the cube', screenBand(500, bounds), 'cube')
+  equal('the cube span is inclusive on the left edge', screenBand(300, bounds), 'cube')
+  equal('the cube span is inclusive on the right edge', screenBand(700, bounds), 'cube')
+
+  equal('a downward swipe inside the cube pitches', pickGestureAxis(0, 120, 'cube'), 'pitch')
+  equal('a downward swipe left of the cube rolls', pickGestureAxis(0, 120, 'left'), 'roll')
+  equal('a downward swipe right of the cube rolls', pickGestureAxis(0, 120, 'right'), 'roll')
+  equal('a sideways swipe still yaws in a band', pickGestureAxis(120, 4, 'left'), 'yaw')
+  equal('the dominant direction wins on a diagonal', pickGestureAxis(90, 120, 'right'), 'roll')
+
+  // Sign of the roll: down in the right band is clockwise on screen (negative angle
+  // about world +Z), down in the left band is anticlockwise (positive). The ruler is
+  // shared, so the two are equal in size and exactly opposite in sign.
+  const downRight = swipeAngle('roll', 0, 140, span, 'right')
+  const downLeft = swipeAngle('roll', 0, 140, span, 'left')
+  check('a downward drag in the right band turns the cube clockwise', downRight < 0, `got ${downRight}`)
+  check('a downward drag in the left band turns it anticlockwise', downLeft > 0, `got ${downLeft}`)
+  equal('the two bands are mirror images', downRight, -downLeft)
+  check('the right band keeps the plain roll knob', downRight < 0 && ROTATE_STYLE.rollDirection < 0)
+  check('an upward drag in a band is the opposite quarter', swipeAngle('roll', 0, -140, span, 'left') === -downLeft)
+  // The band sign is not applied to the other two axes: yaw and pitch are the same
+  // gesture wherever the finger landed in the horizontal split, band or cube.
+  equal('yaw ignores the band', swipeAngle('yaw', 100, 0, span, 'left'), swipeAngle('yaw', 100, 0, span, 'right'))
+  equal('pitch ignores the band', swipeAngle('pitch', 0, 100, span, 'left'), swipeAngle('pitch', 0, 100, span, 'right'))
+  check('a band does not turn a vertical swipe into a sideways one', swipeAngle('roll', 140, 0, span, 'left') === 0)
+
+  // Keys are THE SWIPE THEY EQUAL (03 §2, keyboard.js): the sign has to match the drag
+  // the legend describes, or the same cube would sit differently after E than after a
+  // downward drag in the right band. sign(direction * knob) is the step rotateCubeByKey
+  // plans.
+  const knobSign = (key) => Math.sign(axisForKey(key).direction * ROTATE_STYLE.rollDirection)
+  equal('E matches a downward drag in the right band', knobSign('e'), Math.sign(downRight))
+  equal('Q matches a downward drag in the left band', knobSign('q'), Math.sign(downLeft))
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

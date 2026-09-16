@@ -36,7 +36,7 @@ import { sessionStore } from './game/session.js'
 import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
-import { gestureAxisReady, pickGestureAxis, swipeAngle } from './rendering/swipe.js'
+import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from './rendering/swipe.js'
 import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
@@ -469,12 +469,12 @@ function cubeScreenBounds() {
 }
 
 // Gesture partition: vertical swipes inside the cube's x-span turn it about the
-// screen X axis, vertical swipes outside that span spin it about the screen Z
-// axis (an in-plane roll). Sampled where the finger lands.
-function isHorizontallyOnCube(clientX) {
-  const bounds = cubeScreenBounds()
-  return clientX >= bounds.minX && clientX <= bounds.maxX
-}
+// screen X axis, vertical swipes outside that span spin it about the screen Z axis
+// (an in-plane roll). Which band the finger landed in is sampled once, where it goes
+// down (screenBand, rendering/swipe.js), and it decides the roll's sign as well as
+// its axis: the edge under the finger is the edge that travels with it, so the two
+// bands take opposite signs for the same swipe direction (v0.8.1 — they shared one
+// sign before, which left the left band turning against the finger).
 
 // Drag -> angle ruler: the cube's own silhouette on screen, sampled once where the
 // gesture claims its axis (the axis rules themselves live in rendering/swipe.js).
@@ -2815,9 +2815,12 @@ function beginViewDrag(event) {
     source: event.currentTarget,
     startX: event.clientX,
     startY: event.clientY,
-    // Region is sampled once, where the finger goes down: a gesture never
-    // switches meaning halfway through.
-    overCube: isHorizontallyOnCube(event.clientX),
+    // The band is sampled once, where the finger goes down: a gesture never
+    // switches meaning halfway through — neither its axis (cube span vs side band)
+    // nor, in a side band, the direction the roll turns. Sampled after
+    // settleCubeSnap() above, so it sees the pose the gesture will actually start
+    // from.
+    band: screenBand(event.clientX, cubeScreenBounds()),
     axis: null,
     span: null, // drag -> angle ruler, sampled where the axis is claimed
     captured: false,
@@ -2885,7 +2888,7 @@ window.addEventListener('pointermove', (event) => {
       // move at all: a few px of sideways drift must never be able to swallow a
       // vertical swipe (rendering/swipe.js).
       if (!gestureAxisReady(dx, dy)) return
-      viewDrag.axis = pickGestureAxis(dx, dy, viewDrag.overCube)
+      viewDrag.axis = pickGestureAxis(dx, dy, viewDrag.band)
       viewDrag.span = gestureSpan()
       // Claimed: snapshot the pose the gesture starts from (tilt + grid pose).
       beginAxisGesture(viewDrag.axis)
@@ -2893,8 +2896,9 @@ window.addEventListener('pointermove', (event) => {
     // Drag rotates the cube (not the camera). The claimed axis is the only one
     // that moves, and it is a FIXED world axis: the angle is applied to the pose
     // the cube happens to have, so it never turns with the cube. Each axis
-    // carries its own direction sign and its own ruler (ROTATE_STYLE, swipe.js).
-    setLiveAngle(cubeLive.start + swipeAngle(viewDrag.axis, dx, dy, viewDrag.span))
+    // carries its own direction sign and its own ruler (ROTATE_STYLE, swipe.js);
+    // the roll is additionally signed by the band the gesture started in.
+    setLiveAngle(cubeLive.start + swipeAngle(viewDrag.axis, dx, dy, viewDrag.span, viewDrag.band))
     return
   }
   if (itemActive) {

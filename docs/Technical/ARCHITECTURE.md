@@ -1,6 +1,6 @@
 # 技术结构与开发入口
 
-> v0.8.0 / 2026-09-16，依据仓库文件核对；非运行性能报告。
+> v0.8.1 / 2026-09-16，依据仓库文件核对；非运行性能报告。
 
 ## 模块地图
 
@@ -18,7 +18,7 @@
 | src/rendering/woodTexture.js | 确定性的低对比原木 / 彩漆 `map` 与独立 `bumpMap`；UI 另用固定种子的 CSS 木纹 data URL |
 | src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
 | public/art/ | 背景 WebP 与来源、提示词、尺寸说明 |
-| src/rendering/swipe.js / keyboard.js | 手势定轴与键盘映射 |
+| src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射 |
 | src/rendering/threeCompat.js | three.quarks / postprocessing 与 Three.js 的兼容桥，须先于粒子导入 |
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
 | src/styles.css / toy.css | 历史布局兼容 / 当前视觉覆盖 |
@@ -53,13 +53,15 @@ records/session 有数据校验及存储失败后的内存降级；偏好的直�
 
 ## 开发和检查
 
-npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（2026-09-14 复核为 216/216）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）。
+npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 216/216，v0.8.1 起 236/236，新增 swipe 组）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run probe:swipe 在无头 Edge 里走完三个手势并断言其世界轴方向；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）。
 
 不在 npm scripts 里、需要直接 node 运行的脚本：tools/tier-calibration.mjs 把分数样本换算成阶位切点；tools/png-stats.mjs 统计截图尺寸与像素分布，用来证明截图不是空白帧；tools/organize-docs.mjs 是 2026-09-14 文档整理的一次性脚本，整理完不再执行。tools/push.cmd 是受控推送脚本（`tools\push.cmd` 推 main，可带分支名与 `--pause`），只做提交推送、不参与构建。
 
 `tools/screenshot.mjs` 走 CDP 而不是 `msedge --screenshot`：后者只截首帧，而游戏开在主页遮罩上，裸 flag 永远拍不到棋盘。该脚本先点掉主页、再截图，并收集 `window.onerror` / `unhandledrejection` —— 本轮就是靠它在一次运行里抓到一处改名遗漏导致的整盘空白。它同时把两个已知陷阱固化在代码里：headless 的布局视口有约 500px 最小宽度（竖屏只能用 500×1082），以及刚退出的 Edge 会短暂占住调试端口与 profile 锁（每次抓图独立端口 + 独立 `%TEMP%` user-data-dir）。
 
 产物目录：artifacts/visual/ 存实机截图（`npm run shot` 输出），artifacts/ 整体不入库。
+
+`tools/swipe-probe.mjs`（v0.8.1）测的是看不见的东西：一次手势到底把立方体往哪边转了。它用 CDP 的 `Input.dispatchMouseEvent` 在左右侧带与六面体范围内各滑一次，前后读 `__voxalblast.rotation()`，并把**网格姿态的旋转** `world = base1 * inverse(base0)` 解成轴角——这是与相机无关、与起手姿态无关的那个量，三条断言（左带 `+Z`、右带 `-Z`、范围内 `+X`）就是"跟手"的可执行定义。坑：用**姿态差** `inverse(pose0) * pose1` 会被当前网格姿态共轭，只有立方体未旋转时才等于世界轴——探针第一版因此在起点带 180° 滚转时把俯仰行的符号读反了，现在两个量都输出，姿态差只作对照。它需要一个在 5173 上的 dev server，脚本会自己起一个并故意留着（下次运行直接复用）。
 
 main.js 保留 __voxalblast 只读观察接口和开发构建专用验证入口；它们是调试设施，不是游戏对外 API。检查接口实际定义后再使用，不依赖历史稿的旧探针结构。
 

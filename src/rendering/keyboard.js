@@ -13,8 +13,11 @@
 //   A = swipe left    D = swipe right           -> yaw,   world Y
 //   Q = spin against  E = spin with the finger  -> roll,  world Z
 //
-// `spin` is the side-band gesture (§3): "with the finger" is a downward drag inside
-// a side band, which is clockwise on screen. Q is its mirror.
+// `spin` is the side-band gesture (03 §2): a downward drag inside a side band, and
+// since a roll is an in-plane spin the band decides which way the cube follows the
+// finger (v0.8.1) — down in the RIGHT band is clockwise (E), down in the LEFT band is
+// anticlockwise (Q). Neither key is "the opposite of the finger"; they are the two
+// bands' own quarters, which is exactly what makes both bands follow it.
 //
 // The returned `direction` is a MULTIPLIER on the per-axis knob in
 // ROTATE_STYLE.yawDirection / pitchDirection / rollDirection — the same knob

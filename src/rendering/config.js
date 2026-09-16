@@ -175,12 +175,17 @@ export const ROTATE_STYLE = Object.freeze({
   // make the cube's surface travel WITH the finger: swipe right and the front
   // face slides right (the left face comes around), swipe down inside the cube
   // and the front face slides down (the top face tips in), swipe down in a side
-  // band and the cube spins clockwise on screen.
+  // band and the cube spins so that band's edge travels with the finger —
+  // clockwise in the right band, anticlockwise in the left one (v0.8.1: a roll is
+  // an in-plane spin, so "with the finger" is per band; the band picks the sign,
+  // see swipe.js bandRollSign. One sign for both bands made the left band fight
+  // the finger).
   //
   // v0.2.26 flipped all three to the opposite side; v0.2.27 put them back, after
   // the "the direction feels reversed" report turned out to come from the axes
   // themselves following the cube (see main.js, fixed gesture axes). Do not flip
-  // these again to chase a direction report — check the axes first.
+  // these again to chase a direction report — check the axes first, and if only
+  // ONE band feels reversed, it is the band sign in swipe.js, not this knob.
   yawDirection: 1,
   pitchDirection: 1,
   rollDirection: -1,
