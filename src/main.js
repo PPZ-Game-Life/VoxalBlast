@@ -203,9 +203,10 @@ const FACE_PLANE = {
 const cubeGroup = new THREE.Group()
 scene.add(cubeGroup)
 
-// Opaque timber body: the six placement faces read as one carved block of wood.
-// The grain map is the same canvas the chips and the signboards use, tiled coarsely
-// across the whole shell so the 5-unit block never reads as a plastic mould.
+// Opaque timber body. The shell is only a BACKING: it occludes the far faces and
+// fills the 0.09 notches between blocks (which is why it is darker than they are).
+// It is inset behind them so that the blocks — not the shell — make up the surface
+// of the big cube.
 const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
   color: style.hullColor,
   map: woodGrainTextureRepeating(style.hullGrainRepeat),
@@ -217,7 +218,10 @@ const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
   opacity: style.hullOpacity,
   depthWrite: true,
 })
-const cubeBody = new THREE.Mesh(new RoundedBoxGeometry(cubeSide - 0.08, cubeSide - 0.08, cubeSide - 0.08, 5, 0.18), cubeBodyMaterial)
+const cubeBody = new THREE.Mesh(
+  new RoundedBoxGeometry(cubeSide - style.hullInset, cubeSide - style.hullInset, cubeSide - style.hullInset, 3, style.hullRadius),
+  cubeBodyMaterial,
+)
 cubeBody.renderOrder = -2
 cubeBody.castShadow = false
 cubeBody.receiveShadow = true
@@ -250,35 +254,37 @@ function facePlaneLocalCenter(face) {
   return cubeVector(face, 'n').multiplyScalar(half)
 }
 
-// Every surface in the cube is measured from the same reference: a cell centre
-// sits `cs / 2` inside the placement plane, so the plane itself is at `cs / 2`
-// along the face normal. These two constants are the only place that arithmetic
-// is written; nothing on the cube may be offset by a third, ad-hoc number.
-const FACE_GAP = cs / 2 // cell centre -> placement plane (0.5)
-const TILE_CENTER = FACE_GAP + style.tileRaise - style.tileDepth / 2 // tile body
-const PLATE_CENTER = FACE_GAP + style.tileRaise + 0.02 // marker: ON the tile
-const FACE_NORMAL_Z = new THREE.Vector3(0, 0, 1)
-// The six 5×5 tile grids. All 150 tiles are the SAME rounded plate at the same
-// inset, so the cube is a uniform honeycomb of equal squares and no tile can ever
-// look taller than its neighbour. Placing a piece paints one of them; it does not
-// add, grow or move anything.
+// Every block on the board is centred in its lattice cell, exactly like the piece
+// in the player's hand: half a block + the nudge the shell gives back is all the
+// arithmetic there is, and it is written once.
+const BLOCK_HALF = style.blockSize / 2
+const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
+// THE block. ONE geometry instance is shared by the board's 150 blocks, the three
+// candidate slots and the drag ghost, so a piece in the hand and a piece on the
+// board are literally the same object — same size, same six flat faces, same bevel.
+const blockGeometry = new RoundedBoxGeometry(style.blockSize, style.blockSize, style.blockSize, style.blockSegments, style.blockRadius)
+
+// The six 5×5 arrangements of blocks. There are exactly 150 blocks on the board
+// and every one of them is the SAME cube at the same gap from its neighbours, so
+// no block can ever look taller, thicker or larger than any other. Placing a piece
+// paints one of them; it does not add, grow, lift or move anything.
 const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
 // One material per (state × tone step): the idle timber, the lighter timber of the
-// face under the camera, and one cached paint per colour. A tile swaps a MATERIAL,
-// never a geometry, and 150 tiles never need 150 materials kept in sync.
-function tileWoodMaterial(baseColor, step) {
+// face under the camera, and one cached paint per colour. A block swaps a MATERIAL,
+// never a geometry, and 150 blocks never need 150 materials kept in sync.
+function blockWoodMaterial(baseColor, step) {
   return new THREE.MeshStandardMaterial({
     color: new THREE.Color(baseColor).multiplyScalar(step),
-    map: woodGrainTextureRepeating(style.tileGrainRepeat),
+    map: woodGrainTextureRepeating(style.blockGrainRepeat),
     roughness: 0.72,
     metalness: 0,
   })
 }
-const TILE_TONES = style.tileToneSteps.length
-const tileWoodMaterials = style.tileToneSteps.map((step) => ({
-  idle: tileWoodMaterial(style.tileColor, step),
-  active: tileWoodMaterial(style.tileActiveColor, step),
+const BLOCK_TONES = style.blockToneSteps.length
+const blockWoodMaterials = style.blockToneSteps.map((step) => ({
+  idle: blockWoodMaterial(style.blockColor, step),
+  active: blockWoodMaterial(style.blockActiveColor, step),
 }))
 const paintMaterials = new Map()
 function paintMaterial(color) {
@@ -286,7 +292,7 @@ function paintMaterial(color) {
   if (paintMaterials.has(key)) return paintMaterials.get(key)
   const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(color),
-    map: woodGrainTextureRepeating(style.tileGrainRepeat),
+    map: woodGrainTextureRepeating(style.blockGrainRepeat),
     roughness: style.paintRoughness,
     clearcoat: style.paintClearcoat,
     clearcoatRoughness: style.paintClearcoatRoughness,
@@ -296,32 +302,31 @@ function paintMaterial(color) {
   return material
 }
 
-// A bare cube whose 150 blocks are all one flat colour looks like ONE moulded
-// crate; the reference is visibly assembled from separate pieces of timber. So
-// every block gets its own tone step, picked from a deterministic hash of its
-// lattice cell — deterministic because the grain must be identical on every load,
-// or two screenshots of the same build would not compare (#N neighbours get
-// #N±6%, never a colour that could be mistaken for paint).
+// A cube whose 150 blocks are all one flat colour looks like ONE moulded crate;
+// the reference is visibly assembled from separate pieces of timber. So every block
+// gets its own tone step, picked from a deterministic hash of its lattice cell —
+// deterministic because the grain must be identical on every load, or two
+// screenshots of the same build would not compare.
 function toneIndexFor(faceIndex, u, v) {
   const hash = (u * 73856093) ^ (v * 19349663) ^ (faceIndex * 83492791)
-  return Math.abs(hash) % TILE_TONES
+  return Math.abs(hash) % BLOCK_TONES
 }
 
 function buildFaceTiles() {
-  const tile = new RoundedBoxGeometry(style.tileSize, style.tileSize, style.tileDepth, 6, style.tileRadius)
   FACES.forEach((face, faceIndex) => {
-    const normal = cubeVector(face, 'n')
     const group = new THREE.Group()
     group.userData.face = face
     for (let u = 0; u < SH; u += 1) {
       for (let v = 0; v < SH; v += 1) {
-        const mesh = new THREE.Mesh(tile, tileWoodMaterials[toneIndexFor(faceIndex, u, v)].idle)
-        mesh.position.copy(cellLocal(face, u, v)).addScaledVector(normal, TILE_CENTER)
-        mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
-        mesh.receiveShadow = true
+        const tone = toneIndexFor(faceIndex, u, v)
+        const mesh = new THREE.Mesh(blockGeometry, blockWoodMaterials[tone].idle)
+        // A block is a cube centred in its cell: no orientation needed, and its
+        // outer face lands flush with the big cube's surface.
+        mesh.position.copy(cellLocal(face, u, v))
         mesh.castShadow = true
+        mesh.receiveShadow = true
         mesh.userData.cell = faceLattice(face, u, v)
-        mesh.userData.tone = toneIndexFor(faceIndex, u, v)
+        mesh.userData.tone = tone
         group.add(mesh)
       }
     }
@@ -430,10 +435,9 @@ function centreCubeHorizontally() {
 // Screen-space box of the cube (client pixels). v0.2.25 uses it to split the
 // vertical swipe by region: a finger that lands inside the cube's horizontal
 // span pitches it (screen X), one that lands outside it rolls it (screen Z).
-// CUBE_SOLID_EXTENT is the visible body: the shell plus the one uniform tile
-// standoff that every block shares. Nothing can stick out further, because
-// nothing does.
-const CUBE_SOLID_EXTENT = half - cs / 2 + 0.5 + style.tileRaise
+// CUBE_SOLID_EXTENT is the visible body: the outermost blocks' faces. Nothing can
+// stick out further, because nothing does.
+const CUBE_SOLID_EXTENT = half - cs / 2 + BLOCK_HALF + style.previewLift
 const cubeBoundsProbe = new THREE.Vector3()
 function projectCubeBounds(extent) {
   camera.updateMatrixWorld()
@@ -806,7 +810,7 @@ function colorToVector4(color, alpha = 1) {
 function makeMaterial(color, opacity = 1) {
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(color),
-    map: woodGrainTextureRepeating(style.tileGrainRepeat),
+    map: woodGrainTextureRepeating(style.blockGrainRepeat),
     roughness: style.paintRoughness,
     clearcoat: style.paintClearcoat,
     clearcoatRoughness: style.paintClearcoatRoughness,
@@ -816,15 +820,8 @@ function makeMaterial(color, opacity = 1) {
   })
 }
 
-// The block held in the hand (previews, slot thumbnails, drag ghost). A piece in
-// the hand is a CUBE; a piece on the board is a painted tile.
-const cubeGeometry = new RoundedBoxGeometry(style.voxelWidth, style.voxelWidth, style.voxelWidth, 6, style.voxelRadius)
-// Landing marker: a thin plate lying ON the tile, never a translucent cube
-// floating over it (05 §6「落点预览」). Sized to the TILE, so it can never spill
-// onto a neighbour.
-const plateGeometry = new RoundedBoxGeometry(style.tileSize, style.tileSize, style.previewDepth, 3, 0.04)
-const SHARED_BOARD_GEOMETRY = [cubeGeometry, plateGeometry, cubeBody.geometry]
-const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry)
+const SHARED_BOARD_GEOMETRY = [blockGeometry, cubeBody.geometry]
+const edgeGeometry = new THREE.EdgesGeometry(blockGeometry)
 const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
 const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
 function buildStarShape(outer = 0.5, inner = 0.2, points = 5) {
@@ -893,7 +890,7 @@ function applyTileMaterials() {
     group.children.forEach((tile) => {
       const color = occupiedColors.get(tile.userData.cell.join(','))
       if (color !== undefined) tile.material = paintMaterial(color)
-      else tile.material = tileWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
+      else tile.material = blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
     })
   })
 }
@@ -976,7 +973,7 @@ function createPiecePreview(piece, canvas, slot) {
   root.scale.setScalar(baseScale)
   const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
   const meshes = positions.map((position) => {
-    const mesh = new THREE.Mesh(cubeGeometry, makeMaterial(piece.shape.color))
+    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(piece.shape.color))
     mesh.scale.setScalar(0.7)
     mesh.position.copy(position)
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
@@ -1575,10 +1572,11 @@ function rebuildItemOverlay() {
   const normal = cubeVector(itemActive.face, 'n')
   scope.forEach(([x, y, z]) => {
     const occupied = board.has(x, y, z)
-    const mesh = new THREE.Mesh(plateGeometry, makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
+    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
     mesh.scale.setScalar(occupied ? 1 : 0.72)
-    mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, PLATE_CENTER)
-    mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, normal)
+    // The marker is a ghost of the BLOCK that would sit in this cell, lifted just
+    // clear of the one already there so the two cannot z-fight.
+    mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, PREVIEW_LIFT)
     itemPreviewGroup.add(mesh)
   })
 }
@@ -1928,9 +1926,11 @@ function updatePreview(event, ndc) {
   const faceNormal = cubeVector(face, 'n')
   cells.forEach(([u, v]) => {
     const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
-    const mesh = new THREE.Mesh(plateGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.72))
-    mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PLATE_CENTER)
-    mesh.quaternion.setFromUnitVectors(FACE_NORMAL_Z, faceNormal)
+    // The landing marker IS a ghost of the block: same cube, same cell, same gap to
+    // its neighbours. The player therefore sees the board it is about to get, not a
+    // highlight floating over it (05 §6「落点预览」).
+    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.72))
+    mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PREVIEW_LIFT)
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
       color: valid ? 0x2f6b1f : 0x7a2a17,
       transparent: true,
@@ -1974,7 +1974,7 @@ function buildDragGhost(piece) {
     material.depthTest = false
     material.depthWrite = false
     material.transparent = true
-    const mesh = new THREE.Mesh(cubeGeometry, material)
+    const mesh = new THREE.Mesh(blockGeometry, material)
     mesh.position.copy(position)
     mesh.renderOrder = 12
     mesh.userData.fillColor = fill.clone()

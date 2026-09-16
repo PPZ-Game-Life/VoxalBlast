@@ -15,63 +15,58 @@ export const RENDER_PALETTE = Object.freeze({
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
-// v0.7: a WOODEN TOY. The cube is one carved block of natural beech; every face
-// carries the same 5×5 grid of identical rounded tiles, and a PLACED piece is
-// nothing more than a tile that has been PAINTED. No tile ever changes size,
-// position or height, so the cube keeps the clean continuous silhouette of the
-// reference art: the board reads as one object, and the colour is the only state.
+// v0.7: a WOODEN TOY built out of BLOCKS.
 //
-// This replaces the "raised chip" model of the first v0.7 cut. That version gave
-// a placed piece its own 0.30-thick slab standing proud of the face, which read
-// as volume on the front face but was wrong everywhere else: on an edge/corner
-// cell the slab had to pick a side, and on a face seen at a glancing angle it
-// looked bolted on rather than placed.
+// The board is not a shell with patterns painted on it — it is 150 small CUBES
+// whose six faces are flat, sitting in the 5×5×5 shell lattice with a small gap
+// between neighbours. Their outer faces are flush with the big cube's surface, so
+// the board reads as one large cube assembled from equal blocks, and the narrow
+// dark notches between them are the only thing that tells them apart.
+//
+// A placed piece is the SAME cube with a different material. Nothing about a block
+// ever changes: not its size, not its position, not its height. Placing is paint.
+//
+// This replaces two earlier models, both of which missed:
+//   - v0.5 / v0.7.0 — a separate raised "chip" standing proud of the face. Wrong on
+//     every shared edge/corner cell, where it had to pick a side and ended up
+//     hanging off the bottom of the cube.
+//   - v0.7.1 / v0.7.2 — flat plates glued onto the shell. A thin plate has its
+//     rounding clamped away by the geometry and reads as a flat sticker; thickening
+//     and lifting it turned the whole cube into a quilted cushion.
 export const BOARD_STYLE = Object.freeze({
-  // Solid shell receives shadows and occludes the far faces. It is deliberately
-  // DARKER than the tiles: the 0.10 gap between blocks exposes this colour, so the
-  // shell IS the groove. An earlier cut had the shell lighter than the tiles, which
-  // read as light-coloured grout and made the whole cube look like one moulded
-  // crate instead of a stack of separate blocks.
+  // The shell is the BACKING, not a surface the player is meant to look at: it sits
+  // behind the blocks, and every place it shows through is a notch between blocks.
+  // It is therefore deliberately darker than the blocks — the groove IS this colour.
   hullColor: 0x9c6d37,
   hullOpacity: 1,
-  hullRoughness: 0.7, // raw timber: matte, and the sheen comes from the grain map
+  hullRoughness: 0.7,
   hullClearcoat: 0.1,
   hullGrainRepeat: 2.2,
-  // Face tiles: 150 IDENTICAL rounded blocks, six grids of 5×5. Every one of them
-  // is the same size and sits the same height off the shell, so no tile can ever
-  // look taller than its neighbour. An occupied tile keeps this exact geometry and
-  // only swaps its material for paint.
-  //
-  // The block is 0.30 thick even though only its top 0.20 is visible: a shallow
-  // tile would have its rounding clamped away by the geometry (radius can never
-  // exceed half the thickness) and read as a flat plate. The thickness is what buys
-  // the rounded, cushioned edge the reference art has, and 0.20 of it is buried.
-  tileColor: 0xd7ab74, // the MID tone of a bare block; the array below varies it
-  tileActiveColor: 0xe6c08d, // the face the player is working on
-  tileToneSteps: Object.freeze([0.93, 0.97, 1, 1.03, 1.06, 1.1]),
-  tileSize: 0.91, // in-plane width, in cells (1.0 - a visible groove)
-  tileDepth: 0.3,
-  tileRadius: 0.09, // real rounding now: depth / 2 is 0.15, so 0.09 survives
-  tileRaise: 0.13, // how far a block's top face sits above the face plane
-  tileGrainRepeat: 0.5,
-  // Paint on an occupied tile — and on the block held in the hand, so a piece
-  // never changes material as it moves from the tray, through the drag, onto the
-  // board (05「候选 / 拖拽 / 棋盘同源」).
+  hullInset: 0.22, // how far the shell surface sits behind the blocks' outer faces
+  hullRadius: 0.08,
+  // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
+  // in the hand and a piece on the board are the same object (05「同源」).
+  blockSize: 0.91, // gap to a neighbour = 1 - blockSize = 0.09
+  blockRadius: 0.05, // a small edge bevel; the six faces stay flat
+  blockSegments: 4,
+  blockColor: 0xd7ab74, // the MID tone of a bare block; the array below varies it
+  blockActiveColor: 0xe6c08d, // blocks on the face the player is working on
+  // A cube whose 150 blocks are all one flat colour looks like ONE moulded crate;
+  // the reference is visibly assembled from separate pieces of timber. Each block
+  // takes one of these tone multipliers, picked deterministically from its lattice
+  // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
+  blockToneSteps: Object.freeze([0.93, 0.97, 1, 1.03, 1.06, 1.1]),
+  blockGrainRepeat: 0.5,
+  // Paint on an occupied block — and on the piece in the hand, so a piece never
+  // changes material as it moves from the tray, through the drag, onto the board.
   paintRoughness: 0.34,
   paintClearcoat: 0.55,
   paintClearcoatRoughness: 0.22,
-  // Landing marker: a thin plate lying ON the tile, never a translucent cube
-  // floating over it (05 §6「落点预览」).
-  previewRaise: 0.04,
-  previewDepth: 0.06,
-  // The block held in the hand (candidate thumbnails, drag ghost). A piece in the
-  // hand is a CUBE; a piece on the board is a painted tile.
-  voxelWidth: 0.92,
-  voxelRadius: 0.12,
+  // Landing marker: a ghost of the block itself, sitting in the cell and lifted
+  // just clear of whatever is already there so it cannot z-fight with a neighbour.
+  previewLift: 0.03,
   exposure: 1.02,
-  feedbackSurfaceOffset: 0.7, // particles/lines start clear of the 0.13 tile standoff
-  voxelEdgeColor: 0x6b4620,
-  voxelEdgeOpacity: 0,
+  feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
   // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the
