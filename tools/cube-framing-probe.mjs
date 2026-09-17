@@ -1,0 +1,601 @@
+// Measures the two things the v0.8.6 rotation-interaction pass is graded on, in a
+// real headless browser:
+//
+//   1. 停稳构图 — how the cube's screen silhouette is divided between the faces the
+//      player can see, on all 24 face-aligned orientations (six faces × four
+//      in-plane directions). The target is a main-face share of 82–88%, no other
+//      face above 11%, and the same composition and in-plane skew on every one.
+//   2. 旋转轨迹 — where the rotation axis points ON SCREEN while a gesture is in
+//      flight. A turn that "looks crooked" is a turn whose pose increment is about
+//      a screen axis that is not level/plumb, so the probe samples the increment
+//      at several drag distances and reports its screen direction.
+//
+//   node tools/cube-framing-probe.mjs [--json]
+//
+// `npm run probe:framing`.
+//
+// It needs a dev server on 5173 and will start one, leaving it running like
+// tools/swipe-probe.mjs does. Browser plumbing is the same proven shape (global
+// WebSocket + CDP, `--headless=new`, `--remote-debugging-port=0`, fresh temp
+// profile, Browser.close + profile removal). No puppeteer, no new dependency.
+//
+// Reading the numbers.
+//   - `mainShare` is exact projected polygon area, not a cosα·cosβ estimate: the
+//     three visible faces of a convex body tile the silhouette, so their areas sum
+//     to the silhouette and the share is the real on-screen composition.
+//   - `skewDeg` is how far a face's own +u edge runs from screen-right. It should
+//     be the same value on all 24 orientations — that is what "the presentation
+//     tilt is fixed in screen space" means, and it is what stops a face from
+//     arriving crooked.
+//   - `screenDeg` is the direction of the gesture's rotation axis on screen:
+//     0 = the axis lies horizontally (a pitch, the front face slides up/down),
+//     ±90 = the axis is vertical (a yaw, the cube turns left/right), and a Z spin
+//     has `|alongView| ≈ 1` (its axis points at the camera, so it has no screen
+//     direction — it is an in-plane spin by construction).
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const APP_URL = 'http://127.0.0.1:5173/'
+const APP_PORT = 5173
+const VIEWPORT = { width: 1280, height: 900 }
+const SETTLE_MS = 420 // longer than ROTATE_STYLE.snapDuration (220ms)
+const JSON_ONLY = process.argv.includes('--json')
+// `--quick` measures the resting composition only (one orientation) so a tilt value
+// can be swept in a few seconds instead of a full 24-orientation walk. It is a
+// tuning aid: the per-orientation consistency checks are skipped under it.
+const QUICK = process.argv.includes('--quick')
+
+// 03 §2 / docs/Planning targets. Cited here so the probe fails against the
+// DOCUMENT and not against whatever the code happens to do today.
+const TARGET = {
+  mainShareMin: 0.82,
+  mainShareMax: 0.88,
+  otherMax: 0.11,
+  othersTotalMax: 0.18,
+  maxOffAxisSpreadDeg: 0.05, // the presented face sits the same amount off the camera axis on all 24
+  // The presented face's in-plane roll (perspective-free) is NOT exactly constant,
+  // and cannot be: the presentation is a fixed SCREEN-space rotation, so composing it
+  // with the four in-plane rotations each face can arrive in leaves a few degrees of
+  // residual. Anything much beyond the tilt itself would mean the tilt had moved into
+  // the cube's frame. Graded loosely; see the probe header.
+  maxTwistSpreadDeg: 6.0,
+  maxTiltGoneDeg: 24, // the presentation tilt is fully out well before the ≈30° commit threshold
+  maxScreenAxisErrorDeg: 1.0, // a settled turn runs on its screen axis
+}
+
+const EDGE_CANDIDATES = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+]
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// ------------------------------------------------------------------ orientation BFS
+// The six key bindings are quarter turns about the three world axes, and the key
+// mapping is the swipe it equals (rendering/keyboard.js). `cubeBase.premultiply()`
+// means base_new = step * base_old, so replaying a key sequence from the identity
+// reproduces the pose exactly and the probe can reach all 24 orientations without
+// reading anything but the public rotation() hook.
+const ROTATE_STYLE = (await import('../src/rendering/config.js')).ROTATE_STYLE
+const STEP_KEYS = [
+  { key: 'w', axis: 0, steps: -1 * ROTATE_STYLE.pitchDirection, inverse: 's' },
+  { key: 's', axis: 0, steps: 1 * ROTATE_STYLE.pitchDirection, inverse: 'w' },
+  { key: 'a', axis: 1, steps: -1 * ROTATE_STYLE.yawDirection, inverse: 'd' },
+  { key: 'd', axis: 1, steps: 1 * ROTATE_STYLE.yawDirection, inverse: 'a' },
+  { key: 'q', axis: 2, steps: -1 * ROTATE_STYLE.rollDirection, inverse: 'e' },
+  { key: 'e', axis: 2, steps: 1 * ROTATE_STYLE.rollDirection, inverse: 'q' },
+]
+
+// q and -q are the same rotation, and a path-dependent sign is exactly the trap
+// that would make a 24-element group look like 48. Every comparison goes through
+// a canonical sign.
+function canonical(q) {
+  for (const value of q) {
+    if (Math.abs(value) > 1e-6) return value > 0 ? q : qNeg(q)
+  }
+  return q
+}
+function qMul(a, b) {
+  return canonical([
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ])
+}
+function qNeg(q) {
+  return [-q[0], -q[1], -q[2], -q[3]]
+}
+function axisQuarter(axis, steps) {
+  const n = ((steps % 4) + 4) % 4
+  const half = (n * Math.PI) / 4 // half-angle
+  const s = Math.sin(half)
+  const q = [0, 0, 0, Math.cos(half)]
+  q[axis] = s
+  return canonical(q)
+}
+const qKey = (q) => canonical(q).map((value) => (Math.abs(value) < 1e-6 ? 0 : value).toFixed(3)).join(',')
+
+// BFS from the identity over the six quarter turns => the 24 face-aligned poses,
+// each with the key sequence that reaches it.
+function orientationPaths() {
+  const identity = [0, 0, 0, 1]
+  const seen = new Map([[qKey(identity), { quat: identity, path: [] }]])
+  const queue = [identity]
+  while (queue.length) {
+    const current = queue.shift()
+    const node = seen.get(qKey(current))
+    for (const step of STEP_KEYS) {
+      const next = qMul(axisQuarter(step.axis, step.steps), current)
+      const key = qKey(next)
+      if (seen.has(key)) continue
+      seen.set(key, { quat: next, path: [...node.path, step], previous: qKey(current) })
+      queue.push(next)
+    }
+  }
+  if (seen.size !== 24) throw new Error(`orientation BFS found ${seen.size} poses, expected 24`)
+  return [...seen.values()]
+}
+
+const ORIENTATIONS = orientationPaths()
+
+// ------------------------------------------------------------------ browser plumbing
+function findBrowser() {
+  for (const path of EDGE_CANDIDATES) if (path && existsSync(path)) return path
+  throw new Error(`no headless browser found; tried:\n  ${EDGE_CANDIDATES.join('\n  ')}`)
+}
+
+function send(ws, id, method, params = {}) {
+  return new Promise((resolve_, reject) => {
+    const finish = (error, result) => {
+      clearTimeout(timeout)
+      ws.removeEventListener('message', onMessage)
+      ws.removeEventListener('close', onClose)
+      if (error) reject(error)
+      else resolve_(result)
+    }
+    const onMessage = (event) => {
+      const msg = JSON.parse(event.data)
+      if (msg.id !== id) return
+      finish(msg.error ? new Error(`${method}: ${JSON.stringify(msg.error)}`) : null, msg.result)
+    }
+    const onClose = () => finish(new Error(`${method}: debugger connection closed`))
+    const timeout = setTimeout(() => finish(new Error(`${method}: timed out`)), 20000)
+    ws.addEventListener('message', onMessage)
+    ws.addEventListener('close', onClose, { once: true })
+    ws.send(JSON.stringify({ id, method, params }))
+  })
+}
+
+async function connect(endpoint) {
+  const ws = new WebSocket(endpoint)
+  await new Promise((ok, no) => {
+    const timeout = setTimeout(() => { ws.close(); no(new Error('debugger connection timed out')) }, 5000)
+    ws.addEventListener('open', () => { clearTimeout(timeout); ok() }, { once: true })
+    ws.addEventListener('error', (error) => { clearTimeout(timeout); no(error) }, { once: true })
+  })
+  return ws
+}
+
+async function waitForExit(child, timeoutMs = 5000) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return true
+  return new Promise((ok) => {
+    const done = () => { clearTimeout(timeout); ok(true) }
+    const timeout = setTimeout(() => { child.removeListener('exit', done); ok(false) }, timeoutMs)
+    child.once('exit', done)
+  })
+}
+
+async function closeBrowser(child, browserSocket, pageSocket, profile) {
+  if (browserSocket?.readyState === WebSocket.OPEN) {
+    await send(browserSocket, 9000, 'Browser.close').catch(() => {})
+  }
+  if (pageSocket?.readyState === WebSocket.OPEN) pageSocket.close()
+  if (browserSocket?.readyState === WebSocket.OPEN) browserSocket.close()
+  let exited = await waitForExit(child)
+  if (!exited && child.pid) {
+    if (process.platform === 'win32') {
+      const cleanup = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+      cleanup.on('error', () => {})
+      await waitForExit(cleanup)
+    } else child.kill('SIGTERM')
+    exited = await waitForExit(child)
+  }
+  if (!exited) throw new Error(`probe browser did not exit; retained profile ${profile}`)
+
+  const tempRoot = realpathSync(tmpdir())
+  const actualProfile = realpathSync(profile)
+  const suffix = relative(tempRoot, actualProfile)
+  if (!suffix || isAbsolute(suffix) || suffix === '..' || suffix.startsWith(`..${sep}`)
+    || !basename(actualProfile).startsWith('voxalblast-framing-')) {
+    throw new Error(`refusing to remove profile outside probe temp directory: ${actualProfile}`)
+  }
+  try {
+    rmSync(actualProfile, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
+  } catch (error) {
+    if (!['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'].includes(error.code)) throw error
+    console.warn(`WARN cleanup: retained locked temp profile ${actualProfile} (${error.code})`)
+  }
+}
+
+async function appReachable() {
+  try {
+    const response = await fetch(APP_URL, { signal: AbortSignal.timeout(2500) })
+    return response.ok
+  } catch { return false }
+}
+
+async function ensureDevServer() {
+  if (await appReachable()) return { started: false }
+  const viteBin = join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js')
+  if (!existsSync(viteBin)) throw new Error(`vite not installed at ${viteBin}; run npm install first`)
+  const child = spawn(process.execPath, [viteBin, '--port', String(APP_PORT), '--strictPort'], {
+    cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true,
+  })
+  child.on('error', () => {})
+  child.unref()
+  for (let i = 0; i < 80; i += 1) {
+    await sleep(500)
+    if (await appReachable()) return { started: true, pid: child.pid }
+  }
+  throw new Error(`vite did not answer on ${APP_URL} within 40s`)
+}
+
+function makeClient(ws) {
+  let nextId = 100
+  const evaluate = async (expression, { awaitPromise = false } = {}) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      try {
+        const result = await send(ws, (nextId += 1), 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise })
+        if (result.exceptionDetails) {
+          throw new Error(`evaluate threw: ${result.exceptionDetails.exception?.description || result.exceptionDetails.text}`)
+        }
+        return result.result?.value
+      } catch (error) {
+        if (/context|destroyed|Cannot find|timed out/i.test(error.message) && attempt < 39) {
+          await sleep(250)
+          continue
+        }
+        throw error
+      }
+    }
+    throw new Error('evaluate never succeeded')
+  }
+  const frames = () => evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))', { awaitPromise: true })
+  return { send: (method, params) => send(ws, (nextId += 1), method, params), evaluate, frames }
+}
+
+async function waitForCube(client) {
+  for (let i = 0; i < 80; i += 1) {
+    const ready = await client.evaluate('Boolean(globalThis.__voxalblast && globalThis.__voxalblast.faces && globalThis.__voxalblast.poseAxisScreen)')
+    if (ready) return true
+    await sleep(250)
+  }
+  throw new Error('app never exposed __voxalblast.faces()/poseAxisScreen() — is this v0.8.6 or later?')
+}
+
+const readJson = async (client, expression) => JSON.parse(await client.evaluate(`JSON.stringify(${expression})`))
+
+async function pressKeys(client, keys) {
+  for (const key of keys) {
+    const code = `Key${key.toUpperCase()}`
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: key.toUpperCase(), code, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) })
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: key.toUpperCase(), code, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) })
+    await sleep(30)
+  }
+  await sleep(SETTLE_MS)
+  await client.frames()
+}
+
+function foldSkew(deg) {
+  const value = ((deg % 90) + 90) % 90
+  return value > 45 ? value - 90 : value
+}
+
+function foldScreenDeg(deg) {
+  let value = ((deg + 90) % 180 + 180) % 180 - 90
+  if (value === -90) value = 90
+  return value
+}
+
+// What "on its screen axis" means per gesture: a yaw turns about a vertical screen
+// axis (±90°), a pitch about a horizontal one (0°). A roll's axis points at the
+// camera, so it has no screen direction at all and the only honest reading is that
+// the axis is along the view (`alongView` ±1).
+function screenAxisError(axis, entry) {
+  if (axis === 'roll') return Math.abs(1 - Math.abs(entry.alongView)) * 90
+  return Math.abs(axis === 'yaw' ? Math.abs(entry.screenDeg) - 90 : entry.screenDeg)
+}
+
+// ------------------------------------------------------------------ run
+const browserPath = findBrowser()
+const dev = await ensureDevServer()
+const profile = mkdtempSync(join(tmpdir(), 'voxalblast-framing-'))
+const child = spawn(browserPath, [
+  '--headless=new', '--disable-gpu', '--disable-breakpad', '--hide-scrollbars',
+  '--no-first-run', '--no-default-browser-check', '--force-device-scale-factor=1',
+  '--run-all-compositor-stages-before-draw',
+  '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+  `--window-size=${VIEWPORT.width},${VIEWPORT.height}`, 'about:blank',
+], { stdio: 'ignore', windowsHide: true })
+
+let browserSocket = null
+let pageSocket = null
+let thrown = null
+const failures = []
+const report = { viewport: VIEWPORT, targets: TARGET }
+
+try {
+  let browserInfo = null
+  for (let i = 0; i < 100; i += 1) {
+    try {
+      const port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0])
+      browserInfo = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json()
+      break
+    } catch { await sleep(250) }
+  }
+  if (!browserInfo) throw new Error('devtools never came up')
+  browserSocket = await connect(browserInfo.webSocketDebuggerUrl)
+  const port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0])
+  const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+  const pageTarget = list.find((entry) => entry.type === 'page')
+  pageSocket = await connect(pageTarget.webSocketDebuggerUrl)
+
+  const client = makeClient(pageSocket)
+  await client.send('Page.enable')
+  await client.send('Runtime.enable')
+  await client.evaluate('1')
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: VIEWPORT.width, height: VIEWPORT.height,
+    screenWidth: VIEWPORT.width, screenHeight: VIEWPORT.height, deviceScaleFactor: 1, mobile: false,
+  })
+  await client.send('Page.navigate', { url: APP_URL })
+  await waitForCube(client)
+  await sleep(2600)
+  await client.frames()
+  const click = await client.evaluate('(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()')
+  if (click !== 'clicked') throw new Error(`home cover not dismissed: ${click}`)
+  await sleep(2600)
+  await client.frames()
+
+  // ---------------------------------------------------------------- 1. framing
+  const bounds = await readJson(client, 'globalThis.__voxalblast.bounds()')
+  const spanX = bounds.maxX - bounds.minX
+  const spanY = bounds.maxY - bounds.minY
+  report.ruler = {
+    cubeBox: { width: Number(spanX.toFixed(1)), height: Number(spanY.toFixed(1)), minX: Number(bounds.minX.toFixed(1)), maxX: Number(bounds.maxX.toFixed(1)) },
+    // swipeAngle: angle = dx / span.x * π, and one face is π/2, so a face costs
+    // stepThreshold/π of the span on either axis.
+    pxPerFaceYaw: Number((spanX / 2).toFixed(1)),
+    pxPerFacePitch: Number((spanY / 2).toFixed(1)),
+    pxToStepYaw: Number((ROTATE_STYLE.stepThreshold / Math.PI * spanX).toFixed(1)),
+    pxToStepPitch: Number((ROTATE_STYLE.stepThreshold / Math.PI * spanY).toFixed(1)),
+  }
+
+  const samples = []
+  for (const orientation of (QUICK ? ORIENTATIONS.filter((entry) => entry.path.length === 0) : ORIENTATIONS)) {
+    await pressKeys(client, orientation.path.map((step) => step.key))
+    const rotation = await readJson(client, 'globalThis.__voxalblast.rotation()')
+    const faces = await readJson(client, 'globalThis.__voxalblast.faces()')
+    samples.push({
+      path: orientation.path.map((step) => step.key).join(''),
+      base: rotation.base,
+      front: faces.front,
+      mainFaceMatches: faces.mainFaceMatches,
+      mainShare: faces.mainShare,
+      others: faces.others,
+      mainSkewDeg: faces.visible[0]?.skewDeg ?? null,
+      mainTwistDeg: faces.visible[0]?.twistDeg ?? null,
+      mainOffAxisDeg: faces.visible[0]?.offAxisDeg ?? null,
+      sideFacesVisible: faces.visible.length > 1,
+      camera: faces.camera,
+      presentation: rotation.presentation,
+    })
+    // Return to the identity so the next path starts where it thinks it does.
+    await pressKeys(client, orientation.path.slice().reverse().map((step) => step.inverse))
+  }
+
+  const shares = samples.map((sample) => sample.mainShare)
+  const skews = samples.map((sample) => sample.mainSkewDeg)
+  const otherMax = Math.max(...samples.flatMap((sample) => sample.others.map((other) => other.share)))
+  const othersTotalMax = Math.max(...samples.map((sample) => sample.others.reduce((sum, other) => sum + other.share, 0)))
+  const distinctPoses = new Set(samples.map((sample) => qKey(sample.base))).size
+  report.framing = {
+    orientations: samples.length,
+    distinctPoses,
+    mainShare: { min: Math.min(...shares), max: Math.max(...shares) },
+    otherMax,
+    othersTotalMax,
+    offAxisDeg: {
+      min: Math.min(...samples.map((s) => s.mainOffAxisDeg)),
+      max: Math.max(...samples.map((s) => s.mainOffAxisDeg)),
+    },
+    // `skewDeg` is the projected edge angle, folded a quarter turn at a time. It
+    // carries perspective convergence, so it is reported for the record rather
+    // than graded; `twistDeg` is the perspective-free one and IS graded.
+    skewDeg: { values: [...new Set(skews.map((value) => Number(foldSkew(value).toFixed(2))))].sort((a, b) => a - b) },
+    twistDeg: {
+      min: Math.min(...samples.map((s) => s.mainTwistDeg)),
+      max: Math.max(...samples.map((s) => s.mainTwistDeg)),
+      spread: Math.max(...samples.map((s) => s.mainTwistDeg)) - Math.min(...samples.map((s) => s.mainTwistDeg)),
+    },
+    perOrientation: samples.map((sample) => ({
+      path: sample.path, front: sample.front, mainShare: sample.mainShare,
+      others: sample.others.map((other) => `${other.face} ${(other.share * 100).toFixed(1)}%`).join(' / '),
+      skewDeg: Number(foldSkew(sample.mainSkewDeg).toFixed(2)),
+      twistDeg: sample.mainTwistDeg,
+      offAxisDeg: sample.mainOffAxisDeg,
+      sideFacesVisible: sample.sideFacesVisible,
+    })),
+  }
+  const skewsFolded = report.framing.perOrientation.map((row) => row.skewDeg)
+  report.framing.skewRange = {
+    min: Math.min(...skewsFolded), max: Math.max(...skewsFolded),
+    spread: Math.max(...skewsFolded) - Math.min(...skewsFolded),
+  }
+  report.framing.offAxisSpread = report.framing.offAxisDeg.max - report.framing.offAxisDeg.min
+
+  report.framing.camera = samples[0].camera
+  if (QUICK) console.warn('WARN --quick: only the resting orientation was sampled')
+  if (!QUICK && distinctPoses !== 24) failures.push(`framing: reached ${distinctPoses} distinct orientations, expected 24`)
+  if (!samples.every((sample) => sample.mainFaceMatches)) failures.push('framing: the largest visible face is not the detected front face')
+  if (Math.min(...shares) < TARGET.mainShareMin || Math.max(...shares) > TARGET.mainShareMax) {
+    failures.push(`framing: main share ${(Math.min(...shares) * 100).toFixed(1)}–${(Math.max(...shares) * 100).toFixed(1)}% outside ${TARGET.mainShareMin * 100}–${TARGET.mainShareMax * 100}%`)
+  }
+  if (otherMax > TARGET.otherMax) failures.push(`framing: a non-main face reaches ${(otherMax * 100).toFixed(1)}% (max ${TARGET.otherMax * 100}%)`)
+  if (othersTotalMax > TARGET.othersTotalMax) failures.push(`framing: non-main faces total ${(othersTotalMax * 100).toFixed(1)}% (max ${TARGET.othersTotalMax * 100}%)`)
+  // The strict one: the presented face sits the same distance off the camera axis
+  // on every orientation. A tilt applied in the cube's own frame (rather than in
+  // screen space) fails this immediately — some face always comes out flatter.
+  if (report.framing.offAxisSpread > TARGET.maxOffAxisSpreadDeg) {
+    failures.push(`framing: main face off-axis varies by ${report.framing.offAxisSpread.toFixed(3)}° across orientations`)
+  }
+  if (report.framing.twistDeg.spread > TARGET.maxTwistSpreadDeg) {
+    failures.push(`framing: presented face twist varies by ${report.framing.twistDeg.spread.toFixed(2)}° across orientations (a cube-space tilt does exactly this)`)
+  }
+  // A side face that is not visible at all is the failure mode this whole pass
+  // exists to prevent: the silhouette is then the bare front face and the cube
+  // reads as a flat 5×5 plate.
+  if (samples.some((sample) => !sample.sideFacesVisible)) {
+    failures.push('framing: at some orientation no non-main face is visible — the cube renders as a flat plate')
+  }
+
+  // ---------------------------------------------------------------- 2. trajectory
+  // A fresh pose, then one gesture per axis sampled at several travel distances.
+  await pressKeys(client, [])
+  const freshBounds = await readJson(client, 'globalThis.__voxalblast.bounds()')
+  const centreX = (freshBounds.minX + freshBounds.maxX) / 2
+  const centreY = (freshBounds.minY + freshBounds.maxY) / 2
+  const padding = Math.min(centreX - freshBounds.minX, freshBounds.minX)
+  const sideX = padding >= 45 ? freshBounds.minX - 40 : null
+
+  const GESTURES = [
+    { name: 'yaw', want: 'yaw', from: { x: centreX, y: centreY }, step: (distance) => ({ x: distance, y: 0 }) },
+    { name: 'pitch', want: 'pitch', from: { x: centreX, y: centreY }, step: (distance) => ({ x: 0, y: distance }) },
+    { name: 'roll-left', want: 'roll', from: sideX === null ? null : { x: sideX, y: centreY }, step: (distance) => ({ x: 0, y: distance }) },
+  ]
+
+  const trajectories = []
+  for (const gesture of GESTURES) {
+    if (!gesture.from) { trajectories.push({ name: gesture.name, skipped: 'no usable side band at this viewport' }); continue }
+    // The distance that pulls exactly one face, from the documented ruler.
+    const span = gesture.want === 'yaw' ? spanX : spanY
+    const samples_ = [0.06, 0.08, 0.12, 0.22, 0.35, 0.48].map((fraction) => fraction * span)
+    const trace = []
+    await pressKeys(client, []) // settle back to the identity
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: gesture.from.x, y: gesture.from.y, button: 'left', buttons: 1, clickCount: 1 })
+    let previous = await readJson(client, 'globalThis.__voxalblast.rotation()')
+    for (const distance of samples_) {
+      const target = gesture.step(distance)
+      await client.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x: gesture.from.x + target.x, y: gesture.from.y + target.y, button: 'left', buttons: 1,
+      })
+      await client.frames()
+      const current = await readJson(client, 'globalThis.__voxalblast.rotation()')
+      const delta = await readJson(client,
+        `globalThis.__voxalblast.poseAxisScreen(${JSON.stringify(previous.pose)}, ${JSON.stringify(current.pose)})`)
+      trace.push({
+        dragPx: Number(distance.toFixed(1)),
+        liveAngleDeg: current.live ? Number((current.live.angle * 180 / Math.PI).toFixed(2)) : null,
+        presentation: current.presentation,
+        deltaAngleDeg: delta.angleDeg,
+        screenDeg: foldScreenDeg(delta.screenDeg),
+        alongView: delta.alongView,
+        worldAxis: delta.axis.map((value) => Number(value.toFixed(3))),
+      })
+      previous = current
+    }
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: gesture.from.x + gesture.step(samples_[samples_.length - 1]).x,
+      y: gesture.from.y + gesture.step(samples_[samples_.length - 1]).y,
+      button: 'left', buttons: 0, clickCount: 1,
+    })
+    await sleep(SETTLE_MS)
+    await client.frames()
+
+    // How clean the turn is once the presentation tilt is out of the way. A delta
+    // that SPANS the fade still carries the tilt being removed (which is the fade
+    // doing its job), so only deltas between two already-bare poses are graded —
+    // those are the ones that have to be exactly on the screen axis.
+    const bare = trace.filter((entry) => entry.presentation === 0)
+    const clean = trace.filter((entry, index) => index > 0 && entry.presentation === 0 && trace[index - 1].presentation === 0)
+    const worst = clean.length ? Math.max(...clean.map((entry) => screenAxisError(gesture.want, entry))) : null
+    const fadeDoneDeg = trace.find((entry) => entry.presentation === 0)?.liveAngleDeg ?? null
+    if (worst !== null && worst > TARGET.maxScreenAxisErrorDeg) {
+      failures.push(`trajectory ${gesture.name}: rotation axis is ${worst.toFixed(2)}° off its screen axis once the tilt is out`)
+    }
+    // The fade has to be CONTINUOUS — a tilt that is already gone on the first
+    // sampled drag would mean the cube jumped to square the moment the finger went
+    // down, which is the thing the fade exists to avoid.
+    if (trace[0].presentation === 0) {
+      failures.push(`trajectory ${gesture.name}: the presentation tilt is already gone at ${trace[0].liveAngleDeg}° of drag (no fade, just a jump)`)
+    }
+    // ...and it must be over well before a whole face has been pulled (the ≈30°
+    // commit threshold), so the pose a release has to honour is never a tilted one.
+    if (fadeDoneDeg === null || Math.abs(fadeDoneDeg) > TARGET.maxTiltGoneDeg) {
+      failures.push(`trajectory ${gesture.name}: presentation tilt still present past ${fadeDoneDeg}° of drag`)
+    }
+    trajectories.push({
+      name: gesture.name,
+      axis: gesture.want,
+      pxToStep: Number((ROTATE_STYLE.stepThreshold / Math.PI * span).toFixed(1)),
+      bareSamples: bare.length,
+      fadeDoneByDeg: fadeDoneDeg,
+      worstScreenAxisErrorDeg: worst === null ? null : Number(worst.toFixed(2)),
+      trace,
+    })
+  }
+  report.trajectory = trajectories
+
+  const errs = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__errs || [])'))
+  if (errs.length) failures.push(`page errors: ${errs.join(' | ')}`)
+} catch (error) {
+  thrown = error
+} finally {
+  try {
+    await closeBrowser(child, browserSocket, pageSocket, profile)
+  } catch (error) {
+    if (!thrown) thrown = error
+    else console.warn(`WARN cleanup: ${error.message}`)
+  }
+}
+
+if (JSON_ONLY) console.log(JSON.stringify({ ...report, failures }, null, 2))
+else {
+  console.log(`browser  ${browserPath}`)
+  console.log(`target   ${APP_URL}  (dev server ${dev.started ? `started, pid ${dev.pid}` : 'already running'})`)
+  console.log(`viewport ${VIEWPORT.width}x${VIEWPORT.height}\n`)
+  const framing = report.framing
+  if (framing) {
+    console.log(`cube box ${report.ruler.cubeBox.width}x${report.ruler.cubeBox.height}px   one face ≈ ${report.ruler.pxPerFaceYaw}px drag (yaw) / ${report.ruler.pxPerFacePitch}px (pitch)`)
+    console.log(`framing  ${framing.orientations} orientations (${framing.distinctPoses} distinct poses)`)
+    console.log(`  main face share ${(framing.mainShare.min * 100).toFixed(1)}–${(framing.mainShare.max * 100).toFixed(1)}%   (target ${TARGET.mainShareMin * 100}–${TARGET.mainShareMax * 100}%)`)
+    console.log(`  largest non-main face ${(framing.otherMax * 100).toFixed(1)}% (max ${TARGET.otherMax * 100}%)   two others total ${(framing.othersTotalMax * 100).toFixed(1)}% (max ${TARGET.othersTotalMax * 100}%)`)
+    console.log(`  presented face twist ${framing.twistDeg.min.toFixed(2)}…${framing.twistDeg.max.toFixed(2)}° (spread ${framing.twistDeg.spread.toFixed(2)}°)   off-axis ${framing.offAxisDeg.min.toFixed(2)}…${framing.offAxisDeg.max.toFixed(2)}°`)
+    console.log(`  projected edge angle (informational, carries perspective convergence) ${framing.skewRange.min.toFixed(2)}…${framing.skewRange.max.toFixed(2)}°`)
+    for (const row of framing.perOrientation) {
+      console.log(`    ${row.path.padEnd(6)} front ${row.front.padEnd(3)} main ${(row.mainShare * 100).toFixed(1)}%  others ${row.others}  skew ${row.skewDeg.toFixed(2)}°`)
+    }
+  }
+  if (report.trajectory) {
+    console.log('\ntrajectory')
+    for (const gesture of report.trajectory) {
+      if (gesture.skipped) { console.log(`  ${gesture.name}: skipped (${gesture.skipped})`); continue }
+      console.log(`  ${gesture.name}  (${gesture.pxToStep}px to commit)  tilt gone by ${gesture.fadeDoneByDeg}° of drag  worst screen-axis error once bare: ${gesture.worstScreenAxisErrorDeg}°`)
+      for (const entry of gesture.trace) {
+        console.log(`    ${String(entry.dragPx).padStart(6)}px  drag ${String(entry.liveAngleDeg).padStart(7)}°  tilt ${entry.presentation.toFixed(2)}  Δ ${String(entry.deltaAngleDeg).padStart(6)}°  screen ${String(entry.screenDeg).padStart(7)}°  alongView ${entry.alongView}`)
+      }
+    }
+  }
+  if (failures.length) console.log(`\nFAIL:\n  ${failures.join('\n  ')}`)
+  else console.log('\nframing and rotation trajectories are within target')
+}
+
+if (thrown) throw thrown
+if (failures.length) process.exitCode = 1

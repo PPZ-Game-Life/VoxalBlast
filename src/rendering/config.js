@@ -75,7 +75,27 @@ export const BOARD_STYLE = Object.freeze({
   exposure: 1.0,
   cameraFov: 30,
   cameraFovMobile: 34,
-  cameraDirection: Object.freeze([0.52, 0.48, 1.05]),
+  // v0.8.6: the camera looks DEAD ON at the cube, and the three-quarter read is a
+  // property of the cube instead (see ROTATE_STYLE.presentationYaw/Pitch).
+  //
+  // Until v0.8.5 this was [0.52, 0.48, 1.05] — 26° of yaw and 22° of pitch — and
+  // that single number caused both of the reported framing problems:
+  //   - at rest three faces shared the silhouette almost equally (measured 52% /
+  //     26% / 21% of the visible area), so the face the player was working on was
+  //     not the visual subject;
+  //   - and because the tilt lived in the CAMERA and not in the cube, every
+  //     rotation axis was seen off-axis: world X projects to a screen line tilted
+  //     10.6° at that pitch and world Z to one tilted 37.6°, so a vertical swipe
+  //     or a side-band spin "turned crooked" no matter how clean the cube's own
+  //     pose was.
+  // A face can only dominate the silhouette while the view is close to its normal
+  // (the ratio is cosα·cosβ / (cosα·cosβ + sinα·cosβ + cosα·sinβ), which is ~85%
+  // at 5°/4° and only ~52% at 26°/22°), and a rotation only reads as a pure
+  // screen-axis turn while the camera is square to the cube. Both requirements
+  // point at the same change, so the camera went square and the cube kept a small
+  // fixed presentation tilt. Do NOT reintroduce an angle here to recover the old
+  // three-quarter look — that is what the cube's own tilt is for.
+  cameraDirection: Object.freeze([0, 0, 1]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
@@ -149,10 +169,10 @@ export const OPENING_LAYOUT = Object.freeze({
 // (screen Z axis, an in-plane spin) when it lands outside it. Whichever axis
 // wins, the gesture still moves the cube by at most ONE face: the step only
 // fires once the drag passes `stepThreshold`, otherwise the cube springs back
-// to the face it started on. The rest pose keeps whatever overshoot the gesture
-// had left, clamped to the per-axis offset budget, so the face that ends up in
-// front still reads as a 3D cube (and never snaps to a mechanically flat
-// square). Radian values; degrees in the comments.
+// to the face it started on. The rest pose is then the bare 90° grid pose plus a
+// fixed presentation tilt (see below), so the face that ends up in front always
+// reads as a 3D body and never snaps to a mechanically flat square. Radian
+// values; degrees in the comments.
 //
 // v0.2.30 made the DRAG agree with that release rule: main.js's setLiveAngle()
 // clamps the live angle to the same single face, so the cube can never show the
@@ -204,16 +224,51 @@ export const ROTATE_STYLE = Object.freeze({
   axisLockPx: 16, // travel before the dominant direction may claim the gesture
   axisDominance: 1.2, // lead / trail ratio that makes the dominant direction decisive
   axisHardLockPx: 44, // still ambiguous this far in? the leader takes it
-  // Resting offsets: how much of the gesture's leftover tilt survives the
-  // settle. Yaw/pitch keep ≤8° so the cube still reads as a 3D body instead of a
-  // flat square. Roll keeps NOTHING and also clears prior yaw/pitch offsets in
-  // main.js: Z is the explicit straighten gesture, so the final pose is the bare
-  // 90° grid pose. Spring feel comes from snapOvershoot, not a resting skew.
-  restOffsetYaw: 0.14, // ≈8° max leftover tilt from a horizontal swipe (screen X)
-  restOffsetPitch: 0.14, // ≈8° max leftover tilt from a vertical swipe (screen Y)
-  restOffsetRoll: 0, // 0 = Z has no own residual; main.js clears all rest tilt
-  snapDuration: 0.26, // s — settle animation onto the resting pose
-  snapOvershoot: 1.05, // easeOutBack strength ≈4% spring past the pose, then back
+  // Presentation tilt (v0.8.6). This replaces the old per-gesture "rest offset"
+  // (restOffsetYaw/Pitch, ≤8°, whichever way the last swipe happened to overshoot).
+  // That model had two faults: the leftover was whatever the gesture left behind,
+  // so the resting composition wandered between "flat square" and "8° + 8°", and
+  // because it was applied OUTSIDE the live rotation the cube visibly turned about
+  // a tilted axis for as long as the tilt was there.
+  //
+  // Now the tilt is a CONSTANT, it belongs to the cube rather than to the camera,
+  // and it is weighted separately from the logical pose:
+  //
+  //   rendered = tilt(weight) ∘ logicalMotion ∘ gridPose
+  //
+  // `weight` is 1 at rest and falls to 0 as the cube starts moving, so the middle
+  // of every turn is a clean rotation about one world axis, and the tilt comes back
+  // only once the cube has settled onto its face. Signs: the tilt is applied in
+  // WORLD/SCREEN space (it is premultiplied), so all six faces present the same way
+  // up on screen; +yaw turns the front face left (exposing the +x face) and +pitch
+  // tips it down (exposing the top face), which keeps the v0.8.5 read of
+  // front + right + top.
+  //
+  // Magnitude. The main face's share of the silhouette is NOT 1/(1 + tanα + tanβ)
+  // here, because the camera is close (D ≈ 14 world units for a cube of half-size
+  // 2.5, FOV 30): a face is only visible at all while the camera is on the outer
+  // side of its own plane, i.e. while D·sin(tilt) > half, so below ~11° of tilt the
+  // side faces are simply not on screen and the cube renders as a bare flat square
+  // (measured: 100% / 0% / 0% at 6.6°/5.3°). The share has to be solved against the
+  // real projection, which is what tools/cube-framing-probe.mjs does — do not tune
+  // these by the orthographic formula. See docs/Temporary notes in the v0.8.6
+  // commit: 17.5°/15.5° measures ≈83% main share with the side and top faces
+  // visible at ≈10.7% and ≈6.1% (caps: 11% each, 18% total).
+  presentationYaw: -0.3054, // ≈17.5° — exposes the right-hand face
+  presentationPitch: 0.2705, // ≈15.5° — exposes the top face
+  // A drag removes the tilt over its first `presentationFadeAngle` of rotation
+  // (≈20°), so the tilt is fully out BEFORE the ≈30° commit threshold and the
+  // gesture the release has to honour is never a tilted one. The fade is
+  // continuous — no jump-to-square on pointerdown.
+  presentationFadeAngle: 0.35, // rad of drag that takes the tilt from 1 to 0
+  // A settle removes any leftover tilt over its first 18% and brings the tilt back
+  // over its last 38%: the rotation completes on the bare grid pose, then the cube
+  // eases into its presentation. No overshoot anywhere — a spring past the face and
+  // a second wobble after it are both explicitly out (they were what "停稳后还晃一下"
+  // described).
+  presentationFadeOutEnd: 0.18, // settle progress spent fading a leftover tilt out
+  presentationReturnStart: 0.62, // settle progress where the tilt starts coming back
+  snapDuration: 0.22, // s — settle animation onto the resting pose
 })
 
 export const VFX_CONFIG = Object.freeze({

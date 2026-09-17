@@ -566,7 +566,7 @@ scene.add(camera) // the ghost rides the camera, so the camera joins the graph
 const dragGhostInvalid = new THREE.Color(palette.invalid)
 const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
 
-// ---- Cube rotation state (v0.2.28: fixed axes + strict Z settle) ------------
+// ---- Cube pose model (v0.8.6: logical pose + separate presentation tilt) -----
 // The three gesture axes are FIXED to the screen/world and never follow the
 // cube: yaw is always world Y, pitch always world X, roll always world Z. Each
 // gesture is applied to whatever pose the cube currently has, i.e. "settle
@@ -578,23 +578,51 @@ const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.6
 // spin about world Z (an in-plane roll) instead of the screen-horizontal flip,
 // which reads exactly as "the X/Y axes rotated along with the cube".
 //
-// Now the grid pose is a quaternion: cubeBase accumulates whole 90° steps about
-// world axes and is therefore ALWAYS face-aligned (it can never drift off the
-// grid), while `cubeRest*` hold the small ≤8° presentation tilt that keeps the
-// cube from looking like a flat square. The rendered pose is tilt ∘ base.
+// v0.2.28 fixed that with a quaternion grid pose, but kept the presentation skew
+// mixed into the same pose: the resting tilt was simply whatever a gesture had
+// overshot by, it was folded into the next gesture's starting angle, and it was
+// applied OUTSIDE the live rotation. So for as long as the tilt was non-zero the
+// cube turned about a visibly tilted axis — reported as "旋转中段发歪，像是带着
+// 停稳时的斜角一起旋转" — and the resting composition wandered, because the tilt
+// was an accident of the last swipe rather than a decision.
+//
+// The pose is now three separate things with one owner each:
+//
+//   cubeBase      the LOGICAL pose — a product of whole 90° steps about world
+//                 axes, so it is always face-aligned and can never drift.
+//   cubeLive      the gesture in flight: one axis and one angle, measured from 0
+//                 so the angle IS the drag (nothing to fold in any more).
+//   presentation  a FIXED screen-space tilt (ROTATE_STYLE.presentationYaw/Pitch)
+//                 carried with a weight, 1 at rest and 0 while the cube moves.
+//
+//   rendered = tilt(weight) ∘ R_axis(angle) ∘ cubeBase
+//
+// Only the logical half is ever read back by gameplay: face detection, the step
+// threshold and the saved pose all use cubeBase, and a new gesture always starts
+// from cubeBase with the tilt outside it. The tilt can therefore never accumulate
+// into the geometry, and because it is premultiplied it is the same on screen for
+// all six faces instead of following each face's local axes.
 const ROT_STEP = Math.PI / 2
 const AXIS_OF = {
   yaw: new THREE.Vector3(0, 1, 0),
   pitch: new THREE.Vector3(1, 0, 0),
   roll: new THREE.Vector3(0, 0, 1),
 }
-const cubeBase = new THREE.Quaternion() // face-aligned grid pose
+const cubeBase = new THREE.Quaternion() // face-aligned grid pose (the logical pose)
 const cubeQuat = new THREE.Quaternion() // pose actually rendered
-let cubeRestYaw = 0
-let cubeRestPitch = 0
+let cubePresentationWeight = 1 // 1 = fully tilted, 0 = bare grid pose
 let cubeLive = null // the gesture in flight, see beginAxisGesture()
-const cubeSnapAnim = { active: false, from: new THREE.Quaternion(), to: new THREE.Quaternion(), t: 0, duration: rotateStyle.snapDuration }
+const cubeSnapAnim = {
+  active: false,
+  logicalFrom: new THREE.Quaternion(),
+  logicalTo: new THREE.Quaternion(),
+  weightFrom: 1,
+  t: 0,
+  duration: rotateStyle.snapDuration,
+}
 const scratchQuat = new THREE.Quaternion()
+const scratchLogical = new THREE.Quaternion()
+const scratchPresentation = new THREE.Quaternion()
 // v0.2.30 dropped the pitch pole limit (and its `pitchReach` bookkeeping). It was
 // the fixed-axis restatement of v0.2.25's Euler "clamp pitch to ±90°", but in the
 // quaternion model there is nothing to protect: pitching past a pole is an
@@ -609,16 +637,28 @@ function stepQuaternion(axis, steps) {
   return new THREE.Quaternion().setFromAxisAngle(AXIS_OF[axis], steps * ROT_STEP)
 }
 
-// The small resting tilt: world Y first, then world X. Roll never contributes —
-// a residual Z spin would show up as a skewed face (see ROTATE_STYLE).
-function buildTilt(yaw, pitch) {
-  return new THREE.Quaternion()
-    .setFromAxisAngle(AXIS_OF.yaw, yaw)
-    .multiply(scratchQuat.setFromAxisAngle(AXIS_OF.pitch, pitch))
+// The fixed presentation tilt: world Y first, then world X. Roll never
+// contributes — a residual Z spin would show up as a skewed face (ROTATE_STYLE).
+const IDENTITY_QUAT = new THREE.Quaternion()
+const PRESENTATION_TILT = new THREE.Quaternion()
+  .setFromAxisAngle(AXIS_OF.yaw, rotateStyle.presentationYaw)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_OF.pitch, rotateStyle.presentationPitch))
+  .normalize()
+
+// Weighted tilt. `tilt(1)` is the resting look, `tilt(0)` is the bare pose a
+// rotation is performed on.
+function presentationTilt(weight, out = scratchPresentation) {
+  return out.copy(IDENTITY_QUAT).slerp(PRESENTATION_TILT, THREE.MathUtils.clamp(weight, 0, 1))
 }
 
-function cubeTilt() {
-  return buildTilt(cubeRestYaw, cubeRestPitch)
+// The logical half of the pose: one rotation about one fixed world axis, on top
+// of the grid pose.
+function logicalPose(axis, angle, base, out = scratchLogical) {
+  return out.copy(scratchQuat.setFromAxisAngle(AXIS_OF[axis], angle)).multiply(base).normalize()
+}
+
+function composePose(logical, weight, out = cubeQuat) {
+  return out.copy(presentationTilt(weight)).multiply(logical).normalize()
 }
 
 function applyCubeRotation() {
@@ -626,28 +666,19 @@ function applyCubeRotation() {
   cubeGroup.updateMatrixWorld(true)
 }
 
-// Start a gesture on one axis. The pose must stay continuous, so the tilt the
-// cube is currently resting with is folded into the gesture's own starting
-// angle (the rest of the tilt stays outside the gesture as a frozen factor):
-// at angle === start the pose is bit-identical to the pose before the touch.
+// Start a gesture on one axis. The logical angle starts at 0, so the pose at
+// pointerdown is exactly the resting pose (tilt ∘ base) and the first moved pixel
+// is already part of the gesture's own delta — nothing is folded in, and the tilt
+// never becomes the next gesture's starting angle.
 function beginAxisGesture(axis) {
-  const tilt = cubeTilt()
-  let start = 0
-  if (axis === 'yaw') {
-    start = cubeRestYaw
-    tilt.setFromAxisAngle(AXIS_OF.pitch, cubeRestPitch)
-  } else if (axis === 'pitch') {
-    start = cubeRestPitch
-    tilt.setFromAxisAngle(AXIS_OF.yaw, cubeRestYaw)
-  }
-  cubeLive = { axis, start, angle: start, base: cubeBase.clone(), rest: tilt }
-  setLiveAngle(start)
+  cubeLive = { axis, angle: 0, rendered: 0, weight: cubePresentationWeight, base: cubeBase.clone() }
+  setLiveAngle(0)
 }
 
 // Pose while the finger is down: the live rotation about the FIXED world axis,
-// applied on top of the frozen (tilt, base) pair. Because it is the outermost
-// factor, an increment of the angle is exactly a rotation about that world axis
-// no matter what the cube looks like at that moment.
+// applied on top of the grid pose. Because it is the outermost factor of the
+// logical half, an increment of the angle is exactly a rotation about that world
+// axis no matter what the cube looks like at that moment.
 //
 // The angle is clamped to the single face a gesture can commit (v0.2.30): the
 // drag renders AT MOST what the release will keep. Without the clamp a long drag
@@ -657,28 +688,122 @@ function beginAxisGesture(axis) {
 // 38.4° back). The clamp makes the finger a promise the release can always honour;
 // the only rotation a release still takes back is the sub-threshold flick, which
 // never gets past `stepThreshold` (≈30°) in the first place.
+//
+// The presentation tilt falls off with the angle, so the first ~12.6° of rotation
+// carry it away continuously (never a jump-to-square on pointerdown) and the rest
+// of the turn is a clean single-axis move (v0.8.6).
 function setLiveAngle(angle) {
-  cubeLive.angle = THREE.MathUtils.clamp(angle, cubeLive.start - ROT_STEP, cubeLive.start + ROT_STEP)
-  cubeQuat.copy(cubeLive.rest).premultiply(scratchQuat.setFromAxisAngle(AXIS_OF[cubeLive.axis], cubeLive.angle)).multiply(cubeLive.base).normalize()
+  const clamped = THREE.MathUtils.clamp(angle, -ROT_STEP, ROT_STEP)
+  const weight = Math.max(0, 1 - Math.abs(clamped) / rotateStyle.presentationFadeAngle)
+  cubeLive.angle = clamped
+  cubeLive.rendered = clamped
+  cubeLive.weight = weight
+  cubePresentationWeight = weight
+  composePose(logicalPose(cubeLive.axis, clamped, cubeLive.base), weight)
   applyCubeRotation()
 }
 
-// Plane one axis of the settle, in the fixed-axis model. `live` is where the
-// drag left the angle, `start` is the angle the gesture began at (the tilt it
-// had folded in), `base` is the face-aligned pose it began from. Over the
-// threshold the gesture turns exactly one face in the drag direction (never
-// "the nearest face"); under it the cube returns to its starting face. Either
-// way the overshoot past that face survives as a bounded resting tilt — except
-// on Z, where the budget is zero and the spin must land dead on the grid.
-function planAxisStep(live, start, offsetMax) {
-  const delta = live - start
-  const stepped = Math.abs(delta) >= rotateStyle.stepThreshold ? Math.sign(delta) : 0
-  const rest = THREE.MathUtils.clamp(live - stepped * ROT_STEP, -offsetMax, offsetMax)
-  return { stepped, rest }
+// Plane one axis of the settle. `live` is where the drag left the angle, measured
+// from the gesture's own start. Over the threshold the gesture turns exactly one
+// face in the drag direction (never "the nearest face"); under it the cube
+// returns to its starting face. There is no per-axis leftover any more — the
+// resting tilt is the fixed presentation tilt, not a souvenir of the gesture.
+function planAxisStep(live) {
+  return Math.abs(live) >= rotateStyle.stepThreshold ? Math.sign(live) : 0
 }
 
+function easeOutCubic(p) {
+  return 1 - (1 - p) ** 3
+}
+
+// Where the presentation weight is during a settle: whatever the drag left
+// (usually 0) is removed over the first `presentationFadeOutEnd` of the
+// animation, and the resting tilt eases back in over the last stretch, so the
+// cube finishes its turn on the bare grid pose and is only then presented. A
+// keyboard turn starts at weight 1 and gets the same treatment, so its quarter
+// turn is a clean single-axis move too.
+function snapWeight(p, weightFrom) {
+  const back = rotateStyle.presentationReturnStart
+  const out = rotateStyle.presentationFadeOutEnd
+  if (weightFrom > 0 && p < out) return weightFrom * (1 - smoothstep(p / out))
+  if (p < back) return 0
+  return smoothstep((p - back) / Math.max(1 - back, 1e-6))
+}
+
+function smoothstep(x) {
+  const t = THREE.MathUtils.clamp(x, 0, 1)
+  return t * t * (3 - 2 * t)
+}
+
+function startCubeSnap(gesture) {
+  const stepped = planAxisStep(gesture.angle)
+  // The settle starts from the logical pose the cube is RENDERED at, never from
+  // the angle alone: a key press writes an angle it deliberately did not render
+  // (see rotateCubeByKey), and animating from that would teleport the cube.
+  logicalPose(gesture.axis, gesture.rendered, gesture.base, cubeSnapAnim.logicalFrom)
+  if (stepped !== 0) cubeBase.copy(gesture.base).premultiply(stepQuaternion(gesture.axis, stepped)).normalize()
+  cubeSnapAnim.logicalTo.copy(cubeBase)
+  cubeSnapAnim.weightFrom = gesture.weight
+  cubeSnapAnim.active = true
+  cubeSnapAnim.t = 0
+  cubeSnapAnim.duration = rotateStyle.snapDuration
+  cubeLive = null
+  cubePresentationWeight = gesture.weight
+  updateCubeSnap(0) // render frame 0 now, so the first frame after release does not jump
+}
+
+// A new gesture must start from a stable pose: settle any running animation
+// instantly, otherwise the drag would be writing over an animation in flight.
+function settleCubeSnap() {
+  if (!cubeSnapAnim.active) return
+  cubeSnapAnim.active = false
+  cubePresentationWeight = 1
+  composePose(cubeSnapAnim.logicalTo, 1)
+  applyCubeRotation()
+}
+
+// Return to the face-aligned start pose (used by Reset Game).
+function resetCubeRotation() {
+  cubeSnapAnim.active = false
+  cubeLive = null
+  // A reset can land in the middle of a gesture; drop it so the pointerup that
+  // may never come cannot leave rotation permanently blocked.
+  viewDrag = null
+  cubeBase.identity()
+  cubePresentationWeight = 1
+  composePose(IDENTITY_QUAT, 1)
+  applyCubeRotation()
+}
+
+// Settle animation: the logical pose slerps from where the finger left it to the
+// exact target grid pose while the presentation weight runs its own curve on top.
+// Splitting the two is what keeps a settle honest — the rotation finishes on the
+// bare grid pose (no overshoot, no second wobble) and the tilt is restored
+// afterwards rather than being dragged through the turn. The target is reached
+// bit-exactly, so every settle lands on the 90° grid.
+function updateCubeSnap(delta) {
+  if (!cubeSnapAnim.active) return
+  cubeSnapAnim.t += delta
+  const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
+  const eased = easeOutCubic(p)
+  scratchLogical.copy(cubeSnapAnim.logicalFrom).slerp(cubeSnapAnim.logicalTo, eased).normalize()
+  const weight = snapWeight(p, cubeSnapAnim.weightFrom)
+  cubePresentationWeight = weight
+  composePose(scratchLogical, weight)
+  applyCubeRotation()
+  if (p >= 1) {
+    cubePresentationWeight = 1
+    composePose(cubeSnapAnim.logicalTo, 1)
+    cubeSnapAnim.active = false
+    applyCubeRotation()
+  }
+}
+
+// ---- Candidate orientation on the front face (v0.2.28) ----------------------
 // Front face = the one whose outward normal (rotated into world) points most
-// toward the camera.
+// toward the camera. Read off the RENDERED pose, which is what the raycast and
+// the player's eye both use; the presentation tilt is far under 45°, so it can
+// never change which face wins.
 const frontProbe = new THREE.Vector3()
 const toCameraProbe = new THREE.Vector3()
 function frontFaceOf(quat) {
@@ -696,7 +821,6 @@ function findFrontFace() {
   return frontFaceOf(cubeGroup.quaternion)
 }
 
-// ---- Candidate orientation on the front face (v0.2.28) ----------------------
 // Shape data and the flat slot both use a top-left origin: piece +u points
 // screen-right and piece +v points screen-down. A face's own (u, v) lattice axes
 // turn WITH the cube, so placing raw cells would spin or flip the piece whenever
@@ -740,86 +864,6 @@ function faceOrientedCells(face, cells) {
     u * across.u + v * along.u,
     u * across.v + v * along.v,
   ]))
-}
-
-// Spring-ish settle: easeOutBack so the pose springs a few degrees past the
-// face it is landing on and then comes back. It always ENDS exactly on the
-// planned rest angles, so the Z axis still lands dead on the 90° grid.
-function easeOutBack(p, strength) {
-  const q = p - 1
-  return 1 + (strength + 1) * q * q * q + strength * q * q
-}
-
-function startCubeSnap(gesture) {
-  const axis = gesture.axis
-  const offsetMax = axis === 'roll' ? rotateStyle.restOffsetRoll
-    : axis === 'yaw' ? rotateStyle.restOffsetYaw : rotateStyle.restOffsetPitch
-  // The release decision is the whole story now (v0.2.30): one face at most, or
-  // the sub-threshold flick back to the face the gesture started on. Nothing can
-  // veto the step after the finger has already seen it — the live angle is
-  // clamped to the same single face in setLiveAngle().
-  const { stepped, rest } = planAxisStep(gesture.angle, gesture.start, offsetMax)
-  if (stepped !== 0) cubeBase.premultiply(stepQuaternion(axis, stepped)).normalize()
-  if (axis === 'yaw') cubeRestYaw = rest
-  else if (axis === 'pitch') cubeRestPitch = rest
-  else {
-    // A Z spin is the player's explicit "straighten this face" gesture. Clear
-    // yaw/pitch presentation offsets left by earlier swipes as well as the roll
-    // remainder; otherwise tilt * Rz(90°) is grid-exact internally but still
-    // looks a few degrees crooked when the settle animation ends.
-    cubeRestYaw = 0
-    cubeRestPitch = 0
-  }
-  cubeLive = null
-  cubeSnapAnim.active = true
-  cubeSnapAnim.from.copy(cubeQuat)
-  // The Z target is the bare grid pose. Yaw/pitch targets retain their bounded
-  // presentation tilt so the resting cube still reads as three-dimensional.
-  cubeSnapAnim.to.copy(cubeTilt()).multiply(cubeBase).normalize()
-  cubeSnapAnim.t = 0
-  cubeSnapAnim.duration = rotateStyle.snapDuration
-}
-
-// A new gesture must start from a stable pose: settle any running animation
-// instantly, otherwise the drag would be writing over an animation in flight.
-function settleCubeSnap() {
-  if (!cubeSnapAnim.active) return
-  cubeSnapAnim.active = false
-  cubeQuat.copy(cubeSnapAnim.to)
-  applyCubeRotation()
-}
-
-// Return to the face-aligned start pose (used by Reset Game).
-function resetCubeRotation() {
-  cubeSnapAnim.active = false
-  cubeLive = null
-  // A reset can land in the middle of a gesture; drop it so the pointerup that
-  // may never come cannot leave rotation permanently blocked.
-  viewDrag = null
-  cubeBase.identity()
-  cubeQuat.identity()
-  cubeRestYaw = 0
-  cubeRestPitch = 0
-  applyCubeRotation()
-}
-
-// Settle animation: a slerp from wherever the finger left the pose to the exact
-// resting pose, with a small easeOutBack overshoot for the spring feel. Slerping
-// the whole pose (rather than three angles) is what lets the fixed-axis gesture
-// end on a pose the angle couldn't reach directly, and it still lands bit-exact
-// on the target — the Z spin therefore straightens up exactly.
-function updateCubeSnap(delta) {
-  if (!cubeSnapAnim.active) return
-  cubeSnapAnim.t += delta
-  const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
-  const eased = easeOutBack(p, rotateStyle.snapOvershoot)
-  cubeQuat.copy(cubeSnapAnim.from).slerp(cubeSnapAnim.to, eased).normalize()
-  applyCubeRotation()
-  if (p >= 1) {
-    cubeQuat.copy(cubeSnapAnim.to)
-    cubeSnapAnim.active = false
-    applyCubeRotation()
-  }
 }
 
 // ============================================================
@@ -1173,13 +1217,14 @@ function closeSettings() {
 // is exactly a 90° rotation about the world axis).
 //
 // The one thing a key must NOT copy from a release is where the pose already is. A
-// release hands over an angle the finger has spent 260ms pulling, so there is nothing
+// release hands over an angle the finger has spent 220ms pulling, so there is nothing
 // left to animate; a key has no finger, and writing the angle through setLiveAngle()
 // would put the cube straight onto the target pose — the settle would then animate
 // pose-to-pose over zero distance and the cube would TELEPORT (v0.4.1 first pass, seen
 // in the shot run). So the angle is written onto the gesture without rendering it, and
-// the settle animates from the pose the cube is actually in, exactly like a drag that
-// ends mid-flight — same duration, same easeOutBack spring.
+// the settle animates from the logical pose the cube is actually in (the gesture's
+// `rendered` angle stays 0) — same duration, same easeOutCubic, same presentation
+// fade-out-and-back as a drag that ends mid-flight.
 function rotateCubeByKey(axis, direction) {
   // A turn still in flight is settled instantly rather than queued: fast repeated
   // presses stay with the fingers instead of lagging behind a backlog.
@@ -1188,7 +1233,7 @@ function rotateCubeByKey(axis, direction) {
   beginAxisGesture(axis)
   const knob = axis === 'yaw' ? rotateStyle.yawDirection
     : axis === 'pitch' ? rotateStyle.pitchDirection : rotateStyle.rollDirection
-  cubeLive.angle = cubeLive.start + direction * knob * ROT_STEP
+  cubeLive.angle = direction * knob * ROT_STEP
   startCubeSnap(cubeLive)
   return true
 }
@@ -2463,9 +2508,11 @@ function sessionSnapshot() {
       honorCounts: { ...run.honorCounts },
     },
     pose: {
-      yaw: cubeRestYaw,
-      pitch: cubeRestPitch,
-      quat: cubeQuat.toArray(),
+      // The LOGICAL pose only (v0.8.6). The presentation tilt is a fixed constant
+      // and the rendered quaternion is a mid-animation value on the frames a save
+      // can land on, so neither belongs in a save file: a resumed run rebuilds
+      // `pose = tilt(1) ∘ base`. Old saves carrying `quat`/`yaw`/`pitch` still load
+      // — their `base` is the only field that was ever load-bearing.
       base: cubeBase.toArray(),
     },
   }
@@ -2633,18 +2680,17 @@ function applySession(saved) {
   lastItemHoverKey = null
   clearGroup(itemPreviewGroup)
   axisPickEl.classList.add('hidden')
-  // Pose is restored from the raw quaternions, so the cube comes back in exactly the
-  // orientation it was left in (a face-aligned pose matters: the candidate's drop
-  // orientation is derived from it). An unreadable pose starts face-aligned instead
-  // of guessing.
-  if (saved.pose.quat && saved.pose.base) {
+  // Pose is restored from the LOGICAL base quaternion, so the cube comes back on
+  // exactly the face it was left on (a face-aligned pose matters: the candidate's
+  // drop orientation is derived from it) with the standard presentation tilt on
+  // top. An unreadable pose starts face-aligned instead of guessing.
+  if (saved.pose?.base) {
     cubeSnapAnim.active = false
     cubeLive = null
     viewDrag = null
-    cubeQuat.fromArray(saved.pose.quat).normalize()
     cubeBase.fromArray(saved.pose.base).normalize()
-    cubeRestYaw = saved.pose.yaw
-    cubeRestPitch = saved.pose.pitch
+    cubePresentationWeight = 1
+    composePose(cubeBase, 1)
     applyCubeRotation()
   } else {
     resetCubeRotation()
@@ -2912,7 +2958,7 @@ window.addEventListener('pointermove', (event) => {
     // the cube happens to have, so it never turns with the cube. Each axis
     // carries its own direction sign and its own ruler (ROTATE_STYLE, swipe.js);
     // the roll is additionally signed by the band the gesture started in.
-    setLiveAngle(cubeLive.start + swipeAngle(viewDrag.axis, dx, dy, viewDrag.span, viewDrag.band))
+    setLiveAngle(swipeAngle(viewDrag.axis, dx, dy, viewDrag.span, viewDrag.band))
     return
   }
   if (itemActive) {
@@ -3141,15 +3187,16 @@ globalThis.__voxalblast = Object.freeze({
       lowPower: quality.lowPower,
     }
   },
-  // `pose` is the rendered orientation; `base` is the grid pose it settles
+  // `pose` is the rendered orientation; `base` is the logical grid pose it settles
   // around (a product of whole 90° steps about world axes, so it can never drift
-  // off the grid); `tilt` is the ≤8° presentation tilt sitting on top of it. The
-  // Euler triples are readability helpers for the checks (a pure yaw/pitch/roll
-  // pose decomposes exactly in ZYX order).
+  // off the grid); `tilt` is the presentation tilt actually carried right now and
+  // `presentation` its weight (1 at rest, 0 while the cube is turning). The Euler
+  // triples are readability helpers for the checks (a pure yaw/pitch/roll pose
+  // decomposes exactly in ZYX order).
   rotation: () => {
     const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
     const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
-    const tiltEuler = new THREE.Euler().setFromQuaternion(cubeTilt(), 'ZYX')
+    const tiltEuler = new THREE.Euler().setFromQuaternion(presentationTilt(cubePresentationWeight), 'ZYX')
     return {
       yaw: poseEuler.y,
       pitch: poseEuler.x,
@@ -3159,11 +3206,140 @@ globalThis.__voxalblast = Object.freeze({
       baseRoll: baseEuler.z,
       tiltYaw: tiltEuler.y,
       tiltPitch: tiltEuler.x,
+      presentation: cubePresentationWeight,
       pose: cubeQuat.toArray(),
       base: cubeBase.toArray(),
       front: findFrontFace(),
       settling: cubeSnapAnim.active,
-      live: cubeLive ? { axis: cubeLive.axis, angle: cubeLive.angle } : null,
+      live: cubeLive ? { axis: cubeLive.axis, angle: cubeLive.angle, rendered: cubeLive.rendered } : null,
+    }
+  },
+  // v0.8.6 framing read-out: how the cube's screen silhouette is divided between
+  // the faces that are actually visible, plus how far each of them is off the
+  // camera axis and how far the main face's own lattice axes are from screen
+  // right/down. This is the measurement the "停稳后主面 82–88%" acceptance is
+  // graded on, and `skew` is the same number for the rotation: a face whose u axis
+  // is not level on screen is a face the player sees tilted. Areas are exact
+  // projected polygons (the three visible faces of a convex body tile the
+  // silhouette), not a cosα·cosβ approximation. Read-only.
+  faces: () => {
+    camera.updateMatrixWorld()
+    cubeGroup.updateMatrixWorld(true)
+    const rect = renderer.domElement.getBoundingClientRect()
+    const project = (v) => {
+      const p = v.clone().project(camera)
+      return { x: (p.x * 0.5 + 0.5) * rect.width, y: (0.5 - p.y * 0.5) * rect.height }
+    }
+    const quadArea = (pts) => {
+      let sum = 0
+      for (let i = 0; i < pts.length; i += 1) {
+        const a = pts[i]
+        const b = pts[(i + 1) % pts.length]
+        sum += a.x * b.y - b.x * a.y
+      }
+      return Math.abs(sum) / 2
+    }
+    const toCamera = camera.position.clone().sub(cubeGroup.position).normalize()
+    const entries = FACES.map((face) => {
+      const n = cubeVector(face, 'n').applyQuaternion(cubeGroup.quaternion).normalize()
+      const u = cubeVector(face, 'u').applyQuaternion(cubeGroup.quaternion).normalize()
+      const v = cubeVector(face, 'v').applyQuaternion(cubeGroup.quaternion).normalize()
+      const corner = (su, sv) => cubeGroup.position.clone()
+        .addScaledVector(n, half).addScaledVector(u, su * half).addScaledVector(v, sv * half)
+      const quad = project(corner(-1, -1))
+      const across = project(corner(1, -1))
+      const opposite = project(corner(1, 1))
+      const along = project(corner(-1, 1))
+      // VISIBILITY IS NOT `n · viewDirection > 0`. That is the orthographic test,
+      // and it is wrong whenever the projection is not weak: the face plane sits
+      // `half` off the cube's centre, so what decides is whether the CAMERA is on
+      // the outer side of that face's own plane. With a close camera the
+      // orthographic test calls a hidden side face "visible" and counts a quad that
+      // is really tucked behind the front face — which is how a 5°/4° tilt measured
+      // as "87% main face" while the cube on screen was a flat square with no side
+      // face showing at all.
+      const cameraSide = camera.position.clone()
+        .sub(cubeGroup.position.clone().addScaledVector(n, half))
+        .dot(n)
+      const facing = n.dot(toCamera)
+      // In-plane skew: how far the face's own +u edge runs from screen-right.
+      // This INCLUDES perspective convergence (a receding edge is not parallel to
+      // itself on screen, and should not be), so it is informational only —
+      // `twistDeg` below is the number that answers "did this face arrive crooked".
+      const skewDeg = THREE.MathUtils.radToDeg(Math.atan2(across.y - quad.y, across.x - quad.x))
+      // How far the face is rotated about its own normal, measured in DIRECTION
+      // space so perspective cannot contaminate it: project the face's +u direction
+      // into the screen plane, take its angle from screen-right, and fold a quarter
+      // turn (a face is legitimately presented in any of four rotations). This has
+      // to come out the same on all 24 orientations — it is the check that the
+      // presentation tilt lives in SCREEN space, because a cube-space tilt twists
+      // each face by a different amount depending on which way it happens to face.
+      const viewAxis = camera.getWorldDirection(new THREE.Vector3())
+      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+      const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+      const flat = u.clone().addScaledVector(viewAxis, -u.dot(viewAxis)).normalize()
+      const twistRaw = THREE.MathUtils.radToDeg(Math.atan2(flat.dot(camUp), flat.dot(camRight)))
+      return {
+        face,
+        facing: Number(facing.toFixed(4)),
+        cameraSide: Number(cameraSide.toFixed(4)),
+        offAxisDeg: Number(THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(facing, -1, 1))).toFixed(2)),
+        areaPx: Number(quadArea([quad, across, opposite, along]).toFixed(1)),
+        skewDeg: Number((((skewDeg + 180) % 180) - 90).toFixed(2)),
+        twistDeg: Number((((twistRaw % 90) + 90) % 90).toFixed(3)),
+        visible: cameraSide > 0,
+      }
+    })
+    const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
+    const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)
+    const front = visible[0]
+    return {
+      front: findFrontFace(),
+      mainFaceMatches: front ? front.face === findFrontFace() : false,
+      totalPx: Number(total.toFixed(1)),
+      mainShare: total > 0 ? Number((front.areaPx / total).toFixed(4)) : 0,
+      others: visible.slice(1).map((entry) => ({ face: entry.face, share: Number((entry.areaPx / total).toFixed(4)) })),
+      visible,
+      faces: entries,
+      camera: {
+        position: camera.position.toArray().map((value) => Number(value.toFixed(3))),
+        target: [cameraTarget.x, cameraTarget.y, cameraTarget.z].map((value) => Number(value.toFixed(3))),
+        distance: Number(camera.position.distanceTo(cubeGroup.position).toFixed(3)),
+        fovDeg: camera.fov,
+        aspect: Number(camera.aspect.toFixed(4)),
+        facePlaneHalf: half,
+      },
+    }
+  },
+  // v0.8.6 rotation read-out: the world-space increment between two rendered
+  // poses, expressed in the camera's own frame. `screenDeg` is where the rotation
+  // axis points on screen, measured from screen-right and folded to (-90°, 90°]:
+  // 0° means the axis lies horizontally (a pitch — the front face slides up/down),
+  // ±90° means the axis is vertical (a yaw — the cube turns left/right). A roll's
+  // axis points at the camera, so it has no screen direction at all and shows up
+  // as `alongView ≈ ±1` instead. This is the number behind "旋转中段发歪": while a
+  // gesture's increment is a clean turn about one screen axis, this angle is flat
+  // at 0 or 90 for the whole gesture. Read-only; the probe calls it with two
+  // quaternions it just read from rotation().
+  poseAxisScreen: (from, to) => {
+    const a = new THREE.Quaternion().fromArray(from).normalize()
+    const b = new THREE.Quaternion().fromArray(to).normalize()
+    const delta = b.multiply(a.invert()).normalize()
+    if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w)
+    const angle = 2 * Math.acos(THREE.MathUtils.clamp(delta.w, -1, 1))
+    const magnitude = Math.hypot(delta.x, delta.y, delta.z)
+    const axis = magnitude > 1e-9
+      ? new THREE.Vector3(delta.x / magnitude, delta.y / magnitude, delta.z / magnitude)
+      : new THREE.Vector3()
+    camera.updateMatrixWorld()
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+    const view = camera.getWorldDirection(new THREE.Vector3())
+    return {
+      angleDeg: Number(THREE.MathUtils.radToDeg(angle).toFixed(3)),
+      axis: axis.toArray().map((value) => Number(value.toFixed(4))),
+      screenDeg: Number(THREE.MathUtils.radToDeg(Math.atan2(axis.dot(up), axis.dot(right))).toFixed(3)),
+      alongView: Number(axis.dot(view).toFixed(4)),
     }
   },
   // Screen-space cube box + framing numbers, used to check the "inside vs

@@ -10,9 +10,12 @@ npm run build      # 生产构建
 npm run preview    # 预览产物
 npm run shot       # 桌面 + 移动端实机截图（需先跑 dev）
 npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手（需先跑 dev）
+npm run probe:framing # 停稳构图实机断言：24 朝向主面占比 + 旋转轴屏幕方向（需先跑 dev）
 ```
 
-当前版本 **0.8.5**：方块质感优化——暖木色、三组云状表面纹理、独立凹凸与粗糙度贴图、柔亮倒角，以及随旋转变化的暖色接触阴影。棋盘仍为 98 个唯一实时 3D 方块，玩法、发牌和存档沿用 v0.8.4；本轮未新增 AI 贴图文件。参数与管线见 [美术规范](docs/Planning/05-美术方向与视觉规范.md)。
+当前版本 **0.8.6**：停稳构图与旋转观感——相机由 3/4 视角改为**正视**，停稳的立体观感改由一层固定在屏幕空间的**展示偏摆**提供，并与逻辑姿态分离（旋转时淡出、停稳后淡回）。主面占三个可见面投影面积 82.8%（24 种标准朝向零离散），拖动中偏摆退净后旋转轴屏幕误差 0°/0.01°/0.05°。玩法、输入映射、阈值与存档沿用 v0.8.5。口径见 [03 §2.1](docs/Planning/03-交互与表现需求.md)，验收见 [04](docs/Planning/04-MVP验收清单.md)。
+
+v0.8.5：方块质感优化——暖木色、三组云状表面纹理、独立凹凸与粗糙度贴图、柔亮倒角，以及随旋转变化的暖色接触阴影。棋盘仍为 98 个唯一实时 3D 方块，玩法、发牌和存档沿用 v0.8.4；本轮未新增 AI 贴图文件。参数与管线见 [美术规范](docs/Planning/05-美术方向与视觉规范.md)。
 
 v0.8.4：**候选池改为加权发牌**——六种四格件（2×2、L、J、T、S、Z）各 2 份权重、四种小块各 1 份，即 75% 四格件 / 25% 小块，**十种形状全部保留**。依据与测量见 [紧张度测量](docs/Technical/DIFFICULTY_TENSION.md)。
 
@@ -42,7 +45,7 @@ v0.8.3 及更早：仍然是测量工具与文档——`tools/reachability.mjs` 
 | `src/styles.css` | 布局与历史兼容 |
 | `src/toy.css` | **当前视觉权威**（木质田园材质覆盖与文件末尾的桌面尺寸规则） |
 | `public/art/` | 随构建发布的田园 WebP；`README.md` 记录生成来源、提示词与尺寸 |
-| `tools/` | 开发脚本：规则自测、可达性、难度测量（`difficulty-*`）、截图、手势方向探针、PNG 统计、推送 |
+| `tools/` | 开发脚本：规则自测、可达性、难度测量（`difficulty-*`）、截图、手势方向探针、停稳构图探针（`cube-framing-probe`）、PNG 统计、命名撞名检索（`name-collision-check`）、推送 |
 | `docs/Planning/` | 01 立项 / 02 规则 / 03 交互 / 04 验收 / 05 美术 / 06 宣传 / 07 道具 / 08 荣誉 |
 | `docs/Technical/` | 架构、已知缺口、部署基线 |
 | `docs/Archive/` | 历次方向的历史版本 |
@@ -53,7 +56,7 @@ v0.8.3 及更早：仍然是测量工具与文档——`tools/reachability.mjs` 
 - **视觉改版先读 [05 美术方向与视觉规范](docs/Planning/05-美术方向与视觉规范.md)**，它写明现行几何、材质、光照、资产边界和历史模型的问题。
 - 任何规则/数值/美术口径变更，须同步 `docs/Planning/01~08` 的对应条目与各自 `> 版本：` 行，并同步 `package.json` / `package-lock.json` 的 `version`。
 - 视觉参数一律进 `src/rendering/config.js`，不在 `main.js` 散落魔法数字。
-- 每批改动验证：`npm test` + `npm run build` + `npm run shot`；动了手势/方向再加 `npm run probe:swipe`（实机断言三个手势的世界轴方向）。
+- 每批改动验证：`npm test` + `npm run build` + `npm run shot`；动了手势/方向再加 `npm run probe:swipe`（实机断言三个手势的世界轴方向）；动了相机、屏占比或停稳姿态再加 `npm run probe:framing`（实机断言 24 朝向的主面占比与三条轴的屏幕方向）。
 - 本轮验证记录：[v0.8.1 侧带自转方向修复验收](docs/Planning/04-MVP验收清单.md)；v0.8.0 渲染品质改版记录保留在 [04](docs/Planning/04-MVP验收清单.md)，旧版记录不代替本轮验证。
 - 难度与单局长度：动候选池、棋盘尺寸或手牌大小之前先看 [v0.8.3 复核](docs/Technical/DIFFICULTY_BASELINE.md)（`npm run reachability` 加 `--pool=` / `--batch=` / `--faces=` / `--rng=` 可自行复现；结论性数字要用 `--rng=mulberry32` 加多种子）。
 - 开局与发牌：讨论"结构化开局""阶段发牌""有限步数模式"之前先看 [A/B/C/D 测量](docs/Technical/DIFFICULTY_ABCD.md)，用 `node tools/difficulty-abcd.mjs`（参数拼错即报错，不给默认值兜底）复现；该实验只跑 tools，正式游戏不导入。
