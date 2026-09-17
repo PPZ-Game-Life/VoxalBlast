@@ -10,6 +10,7 @@ import {
   occupiedCount, canPlace, settle, rngFor, stageAt, drawHand, makeOpening,
   legalCount, chooseMove,
 } from './difficulty-model.mjs'
+import { SHAPE_WEIGHTS } from '../src/game/shapes.js'
 import {
   parseArgs, quantile, wilson, summarizeGames, pairedComparison, runGame, resolveGroup, armParts,
 } from './difficulty-abcd.mjs'
@@ -306,9 +307,15 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'c', 'd', 'w90', 'e', 'e5', 'soft75', 'soft82'])
+  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82'])
   assert.equal(POOLS.current.entries.length, SHAPE_NAMES.length)
   assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), SHAPE_NAMES.map(() => 1))
+  // The measurement pool must follow the shipped weights, so a game-side reweighting
+  // cannot silently leave the tool measuring the old pool. Compare by name: the
+  // cumulative table is order-sensitive, the weights are not.
+  const weightsOf = (id) => Object.fromEntries(POOLS[id].entries.map((entry) => [entry.name, entry.weight]))
+  assert.deepEqual(weightsOf('soft75'), { ...SHAPE_WEIGHTS })
+  assert.equal(POOLS.soft75.members.size, SHAPE_NAMES.length)
   for (const name of ['Solid', 'Line 4', 'current ', '']) assert.throws(() => poolById(name))
   // Every pool must name shipped shapes only; a typo would otherwise silently deal a smaller pool.
   for (const id of POOL_IDS) for (const entry of POOLS[id].entries) assert.ok(SHAPE_NAMES.includes(entry.name))
@@ -496,4 +503,4 @@ test('tension panel counts every executed step exactly once', () => {
   assert.ok(wide.record.ended, 'a uniformly random actor should end inside the cap')
 })
 
-console.log(`\n${checks}/${checks} measurement test groups passed. Official gameplay files were not edited.`)
+console.log(`\n${checks}/${checks} measurement test groups passed. The harness imports the shipped board, shapes, weights and opening plan.`)

@@ -9,7 +9,7 @@
 // tiers.js) — no copies — so a drift between the docs, the code and this file shows
 // up as a failure instead of a surprise in the browser.
 import { Board, SH, FACES, faceLattice, isShell } from '../src/game/board.js'
-import { SHAPES, normalizeCells, maxOrigin, rotateCells } from '../src/game/shapes.js'
+import { SHAPES, SHAPE_WEIGHTS, pickShape, normalizeCells, maxOrigin, rotateCells } from '../src/game/shapes.js'
 import {
   SCORING, MAX_LINES_PER_MOVE, lineMultiplier, lineScore, faceBonus, placementScore, chainBonus,
   chainMilestoneBonus, nextChain, moveScore,
@@ -115,8 +115,7 @@ function randomGame(settle, random, maxPlacements = 400) {
   return { placements, crossFaceClears, residual, clearedLinesTotal, facesCleared }
 }
 
-group('sixface', () => {
-  // The precise bug this version fixes: the +z row v=0 IS the -y row v=4 (the same
+group('sixface', () => {  // The precise bug this version fixes: the +z row v=0 IS the -y row v=4 (the same
   // five cells, seen from two faces — an edge line is shared). Completing it must
   // settle BOTH lines in one batch, delete each cell once, and leave nothing full.
   const board = new Board()
@@ -518,6 +517,46 @@ group('swipe', () => {
   const knobSign = (key) => Math.sign(axisForKey(key).direction * ROTATE_STYLE.rollDirection)
   equal('E matches a downward drag in the right band', knobSign('e'), Math.sign(downRight))
   equal('Q matches a downward drag in the left band', knobSign('q'), Math.sign(downLeft))
+})
+
+group('supply', () => {
+  // v0.8.4 weighted dealing: the four-cell pieces are twice as likely, but every one
+  // of the ten shapes must still be dealt, and the picker must consume exactly one
+  // random value so the three dealing sites keep their call count.
+  const names = SHAPES.map((shape) => shape.name)
+  check('every shipped shape carries a weight', names.every((name) => SHAPE_WEIGHTS[name] > 0), JSON.stringify(SHAPE_WEIGHTS))
+  equal('the weight table names no extra shapes', Object.keys(SHAPE_WEIGHTS).length, SHAPES.length)
+  const total = Object.values(SHAPE_WEIGHTS).reduce((sum, w) => sum + w, 0)
+  const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z'].reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0)
+  equal('four-cell candidates are 75% of the deal', fourCell / total, 0.75)
+
+  let draws = 0
+  const counted = () => { draws += 1; return 0 }
+  check('a pick consumes exactly one random value', pickShape(counted) === SHAPES[0] && draws === 1, `${draws} draws`)
+
+  // Boundary sweep in the pool's canonical order (SHAPES), which is the order the
+  // cumulative table is built in: each shape owns the interval its weight ends at.
+  const boundaries = []
+  let running = 0
+  for (const name of names) {
+    running += SHAPE_WEIGHTS[name] / total
+    boundaries.push({ name, upTo: running })
+  }
+  let boundaryOk = true
+  for (const { name, upTo } of boundaries) {
+    if (pickShape(() => Math.max(0, upTo - 1e-9)).name !== name) boundaryOk = false
+  }
+  check('cumulative boundaries land on the declared shape', boundaryOk)
+  check('a value of exactly 0 takes the first shape', pickShape(() => 0).name === names[0])
+
+  // Empirical check with a deterministic stream: 20k picks, every shape present.
+  const counts = new Map(names.map((name) => [name, 0]))
+  let seed = 12345
+  const next = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+  for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
+  check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
+  const fourShare = ['Square', 'L', 'J', 'T', 'S', 'Z'].reduce((sum, name) => sum + counts.get(name), 0) / 20000
+  check('observed four-cell share tracks the weights', Math.abs(fourShare - 0.75) < 0.02, `observed ${fourShare.toFixed(3)}`)
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

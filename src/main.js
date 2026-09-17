@@ -28,7 +28,7 @@ import {
   SizeOverLife,
 } from 'three.quarks'
 import { Board, SH, FACES, faceLattice } from './game/board.js'
-import { SHAPES, normalizeCells, maxOrigin } from './game/shapes.js'
+import { SHAPES, pickShape, normalizeCells, maxOrigin } from './game/shapes.js'
 import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
 import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
@@ -931,7 +931,7 @@ function currentCells(piece) {
 }
 
 function nextPieces() {
-  pieces = Array.from({ length: 3 }, () => makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
+  pieces = Array.from({ length: 3 }, () => makePiece(pickShape()))
   selectedPiece = null
   renderPieceSlots()
 }
@@ -1722,7 +1722,7 @@ function rerollPieces() {
   clearItemUndo()
   const before = pieces.map((piece) => piece.shape.name).join('|')
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    pieces = Array.from({ length: 3 }, () => makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
+    pieces = Array.from({ length: 3 }, () => makePiece(pickShape()))
     if (pieces.map((piece) => piece.shape.name).join('|') !== before) break
   }
   selectedPiece = null
@@ -2609,7 +2609,7 @@ function applySession(saved) {
     .filter(Boolean)
   // A retired shape can leave fewer than three candidates; deal the missing slots
   // instead of resuming with a short strip (the layout is a fixed row of three).
-  while (pieces.length < 3) pieces.push(makePiece(SHAPES[Math.floor(Math.random() * SHAPES.length)]))
+  while (pieces.length < 3) pieces.push(makePiece(pickShape()))
   itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
     tool.id,
     THREE.MathUtils.clamp(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),

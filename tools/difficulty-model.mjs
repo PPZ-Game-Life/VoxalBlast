@@ -5,7 +5,7 @@
 // 98 shell cells; Board is used only to reproduce the real opening seeder and at
 // conversion boundaries.
 import { Board, FACES, SH, faceLattice } from '../src/game/board.js'
-import { SHAPES, rotateCells } from '../src/game/shapes.js'
+import { SHAPES, SHAPE_WEIGHTS, rotateCells } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 
 const WORDS = 4
@@ -27,15 +27,22 @@ export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 // published CLI surface, so an unknown id throws instead of silently dealing the
 // shipped pool.
 const POOL_SPECS = Object.freeze({
-  current: { label: '现行十种等权重', weights: Object.fromEntries(SHAPE_NAMES.map((name) => [name, 1])) },
+  // `current` is the pool the game shipped BEFORE v0.8.4 (ten shapes, equal weight).
+  // It keeps that id so every command and number in the earlier reports still
+  // reproduces verbatim; `shipped` is what the game actually deals now.
+  current: { label: '十种等权重（v0.8.4 之前的正式池）', weights: Object.fromEntries(SHAPE_NAMES.map((name) => [name, 1])) },
+  // The pool the game actually deals since v0.8.4. It is imported from the shipped
+  // SHAPE_WEIGHTS rather than copied, so a game-side reweighting cannot leave the
+  // measurement silently pointing at the old pool.
+  soft75: { label: '正式加权池（v0.8.4：四格件×2，十种全留）', weights: { ...SHAPE_WEIGHTS } },
   c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
   d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
   w90: { label: '四格件×3＋直线3×2（小件权重0，即实际去掉三种）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
   e: { label: '只留六种四格件', weights: Object.fromEntries(FOUR.map((name) => [name, 1])) },
   e5: { label: '只留L/J/T/S/Z（去Square）', weights: Object.fromEntries(FOUR.filter((name) => name !== 'Square').map((name) => [name, 1])) },
   // These two keep all ten shapes and only reweight them, so nothing leaves the
-  // pool: the four-cell shapes simply come up more often.
-  soft75: { label: '加权·保留十种（四格件75%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 2]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
+  // pool: the four-cell shapes simply come up more often. `soft75` IS the shipped
+  // table above; `soft82` is the next, stronger step.
   soft82: { label: '加权·保留十种（四格件82%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
 })
 

@@ -31,6 +31,54 @@ export const SHAPES = [
   { name: 'Corner', color: 0x35b6c9, cells: [[0, 0], [1, 0], [0, 1]] },
 ]
 
+// Candidate weights (v0.8.4). The four-cell pieces come up twice as often as the
+// small ones, so 75% of dealt candidates are four-cell. Nothing leaves the pool:
+// Dot, Line 2 and Corner still appear, just less often.
+//
+// Why: measurement found the equal-weight pool leaves a competent player 80+ legal
+// placements on 81% of steps, with a tightest moment of 19 placements in a whole
+// game (docs/Technical/DIFFICULTY_TENSION.md). Re-weighting is the mildest lever
+// that lowers that slack without deleting a shape — a typical actor's tightest
+// moment moves from 9 to 6 placements and natural endings rise from 1.0% to 4.2%.
+// Deleting the small pieces is stronger (d/w90 reach 16-21%) but removes the
+// rescue hatch a Dot or Line 2 provides on a crowded board. Weights are relative;
+// only their ratios matter. Keep every shape above zero unless the producer
+// explicitly asks for a smaller pool — and board.seedOpening keeps drawing
+// uniformly from SHAPES, so the opening decoration is unchanged.
+export const SHAPE_WEIGHTS = Object.freeze({
+  Dot: 1,
+  'Line 2': 1,
+  'Line 3': 1,
+  Corner: 1,
+  Square: 2,
+  L: 2,
+  J: 2,
+  T: 2,
+  S: 2,
+  Z: 2,
+})
+
+const WEIGHTED_POOL = (() => {
+  const entries = SHAPES.map((shape) => ({ shape, weight: SHAPE_WEIGHTS[shape.name] ?? 0 }))
+  const total = entries.reduce((sum, entry) => sum + entry.weight, 0)
+  if (!total) throw new Error('shape weights are all zero')
+  let running = 0
+  return entries
+    .filter((entry) => entry.weight > 0)
+    .map((entry) => {
+      running += entry.weight / total
+      return { shape: entry.shape, upTo: running }
+    })
+})()
+
+// Deal one candidate. Consumes exactly one random value, so the three dealing
+// sites keep their previous Math.random() call count.
+export function pickShape(random = Math.random) {
+  const r = random()
+  for (const entry of WEIGHTED_POOL) if (r < entry.upTo) return entry.shape
+  return WEIGHTED_POOL[WEIGHTED_POOL.length - 1].shape
+}
+
 // Normalize a set of 2D cells so the minimum u/v is 0 (top-left origin).
 export function normalizeCells(cells) {
   const min = [0, 1].map((axisIndex) => Math.min(...cells.map((cell) => cell[axisIndex])))
