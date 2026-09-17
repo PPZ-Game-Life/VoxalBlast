@@ -20,18 +20,23 @@ const RELIEF_WEIGHTS = Object.freeze([0.1, 0.2, 0.7])
 
 export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 
-// Named measurement pools. `current` reproduces the shipped ten-shape equal pools
+// Named measurement pools. `current` reproduces the shipped ten-shape equal pool
 // exactly; the rest are the documented compression candidates. Weights are
-// relative, so a pool can favour a subset without removing it. Pool ids are part of
-// the published CLI surface, so an unknown id throws instead of silently dealing
-// the shipped pool.
+// relative; a weight of 0 removes a shape from the pool, so read the member list
+// rather than assuming "weighted" means "nothing removed". Pool ids are part of the
+// published CLI surface, so an unknown id throws instead of silently dealing the
+// shipped pool.
 const POOL_SPECS = Object.freeze({
   current: { label: '现行十种等权重', weights: Object.fromEntries(SHAPE_NAMES.map((name) => [name, 1])) },
   c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
   d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
-  w90: { label: '四格件×3＋直线3×2（加权）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
+  w90: { label: '四格件×3＋直线3×2（小件权重0，即实际去掉三种）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
   e: { label: '只留六种四格件', weights: Object.fromEntries(FOUR.map((name) => [name, 1])) },
   e5: { label: '只留L/J/T/S/Z（去Square）', weights: Object.fromEntries(FOUR.filter((name) => name !== 'Square').map((name) => [name, 1])) },
+  // These two keep all ten shapes and only reweight them, so nothing leaves the
+  // pool: the four-cell shapes simply come up more often.
+  soft75: { label: '加权·保留十种（四格件75%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 2]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
+  soft82: { label: '加权·保留十种（四格件82%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
 })
 
 export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))

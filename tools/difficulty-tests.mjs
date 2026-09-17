@@ -306,7 +306,7 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'c', 'd', 'w90', 'e', 'e5'])
+  assert.deepEqual(POOL_IDS, ['current', 'c', 'd', 'w90', 'e', 'e5', 'soft75', 'soft82'])
   assert.equal(POOLS.current.entries.length, SHAPE_NAMES.length)
   assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), SHAPE_NAMES.map(() => 1))
   for (const name of ['Solid', 'Line 4', 'current ', '']) assert.throws(() => poolById(name))
@@ -316,6 +316,18 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   assert.deepEqual([...POOLS.e5.members].sort(), ['J', 'L', 'S', 'T', 'Z'])
   assert.equal(POOLS.d.members.has('Corner'), false)
   assert.equal(POOLS.w90.cumulative[POOLS.w90.cumulative.length - 1].upTo, 1)
+  // A weighted pool is not automatically a non-destructive one: w90 has the same
+  // members as d (the small shapes are weight 0), while soft75/soft82 keep all ten.
+  assert.deepEqual([...POOLS.w90.members].sort(), [...POOLS.d.members].sort())
+  for (const id of ['soft75', 'soft82']) assert.equal(POOLS[id].entries.length, SHAPE_NAMES.length)
+  const fourCellShare = (id) => {
+    const entries = POOLS[id].entries
+    const total = entries.reduce((sum, entry) => sum + entry.weight, 0)
+    return entries.filter((entry) => ['Square', 'L', 'J', 'T', 'S', 'Z'].includes(entry.name)).reduce((sum, entry) => sum + entry.weight, 0) / total
+  }
+  assert.ok(Math.abs(fourCellShare('soft75') - 0.75) < 1e-9)
+  assert.ok(Math.abs(fourCellShare('soft82') - 18 / 22) < 1e-9)
+  assert.ok(Math.abs(fourCellShare('w90') - 0.9) < 1e-9)
 })
 
 test('uniform pool dealing honours weights, never leaves the pool and consumes two randoms per slot', () => {
