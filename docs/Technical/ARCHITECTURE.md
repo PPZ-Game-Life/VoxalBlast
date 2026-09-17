@@ -57,6 +57,8 @@ npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 
 
 测量专用的 A/B/C/D 实验使用 `node tools/difficulty-abcd.mjs --games=200 --seeds=1,2,3 --strategies=noise --out=tools/results/difficulty-abcd.json`，独立于旧 reachability 命令。`tools/difficulty-model.mjs` 调用正式 `Board.seedOpening` 生成对照开局，在 Node 内使用四字位集加速结算；结构化开局与阶段发牌只存在于 tools，正式游戏不导入。`node tools/difficulty-tests.mjs` 验证与真实 Board 的差分一致性、随机流隔离、开局验证路径、阶段边界及右删失统计。JSON保存逐局记录、配对比较、源码SHA256和生存曲线，同时输出无需服务器即可打开的HTML图表。具体算法、样本量、局长判读和局限见 [A/B/C/D实验报告](DIFFICULTY_ABCD.md)。
 
+同一支工具也能扫候选池：`--arms=<池>/<uniform|staged>`（例如 `--arms=e/staged,e5/staged,current/staged --games=200 --seeds=1,2,3`）把两个因子拆开对照——同池不同发牌、同发牌不同池，配对比较只落在"只差一个因子"的臂之间。池定义写在 `difficulty-model.mjs` 的 `POOL_SPECS`（相对权重；池 id 拼错即报错，不会静默退回正式池）：`current` 逐值等于正式十种等权重，`c`/`d`/`w90`/`e`/`e5` 是压缩候选。等概率臂按权重累计表抽取；阶段臂把阶段权重在"该池仍有成员的组"上**重新归一化**，所以池里没有小件时不会留下 20% 的空组配额。两种臂每槽都恰好消耗两个随机数，配对随机流因此保持对齐。`--groups` 与 `--arms` 互斥，前者仍是上一轮的四组。结论与局限见 [候选池测量](DIFFICULTY_POOL.md)。
+
 不在 npm scripts 里、需要直接 node 运行的脚本：tools/tier-calibration.mjs 把分数样本换算成阶位切点；tools/png-stats.mjs 统计截图尺寸与像素分布，用来证明截图不是空白帧；tools/organize-docs.mjs 是 2026-09-14 文档整理的一次性脚本，整理完不再执行。tools/push.cmd 是受控推送脚本（`tools\push.cmd` 推 main，可带分支名与 `--pause`），只做提交推送、不参与构建。
 
 `tools/screenshot.mjs` 走 CDP 而不是 `msedge --screenshot`：后者只截首帧，而游戏开在主页遮罩上，裸 flag 永远拍不到棋盘。该脚本先点掉主页、再截图，并收集 `window.onerror` / `unhandledrejection` —— 本轮就是靠它在一次运行里抓到一处改名遗漏导致的整盘空白。它同时把两个已知陷阱固化在代码里：headless 的布局视口有约 500px 最小宽度（竖屏只能用 500×1082），以及刚退出的 Edge 会短暂占住调试端口与 profile 锁（每次抓图独立端口 + 独立 `%TEMP%` user-data-dir）。

@@ -20,6 +20,75 @@ const RELIEF_WEIGHTS = Object.freeze([0.1, 0.2, 0.7])
 
 export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 
+// Named measurement pools. `current` reproduces the shipped ten-shape equal pools
+// exactly; the rest are the documented compression candidates. Weights are
+// relative, so a pool can favour a subset without removing it. Pool ids are part of
+// the published CLI surface, so an unknown id throws instead of silently dealing
+// the shipped pool.
+const POOL_SPECS = Object.freeze({
+  current: { label: '现行十种等权重', weights: Object.fromEntries(SHAPE_NAMES.map((name) => [name, 1])) },
+  c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
+  d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
+  w90: { label: '四格件×3＋直线3×2（加权）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
+  e: { label: '只留六种四格件', weights: Object.fromEntries(FOUR.map((name) => [name, 1])) },
+  e5: { label: '只留L/J/T/S/Z（去Square）', weights: Object.fromEntries(FOUR.filter((name) => name !== 'Square').map((name) => [name, 1])) },
+})
+
+export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))
+
+function buildPool(id) {
+  const spec = POOL_SPECS[id]
+  const entries = Object.entries(spec.weights).filter(([, weight]) => weight > 0).map(([name, weight]) => ({ name, weight }))
+  if (!entries.length) throw new Error(`pool ${id} is empty`)
+  const total = entries.reduce((sum, entry) => sum + entry.weight, 0)
+  const cumulative = []
+  let running = 0
+  for (const entry of entries) {
+    running += entry.weight / total
+    cumulative.push({ ...entry, upTo: running })
+  }
+  return Object.freeze({
+    id,
+    label: spec.label,
+    entries: Object.freeze(entries),
+    cumulative: Object.freeze(cumulative),
+    members: new Set(entries.map((entry) => entry.name)),
+  })
+}
+
+export const POOLS = Object.freeze(Object.fromEntries(POOL_IDS.map((id) => [id, buildPool(id)])))
+
+export function poolById(id = 'current') {
+  const pool = POOLS[id]
+  if (!pool) throw new Error(`unknown pool "${id}"; known pools: ${POOL_IDS.join(', ')}`)
+  return pool
+}
+
+// Relative weights are consumed through an explicit cumulative table so an
+// unweighted pool stays byte-identical to the old uniform index arithmetic.
+function pickWeighted(pool, r) {
+  for (const entry of pool.cumulative) if (r < entry.upTo) return entry.name
+  return pool.cumulative[pool.cumulative.length - 1].name
+}
+
+// Stage weights are renormalized over the groups the pool still covers. A pool with
+// no small pieces therefore never keeps a silent 20% share reserved for an emptied
+// group; the challenge/relief split survives proportionally.
+function activeStageGroups(pool, weights) {
+  const active = GROUPS
+    .map((members, index) => ({ members: members.filter((name) => pool.members.has(name)), weight: weights[index] }))
+    .filter((group) => group.members.length > 0 && group.weight > 0)
+  if (!active.length) throw new Error(`pool ${pool.id} has no shape in any staged group`)
+  const total = active.reduce((sum, group) => sum + group.weight, 0)
+  const cumulative = []
+  let running = 0
+  for (const group of active) {
+    running += group.weight / total
+    cumulative.push({ ...group, upTo: running })
+  }
+  return cumulative
+}
+
 // Stable shell index: x, then y, then z, matching the old reachability model.
 export const CELLS = []
 const INDEX_BY_COORD = new Map()
@@ -267,24 +336,22 @@ export function stageAt(completedSteps) {
     : { name: 'relief-cycle', weights: [...RELIEF_WEIGHTS] }
 }
 
-export function drawHand(rng, completedSteps = 0, staged = false) {
+export function drawHand(rng, completedSteps = 0, staged = false, poolId = 'current') {
+  const pool = poolById(poolId)
   const hand = []
-  const weights = staged ? stageAt(completedSteps).weights : null
+  const groups = staged ? activeStageGroups(pool, stageAt(completedSteps).weights) : null
   for (let slot = 0; slot < 3; slot += 1) {
     const first = rng()
     const second = rng() // Always consumed, including uniform deals, for paired streams.
     if (!staged) {
-      hand.push(SHAPE_NAMES[Math.min(SHAPE_NAMES.length - 1, Math.floor(first * SHAPE_NAMES.length))])
+      hand.push(pickWeighted(pool, first))
       continue
     }
-    let groupIndex = 0
-    let cumulative = weights[0]
-    while (groupIndex < weights.length - 1 && first >= cumulative) {
-      groupIndex += 1
-      cumulative += weights[groupIndex]
+    let chosen = groups[groups.length - 1]
+    for (const group of groups) {
+      if (first < group.upTo) { chosen = group; break }
     }
-    const group = GROUPS[groupIndex]
-    hand.push(group[Math.min(group.length - 1, Math.floor(second * group.length))])
+    hand.push(chosen.members[Math.min(chosen.members.length - 1, Math.floor(second * chosen.members.length))])
   }
   return hand
 }
@@ -533,6 +600,7 @@ export function makeOpening({
   gameIndex,
   structured = false,
   staged = false,
+  poolId = 'current',
   maxAttempts = 128,
   nodeBudget = 12000,
 } = {}) {
@@ -541,7 +609,7 @@ export function makeOpening({
   const baselineBoard = seededBoard(openingRng)
   const baselineState = stateFromBoard(baselineBoard)
   const baselineCount = occupiedCount(baselineState)
-  const hand = drawHand(dealRng, 0, staged)
+  const hand = drawHand(dealRng, 0, staged, poolId)
 
   if (!structured) {
     return {

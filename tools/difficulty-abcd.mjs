@@ -5,16 +5,49 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import {
-  SHAPE_NAMES, PLACEMENTS, rngFor, stageAt, drawHand, makeOpening,
+  SHAPE_NAMES, PLACEMENTS, POOLS, POOL_IDS, poolById, rngFor, stageAt, drawHand, makeOpening,
   occupiedCount, legalCount, chooseMove, settle,
 } from './difficulty-model.mjs'
 
 export const GROUPS = Object.freeze({
-  A: { structured: false, staged: false, label: '现行开局 + 等概率发牌' },
-  B: { structured: true, staged: false, label: '结构化开局 + 等概率发牌' },
-  C: { structured: false, staged: true, label: '现行开局 + 阶段发牌' },
-  D: { structured: true, staged: true, label: '结构化开局 + 阶段发牌' },
+  A: { structured: false, staged: false, poolId: 'current', label: '现行开局 + 等概率发牌' },
+  B: { structured: true, staged: false, poolId: 'current', label: '结构化开局 + 等概率发牌' },
+  C: { structured: false, staged: true, poolId: 'current', label: '现行开局 + 阶段发牌' },
+  D: { structured: true, staged: true, poolId: 'current', label: '结构化开局 + 阶段发牌' },
 })
+
+// Arm ids are `<pool>/<dealer>`, e.g. `e/staged`. The legacy A/B/C/D ids remain
+// valid so the earlier opening experiment stays reproducible with one tool.
+export const DEALERS = Object.freeze({ uniform: false, staged: true })
+
+export function resolveGroup(id) {
+  if (GROUPS[id]) return GROUPS[id]
+  const [poolId, dealer, ...rest] = String(id).split('/')
+  if (rest.length || !Object.prototype.hasOwnProperty.call(DEALERS, dealer)) {
+    throw new Error(`unknown arm "${id}"; use A|B|C|D or <pool>/${Object.keys(DEALERS).join('|')} with pool in ${POOL_IDS.join(', ')}`)
+  }
+  return Object.freeze({
+    structured: false,
+    staged: DEALERS[dealer],
+    poolId: poolById(poolId).id, // throws on an unknown pool id
+    label: `${poolById(poolId).label} × ${dealer === 'staged' ? '阶段发牌' : '等概率发牌'}`,
+  })
+}
+
+// Arms that share a pool differ only in the dealer (and vice versa): comparing every
+// such pair isolates one factor instead of reporting a pool+dealer mixture.
+function armPairs(ids) {
+  const parts = new Map(ids.map((id) => [id, id.split('/')]))
+  const pairs = []
+  for (let i = 0; i < ids.length; i += 1) {
+    for (let j = i + 1; j < ids.length; j += 1) {
+      const [leftPool, leftDealer] = parts.get(ids[i])
+      const [rightPool, rightDealer] = parts.get(ids[j])
+      if ((leftPool === rightPool) !== (leftDealer === rightDealer)) pairs.push([ids[i], ids[j]])
+    }
+  }
+  return pairs
+}
 const THRESHOLDS = [12, 30, 60, 120, 300, 600]
 const SHAPE_SIZE = Object.fromEntries(SHAPE_NAMES.map((name) => [name, PLACEMENTS.find((p) => p.shape === name).indices.length]))
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
@@ -37,13 +70,12 @@ export function mobility(state, hand) {
 }
 
 export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 600, trace = false }) {
-  if (!GROUPS[group]) throw new Error(`Unknown group ${group}`)
+  const config = resolveGroup(group)
   if (!Number.isSafeInteger(stepCap) || stepCap < 1) throw new Error('stepCap must be a positive integer')
-  const config = GROUPS[group]
   const opening = makeOpening({ seed, gameIndex, ...config })
   let state = opening.state, hand = [...opening.hand], steps = 0, ended = false
   const dealRng = rngFor(seed, gameIndex, 'deal'), policyRng = rngFor(seed, gameIndex, 'policy')
-  const firstHand = drawHand(dealRng, 0, config.staged)
+  const firstHand = drawHand(dealRng, 0, config.staged, config.poolId)
   if (JSON.stringify(firstHand) !== JSON.stringify(hand)) throw new Error('First-hand RNG stream drift')
   let firstClearStep = null, clearMoves = 0, clearedCells = 0, addedCells = 0
   let dry = 0, longestDry = 0, tightMoves = 0, samePreHandMobilityReleases = 0
@@ -52,7 +84,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   hand.forEach((s) => dealShapeCounts[s]++)
   for (;;) {
     if (!hand.length) {
-      hand = drawHand(dealRng, steps, config.staged)
+      hand = drawHand(dealRng, steps, config.staged, config.poolId)
       hand.forEach((s) => dealShapeCounts[s]++)
       deals++; justDealt = true
     }
@@ -93,6 +125,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   const { witness, ...openingMeta } = opening.meta
   const record = {
     group, seed, gameIndex, strategy, steps, ended, censored: !ended,
+    pool: config.poolId, dealer: config.staged ? 'staged' : 'uniform',
     opening: openingMeta, firstHand, firstClearStep, clearMoves, lineTotal,
     addedCells, clearedCells, longestDry, tightMoves, samePreHandMobilityReleases,
     deals, freshDealStuck, finalOccupied: occupiedCount(state), dealShapeCounts,
@@ -193,7 +226,7 @@ export function pairedComparison(left, right, stepCap) {
 }
 
 export async function runExperiment(options) {
-  const { groups, seeds, games, strategies, stepCap } = options
+  const { groups, seeds, games, strategies, stepCap, mode } = options
   const allRecords = [], summaries = [], traces = []
   for (const strategy of strategies) for (const group of groups) {
     const runs = []
@@ -208,7 +241,7 @@ export async function runExperiment(options) {
     }
     const records = runs.map((r) => r.record)
     summaries.push({
-      strategy, group, label: GROUPS[group].label,
+      strategy, group, label: resolveGroup(group).label,
       ...summarizeGames(records, stepCap), bins: aggregateBins(runs),
       bySeed: seeds.map((seed) => {
         const { survivalCurve, ...summary } = summarizeGames(records.filter((g) => g.seed === seed), stepCap)
@@ -216,8 +249,9 @@ export async function runExperiment(options) {
       }),
     })
   }
+  const pairSpecs = mode === 'arms' ? armPairs(groups) : [['A', 'B'], ['A', 'C'], ['B', 'D'], ['C', 'D']]
   const comparisons = []
-  for (const strategy of strategies) for (const [left, right] of [['A', 'B'], ['A', 'C'], ['B', 'D'], ['C', 'D']]) {
+  for (const strategy of strategies) for (const [left, right] of pairSpecs) {
     if (!groups.includes(left) || !groups.includes(right)) continue
     comparisons.push({ strategy, left, right, ...pairedComparison(
       allRecords.filter((g) => g.group === left && g.strategy === strategy),
@@ -233,30 +267,37 @@ function fingerprints() {
   return Object.fromEntries(files.map((file) => [file, createHash('sha256').update(fs.readFileSync(path.join(ROOT, file))).digest('hex')]))
 }
 const escape = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
-const colors = { A: '#1261a0', B: '#23925c', C: '#db8a08', D: '#b94574' }
+const PALETTE = ['#1261a0', '#23925c', '#db8a08', '#b94574', '#7a4fd0', '#0f9ba6', '#c0561f', '#5c6f2a', '#8a3ab0', '#2f7fd8', '#a8572d', '#1f9c6b']
 function chart(series, xMax, yMax, title, xLabel, yLabel) {
   const w = 820, h = 310, l = 64, t = 25, iw = 730, ih = 235
-  const lines = series.map((s) => `<polyline fill="none" stroke="${colors[s.group]}" stroke-width="2" points="${s.points.map(([x, y]) => `${l + x / xMax * iw},${t + ih - y / yMax * ih}`).join(' ')}"/>`).join('')
+  const lines = series.map((s) => `<polyline fill="none" stroke="${s.color}" stroke-width="2" points="${s.points.map(([x, y]) => `${l + x / xMax * iw},${t + ih - y / yMax * ih}`).join(' ')}"/>`).join('')
   const labels = Array.from({ length: 6 }, (_, i) => `<text x="${l - 8}" y="${t + ih - ih * i / 5 + 4}" text-anchor="end">${round(yMax * i / 5, 1)}</text><line x1="${l}" x2="${l + iw}" y1="${t + ih - ih * i / 5}" y2="${t + ih - ih * i / 5}" stroke="#ddd"/>`).join('')
   return `<h3>${escape(title)}</h3><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escape(title)}"><text x="8" y="14">${escape(yLabel)}</text>${labels}${lines}<text x="${l}" y="${h - 25}">0</text><text x="${l + iw - 30}" y="${h - 25}">${xMax}</text><text x="${w / 2}" y="${h - 4}" text-anchor="middle">${escape(xLabel)}</text></svg>`
 }
 
 export function htmlReport(result) {
+  const colorOf = new Map([...new Set(result.summaries.map((s) => s.group))].map((group, index) => [group, PALETTE[index % PALETTE.length]]))
+  const isPoolRun = result.options.mode === 'arms'
+  const headline = isPoolRun ? 'VoxalBlast 候选池 × 发牌测量' : 'VoxalBlast A/B/C/D 测量'
+  const note = isPoolRun
+    ? '<p>同一开局的候选池与发牌权重对照。池只存在于测量工具中：正式游戏仍发十种等权重，本轮未改玩法。</p>'
+    : '<p>结构化失败时保持配对占用量并回退原局，回退纳入主分析。</p>'
   const content = result.options.strategies.map((strategy) => {
     const summaries = result.summaries.filter((s) => s.strategy === strategy)
-    const rows = summaries.map((s) => `<tr><td>${s.group} ${escape(s.label)}</td><td>${s.games}</td><td>${s.endedPct}% [${s.endedCi95.join(', ')}]<br>各种子：${s.bySeed.map((x) => `${x.seed}: ${x.endedPct}%`).join(' / ')}</td><td>${escape(s.endStepsAll.p50)}</td><td>${s.restrictedMeanSteps}</td><td>${s.firstClearBy3Pct}%</td><td>${s.structured.fallbackPct ?? '—'}%</td></tr>`).join('')
-    const curve = chart(summaries.map((s) => ({ group: s.group, points: s.survivalCurve.map((p) => [p.step, p.pct]) })), result.options.stepCap, 100, '生存曲线 S(n)：完成至少 n 步的比例', '成功落子数', '%')
-    const occupancy = chart(summaries.map((s) => ({ group: s.group, points: s.bins.map((b) => [b.start, b.meanOccupied]) })), result.options.stepCap, 98, '压力代理：在场对局平均占用格数', '落子步数（12步窗口）', '格')
+    const rows = summaries.map((s) => `<tr><td><span style="color:${colorOf.get(s.group)}">${escape(s.group)}</span> ${escape(s.label)}</td><td>${s.games}</td><td>${s.endedPct}% [${s.endedCi95.join(', ')}]<br>各种子：${s.bySeed.map((x) => `${x.seed}: ${x.endedPct}%`).join(' / ')}</td><td>${escape(s.endStepsAll.p50)}</td><td>${s.restrictedMeanSteps}</td><td>${s.endStepsEndedOnly.p50 ?? '—'}</td><td>${s.firstClearBy3Pct}%</td>${isPoolRun ? '' : `<td>${s.structured.fallbackPct ?? '—'}%</td>`}</tr>`).join('')
+    const series = (pick) => summaries.map((s) => ({ group: s.group, color: colorOf.get(s.group), points: pick(s) }))
+    const curve = chart(series((s) => s.survivalCurve.map((p) => [p.step, p.pct])), result.options.stepCap, 100, '生存曲线 S(n)：完成至少 n 步的比例', '成功落子数', '%')
+    const occupancy = chart(series((s) => s.bins.map((b) => [b.start, b.meanOccupied])), result.options.stepCap, 98, '压力代理：在场对局平均占用格数', '落子步数（12步窗口）', '格')
     const maxMobility = Math.max(1, ...summaries.flatMap((s) => s.bins.map((b) => b.meanMobility)))
-    const moves = chart(summaries.map((s) => ({ group: s.group, points: s.bins.map((b) => [b.start, b.meanMobility]) })), result.options.stepCap, Math.ceil(maxMobility / 100) * 100, '压力代理：剩余不同形状的合法落点总数', '落子步数（12步窗口）', '落点')
-    const clear = chart(summaries.map((s) => ({ group: s.group, points: s.bins.map((b) => [b.start, b.clearMovePct]) })), result.options.stepCap, 100, '节奏代理：有消除的落子比例', '落子步数（12步窗口）', '%')
-    return `<section><h2>策略：${escape(strategy)}</h2><table><thead><tr><th>组</th><th>局数</th><th>自然结束率 [模拟95% Wilson区间]</th><th>全体P50</th><th>截断平均步数</th><th>前3步有消除</th><th>结构化回退</th></tr></thead><tbody>${rows}</tbody></table>${curve}${occupancy}${moves}${clear}</section>`
+    const moves = chart(series((s) => s.bins.map((b) => [b.start, b.meanMobility])), result.options.stepCap, Math.ceil(maxMobility / 100) * 100, '压力代理：剩余不同形状的合法落点总数', '落子步数（12步窗口）', '落点')
+    const clear = chart(series((s) => s.bins.map((b) => [b.start, b.clearMovePct])), result.options.stepCap, 100, '节奏代理：有消除的落子比例', '落子步数（12步窗口）', '%')
+    return `<section><h2>策略：${escape(strategy)}</h2><table><thead><tr><th>组</th><th>局数</th><th>自然结束率 [模拟95% Wilson区间]</th><th>全体P50</th><th>截断平均步数</th><th>已结束局中位</th><th>前3步有消除</th>${isPoolRun ? '' : '<th>结构化回退</th>'}</tr></thead><tbody>${rows}</tbody></table>${curve}${occupancy}${moves}${clear}</section>`
   }).join('')
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>VoxalBlast A/B/C/D 测量</title><style>body{font:16px/1.65 system-ui,sans-serif;color:#233;background:#faf9f5;max-width:1080px;margin:32px auto;padding:0 18px}table{border-collapse:collapse;font-size:14px;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}svg{width:100%;background:white}svg text{font-size:12px}section{margin-top:36px}.legend span{margin-right:22px;font-weight:bold}code{overflow-wrap:anywhere}</style><h1>VoxalBlast A/B/C/D 测量</h1><p>测量版本 ${escape(result.schemaVersion)}；5×5、三候选、无道具，正式玩法未修改。每组每种子 ${result.options.games} 局；种子 ${result.options.seeds.join(', ')}；上限 ${result.options.stepCap} 步。</p><p>没有通关条件，故不报告“胜率”。超过观察上限属于右删失，不是600步通关。截断平均不是实际平均局长。机器人不是经过真人校准的水平分层，也不是最优策略。Wilson区间只表达此模拟策略的抽样不确定性，不包含真人差异或模型误差；逐种子结束率列在下表。</p><p>后段压力曲线仅统计仍在场对局，会有幸存者偏差；曲线不能证明心流或乐趣。结构化失败时保持配对占用量并回退原局，回退纳入主分析。</p><div class="legend">${Object.keys(colors).map((g) => `<span style="color:${colors[g]}">${g}</span>`).join('')}</div>${content}<h2>复现</h2><code>${escape(result.command)}</code><p>完整参数、源码SHA256、逐局记录、逐种子统计及每种子第0局轨迹见同名JSON。</p></html>`
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${headline}</title><style>body{font:16px/1.65 system-ui,sans-serif;color:#233;background:#faf9f5;max-width:1080px;margin:32px auto;padding:0 18px}table{border-collapse:collapse;font-size:14px;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}svg{width:100%;background:white}svg text{font-size:12px}section{margin-top:36px}.legend span{margin-right:22px;font-weight:bold}code{overflow-wrap:anywhere}</style><h1>${headline}</h1><p>测量版本 ${escape(result.schemaVersion)}；5×5、三候选、无道具，正式玩法未修改。每组每种子 ${result.options.games} 局；种子 ${result.options.seeds.join(', ')}；上限 ${result.options.stepCap} 步。</p><p>没有通关条件，故不报告“胜率”。超过观察上限属于右删失，不是600步通关。截断平均不是实际平均局长。机器人不是经过真人校准的水平分层，也不是最优策略。Wilson区间只表达此模拟策略的抽样不确定性，不包含真人差异或模型误差；逐种子结束率列在下表。</p><p>后段压力曲线仅统计仍在场对局，会有幸存者偏差；曲线不能证明心流或乐趣。</p>${note}<div class="legend">${[...colorOf].map(([group, color]) => `<span style="color:${color}">${escape(group)}</span>`).join('')}</div>${content}<h2>复现</h2><code>${escape(result.command)}</code><p>完整参数、源码SHA256、逐局记录、逐种子统计及每种子第0局轨迹见同名JSON。</p></html>`
 }
 
 export function parseArgs(argv) {
-  const allowed = new Set(['games', 'seeds', 'groups', 'strategies', 'step-cap', 'out'])
+  const allowed = new Set(['games', 'seeds', 'groups', 'arms', 'strategies', 'step-cap', 'out'])
   const opts = {}
   for (const arg of argv) {
     const match = /^--([^=]+)=(.+)$/.exec(arg)
@@ -274,9 +315,12 @@ export function parseArgs(argv) {
     if (parts.some((s) => !s) || new Set(parts).size !== parts.length) throw new Error(`${label} must contain unique non-empty values`)
     return parts
   }
-  const groups = list(opts.groups || 'A,B,C,D', 'groups')
+  if (opts.arms && opts.groups) throw new Error('use either --arms or --groups, not both')
+  const mode = opts.arms ? 'arms' : 'groups'
+  const groups = list(opts.arms || opts.groups || 'A,B,C,D', mode)
   const strategies = list(opts.strategies || 'noise', 'strategies')
-  if (groups.some((g) => !GROUPS[g])) throw new Error('groups must be A,B,C,D')
+  if (mode === 'groups' && groups.some((g) => !GROUPS[g])) throw new Error('groups must be A,B,C,D')
+  groups.forEach((g) => resolveGroup(g)) // throws on an unknown pool id or dealer
   if (strategies.some((s) => !['noise', 'greedy', 'random', 'space'].includes(s))) throw new Error('Unknown strategy')
   const seeds = list(opts.seeds || '1,2,3', 'seeds').map((s) => {
     const n = Number(s)
@@ -284,7 +328,11 @@ export function parseArgs(argv) {
     return n
   })
   if (new Set(seeds).size !== seeds.length) throw new Error('seeds must be numerically unique')
-  return { groups, strategies, seeds, games: positive(opts.games || 200, 'games'), stepCap: positive(opts['step-cap'] || 600, 'step-cap'), out: opts.out || 'tools/results/difficulty-abcd.json' }
+  return {
+    groups, arms: mode === 'arms' ? [...groups] : null, mode, strategies, seeds,
+    games: positive(opts.games || 200, 'games'), stepCap: positive(opts['step-cap'] || 600, 'step-cap'),
+    out: opts.out || (mode === 'arms' ? 'tools/results/difficulty-pools.json' : 'tools/results/difficulty-abcd.json'),
+  }
 }
 
 async function main() {
@@ -296,6 +344,12 @@ async function main() {
     design: {
       board: '5x5x5 shell / 98 unique cells', batch: 3, items: false,
       rng: 'mulberry32, independently hashed seed/game/stream',
+      mode: options.mode,
+      pools: [...new Set(options.groups.map((group) => resolveGroup(group).poolId))].map((id) => ({
+        id, label: POOLS[id].label,
+        weights: Object.fromEntries(POOLS[id].entries.map((entry) => [entry.name, entry.weight])),
+      })),
+      poolDealing: 'Uniform arms draw from the pool\'s cumulative weight table; staged arms renormalize the stage weights over the groups the pool still covers. Every slot consumes exactly two random values in both arms, so paired streams stay aligned.',
       structured: 'Exact paired baseline cell count; fixed first hand; >=2 distinct shapes with >=2 unique placements; immediate +z clear with witnessed complete three-piece path; bounded search; explicit baseline fallback',
       stages: [0, 12, 30, 48, 54, 72, 78].map((step) => ({ step, ...stageAt(step) })),
       censoring: 'Stop after exactly cap successful placements; check terminal state there. Quantiles beyond the observed range are >cap.',

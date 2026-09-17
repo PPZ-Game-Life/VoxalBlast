@@ -5,11 +5,11 @@ import { Board, SH, FACES, faceLattice } from '../src/game/board.js'
 import { SHAPES } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 import {
-  CELLS, PLACEMENTS, SHAPE_NAMES, stateFromBoard, boardFromState, stateKey,
+  CELLS, PLACEMENTS, SHAPE_NAMES, POOLS, POOL_IDS, poolById, stateFromBoard, boardFromState, stateKey,
   occupiedCount, canPlace, settle, rngFor, stageAt, drawHand, makeOpening,
   legalCount, chooseMove,
 } from './difficulty-model.mjs'
-import { parseArgs, quantile, wilson, summarizeGames, pairedComparison, runGame } from './difficulty-abcd.mjs'
+import { parseArgs, quantile, wilson, summarizeGames, pairedComparison, runGame, resolveGroup } from './difficulty-abcd.mjs'
 
 let checks = 0
 function test(name, fn) {
@@ -300,6 +300,102 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
   assert.equal(parseArgs([]).games, 200)
   assert.deepEqual(parseArgs(['--groups=A,D', '--seeds=0,123', '--step-cap=12']).seeds, [0, 123])
   for (const args of [['--games=0'], ['--games=NaN'], ['--games=2.5'], ['--seed=1'], ['--groups=E'], ['--groups=A,A'], ['--seeds=1,01'], ['--seeds=-1'], ['--strategies=best'], ['--games=2', '--games=3']]) assert.throws(() => parseArgs(args))
+})
+
+test('pool definitions are explicit, and only declared pools are accepted', () => {
+  assert.deepEqual(POOL_IDS, ['current', 'c', 'd', 'w90', 'e', 'e5'])
+  assert.equal(POOLS.current.entries.length, SHAPE_NAMES.length)
+  assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), SHAPE_NAMES.map(() => 1))
+  for (const name of ['Solid', 'Line 4', 'current ', '']) assert.throws(() => poolById(name))
+  // Every pool must name shipped shapes only; a typo would otherwise silently deal a smaller pool.
+  for (const id of POOL_IDS) for (const entry of POOLS[id].entries) assert.ok(SHAPE_NAMES.includes(entry.name))
+  assert.deepEqual([...POOLS.e.members].sort(), ['J', 'L', 'S', 'Square', 'T', 'Z'])
+  assert.deepEqual([...POOLS.e5.members].sort(), ['J', 'L', 'S', 'T', 'Z'])
+  assert.equal(POOLS.d.members.has('Corner'), false)
+  assert.equal(POOLS.w90.cumulative[POOLS.w90.cumulative.length - 1].upTo, 1)
+})
+
+test('uniform pool dealing honours weights, never leaves the pool and consumes two randoms per slot', () => {
+  for (const id of POOL_IDS) {
+    let draws = 0
+    const rng = () => { draws += 1; return (draws * 0.37) % 1 }
+    const hand = drawHand(rng, 0, false, id)
+    assert.equal(hand.length, 3)
+    assert.equal(draws, 6) // two per slot in every mode, so paired streams stay aligned
+    for (const shape of hand) assert.ok(POOLS[id].members.has(shape), `${shape} is not in pool ${id}`)
+  }
+  const counts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
+  const rng = rngFor(11, 3, 'deal')
+  for (let i = 0; i < 60000; i += 1) for (const shape of drawHand(rng, 0, false, 'e')) counts[shape] += 1
+  const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
+  for (const name of SHAPE_NAMES) {
+    const expected = fourCell.includes(name) ? 100 / 6 : 0
+    assert.ok(Math.abs(100 * counts[name] / 180000 - expected) < 1.2, `${name} frequency drifted from pool e`)
+  }
+  const weighted = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
+  const rng2 = rngFor(11, 4, 'deal')
+  for (let i = 0; i < 60000; i += 1) for (const shape of drawHand(rng2, 0, false, 'w90')) weighted[shape] += 1
+  // 6 four-cell shapes at weight 3 and Line 3 at weight 2 => 90% / 10%.
+  assert.ok(Math.abs(100 * weighted['Line 3'] / 180000 - 10) < 1.2)
+  assert.equal(weighted['Dot'] + weighted['Line 2'] + weighted['Corner'], 0)
+})
+
+test('staged dealing renormalizes over the groups a pool still covers', () => {
+  // Pool e has no small or three-cell shape, so every stage must deal four-cell pieces.
+  for (const step of [0, 12, 30, 48, 60]) {
+    const hand = drawHand(rngFor(5, step, 'deal'), step, true, 'e')
+    for (const shape of hand) assert.ok(POOLS.e.members.has(shape))
+  }
+  // Pool d keeps three-cell and four-cell groups: at the challenge stage (0/10/90)
+  // the renormalized split is 10% / 90% and the emptied small group gets nothing.
+  const counts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
+  const rng = rngFor(23, 7, 'deal')
+  for (let i = 0; i < 60000; i += 1) for (const shape of drawHand(rng, 30, true, 'd')) counts[shape] += 1
+  assert.equal(counts['Dot'] + counts['Line 2'], 0)
+  const threeCell = counts['Line 3'] + counts['Corner']
+  assert.ok(Math.abs(100 * threeCell / 180000 - 10) < 1.5, `three-cell share was ${100 * threeCell / 180000}`)
+  // The relief stage (10/20/70) renormalizes over the two surviving groups to
+  // 0.2/0.9 = 22.2% three-cell, not the declared 20%: the emptied small group's
+  // share must not be silently kept or silently dropped from the denominator.
+  const relief = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
+  const rng2 = rngFor(23, 8, 'deal')
+  for (let i = 0; i < 60000; i += 1) for (const shape of drawHand(rng2, 48, true, 'd')) relief[shape] += 1
+  assert.ok(Math.abs(100 * (relief['Line 3'] + relief['Corner']) / 180000 - 200 / 9) < 1.5)
+})
+
+test('current pool reproduces the shipped deal and legacy arms stay reproducible', () => {
+  const a = rngFor(3, 1, 'deal'), b = rngFor(3, 1, 'deal'), c = rngFor(3, 1, 'deal')
+  for (let i = 0; i < 50; i += 1) {
+    const expected = []
+    for (let slot = 0; slot < 3; slot += 1) {
+      expected.push(SHAPE_NAMES[Math.min(SHAPE_NAMES.length - 1, Math.floor(a() * SHAPE_NAMES.length))])
+      a() // the per-slot second draw is consumed but unused in uniform mode
+    }
+    assert.deepEqual(drawHand(b, i, false, 'current'), expected)
+    assert.deepEqual(drawHand(c, i, false), expected) // default pool stays the shipped one
+  }
+  const record = runGame({ group: 'c/uniform', seed: 1, gameIndex: 0, strategy: 'noise', stepCap: 40 }).record
+  assert.equal(record.pool, 'c')
+  assert.equal(record.dealer, 'uniform')
+  assert.equal(record.firstHand.some((shape) => shape === 'Dot' || shape === 'Line 2'), false)
+  assert.equal(resolveGroup('w90/staged').staged, true)
+  for (const id of ['e', 'e/staged2', 'E/uniform', 'e/', 'A/uniform']) assert.throws(() => resolveGroup(id))
+})
+
+test('staged dealing depends only on group membership, never on relative weights', () => {
+  // Pools d and w90 keep exactly the same groups (Line 3 is the only three-cell
+  // member, all six four-cell shapes are present), so their staged deals must be
+  // identical even though their uniform weight tables differ. That is a property of
+  // the staged recipe (group weights + uniform within group), not a bug: relative
+  // weights are a uniform-mode concept.
+  const a = rngFor(31, 5, 'deal'), b = rngFor(31, 5, 'deal')
+  for (let i = 0; i < 200; i += 1) assert.deepEqual(drawHand(a, i % 60, true, 'd'), drawHand(b, i % 60, true, 'w90'))
+  const c = rngFor(31, 6, 'deal'), e = rngFor(31, 6, 'deal')
+  let differing = 0
+  for (let i = 0; i < 200; i += 1) {
+    if (JSON.stringify(drawHand(c, 0, false, 'd')) !== JSON.stringify(drawHand(e, 0, false, 'w90'))) differing += 1
+  }
+  assert.ok(differing > 100, `uniform deals must still differ (differing=${differing})`)
 })
 
 console.log(`\n${checks}/${checks} measurement test groups passed. Official gameplay files were not edited.`)
