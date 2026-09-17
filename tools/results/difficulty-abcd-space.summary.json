@@ -1,0 +1,2426 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-17T06:52:33.894Z",
+  "command": "node tools/difficulty-abcd.mjs --games=50 --seeds=1,2,3 --strategies=space --out=tools/results/difficulty-abcd-space.json",
+  "options": {
+    "groups": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "strategies": [
+      "space"
+    ],
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "games": 50,
+    "stepCap": 600,
+    "out": "tools/results/difficulty-abcd-space.json"
+  },
+  "fingerprints": {
+    "src/game/board.js": "9ba224981d06f6a05050e8e83079449cd52f211916b1cd2b76cbc23e43f74613",
+    "src/game/shapes.js": "b7aa527e5d16c9e53bbe58df90c2953dca217edee16c7f2dfa85910b6c4527d7",
+    "src/rendering/config.js": "bf311dac050c6ba5de00406f00d100df8d13880635d660321974755d220dce33",
+    "tools/difficulty-model.mjs": "a13aacd33217284c45dd8dbcfd24ec73c30d6055442d90b7d55a661e67bbbe10",
+    "tools/difficulty-abcd.mjs": "1d609384f4295e2acff2330735c56034e228b2ed91be97c8bd7159fed694ec20"
+  },
+  "design": {
+    "board": "5x5x5 shell / 98 unique cells",
+    "batch": 3,
+    "items": false,
+    "rng": "mulberry32, independently hashed seed/game/stream",
+    "structured": "Exact paired baseline cell count; fixed first hand; >=2 distinct shapes with >=2 unique placements; immediate +z clear with witnessed complete three-piece path; bounded search; explicit baseline fallback",
+    "stages": [
+      {
+        "step": 0,
+        "name": "opening",
+        "weights": [
+          0.2,
+          0.3,
+          0.5
+        ]
+      },
+      {
+        "step": 12,
+        "name": "pressure",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 30,
+        "name": "challenge",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      },
+      {
+        "step": 48,
+        "name": "relief",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 54,
+        "name": "challenge-cycle",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      },
+      {
+        "step": 72,
+        "name": "relief-cycle",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 78,
+        "name": "challenge-cycle",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      }
+    ],
+    "censoring": "Stop after exactly cap successful placements; check terminal state there. Quantiles beyond the observed range are >cap.",
+    "survival": "S(n)=P(successful placements >= n); no win condition",
+    "pressure": "Mobility counts unique occupied-cell placements per distinct remaining shape; tight<=8; samePreHandMobilityReleasePct is a geometric counterfactual: clear followed by SAME PRE-MOVE hand mobility increase >=8, not actual post-move hand recovery.",
+    "confidence": "Wilson intervals quantify Monte Carlo uncertainty under this model/actor only; not model error or real-player confidence intervals. See bySeed for seed sensitivity.",
+    "strategies": {
+      "noise": "First playable slot; 25% random unique physical placement, otherwise maximum immediate lines. New geometry enumeration/tie order differs from historical reachability; not a byte-identical historical replay.",
+      "greedy": "First playable slot, maximum immediate lines; not optimal.",
+      "space": "Across all slots, top-6 by 100000*immediately cleared unique cells + 100*empty shell cells + occupied orthogonal adjacency; select most remaining-hand legal placements, ties use preliminary score. Pruned moves cannot win; no future-deal knowledge; not optimal.",
+      "random": "Uniform across legal slot/unique-physical-placement moves; not calibrated to a novice."
+    },
+    "binning": "12-placement windows, observations conditional on still playing; survivor bias applies.",
+    "fallbackPolicy": "Baseline fallback retained in intention-to-treat comparison; never excluded as a failed sample."
+  },
+  "summaries": [
+    {
+      "strategy": "space",
+      "group": "A",
+      "label": "现行开局 + 等概率发牌",
+      "games": 150,
+      "endedGames": 0,
+      "endedPct": 0,
+      "endedCi95": [
+        0,
+        2.497
+      ],
+      "censoredGames": 150,
+      "censoredPct": 100,
+      "restrictedMeanSteps": 600,
+      "endStepsAll": {
+        "p50": ">600",
+        "p75": ">600",
+        "p90": ">600"
+      },
+      "endStepsEndedOnly": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 100,
+      "clearMovePct": 61.171,
+      "longestDryP50": 4,
+      "tightMovePct": 0,
+      "samePreHandMobilityReleasePct": null,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 15.907,
+      "openingCellHistogram": {
+        "13": 6,
+        "14": 16,
+        "15": 45,
+        "16": 35,
+        "17": 25,
+        "18": 17,
+        "19": 4,
+        "21": 2
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 30150,
+      "totalDealtSlots": 90450,
+      "shapeCounts": {
+        "Dot": 9091,
+        "Line 2": 8975,
+        "Line 3": 9066,
+        "Square": 9019,
+        "L": 9074,
+        "J": 9115,
+        "T": 8934,
+        "S": 9015,
+        "Z": 9161,
+        "Corner": 9000
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 10.051,
+        "Line 2": 9.923,
+        "Line 3": 10.023,
+        "Square": 9.971,
+        "L": 10.032,
+        "J": 10.077,
+        "T": 9.877,
+        "S": 9.967,
+        "Z": 10.128,
+        "Corner": 9.95
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 61.373,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 16.14,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 6,
+            "15": 11,
+            "16": 9,
+            "17": 10,
+            "18": 8,
+            "19": 1,
+            "21": 2
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 2942,
+            "Line 2": 2976,
+            "Line 3": 2996,
+            "Square": 2980,
+            "L": 3041,
+            "J": 3067,
+            "T": 3037,
+            "S": 2987,
+            "Z": 3041,
+            "Corner": 3083
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 9.758,
+            "Line 2": 9.871,
+            "Line 3": 9.937,
+            "Square": 9.884,
+            "L": 10.086,
+            "J": 10.172,
+            "T": 10.073,
+            "S": 9.907,
+            "Z": 10.086,
+            "Corner": 10.226
+          }
+        },
+        {
+          "seed": 2,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 61.2,
+          "longestDryP50": 4,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.92,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 5,
+            "15": 12,
+            "16": 15,
+            "17": 10,
+            "18": 4,
+            "19": 2
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 3060,
+            "Line 2": 2981,
+            "Line 3": 2996,
+            "Square": 3043,
+            "L": 3008,
+            "J": 2982,
+            "T": 2983,
+            "S": 3034,
+            "Z": 3101,
+            "Corner": 2962
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.149,
+            "Line 2": 9.887,
+            "Line 3": 9.937,
+            "Square": 10.093,
+            "L": 9.977,
+            "J": 9.891,
+            "T": 9.894,
+            "S": 10.063,
+            "Z": 10.285,
+            "Corner": 9.824
+          }
+        },
+        {
+          "seed": 3,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 60.94,
+          "longestDryP50": 4,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.66,
+          "openingCellHistogram": {
+            "13": 1,
+            "14": 5,
+            "15": 22,
+            "16": 11,
+            "17": 5,
+            "18": 5,
+            "19": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 3089,
+            "Line 2": 3018,
+            "Line 3": 3074,
+            "Square": 2996,
+            "L": 3025,
+            "J": 3066,
+            "T": 2914,
+            "S": 2994,
+            "Z": 3019,
+            "Corner": 2955
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.245,
+            "Line 2": 10.01,
+            "Line 3": 10.196,
+            "Square": 9.937,
+            "L": 10.033,
+            "J": 10.169,
+            "T": 9.665,
+            "S": 9.93,
+            "Z": 10.013,
+            "Corner": 9.801
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "group": "B",
+      "label": "结构化开局 + 等概率发牌",
+      "games": 150,
+      "endedGames": 0,
+      "endedPct": 0,
+      "endedCi95": [
+        0,
+        2.497
+      ],
+      "censoredGames": 150,
+      "censoredPct": 100,
+      "restrictedMeanSteps": 600,
+      "endStepsAll": {
+        "p50": ">600",
+        "p75": ">600",
+        "p90": ">600"
+      },
+      "endStepsEndedOnly": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 100,
+      "clearMovePct": 61.164,
+      "longestDryP50": 4,
+      "tightMovePct": 0,
+      "samePreHandMobilityReleasePct": null,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 15.907,
+      "openingCellHistogram": {
+        "13": 6,
+        "14": 16,
+        "15": 45,
+        "16": 35,
+        "17": 25,
+        "18": 17,
+        "19": 4,
+        "21": 2
+      },
+      "structured": {
+        "games": 150,
+        "fallbacks": 2,
+        "fallbackPct": 1.333,
+        "baselineAlreadyQualified": 147,
+        "resampledQualified": 1,
+        "fallbackReasons": {
+          "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 2
+        },
+        "meanAttempts": 1.013,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 150
+      },
+      "totalDeals": 30150,
+      "totalDealtSlots": 90450,
+      "shapeCounts": {
+        "Dot": 9091,
+        "Line 2": 8975,
+        "Line 3": 9066,
+        "Square": 9019,
+        "L": 9074,
+        "J": 9115,
+        "T": 8934,
+        "S": 9015,
+        "Z": 9161,
+        "Corner": 9000
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 10.051,
+        "Line 2": 9.923,
+        "Line 3": 10.023,
+        "Square": 9.971,
+        "L": 10.032,
+        "J": 10.077,
+        "T": 9.877,
+        "S": 9.967,
+        "Z": 10.128,
+        "Corner": 9.95
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 61.353,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 16.14,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 6,
+            "15": 11,
+            "16": 9,
+            "17": 10,
+            "18": 8,
+            "19": 1,
+            "21": 2
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 1,
+            "fallbackPct": 2,
+            "baselineAlreadyQualified": 48,
+            "resampledQualified": 1,
+            "fallbackReasons": {
+              "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 1
+            },
+            "meanAttempts": 1.04,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 2942,
+            "Line 2": 2976,
+            "Line 3": 2996,
+            "Square": 2980,
+            "L": 3041,
+            "J": 3067,
+            "T": 3037,
+            "S": 2987,
+            "Z": 3041,
+            "Corner": 3083
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 9.758,
+            "Line 2": 9.871,
+            "Line 3": 9.937,
+            "Square": 9.884,
+            "L": 10.086,
+            "J": 10.172,
+            "T": 10.073,
+            "S": 9.907,
+            "Z": 10.086,
+            "Corner": 10.226
+          }
+        },
+        {
+          "seed": 2,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 61.2,
+          "longestDryP50": 4,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.92,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 5,
+            "15": 12,
+            "16": 15,
+            "17": 10,
+            "18": 4,
+            "19": 2
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 0,
+            "fallbackPct": 0,
+            "baselineAlreadyQualified": 50,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": 1,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 3060,
+            "Line 2": 2981,
+            "Line 3": 2996,
+            "Square": 3043,
+            "L": 3008,
+            "J": 2982,
+            "T": 2983,
+            "S": 3034,
+            "Z": 3101,
+            "Corner": 2962
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.149,
+            "Line 2": 9.887,
+            "Line 3": 9.937,
+            "Square": 10.093,
+            "L": 9.977,
+            "J": 9.891,
+            "T": 9.894,
+            "S": 10.063,
+            "Z": 10.285,
+            "Corner": 9.824
+          }
+        },
+        {
+          "seed": 3,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 60.94,
+          "longestDryP50": 4,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.66,
+          "openingCellHistogram": {
+            "13": 1,
+            "14": 5,
+            "15": 22,
+            "16": 11,
+            "17": 5,
+            "18": 5,
+            "19": 1
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 1,
+            "fallbackPct": 2,
+            "baselineAlreadyQualified": 49,
+            "resampledQualified": 0,
+            "fallbackReasons": {
+              "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 1
+            },
+            "meanAttempts": 1,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 3089,
+            "Line 2": 3018,
+            "Line 3": 3074,
+            "Square": 2996,
+            "L": 3025,
+            "J": 3066,
+            "T": 2914,
+            "S": 2994,
+            "Z": 3019,
+            "Corner": 2955
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.245,
+            "Line 2": 10.01,
+            "Line 3": 10.196,
+            "Square": 9.937,
+            "L": 10.033,
+            "J": 10.169,
+            "T": 9.665,
+            "S": 9.93,
+            "Z": 10.013,
+            "Corner": 9.801
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "group": "C",
+      "label": "现行开局 + 阶段发牌",
+      "games": 150,
+      "endedGames": 0,
+      "endedPct": 0,
+      "endedCi95": [
+        0,
+        2.497
+      ],
+      "censoredGames": 150,
+      "censoredPct": 100,
+      "restrictedMeanSteps": 600,
+      "endStepsAll": {
+        "p50": ">600",
+        "p75": ">600",
+        "p90": ">600"
+      },
+      "endStepsEndedOnly": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 100,
+      "clearMovePct": 69.102,
+      "longestDryP50": 3,
+      "tightMovePct": 0,
+      "samePreHandMobilityReleasePct": null,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 15.907,
+      "openingCellHistogram": {
+        "13": 6,
+        "14": 16,
+        "15": 45,
+        "16": 35,
+        "17": 25,
+        "18": 17,
+        "19": 4,
+        "21": 2
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 30150,
+      "totalDealtSlots": 90450,
+      "shapeCounts": {
+        "Dot": 1355,
+        "Line 2": 1444,
+        "Line 3": 5861,
+        "Square": 12626,
+        "L": 12671,
+        "J": 12585,
+        "T": 12693,
+        "S": 12740,
+        "Z": 12615,
+        "Corner": 5860
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 1.498,
+        "Line 2": 1.596,
+        "Line 3": 6.48,
+        "Square": 13.959,
+        "L": 14.009,
+        "J": 13.914,
+        "T": 14.033,
+        "S": 14.085,
+        "Z": 13.947,
+        "Corner": 6.479
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 69.343,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 16.14,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 6,
+            "15": 11,
+            "16": 9,
+            "17": 10,
+            "18": 8,
+            "19": 1,
+            "21": 2
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 422,
+            "Line 2": 494,
+            "Line 3": 1877,
+            "Square": 4258,
+            "L": 4217,
+            "J": 4142,
+            "T": 4227,
+            "S": 4257,
+            "Z": 4306,
+            "Corner": 1950
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.4,
+            "Line 2": 1.638,
+            "Line 3": 6.226,
+            "Square": 14.123,
+            "L": 13.987,
+            "J": 13.738,
+            "T": 14.02,
+            "S": 14.119,
+            "Z": 14.282,
+            "Corner": 6.468
+          }
+        },
+        {
+          "seed": 2,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 69.193,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.92,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 5,
+            "15": 12,
+            "16": 15,
+            "17": 10,
+            "18": 4,
+            "19": 2
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 449,
+            "Line 2": 480,
+            "Line 3": 2009,
+            "Square": 4127,
+            "L": 4279,
+            "J": 4298,
+            "T": 4281,
+            "S": 4193,
+            "Z": 4118,
+            "Corner": 1916
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.489,
+            "Line 2": 1.592,
+            "Line 3": 6.663,
+            "Square": 13.688,
+            "L": 14.192,
+            "J": 14.255,
+            "T": 14.199,
+            "S": 13.907,
+            "Z": 13.658,
+            "Corner": 6.355
+          }
+        },
+        {
+          "seed": 3,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 68.77,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.66,
+          "openingCellHistogram": {
+            "13": 1,
+            "14": 5,
+            "15": 22,
+            "16": 11,
+            "17": 5,
+            "18": 5,
+            "19": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 484,
+            "Line 2": 470,
+            "Line 3": 1975,
+            "Square": 4241,
+            "L": 4175,
+            "J": 4145,
+            "T": 4185,
+            "S": 4290,
+            "Z": 4191,
+            "Corner": 1994
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.605,
+            "Line 2": 1.559,
+            "Line 3": 6.551,
+            "Square": 14.066,
+            "L": 13.847,
+            "J": 13.748,
+            "T": 13.881,
+            "S": 14.229,
+            "Z": 13.9,
+            "Corner": 6.614
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "group": "D",
+      "label": "结构化开局 + 阶段发牌",
+      "games": 150,
+      "endedGames": 0,
+      "endedPct": 0,
+      "endedCi95": [
+        0,
+        2.497
+      ],
+      "censoredGames": 150,
+      "censoredPct": 100,
+      "restrictedMeanSteps": 600,
+      "endStepsAll": {
+        "p50": ">600",
+        "p75": ">600",
+        "p90": ">600"
+      },
+      "endStepsEndedOnly": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 100,
+          "ci95": [
+            97.503,
+            100
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 100,
+      "clearMovePct": 69.12,
+      "longestDryP50": 3,
+      "tightMovePct": 0,
+      "samePreHandMobilityReleasePct": null,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 15.907,
+      "openingCellHistogram": {
+        "13": 6,
+        "14": 16,
+        "15": 45,
+        "16": 35,
+        "17": 25,
+        "18": 17,
+        "19": 4,
+        "21": 2
+      },
+      "structured": {
+        "games": 150,
+        "fallbacks": 2,
+        "fallbackPct": 1.333,
+        "baselineAlreadyQualified": 142,
+        "resampledQualified": 6,
+        "fallbackReasons": {
+          "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 2
+        },
+        "meanAttempts": 1.087,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 150
+      },
+      "totalDeals": 30150,
+      "totalDealtSlots": 90450,
+      "shapeCounts": {
+        "Dot": 1355,
+        "Line 2": 1444,
+        "Line 3": 5861,
+        "Square": 12626,
+        "L": 12671,
+        "J": 12585,
+        "T": 12693,
+        "S": 12740,
+        "Z": 12615,
+        "Corner": 5860
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 1.498,
+        "Line 2": 1.596,
+        "Line 3": 6.48,
+        "Square": 13.959,
+        "L": 14.009,
+        "J": 13.914,
+        "T": 14.033,
+        "S": 14.085,
+        "Z": 13.947,
+        "Corner": 6.479
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 69.357,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 16.14,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 6,
+            "15": 11,
+            "16": 9,
+            "17": 10,
+            "18": 8,
+            "19": 1,
+            "21": 2
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 0,
+            "fallbackPct": 0,
+            "baselineAlreadyQualified": 48,
+            "resampledQualified": 2,
+            "fallbackReasons": {},
+            "meanAttempts": 1.06,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 422,
+            "Line 2": 494,
+            "Line 3": 1877,
+            "Square": 4258,
+            "L": 4217,
+            "J": 4142,
+            "T": 4227,
+            "S": 4257,
+            "Z": 4306,
+            "Corner": 1950
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.4,
+            "Line 2": 1.638,
+            "Line 3": 6.226,
+            "Square": 14.123,
+            "L": 13.987,
+            "J": 13.738,
+            "T": 14.02,
+            "S": 14.119,
+            "Z": 14.282,
+            "Corner": 6.468
+          }
+        },
+        {
+          "seed": 2,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 69.25,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.92,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 5,
+            "15": 12,
+            "16": 15,
+            "17": 10,
+            "18": 4,
+            "19": 2
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 1,
+            "fallbackPct": 2,
+            "baselineAlreadyQualified": 47,
+            "resampledQualified": 2,
+            "fallbackReasons": {
+              "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 1
+            },
+            "meanAttempts": 1.08,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 449,
+            "Line 2": 480,
+            "Line 3": 2009,
+            "Square": 4127,
+            "L": 4279,
+            "J": 4298,
+            "T": 4281,
+            "S": 4193,
+            "Z": 4118,
+            "Corner": 1916
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.489,
+            "Line 2": 1.592,
+            "Line 3": 6.663,
+            "Square": 13.688,
+            "L": 14.192,
+            "J": 14.255,
+            "T": 14.199,
+            "S": 13.907,
+            "Z": 13.658,
+            "Corner": 6.355
+          }
+        },
+        {
+          "seed": 3,
+          "games": 50,
+          "endedGames": 0,
+          "endedPct": 0,
+          "endedCi95": [
+            0,
+            7.135
+          ],
+          "censoredGames": 50,
+          "censoredPct": 100,
+          "restrictedMeanSteps": 600,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 0,
+            "p50": null,
+            "p90": null
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 100,
+              "ci95": [
+                92.865,
+                100
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 100,
+          "clearMovePct": 68.753,
+          "longestDryP50": 3,
+          "tightMovePct": 0,
+          "samePreHandMobilityReleasePct": null,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 15.66,
+          "openingCellHistogram": {
+            "13": 1,
+            "14": 5,
+            "15": 22,
+            "16": 11,
+            "17": 5,
+            "18": 5,
+            "19": 1
+          },
+          "structured": {
+            "games": 50,
+            "fallbacks": 1,
+            "fallbackPct": 2,
+            "baselineAlreadyQualified": 47,
+            "resampledQualified": 2,
+            "fallbackReasons": {
+              "structured-impossible-first-hand-fewer-than-two-distinct-types; returned-unstructured-baseline": 1
+            },
+            "meanAttempts": 1.12,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 50
+          },
+          "totalDeals": 10050,
+          "totalDealtSlots": 30150,
+          "shapeCounts": {
+            "Dot": 484,
+            "Line 2": 470,
+            "Line 3": 1975,
+            "Square": 4241,
+            "L": 4175,
+            "J": 4145,
+            "T": 4185,
+            "S": 4290,
+            "Z": 4191,
+            "Corner": 1994
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 1.605,
+            "Line 2": 1.559,
+            "Line 3": 6.551,
+            "Square": 14.066,
+            "L": 13.847,
+            "J": 13.748,
+            "T": 13.881,
+            "S": 14.229,
+            "Z": 13.9,
+            "Corner": 6.614
+          }
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "strategy": "space",
+      "left": "A",
+      "right": "B",
+      "pairs": 150,
+      "restrictedMeanStepDifferenceRightMinusLeft": 0,
+      "endedPctPointDifferenceRightMinusLeft": 0,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "left": "A",
+      "right": "C",
+      "pairs": 150,
+      "restrictedMeanStepDifferenceRightMinusLeft": 0,
+      "endedPctPointDifferenceRightMinusLeft": 0,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "left": "B",
+      "right": "D",
+      "pairs": 150,
+      "restrictedMeanStepDifferenceRightMinusLeft": 0,
+      "endedPctPointDifferenceRightMinusLeft": 0,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        }
+      ]
+    },
+    {
+      "strategy": "space",
+      "left": "C",
+      "right": "D",
+      "pairs": 150,
+      "restrictedMeanStepDifferenceRightMinusLeft": 0,
+      "endedPctPointDifferenceRightMinusLeft": 0,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 0,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 0
+        }
+      ]
+    }
+  ],
+  "elapsedMs": 189845,
+  "omitted": {
+    "records": 600,
+    "traces": 12,
+    "curves": "per-step survivalCurve and 12-step bins live in the full JSON and the HTML only",
+    "note": "Per-game records, traces and curves are omitted from this committed summary; the full JSON sits next to it and is not versioned."
+  }
+}

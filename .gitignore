@@ -6,3 +6,10 @@ artifacts/
 *.log
 .DS_Store
 Thumbs.db
+
+# Temporary planning and handoff documents
+/docs/Temporary/
+
+# Measurement runs: the full per-game JSON stays local, the aggregates are committed
+/tools/results/*.json
+!/tools/results/*.summary.json
