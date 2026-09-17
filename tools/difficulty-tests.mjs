@@ -456,4 +456,32 @@ test('arm ids carry pool, dealer and opening, and reject unknown combinations', 
   assert.equal(armParts('current/uniform/current').filter((v, i) => v !== armParts('current/uniform/high')[i]).length, 1)
 })
 
+test('tension panel counts every executed step exactly once', () => {
+  const run = runGame({ group: 'current/uniform', seed: 4, gameIndex: 3, strategy: 'noise', stepCap: 40 })
+  const panel = run.record.mobilityPanel
+  assert.equal(panel.samples, run.record.steps)
+  assert.equal(Object.values(panel.buckets).reduce((sum, n) => sum + n, 0), panel.samples)
+  assert.ok(panel.min != null && panel.min >= 0)
+  assert.ok(panel.sum >= panel.min * panel.samples)
+  assert.ok(panel.forcedSteps <= panel.multiShapeSteps && panel.multiShapeSteps <= panel.samples)
+  // Every batch ends with a single-shape hand, so forced decisions must be counted
+  // against multi-shape steps only: the ratio is pressure, not hand size.
+  assert.ok(panel.multiShapeSteps < panel.samples, 'single-shape tail steps must not count as multi-shape choices')
+  assert.equal(Object.values(panel.composition).reduce((sum, n) => sum + n, 0), panel.samples)
+  // Every executed step kept at least one playable shape, and the single-piece tail
+  // of each batch is filed under "1:<n>" rather than pretending to be a choice.
+  assert.equal(Object.keys(panel.composition).some((key) => key.endsWith(':0')), false)
+  // A step with zero legal placements cannot be executed; the game ends instead.
+  assert.ok(panel.min > 0 || run.record.ended)
+  const summary = summarizeGames([run.record], 40)
+  assert.equal(summary.tension.samples, run.record.steps)
+  const shares = Object.values(summary.tension.mobilityBucketPct)
+  const total = shares.reduce((sum, n) => sum + n, 0)
+  assert.ok(Math.abs(total - 100) < 0.01, `bucket shares sum to ${total}`)
+  // A uniformly random actor is the careless player: it must actually end inside the
+  // cap (median death is around 90 steps), which is what makes the panel meaningful.
+  const wide = runGame({ group: 'current/uniform', seed: 4, gameIndex: 3, strategy: 'random', stepCap: 600 })
+  assert.ok(wide.record.ended, 'a uniformly random actor should end inside the cap')
+})
+
 console.log(`\n${checks}/${checks} measurement test groups passed. Official gameplay files were not edited.`)

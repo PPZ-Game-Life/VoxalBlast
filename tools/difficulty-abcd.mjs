@@ -64,6 +64,55 @@ function armPairs(ids) {
   return pairs
 }
 const THRESHOLDS = [12, 30, 60, 120, 300, 600]
+// Tension panel: how many legal physical placements the whole hand had at each
+// executed step (unique shapes, so duplicate candidate slots cannot inflate it) and
+// how many distinct shapes had at least one. Buckets are deliberately coarse and
+// are reported as shares, never as an interpolated quantile.
+const MOBILITY_BUCKETS = [
+  { label: '0', max: 0 }, { label: '1-4', max: 4 }, { label: '5-9', max: 9 },
+  { label: '10-19', max: 19 }, { label: '20-39', max: 39 }, { label: '40-79', max: 79 },
+  { label: '80+', max: Infinity },
+]
+function emptyMobilityPanel() {
+  return {
+    samples: 0, sum: 0, min: null, multiShapeSteps: 0, forcedSteps: 0,
+    buckets: Object.fromEntries(MOBILITY_BUCKETS.map((b) => [b.label, 0])),
+    // Steps keyed by "<distinct shapes in hand>:<shapes still playable>". A batch runs
+    // 3 -> 2 -> 1 pieces, and the last piece is trivially the only playable shape, so
+    // an unconditional "only one option" share would just report the hand size (~33%)
+    // instead of pressure. Layering by hand composition removes that artifact.
+    composition: {},
+  }
+}
+function addMobilitySample(panel, mobility, shapeOptions) {
+  const playableShapes = shapeOptions.filter((count) => count > 0).length
+  const distinct = shapeOptions.length
+  const multiShape = distinct >= 2
+  const key = `${distinct}:${playableShapes}`
+  panel.samples += 1
+  panel.sum += mobility
+  panel.min = panel.min == null ? mobility : Math.min(panel.min, mobility)
+  panel.multiShapeSteps += Number(multiShape)
+  panel.forcedSteps += Number(multiShape && playableShapes <= 1)
+  panel.buckets[MOBILITY_BUCKETS.find((b) => mobility <= b.max).label] += 1
+  panel.composition[key] = (panel.composition[key] || 0) + 1
+}
+// Share of steps with only one distinct shape playable, conditioned on the hand
+// actually holding 2 or 3 distinct shapes.
+function playableByHand(records) {
+  const count = (key) => records.reduce((a, g) => a + (g.mobilityPanel?.composition?.[key] || 0), 0)
+  const three = { steps: 0, onlyOnePct: null, allThreePct: null }
+  const two = { steps: 0, onlyOnePct: null }
+  for (const distinct of [3, 2]) {
+    const playable = Array.from({ length: distinct }, (_, i) => i + 1)
+    const steps = playable.reduce((sum, n) => sum + count(`${distinct}:${n}`), 0)
+    const onlyOne = distinct === 3 ? count('3:1') : count('2:1')
+    const allPlayable = distinct === 3 ? count('3:3') : 0
+    if (distinct === 3) { three.steps = steps; three.onlyOnePct = pct(onlyOne, steps); three.allThreePct = pct(allPlayable, steps) }
+    else { two.steps = steps; two.onlyOnePct = pct(onlyOne, steps) }
+  }
+  return { threeDistinct: three, twoDistinct: two }
+}
 const SHAPE_SIZE = Object.fromEntries(SHAPE_NAMES.map((name) => [name, PLACEMENTS.find((p) => p.shape === name).indices.length]))
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
 const round = (x, digits = 3) => x == null ? null : Number(x.toFixed(digits))
@@ -80,8 +129,11 @@ export function wilson(successes, total) {
 
 // Sum unique geometric placements for the distinct shapes still in hand. Duplicate
 // candidate slots do not inflate this pressure proxy; it is NOT a probability.
+export function shapeMobility(state, hand) {
+  return [...new Set(hand)].map((shape) => legalCount(state, shape))
+}
 export function mobility(state, hand) {
-  return [...new Set(hand)].reduce((sum, shape) => sum + legalCount(state, shape), 0)
+  return shapeMobility(state, hand).reduce((sum, count) => sum + count, 0)
 }
 
 export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 600, trace = false }) {
@@ -94,6 +146,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   if (JSON.stringify(firstHand) !== JSON.stringify(hand)) throw new Error('First-hand RNG stream drift')
   let firstClearStep = null, clearMoves = 0, clearedCells = 0, addedCells = 0
   let dry = 0, longestDry = 0, tightMoves = 0, samePreHandMobilityReleases = 0
+  const mobilityPanel = emptyMobilityPanel()
   let deals = 1, freshDealStuck = 0, justDealt = true, lineTotal = 0
   const bins = new Map(), traceRows = [], dealShapeCounts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
   hand.forEach((s) => dealShapeCounts[s]++)
@@ -111,7 +164,9 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
     }
     // At exactly the cap check terminal status, but never execute cap+1.
     if (steps === stepCap) break
-    const before = mobility(state, hand)
+    const shapeOptions = shapeMobility(state, hand)
+    const before = shapeOptions.reduce((sum, count) => sum + count, 0)
+    addMobilitySample(mobilityPanel, before, shapeOptions)
     const beforeCount = occupiedCount(state)
     const tight = before <= 8
     const result = settle(state, move.pl)
@@ -144,6 +199,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
     opening: openingMeta, firstHand, firstClearStep, clearMoves, lineTotal,
     addedCells, clearedCells, longestDry, tightMoves, samePreHandMobilityReleases,
     deals, freshDealStuck, finalOccupied: occupiedCount(state), dealShapeCounts,
+    mobilityPanel,
   }
   return { record, bins: [...bins.values()], trace: trace ? { ...record, openingWitness: witness ?? null, moves: traceRows } : null }
 }
@@ -201,6 +257,21 @@ export function summarizeGames(records, stepCap = 600) {
     totalDeals, totalDealtSlots,
     shapeCounts, // Raw exposure totals, NOT directly comparable probabilities.
     shapePctOfDealtSlots: Object.fromEntries(SHAPE_NAMES.map((name) => [name, pct(shapeCounts[name], totalDealtSlots)])),
+    // Tension panel: pooled over every executed step of every game. The bucket
+    // shares answer "how often was the player actually constrained", which is a
+    // different question from "how likely is the game to end".
+    tension: {
+      samples: records.reduce((a, g) => a + (g.mobilityPanel?.samples || 0), 0),
+      meanMobility: round(records.reduce((a, g) => a + (g.mobilityPanel?.sum || 0), 0) / Math.max(1, records.reduce((a, g) => a + (g.mobilityPanel?.samples || 0), 0))),
+      medianPerGameMinMobility: quantile(records.map((g) => g.mobilityPanel?.min).filter((x) => x != null), 0.5),
+      p10PerGameMinMobility: quantile(records.map((g) => g.mobilityPanel?.min).filter((x) => x != null), 0.1),
+      forcedMovePct: pct(records.reduce((a, g) => a + (g.mobilityPanel?.forcedSteps || 0), 0), Math.max(1, records.reduce((a, g) => a + (g.mobilityPanel?.multiShapeSteps || 0), 0))),
+      forcedDenominator: 'steps where the hand still held >=2 distinct shapes',
+      playableByHand: playableByHand(records),
+      mobilityBucketPct: Object.fromEntries(MOBILITY_BUCKETS.map((bucket) => [bucket.label,
+        pct(records.reduce((a, g) => a + (g.mobilityPanel?.buckets?.[bucket.label] || 0), 0), Math.max(1, records.reduce((a, g) => a + (g.mobilityPanel?.samples || 0), 0)))])),
+      note: 'Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement.',
+    },
   }
 }
 
@@ -299,14 +370,14 @@ export function htmlReport(result) {
     : '<p>结构化失败时保持配对占用量并回退原局，回退纳入主分析。</p>'
   const content = result.options.strategies.map((strategy) => {
     const summaries = result.summaries.filter((s) => s.strategy === strategy)
-    const rows = summaries.map((s) => `<tr><td><span style="color:${colorOf.get(s.group)}">${escape(s.group)}</span> ${escape(s.label)}</td><td>${s.games}</td><td>${s.endedPct}% [${s.endedCi95.join(', ')}]<br>各种子：${s.bySeed.map((x) => `${x.seed}: ${x.endedPct}%`).join(' / ')}</td><td>${escape(s.endStepsAll.p50)}</td><td>${s.restrictedMeanSteps}</td><td>${s.endStepsEndedOnly.p50 ?? '—'}</td><td>${s.firstClearBy3Pct}%</td>${isPoolRun ? '' : `<td>${s.structured.fallbackPct ?? '—'}%</td>`}</tr>`).join('')
+    const rows = summaries.map((s) => `<tr><td><span style="color:${colorOf.get(s.group)}">${escape(s.group)}</span> ${escape(s.label)}</td><td>${s.games}</td><td>${s.endedPct}% [${s.endedCi95.join(', ')}]<br>各种子：${s.bySeed.map((x) => `${x.seed}: ${x.endedPct}%`).join(' / ')}</td><td>${escape(s.endStepsAll.p50)}</td><td>${s.restrictedMeanSteps}</td><td>${s.tension.meanMobility}</td><td>${s.tension.medianPerGameMinMobility}</td><td>${s.tension.mobilityBucketPct['0'] + s.tension.mobilityBucketPct['1-4'] + s.tension.mobilityBucketPct['5-9'] + s.tension.mobilityBucketPct['10-19']}%</td><td>${s.tension.playableByHand.threeDistinct.onlyOnePct}%<br>三块全可放：${s.tension.playableByHand.threeDistinct.allThreePct}%</td>${isPoolRun ? '' : `<td>${s.structured.fallbackPct ?? '—'}%</td>`}</tr>`).join('')
     const series = (pick) => summaries.map((s) => ({ group: s.group, color: colorOf.get(s.group), points: pick(s) }))
     const curve = chart(series((s) => s.survivalCurve.map((p) => [p.step, p.pct])), result.options.stepCap, 100, '生存曲线 S(n)：完成至少 n 步的比例', '成功落子数', '%')
     const occupancy = chart(series((s) => s.bins.map((b) => [b.start, b.meanOccupied])), result.options.stepCap, 98, '压力代理：在场对局平均占用格数', '落子步数（12步窗口）', '格')
     const maxMobility = Math.max(1, ...summaries.flatMap((s) => s.bins.map((b) => b.meanMobility)))
     const moves = chart(series((s) => s.bins.map((b) => [b.start, b.meanMobility])), result.options.stepCap, Math.ceil(maxMobility / 100) * 100, '压力代理：剩余不同形状的合法落点总数', '落子步数（12步窗口）', '落点')
     const clear = chart(series((s) => s.bins.map((b) => [b.start, b.clearMovePct])), result.options.stepCap, 100, '节奏代理：有消除的落子比例', '落子步数（12步窗口）', '%')
-    return `<section><h2>策略：${escape(strategy)}</h2><table><thead><tr><th>组</th><th>局数</th><th>自然结束率 [模拟95% Wilson区间]</th><th>全体P50</th><th>截断平均步数</th><th>已结束局中位</th><th>前3步有消除</th>${isPoolRun ? '' : '<th>结构化回退</th>'}</tr></thead><tbody>${rows}</tbody></table>${curve}${occupancy}${moves}${clear}</section>`
+    return `<section><h2>策略：${escape(strategy)}</h2><table><thead><tr><th>组</th><th>局数</th><th>自然结束率 [模拟95% Wilson区间]</th><th>全体P50</th><th>截断平均步数</th><th>平均可选落点</th><th>本局最紧时刻（中位）</th><th>可选≤19格占比</th><th>三选一时只有一种可放</th>${isPoolRun ? '' : '<th>结构化回退</th>'}</tr></thead><tbody>${rows}</tbody></table>${curve}${occupancy}${moves}${clear}</section>`
   }).join('')
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${headline}</title><style>body{font:16px/1.65 system-ui,sans-serif;color:#233;background:#faf9f5;max-width:1080px;margin:32px auto;padding:0 18px}table{border-collapse:collapse;font-size:14px;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}svg{width:100%;background:white}svg text{font-size:12px}section{margin-top:36px}.legend span{margin-right:22px;font-weight:bold}code{overflow-wrap:anywhere}</style><h1>${headline}</h1><p>测量版本 ${escape(result.schemaVersion)}；5×5、三候选、无道具，正式玩法未修改。每组每种子 ${result.options.games} 局；种子 ${result.options.seeds.join(', ')}；上限 ${result.options.stepCap} 步。</p><p>没有通关条件，故不报告“胜率”。超过观察上限属于右删失，不是600步通关。截断平均不是实际平均局长。机器人不是经过真人校准的水平分层，也不是最优策略。Wilson区间只表达此模拟策略的抽样不确定性，不包含真人差异或模型误差；逐种子结束率列在下表。</p><p>后段压力曲线仅统计仍在场对局，会有幸存者偏差；曲线不能证明心流或乐趣。</p>${note}<div class="legend">${[...colorOf].map(([group, color]) => `<span style="color:${color}">${escape(group)}</span>`).join('')}</div>${content}<h2>复现</h2><code>${escape(result.command)}</code><p>完整参数、源码SHA256、逐局记录、逐种子统计及每种子第0局轨迹见同名JSON。</p></html>`
 }
