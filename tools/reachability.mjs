@@ -6,7 +6,10 @@
 // 本工具用程序给出可复现的答案。
 //
 // 模型不再"镜像"游戏代码，而是**直接 import 游戏代码**（v0.3 同源改造）：
-//   - 棋盘/六面/晶格映射：src/game/board.js（SH / FACES / faceLattice）
+//   - 棋盘/六面/晶格映射：src/game/board.js（SH / FACES / faceLattice）。board.js 的
+//     SH 固定为 5（那是交付的游戏），所以 `--faces=4` 时晶格按同一批公式在此重建，
+//     并在 N = SH 时逐格与 board.js 比对——映射一旦改动，模拟直接抛错而不是悄悄
+//     量一个游戏里不存在的棋盘。
 //   - 拼块池：src/game/shapes.js（v0.2.31 已移除 Line 4，旧版验证器还带着它）
 //   - 计分：src/game/scoring.js（v0.3 倍率表 + 跨面加法 + 连消链）
 //   - 荣誉：src/game/honors.js（v0.4 五枚规模系 + 理论区）
@@ -19,6 +22,9 @@
 //   node tools/reachability.mjs all --out=tools/reachability-baseline.json
 //   node tools/reachability.mjs p2 --pool=Line 3,Square,L,J,T,S,Z   # 试一个候选池
 //   node tools/reachability.mjs p2 --batch=4                        # 试更大的手牌
+//   node tools/reachability.mjs p2 --faces=4                        # 试 4×4×4 外壳（56 格）
+//   node tools/reachability.mjs p2 --faces=4 --seed=777             # 换一组随机序列复核
+//   node tools/reachability.mjs p2 --rng=mulberry32 --seed=1        # 换生成器（LCG 会按种子聚簇）
 //
 // Phase 1（完备穷举）：对每个（拼块 × 朝向 × 落点）DFS 枚举所有可行缺口组合。
 //   结论是**可证明的**——搜索树里没出现的事件即不可达。
@@ -60,28 +66,60 @@ const OUT = opt('out', '')
 const POOL = (opt('pool', '') || '').split(',').map((name) => name.trim()).filter(Boolean)
 const BATCH = Math.max(1, Math.trunc(Number(opt('batch', 3))))
 
+// v0.8.3: the structural difficulty lever, measured before it is built. `--faces=`
+// rebuilds the SAME lattice at another size — a 4×4×4 shell is 56 unique cells and 48
+// lines instead of 98 and 60, so a hand jams far sooner. board.js pins SH = 5 (that is
+// the shipped game), so the mapping is rebuilt here from its own formulas and then
+// PROVEN against the imported module whenever the shipped size is simulated: if
+// board.js ever changes its face mapping, this throws instead of quietly measuring a
+// lattice the game does not have.
+const N = Math.max(3, Math.min(9, Math.trunc(Number(opt('faces', SH)))))
+const LATTICE = {
+  '+z': (u, v) => [u, v, N - 1],
+  '-z': (u, v) => [u, v, 0],
+  '+x': (u, v) => [N - 1, u, v],
+  '-x': (u, v) => [0, u, v],
+  '+y': (u, v) => [u, N - 1, v],
+  '-y': (u, v) => [u, 0, v],
+}
+const at = (face, u, v) => LATTICE[face](u, v)
+if (N === SH) {
+  for (const face of FACES) for (let u = 0; u < SH; u++) for (let v = 0; v < SH; v++) {
+    const mine = at(face, u, v)
+    const shipped = faceLattice(face, u, v)
+    if (mine[0] !== shipped[0] || mine[1] !== shipped[1] || mine[2] !== shipped[2]) {
+      throw new Error(`--faces: lattice mismatch at ${face} (${u},${v}): sim ${mine} vs board.js ${shipped}`)
+    }
+  }
+}
+
 // ---- 晶格索引 ------------------------------------------------------------
 const idx = new Map()
 const CELLS = []
-for (let x = 0; x < SH; x++) for (let y = 0; y < SH; y++) for (let z = 0; z < SH; z++) {
-  if (x === 0 || x === SH - 1 || y === 0 || y === SH - 1 || z === 0 || z === SH - 1) {
+for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) for (let z = 0; z < N; z++) {
+  if (x === 0 || x === N - 1 || y === 0 || y === N - 1 || z === 0 || z === N - 1) {
     idx.set(`${x},${y},${z}`, CELLS.length)
     CELLS.push([x, y, z])
   }
 }
 const BIT = (i) => 1n << BigInt(i)
+// The shipped shell is 5³ - 3³ = 98 unique cells; the proposal is 4³ - 2³ = 56.
+const SHELL_CELLS_EXPECTED = N * N * N - (N - 2) ** 3
+if (CELLS.length !== SHELL_CELLS_EXPECTED) {
+  throw new Error(`--faces: ${N}³ shell has ${CELLS.length} cells, expected ${SHELL_CELLS_EXPECTED}`)
+}
 
 // ---- 线 ------------------------------------------------------------------
 const LINES = []
 for (const face of FACES) {
-  for (let v = 0; v < SH; v++) {
+  for (let v = 0; v < N; v++) {
     const cs = []
-    for (let u = 0; u < SH; u++) cs.push(idx.get(faceLattice(face, u, v).join(',')))
+    for (let u = 0; u < N; u++) cs.push(idx.get(at(face, u, v).join(',')))
     LINES.push({ face, axis: 'row', n: v, cells: cs, mask: cs.reduce((m, i) => m | BIT(i), 0n) })
   }
-  for (let u = 0; u < SH; u++) {
+  for (let u = 0; u < N; u++) {
     const cs = []
-    for (let v = 0; v < SH; v++) cs.push(idx.get(faceLattice(face, u, v).join(',')))
+    for (let v = 0; v < N; v++) cs.push(idx.get(at(face, u, v).join(',')))
     LINES.push({ face, axis: 'col', n: u, cells: cs, mask: cs.reduce((m, i) => m | BIT(i), 0n) })
   }
 }
@@ -90,7 +128,7 @@ LINES.forEach((l, i) => { l.id = i })
 const FACE_MASK = {}
 for (const face of FACES) {
   let m = 0n
-  for (let u = 0; u < SH; u++) for (let v = 0; v < SH; v++) m |= BIT(idx.get(faceLattice(face, u, v).join(',')))
+  for (let u = 0; u < N; u++) for (let v = 0; v < N; v++) m |= BIT(idx.get(at(face, u, v).join(',')))
   FACE_MASK[face] = m
 }
 
@@ -124,10 +162,10 @@ for (const s of SHAPES) {
 function buildPlacements(faces) {
   const out = []
   for (const face of faces) for (const o of ORIENTS) {
-    const maxU = SH - 1 - Math.max(...o.cells.map((c) => c[0]))
-    const maxV = SH - 1 - Math.max(...o.cells.map((c) => c[1]))
+    const maxU = N - 1 - Math.max(...o.cells.map((c) => c[0]))
+    const maxV = N - 1 - Math.max(...o.cells.map((c) => c[1]))
     for (let u = 0; u <= maxU; u++) for (let v = 0; v <= maxV; v++) {
-      const cis = o.cells.map(([du, dv]) => idx.get(faceLattice(face, u + du, v + dv).join(',')))
+      const cis = o.cells.map(([du, dv]) => idx.get(at(face, u + du, v + dv).join(',')))
       if (cis.some((c) => c === undefined)) continue
       const mask = cis.reduce((m, i) => m | BIT(i), 0n)
       const candSet = new Set()
@@ -257,8 +295,35 @@ function phase1() {
 }
 
 // ---- Phase 2：对局模拟 ---------------------------------------------------
-let seed = 12345
-const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+// Default seed 12345 keeps every historical run reproducible; `--seed=` exists so a
+// headline number can be re-measured on a second sample instead of being quoted off
+// one lucky ordering (the RNG is shared, so different pools consume it differently).
+//
+// `--rng=lcg | mulberry32`, default LCG. The LCG is the original generator, kept as the
+// default so every number already written down stays reproducible — but it is a weak
+// 31-bit linear generator, and its consecutive draws are strongly correlated, which
+// makes whole games CLUSTER per seed: the 4×4 + 4-格池 config measured 12.5% on seed
+// 12345 and 31.8% on seed 777 at 400 games, far outside sampling error (≈±2pp). A
+// headline figure therefore has to be confirmed on mulberry32 (and ideally more than
+// one seed); a single LCG seed is a sample of one trajectory family, not of the game.
+const RNG_KIND = (opt('rng', 'lcg') || 'lcg').toLowerCase()
+let seed = Math.trunc(Number(opt('seed', 12345))) || 12345
+const SEED_USED = seed
+let rnd
+if (RNG_KIND === 'mulberry32' || RNG_KIND === 'mulberry') {
+  let state = seed >>> 0
+  rnd = () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+} else if (RNG_KIND === 'lcg') {
+  rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+} else {
+  throw new Error(`--rng: unknown generator "${RNG_KIND}" (lcg | mulberry32)`)
+}
 
 const PL_BY_SHAPE = new Map()
 for (const pl of ALL_PLACEMENTS) {
@@ -313,14 +378,19 @@ function phase2(games) {
   let chainsTotal = 0, maxChainSeen = 0, honorMovesTotal = 0
   const scores = []
   let maxLinesSeen = 0
+  // v0.8.3: "how long is a run" cannot be read off avgStepsPerGame while most games are
+  // capped (601 is the cap, not a length), so the lengths of the runs that DID end are
+  // collected separately — that distribution is the difficulty number that matters.
+  const endedSteps = []
 
   for (let g = 0; g < games; g++) {
     let state = 0n, steps = 0, score = 0, chain = 0, bestChain = 0
+    let hitCap = false
     const seenHere = new Set(), facesEverCleared = new Set(), legacyHere = new Set()
     let hand = drawHand()
 
     for (;;) {
-      if (steps > STEP_CAP) { capped++; break }
+      if (steps > STEP_CAP) { capped++; hitCap = true; break }
       let moved = false
       for (let i = 0; i < hand.length; i++) {
         const pick = choosePlacement(state, hand[i])
@@ -360,6 +430,7 @@ function phase2(games) {
     }
 
     if (facesEverCleared.size >= 6) sixFaceGames++
+    if (!hitCap) endedSteps.push(steps)
     for (const h of seenHere) honorGames.set(h, (honorGames.get(h) || 0) + 1)
     for (const h of legacyHere) legacyGames.set(h, (legacyGames.get(h) || 0) + 1)
     chainsTotal += bestChain
@@ -370,11 +441,14 @@ function phase2(games) {
   }
 
   scores.sort((a, b) => a - b)
+  endedSteps.sort((a, b) => a - b)
   const byCount = (m) => Object.fromEntries([...m].sort((a, b) => a[0] - b[0]))
   return {
     strategy: STRATEGY,
     games,
     stepCap: STEP_CAP,
+    rng: RNG_KIND,
+    seed: SEED_USED,
     // What was measured, so a result file can never be read as "the shipped pool".
     pool: SHAPE_NAMES,
     batch: BATCH,
@@ -384,6 +458,18 @@ function phase2(games) {
     endedNaturallyPct: +((100 * (games - capped)) / games).toFixed(1),
     avgStepsPerGame: +(stepsTotal / games).toFixed(1),
     maxStepsPerGame: maxSteps,
+    // Length of the runs that ended on their own ("nowhere to place"): the p50 here is
+    // what a player would feel as "one run", while avgStepsPerGame is dominated by the
+    // 601-step cap whenever games do not end.
+    stepsWhenEnded: endedSteps.length ? {
+      games: endedSteps.length,
+      p10: percentile(endedSteps, 0.1),
+      p25: percentile(endedSteps, 0.25),
+      p50: percentile(endedSteps, 0.5),
+      p75: percentile(endedSteps, 0.75),
+      p90: percentile(endedSteps, 0.9),
+      avg: +(endedSteps.reduce((sum, value) => sum + value, 0) / endedSteps.length).toFixed(1),
+    } : null,
     avgScore: Math.round(scoreTotal / games),
     medianScore: Math.round(percentile(scores, 0.5)),
     // Score quantiles of THIS model. Real-player quantiles are still what 08 §4.6
@@ -422,11 +508,15 @@ const result = {
   generatedAt: new Date().toISOString(),
   model: {
     source: 'imported from src/game/{board,shapes,scoring,honors}.js',
+    // `--faces=` changes this: the shipped game is 5³, everything else is a proposal
+    // being measured (the same-source lattice check only runs at the shipped size).
+    lattice: `${N}x${N}x${N}${N === SH ? ' (shipped)' : ` (simulated; shipped is ${SH}x${SH}x${SH})`}`,
     shellCells: CELLS.length,
     lines: LINES.length,
     placements: ALL_PLACEMENTS.length,
     orientations: ORIENTS.length,
     shapePool: SHAPE_NAMES,
+    batch: BATCH,
   },
   phase1: p1 && { ...p1, ms: t1 - t0 },
   phase2: p2 && { ...p2, ms: t2 - t1 },

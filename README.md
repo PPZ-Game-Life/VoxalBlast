@@ -12,7 +12,7 @@ npm run shot       # 桌面 + 移动端实机截图（需先跑 dev）
 npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手（需先跑 dev）
 ```
 
-当前版本 **0.8.2**：只有测量工具与文档——`tools/reachability.mjs` 新增 `--pool=` / `--batch=` 覆盖与 `endedNaturallyPct`，并据此量出「现行候选池下单局不会自然结束、道具整局没有出手机会」（矩阵见 [难度与单局长度测量](docs/Technical/DIFFICULTY_BASELINE.md)）。玩法、数值、画面与存档与 v0.8.1 相同；v0.8.1 是左右侧带自转跟手的修复。
+当前版本 **0.8.3**：仍然是测量工具与文档——`tools/reachability.mjs` 新增 `--faces=`（换晶格尺寸）、`--seed=` / `--rng=mulberry32`（换随机源）与 `stepsWhenEnded` 指标，并据此复核了"缩小棋盘能不能加大难度"：**不能**，4×4（56 格）在同一套 4 格池下自然结束率 19.5%，低于现行 5×5 的 28.3%。同时修正了 v0.8.2 的随机源偏差（旧 LCG 按种子把整局聚簇，E 池的数字从 42.3% 修正为 28.3%）。矩阵与判读见 [难度与单局长度测量](docs/Technical/DIFFICULTY_BASELINE.md)。玩法、数值、画面与存档与 v0.8.2 相同。
 
 ## 目录
 
@@ -39,4 +39,4 @@ npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手�
 - 视觉参数一律进 `src/rendering/config.js`，不在 `main.js` 散落魔法数字。
 - 每批改动验证：`npm test` + `npm run build` + `npm run shot`；动了手势/方向再加 `npm run probe:swipe`（实机断言三个手势的世界轴方向）。
 - 本轮验证记录：[v0.8.1 侧带自转方向修复验收](docs/Planning/04-MVP验收清单.md)；v0.8.0 渲染品质改版记录保留在 [04](docs/Planning/04-MVP验收清单.md)，旧版记录不代替本轮验证。
-- 难度与单局长度：动候选池或手牌大小之前先看 [v0.8.1 基线测量](docs/Technical/DIFFICULTY_BASELINE.md)（`npm run reachability` 加 `--pool=` / `--batch=` 可自行复现）。
+- 难度与单局长度：动候选池、棋盘尺寸或手牌大小之前先看 [v0.8.3 复核](docs/Technical/DIFFICULTY_BASELINE.md)（`npm run reachability` 加 `--pool=` / `--batch=` / `--faces=` / `--rng=` 可自行复现；结论性数字要用 `--rng=mulberry32` 加多种子）。
