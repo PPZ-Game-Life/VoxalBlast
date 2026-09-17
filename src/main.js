@@ -10,6 +10,8 @@ import {
   EffectComposer,
   EffectPass,
   RenderPass,
+  NormalPass,
+  SSAOEffect,
   SMAAEffect,
   SMAAPreset,
   ToneMappingEffect,
@@ -176,7 +178,7 @@ installPastoralBackdrop(document.querySelector('#app'))
 const scene = new THREE.Scene()
 scene.background = null
 // The opaque wooden shell supplies depth; the landscape behind the canvas is DOM,
-// not a skybox, so it stays crisp at any device pixel ratio for a few kB of SVG.
+// not a skybox, and is independent of the scene's reflection environment.
 const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 0.1, 100)
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraZoom = 1
@@ -204,7 +206,7 @@ const cubeGroup = new THREE.Group()
 scene.add(cubeGroup)
 
 // Opaque timber body. The shell is only a BACKING: it occludes the far faces and
-// fills the 0.09 notches between blocks (which is why it is darker than they are).
+// fills the narrow notches between blocks (which is why it is darker than they are).
 // It is inset behind them so that the blocks — not the shell — make up the surface
 // of the big cube.
 const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
@@ -259,12 +261,12 @@ function facePlaneLocalCenter(face) {
 // arithmetic there is, and it is written once.
 const BLOCK_HALF = style.blockSize / 2
 const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
-// THE block. ONE geometry instance is shared by the board's 150 blocks, the three
+// THE block. ONE geometry instance is shared by the board's 98 blocks, the three
 // candidate slots and the drag ghost, so a piece in the hand and a piece on the
 // board are literally the same object — same size, same six flat faces, same bevel.
 const blockGeometry = new RoundedBoxGeometry(style.blockSize, style.blockSize, style.blockSize, style.blockSegments, style.blockRadius)
 
-// The six 5×5 arrangements of blocks. There are exactly 150 blocks on the board
+// Six 5×5 faces share their edge/corner cells: 98 unique blocks on the board,
 // and every one of them is the SAME cube at the same gap from its neighbours, so
 // no block can ever look taller, thicker or larger than any other. Placing a piece
 // paints one of them; it does not add, grow, lift or move anything.
@@ -272,11 +274,11 @@ const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
 // One material per (state × tone step): the idle timber, the lighter timber of the
 // face under the camera, and one cached paint per colour. A block swaps a MATERIAL,
-// never a geometry, and 150 blocks never need 150 materials kept in sync.
-function blockWoodMaterial(baseColor, step) {
+// never a geometry. A small cache shares the three surface variants.
+function blockWoodMaterial(baseColor, step, variant) {
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(baseColor).multiplyScalar(step),
-    ...blockSurfaceMaps(),
+    ...blockSurfaceMaps(false, variant),
     bumpScale: style.woodBumpScale,
     roughness: style.woodRoughness,
     clearcoat: style.woodClearcoat,
@@ -285,20 +287,20 @@ function blockWoodMaterial(baseColor, step) {
   })
 }
 const BLOCK_TONES = style.blockToneSteps.length
-const blockWoodMaterials = style.blockToneSteps.map((step) => ({
-  idle: blockWoodMaterial(style.blockColor, step),
-  active: blockWoodMaterial(style.blockActiveColor, step),
+const blockWoodMaterials = style.blockToneSteps.map((step, variant) => ({
+  idle: blockWoodMaterial(style.blockColor, step, variant),
+  active: blockWoodMaterial(style.blockActiveColor, step, variant),
 }))
 const paintMaterials = new Map()
-function paintMaterial(color) {
-  const key = `${color}`
+function paintMaterial(color, variant = 0) {
+  const key = `${color}:${variant % 3}`
   if (paintMaterials.has(key)) return paintMaterials.get(key)
-  const material = makeMaterial(color)
+  const material = makeMaterial(color, 1, variant)
   paintMaterials.set(key, material)
   return material
 }
 
-// A cube whose 150 blocks are all one flat colour looks like ONE moulded crate;
+// A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
 // the reference is visibly assembled from separate pieces of timber. So every block
 // gets its own tone step, picked from a deterministic hash of its lattice cell —
 // deterministic because the grain must be identical on every load, or two
@@ -522,6 +524,21 @@ const effectPass = new EffectPass(camera, bloomEffect, toneMappingEffect, smaaEf
 // reason, and the removal condition, are in threeCompat.js.
 skipComposerDepthBlit(effectPass)
 composer.addPass(renderPass)
+// Contact shadows follow the geometry as the player rotates. A dedicated normal
+// target owns real depth, avoiding the composer's aliased depth-texture blit.
+const normalPass = new NormalPass(scene, camera)
+const contactDepth = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType)
+normalPass.renderTarget.depthTexture = contactDepth
+const occlusionEffect = new SSAOEffect(camera, normalPass.texture, {
+  ...VFX_CONFIG.occlusion,
+  color: new THREE.Color(VFX_CONFIG.occlusion.color),
+  samples: quality.lowPower ? 11 : VFX_CONFIG.occlusion.samples,
+  resolutionScale: quality.lowPower ? 0.5 : VFX_CONFIG.occlusion.resolutionScale,
+})
+const occlusionPass = new EffectPass(camera, occlusionEffect)
+occlusionPass.setDepthTexture(contactDepth)
+composer.addPass(normalPass)
+composer.addPass(occlusionPass)
 composer.addPass(effectPass)
 
 addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
@@ -818,10 +835,10 @@ function colorToVector4(color, alpha = 1) {
 // board to the signboards — the UI and the cube are visibly the same material
 // (05「同源」), and a piece keeps this exact material from the tray, through the
 // drag, onto the board.
-function makeMaterial(color, opacity = 1) {
+function makeMaterial(color, opacity = 1, variant = 0) {
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(color),
-    ...blockSurfaceMaps(true),
+    ...blockSurfaceMaps(true, variant),
     bumpScale: style.paintBumpScale,
     roughness: style.paintRoughness,
     clearcoat: style.paintClearcoat,
@@ -883,11 +900,8 @@ function cellWorld(face, u, v) {
   return cellLocal(face, u, v).applyMatrix4(cubeGroup.matrixWorld)
 }
 
-// Occupancy is PAINT, not geometry. Every one of the 150 tiles keeps its exact
-// size and position for the whole run; a tile whose lattice cell is occupied
-// simply takes that cell's colour. Because a shared edge/corner cell has its own
-// tile on each face that can see it, all of them paint together — which is what
-// makes a corner block wrap the corner instead of jutting off one edge.
+// Occupancy is paint, not geometry. Each unique lattice cell keeps one mesh and
+// one material; its adjacent faces share that same solid corner block.
 let occupiedColors = new Map()
 let tileFrontFace = null
 
@@ -901,7 +915,7 @@ function applyTileMaterials() {
     group.children.forEach((tile) => {
       const active = tile.userData.faces.includes(front)
       const color = occupiedColors.get(tile.userData.cell.join(','))
-      if (color !== undefined) tile.material = paintMaterial(color)
+      if (color !== undefined) tile.material = paintMaterial(color, tile.userData.tone)
       else tile.material = blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
     })
   })
@@ -3064,9 +3078,10 @@ function resize() {
   if (width === appliedCanvasSize.width && height === appliedCanvasSize.height) return
   appliedCanvasSize = { width, height }
   renderer.setSize(width, height, false)
-  composer.setSize(width, height)
   refreshCameraProjection()
   fitCameraToPlaySpace()
+  // SSAO copies the projection on resize, so the new aspect/FOV must be ready.
+  composer.setSize(width, height)
 }
 window.addEventListener('resize', resize)
 if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(sceneWrap)
@@ -3095,7 +3110,7 @@ function animate() {
     updateCubeSnap(delta)
   }
   // Bare tiles wear the lighter timber on the face the player is working on
-  // (05 §2). 150 material assignments is cheap, but the cached front face means it
+  // (05 §2). 98 material assignments is cheap, but the cached front face means it
   // only happens on the frames where the cube actually finished turning.
   if (findFrontFace() !== tileFrontFace) applyTileMaterials()
   updatePiecePreviews()
@@ -3115,6 +3130,12 @@ globalThis.__voxalblast = Object.freeze({
       trianglesPerBlock: blockGeometry.attributes.position.count / 3,
       environment: Boolean(scene.environment),
       hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
+      contactShadows: {
+        independentDepth: normalPass.renderTarget.depthTexture === contactDepth && composer.stableDepthTexture === null,
+        width: contactDepth.image.width,
+        height: contactDepth.image.height,
+        projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(camera.projectionMatrix),
+      },
       toneMapping: toneMappingEffect.mode,
       programs: renderer.info.programs?.length,
       lowPower: quality.lowPower,

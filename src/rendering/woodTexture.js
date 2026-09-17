@@ -75,21 +75,43 @@ function makeCanvas(width, height) {
 const GRAIN_RECIPE = Object.freeze({ size: 256 })
 let grainCanvas = null
 
-function buildSurfaceCanvas(painted = false) {
+function noise(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y)
+  const fx = x - ix, fy = y - iy
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
+  const hash = (a, b) => {
+    let h = Math.imul(a, 374761393) ^ Math.imul(b, 668265263) ^ Math.imul(seed, 1274126177)
+    h = Math.imul(h ^ (h >>> 13), 1274126177)
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295
+  }
+  const a = hash(ix, iy), b = hash(ix + 1, iy), c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1)
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy
+}
+
+function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
   const { size } = GRAIN_RECIPE
   const canvas = makeCanvas(size, size)
   const ctx = canvas.getContext('2d')
   const pixels = ctx.createImageData(size, size)
-  // Periodic, coherent bands avoid both texture seams and the old crossing
-  // scribbles. Broad pigment variation survives at real game size.
+  const seed = 1847 + variant * 73
+  // Domain-warped pigment washes, with a few broad maple growth contours.
+  // No directional light is baked in: bevel highlights still track the sun.
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const u = x / size * Math.PI * 2
-      const v = y / size * Math.PI * 2
-      const wash = Math.sin(u + Math.sin(v)) * Math.cos(v * 2 - Math.sin(u))
-      const grain = Math.pow(0.5 + 0.5 * Math.sin(u * 9 + Math.sin(v) * 1.8 + Math.sin(v * 2) * 0.4), 12)
-      const fibre = Math.sin(u * 27 + Math.sin(v * 2) * 2)
-      const value = painted ? 248 + wash * 4 : 245 + wash * 5 - grain * 10 + fibre * 1.5
+      const u = x / (size - 1), v = y / (size - 1)
+      const warp = noise(u * 3, v * 3, seed)
+      const cloud = noise(u * 5 + warp * 2, v * 5 + warp, seed + 1)
+      const brush = noise(u * 13 + warp * 3, v * 9, seed + 2)
+      const fine = noise(u * 46, v * 46, seed + 3)
+      const rings = Math.pow(0.5 + 0.5 * Math.sin((u * 2.2 + v * 0.45 + warp * 1.7) * Math.PI * 2), 16)
+      const wash = cloud * 0.68 + brush * 0.25 + fine * 0.07
+      // Keep the UV seams quiet, without dark painted borders or fake lighting.
+      const edge = Math.min(u, v, 1 - u, 1 - v)
+      const fade = Math.min(1, edge / 0.055)
+      let value
+      if (channel === 'roughness') value = 184 + wash * 64
+      else if (channel === 'height') value = 120 + (wash - 0.5) * (painted ? 30 : 45) - (painted ? 0 : rings * 4)
+      else value = 240 + ((wash - 0.5) * (painted ? 28 : 38) - (painted ? 0 : rings * 8)) * fade
       const i = (y * size + x) * 4
       pixels.data[i] = value
       pixels.data[i + 1] = value
@@ -106,31 +128,23 @@ function buildGrainCanvas() {
   return grainCanvas
 }
 
-let paintedTexture
-let woodBumpTexture
-let paintBumpTexture
-export function blockSurfaceMaps(painted = false) {
-  if (!paintedTexture) {
-    paintedTexture = new THREE.CanvasTexture(buildSurfaceCanvas(true))
-    paintedTexture.colorSpace = THREE.SRGBColorSpace
-    paintedTexture.wrapS = paintedTexture.wrapT = THREE.RepeatWrapping
-    paintedTexture.anisotropy = 4
-    woodBumpTexture = new THREE.CanvasTexture(buildGrainCanvas())
-    paintBumpTexture = new THREE.CanvasTexture(paintedTexture.image)
-    for (const texture of [woodBumpTexture, paintBumpTexture]) {
-      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
-      texture.anisotropy = 4
-      // Height is data; leave colorSpace at NoColorSpace.
-    }
+const surfaceCache = new Map()
+export function blockSurfaceMaps(painted = false, variant = 0) {
+  const key = `${painted}:${variant % 3}`
+  if (surfaceCache.has(key)) return surfaceCache.get(key)
+  const maps = {}
+  for (const [property, channel] of [['map', 'color'], ['bumpMap', 'height'], ['roughnessMap', 'roughness']]) {
+    const texture = new THREE.CanvasTexture(buildSurfaceCanvas(painted, variant % 3, channel))
+    if (channel === 'color') texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = 4
+    maps[property] = texture
   }
-  return {
-    map: painted ? paintedTexture : woodGrainTextureRepeating(1),
-    bumpMap: painted ? paintBumpTexture : woodBumpTexture,
-  }
+  surfaceCache.set(key, maps)
+  return maps
 }
 
 // One CanvasTexture per repeat value, because `repeat` lives on the Texture and the
-// 5-unit shell, a 0.91 block and a signboard cannot share one. `repeat = 1` is a
+// 5-unit shell, a 0.94 block and a signboard cannot share one. `repeat = 1` is a
 // valid recipe, so this is the only entry point the game needs.
 const repeatCache = new Map()
 export function woodGrainTextureRepeating(repeat = 1) {

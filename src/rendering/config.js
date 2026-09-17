@@ -17,7 +17,7 @@ export const RENDER_PALETTE = Object.freeze({
 
 // v0.7: a WOODEN TOY built out of BLOCKS.
 //
-// The board is not a shell with patterns painted on it — it is 150 small CUBES
+// The board is not a shell with patterns painted on it — it is 98 unique CUBES
 // whose six faces are flat, sitting in the 5×5×5 shell lattice with a small gap
 // between neighbours. Their outer faces are flush with the big cube's surface, so
 // the board reads as one large cube assembled from equal blocks, and the narrow
@@ -47,27 +47,27 @@ export const BOARD_STYLE = Object.freeze({
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
   blockSize: 0.94, // narrow joints, with readable rounded shoulders
-  blockRadius: 0.075, // flat face remains 84% of the block width
+  blockRadius: 0.085, // broad polished shoulder, with 82% of the face still flat
   blockSegments: 3,
-  blockColor: 0xe2af78,
-  blockActiveColor: 0xe6b67f,
-  // A cube whose 150 blocks are all one flat colour looks like ONE moulded crate;
+  blockColor: 0xe4a16d,
+  blockActiveColor: 0xe7a773,
+  // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
   blockToneSteps: Object.freeze([0.94, 0.97, 1, 1.02, 1.04, 1.06]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.48,
-  woodClearcoat: 0.26,
-  woodClearcoatRoughness: 0.38,
-  woodBumpScale: 0.012,
-  paintBumpScale: 0.004,
-  environmentIntensity: 0.5,
+  woodRoughness: 0.46,
+  woodClearcoat: 0.38,
+  woodClearcoatRoughness: 0.3,
+  woodBumpScale: 0.022,
+  paintBumpScale: 0.011,
+  environmentIntensity: 0.7,
   // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.29,
-  paintClearcoat: 0.72,
-  paintClearcoatRoughness: 0.2,
+  paintRoughness: 0.31,
+  paintClearcoat: 0.85,
+  paintClearcoatRoughness: 0.17,
   voxelEdgeOpacity: 0.12,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
@@ -112,6 +112,10 @@ export const LIGHTING_STYLE = Object.freeze({
   shadowNormalBias: 0.012,
   environmentWidth: 256,
   environmentHeight: 128,
+  reflectionKeyIntensity: 12,
+  reflectionKeyFocus: 48,
+  reflectionRimIntensity: 4,
+  reflectionRimFocus: 32,
 })
 
 // Opening layout (v0.2.31): the cube no longer starts as a bare shell. A few
@@ -213,6 +217,19 @@ export const ROTATE_STYLE = Object.freeze({
 })
 
 export const VFX_CONFIG = Object.freeze({
+  occlusion: Object.freeze({
+    samples: 16,
+    rings: 3,
+    radius: 0.075,
+    intensity: 1.65,
+    bias: 0.012,
+    fade: 0.018,
+    color: 0x60422e,
+    worldProximityThreshold: 0.35,
+    worldProximityFalloff: 0.45,
+    luminanceInfluence: 0.15,
+    resolutionScale: 0.75,
+  }),
   clear: Object.freeze({
     duration: 0.72,
     life: 0.62,

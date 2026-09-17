@@ -1,6 +1,6 @@
 # 技术结构与开发入口
 
-> v0.8.1 / 2026-09-16，依据仓库文件核对；非运行性能报告。
+> 渲染章节同步至 v0.8.5 / 2026-09-17，依据仓库文件核对；非运行性能报告。
 
 ## 模块地图
 
@@ -15,7 +15,7 @@
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光与程序化线性 HDR 环境纹理 |
-| src/rendering/woodTexture.js | 确定性的低对比原木 / 彩漆 `map` 与独立 `bumpMap`；UI 另用固定种子的 CSS 木纹 data URL |
+| src/rendering/woodTexture.js | 原木 / 彩漆各三组确定性域扭曲云纹，独立 `map`、`bumpMap`、`roughnessMap`；UI 另用固定种子的 CSS 木纹 data URL |
 | src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
 | public/art/ | 背景 WebP 与来源、提示词、尺寸说明 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射 |
@@ -26,22 +26,26 @@
 
 ## 渲染与生命周期
 
-Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采用透视相机、圆角几何、阴影与程序环境反射；postprocessing 组织渲染、Bloom、ACES、SMAA；three.quarks 批量处理粒子。
+Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采用透视相机、圆角几何、阴影与程序环境反射；postprocessing 组织渲染、法线/深度、SSAO、Bloom、ACES、SMAA；three.quarks 批量处理粒子。v0.8.5 材质实现对照用户于 2026-09-17 指定的暖木彩漆参考图，未改变棋盘规则。
 
-棋盘逻辑保持 5×5×5 外壳的 98 个唯一格，六面合计 150 个表面格。`buildFaceTiles()` 按晶格坐标去重，只创建 98 个 mesh；棱/角 mesh 的 `userData.faces` 同时记录相邻两面/三面，Three.js 场景树仍只有一个父 group。当前面提亮检查这一归属列表，放置按 cell 换材质，不再在每面叠放同一实体。棋盘、候选与拖拽共用 `RoundedBoxGeometry(0.94, 0.94, 0.94, 3, 0.075)`；`hullInset = 0.68` 指背板总边长减少量，背板为 4.32³，单侧缩进 0.34，不能当作单侧 0.68 使用。
+棋盘逻辑保持 5×5×5 外壳的 98 个唯一格，六面合计 150 个表面格。`buildFaceTiles()` 按晶格坐标去重，只创建 98 个 mesh；棱/角 mesh 的 `userData.faces` 同时记录相邻两面/三面，Three.js 场景树仍只有一个父 group。当前面提亮检查这一归属列表，放置按 cell 换材质，不再在每面叠放同一实体。棋盘、候选与拖拽共用 `RoundedBoxGeometry(0.94, 0.94, 0.94, 3, 0.085)`；`hullInset = 0.68` 指背板总边长减少量，背板为 4.32³，单侧缩进 0.34，不能当作单侧 0.68 使用。
 
-原木与彩漆分别使用低对比纹理、微弱凹凸和清漆参数；`map` 为 sRGB，`bumpMap` 保持数据色彩空间。`toyLights.js` 生成共享的 256×128 HalfFloat 线性 HDR 等距柱状环境纹理，由各 WebGLRenderer 的 PMREM 分别处理，不跨 WebGL context 复用 GPU render target。主 renderer 使用 `NoToneMapping`，composer 使用 HalfFloat 缓冲，并在最终效果链执行一次 `ACES_FILMIC`；候选与主页直接使用 renderer 的 `ACESFilmicToneMapping`，曝光统一取 `BOARD_STYLE.exposure`，避免主画布与小预览的色彩流程不同。
+`blockSurfaceMaps(painted, variant)` 为原木和彩漆各缓存三组 256×256 域扭曲云纹，将色彩、高度、粗糙度分开生成；`map` 为 sRGB，`bumpMap` 与 `roughnessMap` 保持数据色彩空间。纹理不烘焙方向光。原木基色/当前面基色为 `#E4A16D / #E7A773`，另按晶格坐标取确定性色调和变体。方块均用 `MeshPhysicalMaterial`：原木的 `roughness / clearcoat / clearcoatRoughness / bumpScale` 为 `0.46 / 0.38 / 0.3 / 0.022`，彩漆为 `0.31 / 0.85 / 0.17 / 0.011`；粗糙度图调制基础 roughness。背板和 UI 保留各自的纹理入口。
+
+`toyLights.js` 生成共享的 256×128 HalfFloat 线性 HDR 等距柱状环境纹理，由各 WebGLRenderer 的 PMREM 分别处理，不跨 WebGL context 复用 GPU render target。`environmentIntensity = 0.7`；主反射光箱强度/集中指数为 `12 / 48`，轮廓反射光箱为 `4 / 32`，方向与各自直接光一致。主 renderer 使用 `NoToneMapping`，composer 使用 HalfFloat 缓冲，并在最终效果链执行一次 `ACES_FILMIC`；候选与主页直接使用 renderer 的 `ACESFilmicToneMapping`，曝光统一取 `BOARD_STYLE.exposure = 1`。
+
+主画布 pass 顺序为 `RenderPass → NormalPass → EffectPass(SSAO) → EffectPass(Bloom, ACES, SMAA)`。`NormalPass.renderTarget` 自持一个独立 `DepthTexture`（`UnsignedIntType`），先绘制本帧法线与深度，再由 `occlusionPass.setDepthTexture(contactDepth)` 提供给 AO；这是真实场景深度，不是占位纹理，也不需要 composer 的 stable-depth blit。AO 为暖褐 `#60422E`，主要参数 `radius 0.075 / intensity 1.65 / bias 0.012 / fade 0.018`，世界接近阈值/衰减 `0.35 / 0.45`，亮度影响 0.15。桌面采样/圈数/分辨率比例 `16 / 3 / 0.75`，移动或低性能档 `11 / 3 / 0.5`；采样数不取圈数的整倍数。主 composer 保留桌面 4× MSAA，低性能档为 0。
 
 依赖实测版本：three 0.172.0、three.quarks 0.10.18、postprocessing 6.39.4、vite 6.4.3（package.json 里是 ^ 范围）。`src/rendering/threeCompat.js` 是引擎兼容桥，装两件事：
 
 1. **quarks `updateRange`**：three r159 起用 `updateRanges`/`addUpdateRange()` 取代 `BufferAttribute.updateRange` 并在 r172 移除旧字段，而 quarks 0.10.18 仍写旧字段，缺桥时第一次消除或道具爆发就在 `animate()` 内抛错，画面冻结而逻辑继续。它必须在粒子导入之前执行；升级 three.quarks 到 0.17.x 后删除该桥并重跑 04 的停摆回归项。同一处坑还有 `emissionBursts[].count`：必须是 ValueGenerator（`new ConstantValue(n)`），传裸数字同样会抛错。
-2. **postprocessing 深度纹理**：`SMAAEffect` 声明 `EffectAttribute.DEPTH`，于是承载它的 `EffectPass` 会向 composer 索取深度纹理；`EffectComposer.addPass()` 用 `DepthTexture.clone()` 造出「稳定深度目标」，而 three r172 按 `texture.source` 共享同一个 GPU 纹理，克隆体与输入缓冲的深度附件是同一张图。`RenderPass` 置 `needsDepthBlit` 后，composer 把这张图 blit 给自己，驱动直接拒绝：`GL_INVALID_OPERATION: glBlitFramebuffer: Read and write depth stencil attachments cannot be the same image`。画面本身看不出问题（本链效果都不读深度，`EffectPass` 只把 `depth` 转给片元着色器显式接收它的效果），但每次加载都会产生一次非法 GPU 调用，并被 `npm run shot` 判为失败。`skipComposerDepthBlit(effectPass)` 在 `addPass()` 之前给该 pass 一个占位深度纹理，使其 `needsDepthTexture === false`，composer 便不再创建这对别名目标。**postprocessing 不再克隆深度纹理后删除它；若链上加入真正读深度的效果（SSAO、景深、描边），这个替换不再成立。**
+2. **postprocessing 深度纹理**：`SMAAEffect` 声明 `EffectAttribute.DEPTH`，但当前 COLOR 检边且 predication 关闭的配置不采样深度。composer 若应请求创建 stable depth，会通过 `DepthTexture.clone()` 与输入深度共享 `texture.source`；three r172 因而复用同一 GPU 深度图，blit 时触发 `Read and write depth stencil attachments cannot be the same image`。`skipComposerDepthBlit(effectPass)` 仅在最终 Bloom/ACES/SMAA pass 的 `addPass()` 之前设置占位深度，避免无用申请。**它不用于 SSAO：AO pass 在加入 composer 前绑定上述 NormalPass 的独立真实深度。** 两个 pass 均已有各自的深度来源，composer 不创建别名 stable target；无需为此关闭 HDR 或 MSAA。postprocessing 修复克隆深度别名后再评估删除兼容桥，新增真正读深度的效果必须绑定有效的场景深度。
 
 三个候选各有透明 WebGLRenderer 与正交相机，主页另有静态按需渲染器。主页打开时主动画循环跳过场景绘制。质量档位初始化时选择，像素比/后处理/粒子与阴影作相应降级；不宣称已有运行时 FPS 自适应。
 
 背景从 `${import.meta.env.BASE_URL}art/pastoral-valley.webp` 加载，使用 `object-fit: cover` 中心裁切；成功后才隐藏原 SVG，失败时移除图片并保留 SVG。背景为 `aria-hidden`、不接收指针的独立 DOM 层，天空底色留在 `html`、`body` 透明。资产为随构建发布的本地 WebP，不依赖在线生图服务；尺寸和来源见 [资产说明](../../public/art/README.md)。
 
-主画布由 ResizeObserver 追踪容器尺寸。棋盘姿态采用四元数基准与展示偏摆；鼠标/触摸的面坐标通过投影换算，不从屏幕像素直接改规则格子。
+主画布由 ResizeObserver 追踪容器尺寸。resize 先更新 renderer 尺寸及相机 FOV/aspect/投影、重新取景，再调用 `composer.setSize()`，保证 SSAO 缓存的是新投影矩阵及其逆矩阵。NormalPass 的 render target 随 composer 调整尺寸，Three.js 在绑定时同步其独立深度纹理尺寸，无需替换 `contactDepth`。棋盘姿态采用四元数基准与展示偏摆；鼠标/触摸的面坐标通过投影换算，不从屏幕像素直接改规则格子。
 
 ## 存档边界
 

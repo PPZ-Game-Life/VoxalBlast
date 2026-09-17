@@ -81,10 +81,9 @@ export const THREE_QUARKS_COMPAT = true
 // composer never creates the aliased pair and never blits it. The texture is never
 // attached to a render target and never sampled; it exists to answer that one question.
 //
-// Delete this the moment postprocessing stops cloning its depth textures — and if an
-// effect that really READS depth (SSAO, depth of field, outline) joins the chain, this
-// substitution is no longer valid: that effect needs a populated depth target, aliased
-// blit or not.
+// Use only for passes that do not read depth. The separate SSAO pass in main.js
+// owns a real NormalPass depth target and must never receive this placeholder.
+// Delete this workaround when postprocessing stops aliasing depth texture sources.
 export function skipComposerDepthBlit(pass) {
   const placeholder = new DepthTexture(1, 1)
   placeholder.name = 'VoxalBlast.EffectPassDepthPlaceholder'

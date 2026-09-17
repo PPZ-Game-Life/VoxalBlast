@@ -27,8 +27,8 @@ function toyEnvironment() {
       const phi = ((x + 0.5) / width - 0.5) * Math.PI * 2
       direction.set(Math.sin(theta) * Math.cos(phi), Math.cos(theta), Math.sin(theta) * Math.sin(phi))
       const sky = Math.max(0, direction.y)
-      const softbox = 5 * Math.pow(Math.max(0, direction.dot(key)), 24)
-      const rimbox = 2 * Math.pow(Math.max(0, direction.dot(rim)), 18)
+      const softbox = light.reflectionKeyIntensity * Math.pow(Math.max(0, direction.dot(key)), light.reflectionKeyFocus)
+      const rimbox = light.reflectionRimIntensity * Math.pow(Math.max(0, direction.dot(rim)), light.reflectionRimFocus)
       const offset = (y * width + x) * 4
       const rgb = [
         0.28 + sky * 0.38 + softbox + rimbox,
