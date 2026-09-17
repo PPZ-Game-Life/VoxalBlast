@@ -5,45 +5,60 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import {
-  SHAPE_NAMES, PLACEMENTS, POOLS, POOL_IDS, poolById, rngFor, stageAt, drawHand, makeOpening,
+  SHAPE_NAMES, PLACEMENTS, POOLS, poolById, OPENINGS, openingById,
+  rngFor, stageAt, drawHand, makeOpening,
   occupiedCount, legalCount, chooseMove, settle,
 } from './difficulty-model.mjs'
 
 export const GROUPS = Object.freeze({
-  A: { structured: false, staged: false, poolId: 'current', label: '现行开局 + 等概率发牌' },
-  B: { structured: true, staged: false, poolId: 'current', label: '结构化开局 + 等概率发牌' },
-  C: { structured: false, staged: true, poolId: 'current', label: '现行开局 + 阶段发牌' },
-  D: { structured: true, staged: true, poolId: 'current', label: '结构化开局 + 阶段发牌' },
+  A: { structured: false, staged: false, poolId: 'current', openingId: 'current', label: '现行开局 + 等概率发牌' },
+  B: { structured: true, staged: false, poolId: 'current', openingId: 'current', label: '结构化开局 + 等概率发牌' },
+  C: { structured: false, staged: true, poolId: 'current', openingId: 'current', label: '现行开局 + 阶段发牌' },
+  D: { structured: true, staged: true, poolId: 'current', openingId: 'current', label: '结构化开局 + 阶段发牌' },
 })
 
-// Arm ids are `<pool>/<dealer>`, e.g. `e/staged`. The legacy A/B/C/D ids remain
-// valid so the earlier opening experiment stays reproducible with one tool.
+// Arm ids are `<pool>/<dealer>` or `<pool>/<dealer>/<opening>`, e.g. `e/staged`,
+// `current/uniform/empty`. The legacy A/B/C/D ids remain valid so the earlier
+// experiments stay reproducible with one tool. The 2-part form means the shipped
+// opening plan.
 export const DEALERS = Object.freeze({ uniform: false, staged: true })
+
+export function armParts(id) {
+  if (GROUPS[id]) return [GROUPS[id].poolId, GROUPS[id].staged ? 'staged' : 'uniform', GROUPS[id].openingId]
+  const parts = String(id).split('/')
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !part)) {
+    throw new Error(`unknown arm "${id}"; use A|B|C|D or <pool>/<${Object.keys(DEALERS).join('|')}>[/<opening>]`)
+  }
+  const [poolId, dealer, openingId = 'current'] = parts
+  if (!Object.prototype.hasOwnProperty.call(DEALERS, dealer)) {
+    throw new Error(`unknown dealer "${dealer}" in arm "${id}"; use ${Object.keys(DEALERS).join('|')}`)
+  }
+  return [poolById(poolId).id, dealer, openingById(openingId).id] // both throw on an unknown id
+}
 
 export function resolveGroup(id) {
   if (GROUPS[id]) return GROUPS[id]
-  const [poolId, dealer, ...rest] = String(id).split('/')
-  if (rest.length || !Object.prototype.hasOwnProperty.call(DEALERS, dealer)) {
-    throw new Error(`unknown arm "${id}"; use A|B|C|D or <pool>/${Object.keys(DEALERS).join('|')} with pool in ${POOL_IDS.join(', ')}`)
-  }
+  const [poolId, dealer, openingId] = armParts(id)
+  const dealerLabel = dealer === 'staged' ? '阶段发牌' : '等概率发牌'
   return Object.freeze({
     structured: false,
     staged: DEALERS[dealer],
-    poolId: poolById(poolId).id, // throws on an unknown pool id
-    label: `${poolById(poolId).label} × ${dealer === 'staged' ? '阶段发牌' : '等概率发牌'}`,
+    poolId,
+    openingId,
+    label: `${poolById(poolId).label} × ${dealerLabel} × ${openingById(openingId).label}`,
   })
 }
 
-// Arms that share a pool differ only in the dealer (and vice versa): comparing every
-// such pair isolates one factor instead of reporting a pool+dealer mixture.
+// Arms that share every factor except one differ by exactly one lever: comparing
+// every such pair isolates that lever instead of reporting a mixture.
 function armPairs(ids) {
-  const parts = new Map(ids.map((id) => [id, id.split('/')]))
+  const parts = new Map(ids.map((id) => [id, armParts(id)]))
   const pairs = []
   for (let i = 0; i < ids.length; i += 1) {
     for (let j = i + 1; j < ids.length; j += 1) {
-      const [leftPool, leftDealer] = parts.get(ids[i])
-      const [rightPool, rightDealer] = parts.get(ids[j])
-      if ((leftPool === rightPool) !== (leftDealer === rightDealer)) pairs.push([ids[i], ids[j]])
+      const left = parts.get(ids[i]), right = parts.get(ids[j])
+      const differing = left.filter((value, index) => value !== right[index]).length
+      if (differing === 1) pairs.push([ids[i], ids[j]])
     }
   }
   return pairs
@@ -125,7 +140,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   const { witness, ...openingMeta } = opening.meta
   const record = {
     group, seed, gameIndex, strategy, steps, ended, censored: !ended,
-    pool: config.poolId, dealer: config.staged ? 'staged' : 'uniform',
+    pool: config.poolId, dealer: config.staged ? 'staged' : 'uniform', openingPlan: config.openingId,
     opening: openingMeta, firstHand, firstClearStep, clearMoves, lineTotal,
     addedCells, clearedCells, longestDry, tightMoves, samePreHandMobilityReleases,
     deals, freshDealStuck, finalOccupied: occupiedCount(state), dealShapeCounts,
@@ -320,7 +335,7 @@ export function parseArgs(argv) {
   const groups = list(opts.arms || opts.groups || 'A,B,C,D', mode)
   const strategies = list(opts.strategies || 'noise', 'strategies')
   if (mode === 'groups' && groups.some((g) => !GROUPS[g])) throw new Error('groups must be A,B,C,D')
-  groups.forEach((g) => resolveGroup(g)) // throws on an unknown pool id or dealer
+  groups.forEach((g) => resolveGroup(g)) // throws on an unknown pool, dealer or opening id
   if (strategies.some((s) => !['noise', 'greedy', 'random', 'space'].includes(s))) throw new Error('Unknown strategy')
   const seeds = list(opts.seeds || '1,2,3', 'seeds').map((s) => {
     const n = Number(s)
@@ -349,6 +364,10 @@ async function main() {
         id, label: POOLS[id].label,
         weights: Object.fromEntries(POOLS[id].entries.map((entry) => [entry.name, entry.weight])),
       })),
+      openings: [...new Set(options.groups.map((group) => resolveGroup(group).openingId))].map((id) => ({
+        id, label: OPENINGS[id].label, plan: OPENINGS[id].plan, targetCells: OPENINGS[id].targetCells,
+      })),
+      openingNote: 'Per-face CELL targets passed to the shipped Board.seedOpening; it may fall short and never seeds a line. A 5x5 face cannot legally hold more than 16 seeded cells, so max is best-effort.',
       poolDealing: 'Uniform arms draw from the pool\'s cumulative weight table; staged arms renormalize the stage weights over the groups the pool still covers. Every slot consumes exactly two random values in both arms, so paired streams stay aligned.',
       structured: 'Exact paired baseline cell count; fixed first hand; >=2 distinct shapes with >=2 unique placements; immediate +z clear with witnessed complete three-piece path; bounded search; explicit baseline fallback',
       stages: [0, 12, 30, 48, 54, 72, 78].map((step) => ({ step, ...stageAt(step) })),

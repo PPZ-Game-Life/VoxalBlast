@@ -5,11 +5,14 @@ import { Board, SH, FACES, faceLattice } from '../src/game/board.js'
 import { SHAPES } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 import {
-  CELLS, PLACEMENTS, SHAPE_NAMES, POOLS, POOL_IDS, poolById, stateFromBoard, boardFromState, stateKey,
+  CELLS, PLACEMENTS, SHAPE_NAMES, POOLS, POOL_IDS, poolById, OPENINGS, OPENING_IDS, openingById,
+  stateFromBoard, boardFromState, stateKey,
   occupiedCount, canPlace, settle, rngFor, stageAt, drawHand, makeOpening,
   legalCount, chooseMove,
 } from './difficulty-model.mjs'
-import { parseArgs, quantile, wilson, summarizeGames, pairedComparison, runGame, resolveGroup } from './difficulty-abcd.mjs'
+import {
+  parseArgs, quantile, wilson, summarizeGames, pairedComparison, runGame, resolveGroup, armParts,
+} from './difficulty-abcd.mjs'
 
 let checks = 0
 function test(name, fn) {
@@ -396,6 +399,61 @@ test('staged dealing depends only on group membership, never on relative weights
     if (JSON.stringify(drawHand(c, 0, false, 'd')) !== JSON.stringify(drawHand(e, 0, false, 'w90'))) differing += 1
   }
   assert.ok(differing > 100, `uniform deals must still differ (differing=${differing})`)
+})
+
+test('opening plans are explicit, validated and actually change the seeded board', () => {
+  assert.deepEqual(OPENING_IDS, ['empty', 'current', 'mid', 'high', 'max'])
+  assert.equal(Object.values(OPENINGS.empty.plan).every((cells) => cells === 0), true)
+  // The shipped plan must carry the shipped targets verbatim (every other face 0).
+  for (const [face, cells] of Object.entries(OPENING_LAYOUT)) assert.equal(OPENINGS.current.plan[face], cells)
+  assert.equal(Object.values(OPENINGS.current.plan).reduce((sum, cells) => sum + cells, 0), 13)
+  assert.equal(Object.keys(OPENINGS.current.plan).length, 6)
+  for (const id of ['', 'Current', 'huge', 'current ']) assert.throws(() => openingById(id))
+  // The shipped plan must seed exactly what the real seeder seeds; `empty` must
+  // reproduce the pre-v0.2.31 board and consume no opening randomness at all.
+  for (const gameIndex of [0, 1, 7, 42]) {
+    const real = new Board()
+    real.seedOpening(SHAPES, OPENING_LAYOUT, rngFor(5, gameIndex, 'opening'))
+    const model = makeOpening({ seed: 5, gameIndex, openingId: 'current' })
+    assertEquivalent(real, model.state)
+    const empty = makeOpening({ seed: 5, gameIndex, openingId: 'empty' })
+    assert.equal(occupiedCount(empty.state), 0)
+    let draws = 0
+    const counted = new Board()
+    counted.seedOpening(SHAPES, OPENINGS.empty.plan, () => { draws += 1; return 0.5 })
+    assert.equal(draws, 0, 'an empty plan must not draw opening randomness')
+  }
+  // Density must actually move, and stay ordered across the plans (300 games each).
+  const mean = (id) => {
+    let total = 0
+    for (let gameIndex = 0; gameIndex < 300; gameIndex += 1) {
+      total += occupiedCount(makeOpening({ seed: 1, gameIndex, openingId: id }).state)
+    }
+    return total / 300
+  }
+  const means = OPENING_IDS.map(mean)
+  for (let i = 1; i < means.length; i += 1) assert.ok(means[i] > means[i - 1], `opening density not increasing: ${means.join(', ')}`)
+  assert.equal(means[0], 0)
+  assert.ok(means[1] > 14 && means[1] < 18, `current opening mean was ${means[1]}`)
+  assert.ok(means[4] > 38, `max opening mean was ${means[4]}`)
+  // Seeded cells may never complete a line on any face, at any density.
+  for (const id of OPENING_IDS) {
+    for (let gameIndex = 0; gameIndex < 40; gameIndex += 1) {
+      assert.equal(boardFromState(makeOpening({ seed: 9, gameIndex, openingId: id }).state).hasFullLineOnAnyFace(), false)
+    }
+  }
+  assert.throws(() => openingById('current').plan['+z'] = 99) // the plan is frozen, not a live config
+})
+
+test('arm ids carry pool, dealer and opening, and reject unknown combinations', () => {
+  assert.deepEqual(armParts('e/staged'), ['e', 'staged', 'current'])
+  assert.deepEqual(armParts('current/uniform/empty'), ['current', 'uniform', 'empty'])
+  assert.deepEqual(armParts('A'), ['current', 'uniform', 'current'])
+  assert.equal(resolveGroup('e/staged/high').openingId, 'high')
+  assert.equal(resolveGroup('e/staged/high').label.includes('16') || resolveGroup('e/staged/high').label.includes('14/7/7'), true)
+  for (const id of ['e', 'e/staged/current/extra', 'e/slow', 'e/staged/nope', 'e//current']) assert.throws(() => armParts(id))
+  // One-factor pairing: three arms that differ in exactly one component produce three pairs.
+  assert.equal(armParts('current/uniform/current').filter((v, i) => v !== armParts('current/uniform/high')[i]).length, 1)
 })
 
 console.log(`\n${checks}/${checks} measurement test groups passed. Official gameplay files were not edited.`)

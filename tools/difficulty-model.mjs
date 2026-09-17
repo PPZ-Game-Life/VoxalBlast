@@ -64,6 +64,51 @@ export function poolById(id = 'current') {
   return pool
 }
 
+// Named opening plans. Values are per-face CELL targets handed to the shipped
+// `Board.seedOpening`, which treats them as a target (it may fall short when random
+// attempts collide) and refuses any seeded line. `current` is the shipped
+// OPENING_LAYOUT; `empty` reproduces the pre-v0.2.31 board with no preset.
+//
+// A 5x5 face cannot legally hold more than 16 seeded cells: 17 cells force a
+// complete row or column, which the seeder rejects. So 16 is the per-face ceiling
+// and `max` is a best-effort plan, not a guarantee.
+const FACE_CELL_CEILING = 16
+const OPENING_SPECS = Object.freeze({
+  empty: { label: '空棋盘（无开局预置）', plan: { '+z': 0, '+y': 0, '+x': 0 } },
+  current: { label: '现行预置 7/3/3', plan: OPENING_LAYOUT },
+  mid: { label: '加重预置 10/5/5', plan: { '+z': 10, '+y': 5, '+x': 5 } },
+  high: { label: '加重预置 14/7/7', plan: { '+z': 14, '+y': 7, '+x': 7 } },
+  max: { label: '极限预置 16/16/16', plan: { '+z': 16, '+y': 16, '+x': 16 } },
+})
+
+export const OPENING_IDS = Object.freeze(Object.keys(OPENING_SPECS))
+
+function buildOpening(id) {
+  const spec = OPENING_SPECS[id]
+  const plan = { ...spec.plan }
+  for (const face of Object.keys(plan)) {
+    if (!FACES.includes(face)) throw new Error(`opening ${id} names unknown face ${face}`)
+  }
+  for (const face of FACES) {
+    const target = plan[face] ?? 0
+    if (!Number.isSafeInteger(target) || target < 0 || target > FACE_CELL_CEILING) {
+      throw new Error(`opening ${id} face ${face} must be an integer 0..${FACE_CELL_CEILING} cells`)
+    }
+    plan[face] = target
+  }
+  Object.freeze(plan)
+  const targetCells = FACES.reduce((sum, face) => sum + plan[face], 0)
+  return Object.freeze({ id, label: spec.label, plan, targetCells })
+}
+
+export const OPENINGS = Object.freeze(Object.fromEntries(OPENING_IDS.map((id) => [id, buildOpening(id)])))
+
+export function openingById(id = 'current') {
+  const opening = OPENINGS[id]
+  if (!opening) throw new Error(`unknown opening "${id}"; known openings: ${OPENING_IDS.join(', ')}`)
+  return opening
+}
+
 // Relative weights are consumed through an explicit cumulative table so an
 // unweighted pool stays byte-identical to the old uniform index arithmetic.
 function pickWeighted(pool, r) {
@@ -542,9 +587,9 @@ export function chooseMove(state, hand, rng, strategy = 'noise') {
   return null
 }
 
-function seededBoard(rng) {
+function seededBoard(rng, openingId = 'current') {
   const board = new Board()
-  board.seedOpening(SHAPES, OPENING_LAYOUT, rng)
+  board.seedOpening(SHAPES, openingById(openingId).plan, rng)
   if (board.hasFullLineOnAnyFace()) throw new Error('Board.seedOpening produced a full line')
   return board
 }
@@ -601,12 +646,13 @@ export function makeOpening({
   structured = false,
   staged = false,
   poolId = 'current',
+  openingId = 'current',
   maxAttempts = 128,
   nodeBudget = 12000,
 } = {}) {
   const openingRng = rngFor(seed, gameIndex, 'opening')
   const dealRng = rngFor(seed, gameIndex, 'deal')
-  const baselineBoard = seededBoard(openingRng)
+  const baselineBoard = seededBoard(openingRng, openingId)
   const baselineState = stateFromBoard(baselineBoard)
   const baselineCount = occupiedCount(baselineState)
   const hand = drawHand(dealRng, 0, staged, poolId)
@@ -694,7 +740,7 @@ export function makeOpening({
   const structureRng = rngFor(seed, gameIndex, 'structure')
   while (attempts < attemptsLimit && nodes < budget) {
     attempts += 1
-    const candidateBoard = seededBoard(structureRng)
+    const candidateBoard = seededBoard(structureRng, openingId)
     const candidateState = stateFromBoard(candidateBoard)
     const actualCount = occupiedCount(candidateState)
     if (actualCount !== baselineCount) {
