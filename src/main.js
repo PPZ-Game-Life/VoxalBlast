@@ -694,28 +694,33 @@ function setLiveAngle(angle) {
   applyCubeRotation()
 }
 
-// What a release commits. `bearing` is where the gesture's axis would end up if
-// the offset were kept; a fine-tune is kept only while it stays inside the band
-// (`stepThreshold`, ≈30°), so "more than about a third of a face off the face" is
-// the same decision for a drag and for a bearing the player has already dialled.
-// Past it the gesture turns exactly ONE face in the drag direction (never "the
-// nearest face"), the offset is dropped, and the bearing the player dialled is
-// restored — i.e. the cube turns to the tuned bearing on the next face.
-// `roll` never keeps an offset, so it always steps or springs back on the grid.
+// What a release commits. `bearing` is where the gesture's axis would end up if the
+// offset were kept; a fine-tune is kept only while it stays inside the band, so
+// "more than about a third of a face off the face" is the same decision for a drag
+// and for a bearing the player has already dialled. Past it the gesture turns exactly
+// ONE face in the drag direction (never "the nearest face"), the offset is dropped,
+// and the bearing the player dialled is restored — i.e. the cube turns to the tuned
+// bearing on the next face.
+//
+// The kept value is then clamped into `ROTATE_STYLE.bearingBand[axis]`, which is
+// ASYMMETRIC and much tighter on the frontal side. That clamp is what stops a player
+// from dialling the cube into a flat plate — measured 100% main / 0% / 0% at
+// yaw +25°/pitch −25° — and, worse, having it STICK there, because a bearing is
+// remembered across face turns and saved with the run. Hitting the clamp just means
+// the cube stops turning further in that direction; there is nothing else it may
+// safely do (§KNOWN_GAPS).
+//
+// `roll` never keeps an offset at all, so it always steps or springs back on the grid.
 function planAxisRelease(axis, startBearing, angle) {
   if (axis === 'roll') {
-    // No bearing on Z: over the threshold it turns one face, under it the cube
-    // springs straight back to the grid (Z is the straighten gesture).
     const stepped = Math.abs(angle) >= rotateStyle.stepThreshold ? Math.sign(angle) : 0
     return { fineTune: false, stepped, bearing: startBearing }
   }
   const live = startBearing + angle
   if (Math.abs(live) <= rotateStyle.stepThreshold) {
-    // Inside the band: the offset the finger left is KEPT as the new bearing.
-    return { fineTune: true, stepped: 0, bearing: live }
+    const band = rotateStyle.bearingBand[axis]
+    return { fineTune: true, stepped: 0, bearing: THREE.MathUtils.clamp(live, band.min, band.max) }
   }
-  // Past the band: exactly one face in the drag direction, the offset is dropped,
-  // and the bearing the player dialled is what the next face arrives at.
   return { fineTune: false, stepped: Math.sign(angle), bearing: startBearing }
 }
 
@@ -2681,11 +2686,12 @@ function applySession(saved) {
     cubeLive = null
     viewDrag = null
     cubeBase.fromArray(saved.pose.base).normalize()
-    const band = rotateStyle.stepThreshold
+    const bandYaw = rotateStyle.bearingBand.yaw
+    const bandPitch = rotateStyle.bearingBand.pitch
     bearingYaw = Number.isFinite(saved.pose.bearingYaw)
-      ? THREE.MathUtils.clamp(saved.pose.bearingYaw, -band, band) : rotateStyle.bearingYaw
+      ? THREE.MathUtils.clamp(saved.pose.bearingYaw, bandYaw.min, bandYaw.max) : rotateStyle.bearingYaw
     bearingPitch = Number.isFinite(saved.pose.bearingPitch)
-      ? THREE.MathUtils.clamp(saved.pose.bearingPitch, -band, band) : rotateStyle.bearingPitch
+      ? THREE.MathUtils.clamp(saved.pose.bearingPitch, bandPitch.min, bandPitch.max) : rotateStyle.bearingPitch
     cubeQuat.copy(bearingQuat(bearingYaw, bearingPitch)).multiply(cubeBase).normalize()
     applyCubeRotation()
   } else {

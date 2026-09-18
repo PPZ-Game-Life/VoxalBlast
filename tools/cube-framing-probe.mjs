@@ -41,13 +41,25 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_URL = 'http://127.0.0.1:5173/'
 const APP_PORT = 5173
-const VIEWPORT = { width: 1280, height: 900 }
+// Composition targets — see the block at TARGET below for why they are what they are.
 const SETTLE_MS = 420 // longer than ROTATE_STYLE.snapDuration (220ms)
 const JSON_ONLY = process.argv.includes('--json')
 // `--quick` measures the resting composition only (one orientation) so a tilt value
 // can be swept in a few seconds instead of a full 24-orientation walk. It is a
 // tuning aid: the per-orientation consistency checks are skipped under it.
 const QUICK = process.argv.includes('--quick')
+// The composition is NOT viewport-independent: `refreshCameraProjection()` solves the
+// camera distance from the canvas aspect, and the distance decides how much of a side
+// face the perspective leaves visible at a given camera angle. A desktop-correct
+// framing can therefore collapse into a flat plate on a phone. Default desktop;
+// `--viewport=390x737` (CSS pixels, as the browser reports them) checks a real one.
+const VIEWPORT = (() => {
+  const arg = process.argv.find((value) => value.startsWith('--viewport='))
+  if (!arg) return { width: 1280, height: 900 }
+  const match = /^--viewport=(\d+)x(\d+)$/.exec(arg)
+  if (!match) throw new Error(`--viewport expects WxH, got ${arg}`)
+  return { width: Number(match[1]), height: Number(match[2]) }
+})()
 
 // 03 §2 / docs/Planning targets. Cited here so the probe fails against the
 // DOCUMENT and not against whatever the code happens to do today.
@@ -669,7 +681,46 @@ try {
   tuning.push({ step: 'a sub-threshold roll leaves no bearing', baseUnchanged: qKey(afterRoll.base) === qKey(beforeRoll.base) })
   if (sideX !== null && !rollClean) failures.push('bearing: a sub-threshold side-band roll left a residual offset')
   report.tuning = tuning
-  report.bearing = { afterYawNudgeDeg: after1.yawDeg, afterFaceTurnDeg: committed.yawDeg, afterRollDeg: afterRoll.yawDeg }
+  // (e) THE FRONTAL FENCE. The "more frontal" direction is the one the fine-tune
+  // exists for, and it is also the direction with almost no headroom: dialling far
+  // enough used to leave the cube a flat plate with a face missing entirely
+  // (measured 100% main / 0% / 0% at yaw +25/pitch -25), and because a bearing is
+  // remembered across face turns and saved with the run, it STAYED that way - this is
+  // the state the producer's phone screenshot was showing. `bearingBand` must now
+  // stop the dial while all three faces are still there.
+  const beforeFence = await readBearing()
+  const yawBand = ROTATE_STYLE.bearingBand.yaw
+  // Aim deliberately PAST the fence so the clamp is what stops it, not the drag length.
+  const overshoot = 0.0873 // 5°
+  const toFenceRad = (yawBand.max + overshoot) - beforeFence.yawDeg * Math.PI / 180
+  const atFence = await dragBy('yaw', toFenceRad * pxPerRadYaw)
+  const fenceFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
+  const fenceOthers = fenceFaces.others.map((entry) => entry.share)
+  const fenceDeg = yawBand.max * 180 / Math.PI
+  const stoppedAtFence = Math.abs(atFence.yawDeg - fenceDeg) < 1.5
+  const fenceKeepsCube = fenceFaces.visible.length === 3 && fenceOthers.every((share) => share >= 0.04)
+  tuning.push({
+    step: 'dialling fully frontal still leaves a cube',
+    fenceDeg: Number(fenceDeg.toFixed(2)),
+    bearingDeg: atFence.yawDeg,
+    stoppedAtFence,
+    mainShare: fenceFaces.mainShare,
+    others: fenceOthers.map((share) => Number(share.toFixed(3))),
+    facesVisible: fenceFaces.visible.length,
+  })
+  if (!stoppedAtFence) {
+    failures.push(`bearing: a frontal drag ${overshoot * 180 / Math.PI}° past the fence landed at ${atFence.yawDeg}° (fence ${fenceDeg}°) — the clamp is not holding`)
+  }
+  if (!fenceKeepsCube) {
+    failures.push(`bearing: at the frontal fence the cube has ${fenceFaces.visible.length} faces (main ${(fenceFaces.mainShare * 100).toFixed(1)}%, others ${fenceOthers.map((s) => (s * 100).toFixed(1)).join('/')}) — the band is letting it flatten`)
+  }
+  // (f) ...and the player is never stuck at the fence: a drag long enough to leave
+  // the ≈30° band still turns a face.
+  const fromFence = await dragBy('yaw', (ROTATE_STYLE.stepThreshold + band * 0.2) * pxPerRadYaw)
+  const escaped = qKey(fromFence.base) !== qKey(atFence.base)
+  tuning.push({ step: 'a long frontal drag still turns a face', faceChanged: escaped, bearingDeg: fromFence.yawDeg })
+  if (!escaped) failures.push('bearing: a drag past the band from the frontal fence did not turn a face - the player would be stuck')
+  report.bearing = { afterYawNudgeDeg: after1.yawDeg, afterFaceTurnDeg: committed.yawDeg, afterRollDeg: afterRoll.yawDeg, atFenceDeg: atFence.yawDeg }
 
   const errs = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__errs || [])'))
   if (errs.length) failures.push(`page errors: ${errs.join(' | ')}`)

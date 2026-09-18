@@ -251,7 +251,11 @@ Three.js Renderer / DOM UI / FX
 
   **相机不是纯视觉旋钮，还有第二层含义（v0.8.7 补）**：停稳时棋盘是否"歪"也只由相机与方位倾斜的施加顺序决定——相机 up = +Y 时网格姿态恒铅直；一旦把俯仰以"偏航在后"的顺序复合进方位，棋盘会被压歪（v0.8.6 实测 −4.77°）。现行顺序是 `Rx(pitch) · Ry(yaw)`，对**任何**玩家可调方位都保持铅直。改这块必须同时跑 `npm run probe:framing` 的 `uprightDeg`（≤0.5°）与 `minOtherShare`（≥6%）。
 
-  **第三层含义（v0.8.8 补）**：停稳构图现在依赖**运行时状态**（玩家调好的方位），不再是常量。`npm run probe:framing` 的 framing 段只在**出厂方位**下测量（探针用全新 profile、无存档），所以它仍然可比；玩家拨到区间端点时主面占比会显著偏移（偏航 +25° 实测 89.0%、顶面 0.0%）。凡改动相机、`stepThreshold`（同时是微调区间）或出厂 `bearingYaw/Pitch`，framing 段与 bearing 段必须一起重跑。
+  **第三层含义（v0.8.8/v0.8.9 补）**：停稳构图依赖**运行时状态**（玩家调好的方位），不再是常量。`npm run probe:framing` 的 framing 段只在**出厂方位**下测量（探针用全新 profile、无存档），所以它仍然可比；玩家拨到区间端点时主面占比会显著偏移，`bearingBand` 就是为此存在的硬边界。凡改动相机、`stepThreshold`、出厂 `bearingYaw/Pitch` 或 `bearingBand`，framing 段与 bearing 段必须一起重跑。
+
+  **构图与视口无关，但必须证明**：`refreshCameraProjection()` 由画布宽高比解相机距离，所以构图原则上随视口变化。v0.8.9 加了 `npm run probe:framing --viewport=WxH`，并在七个手机与桌面视口复测过（主面 66.1–69.0%、非主面 11.9–20.3%、竖直 0.00°）。**只在 1280×900 跑一次不足以证明手机正常**——真机截图与桌面测数不一致时，先跑这一项。
+
+  **不要用 shell 回写含中文的源码**：v0.8.8 的 `src/rendering/config.js` 中文注释被 `Get-Content -Raw` + `Set-Content -Encoding utf8` 在 GBK 控制台编码下整段写成乱码（42 处），并随提交推送到远端，v0.8.9 才从干净提交取回重做。要批量改源码就用编辑器工具；要批量跑参数扫描就改**探针**（加 `--viewport=` 这类开关），不要一边改源码一边 `Set-Content` 回写。
 
 ### 5.4 方块状态
 

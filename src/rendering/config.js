@@ -1,7 +1,7 @@
-﻿// v0.7 銆岀敯鍥湪浣溿€峜olour system. Two families, and the split is the whole
+// v0.7 「田园木作」colour system. Two families, and the split is the whole
 // direction: WARM WOOD is the object (the cube, the signboards, the frame), and
 // CRAYON PAINT is the only saturated thing on screen. Nothing else in the game is
-// allowed a high-chroma colour 鈥?that is what keeps the cube the first read at
+// allowed a high-chroma colour — that is what keeps the cube the first read at
 // 240px wide even with a full landscape behind it.
 export const RENDER_PALETTE = Object.freeze({
   background: 0xdcefff,
@@ -11,14 +11,14 @@ export const RENDER_PALETTE = Object.freeze({
   gridGlow: 0xd9ae72,
   candidate: 0xf7c13c,
   valid: 0x7ed957, // fresh leaf green: "it fits here"
-  invalid: 0xe8543f, // terracotta, not a UI error red (05銆屼笉瑕佽鍛婅壊銆?
+  invalid: 0xe8543f, // terracotta, not a UI error red (05「不要警告色」)
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
 // v0.7: a WOODEN TOY built out of BLOCKS.
 //
-// The board is not a shell with patterns painted on it 鈥?it is 98 unique CUBES
-// whose six faces are flat, sitting in the 5脳5脳5 shell lattice with a small gap
+// The board is not a shell with patterns painted on it — it is 98 unique CUBES
+// whose six faces are flat, sitting in the 5×5×5 shell lattice with a small gap
 // between neighbours. Their outer faces are flush with the big cube's surface, so
 // the board reads as one large cube assembled from equal blocks, and the narrow
 // dark notches between them are the only thing that tells them apart.
@@ -27,16 +27,16 @@ export const RENDER_PALETTE = Object.freeze({
 // ever changes: not its size, not its position, not its height. Placing is paint.
 //
 // This replaces two earlier models, both of which missed:
-//   - v0.5 / v0.7.0 鈥?a separate raised "chip" standing proud of the face. Wrong on
+//   - v0.5 / v0.7.0 — a separate raised "chip" standing proud of the face. Wrong on
 //     every shared edge/corner cell, where it had to pick a side and ended up
 //     hanging off the bottom of the cube.
-//   - v0.7.1 / v0.7.2 鈥?flat plates glued onto the shell. A thin plate has its
+//   - v0.7.1 / v0.7.2 — flat plates glued onto the shell. A thin plate has its
 //     rounding clamped away by the geometry and reads as a flat sticker; thickening
 //     and lifting it turned the whole cube into a quilted cushion.
 export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
-  // It is therefore deliberately darker than the blocks 鈥?the groove IS this colour.
+  // It is therefore deliberately darker than the blocks — the groove IS this colour.
   hullColor: 0x765033,
   hullOpacity: 1,
   hullRoughness: 0.7,
@@ -45,7 +45,7 @@ export const BOARD_STYLE = Object.freeze({
   hullInset: 0.68, // total width reduction; backing is recessed ~0.3 behind the blocks
   hullRadius: 0.08,
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
-  // in the hand and a piece on the board are the same object (05銆屽悓婧愩€?.
+  // in the hand and a piece on the board are the same object (05「同源」).
   blockSize: 0.94, // narrow joints, with readable rounded shoulders
   blockRadius: 0.085, // broad polished shoulder, with 82% of the face still flat
   blockSegments: 3,
@@ -54,7 +54,7 @@ export const BOARD_STYLE = Object.freeze({
   // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
-  // cell (#N neighbours get #N卤6%, never a colour that could be mistaken for paint).
+  // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
   blockToneSteps: Object.freeze([0.94, 0.97, 1, 1.02, 1.04, 1.06]),
   blockGrainRepeat: 1,
   woodRoughness: 0.46,
@@ -63,7 +63,7 @@ export const BOARD_STYLE = Object.freeze({
   woodBumpScale: 0.022,
   paintBumpScale: 0.011,
   environmentIntensity: 0.7,
-  // Paint on an occupied block 鈥?and on the piece in the hand, so a piece never
+  // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
   paintRoughness: 0.31,
   paintClearcoat: 0.85,
@@ -75,12 +75,23 @@ export const BOARD_STYLE = Object.freeze({
   exposure: 1.0,
   cameraFov: 30,
   cameraFovMobile: 34,
-  // v0.8.6 tried to put the whole three-quarter read on the cube instead (camera
-  // square-on, cube tilted 17.5掳/15.5掳). That was rejected on sight 鈥?"鏁翠釜灏辨槸涓€鏍?
-  // 涓€鏍肩殑锛岀劧鍚庤瑙変笂杩樻瘮杈冩" 鈥?and the reason is structural: a near-frontal face
-  // makes every cell a near-square (a flat grid, not a cube), and tilting the cube in
-  // two axes tips its vertical edges off plumb. The three-quarter belongs to the
-  // CAMERA; the cube's own angle is the player's bearing (ROTATE_STYLE.bearingYaw).
+  // v0.8.6: a MODERATE three-quarter view. The cube stays upright on screen (with
+  // up = +Y a camera-only view always projects the cube's vertical edges plumb),
+  // the side and top faces stay real faces rather than slivers, and the front face
+  // is still clearly the subject.
+  //
+  // Two earlier settings bracket this one, and both were rejected on sight:
+  //   - v0.8.5's [0.52, 0.48, 1.05] (26.4° yaw / 22.3° pitch) left the three faces
+  //     at ~65% / 19% / 16%: the front face was not the subject, and the pitch put
+  //     world X 10.6° off horizontal on screen and world Z 37.4° off, so a vertical
+  //     swipe and a side-band spin turned visibly crooked.
+  //   - a dead-on camera [0, 0, 1] with the whole three-quarter read carried by a
+  //     17.5°/15.5° tilt of the CUBE put the front face at 83% — and that read as
+  //     "just a grid of squares, and it leans": a near-frontal face makes every
+  //     cell a near-square, and tilting the cube in two axes tips its vertical
+  //     edges off plumb (measured −4.8°), which no grid-aligned pose ever did.
+  // Keep the three-quarter in the CAMERA and keep the cube's grid pose plumb; use
+  // ROTATE_STYLE.bearingYaw for the small extra turn in screen space.
   cameraDirection: Object.freeze([0.34, 0.33, 1.0]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
@@ -126,7 +137,7 @@ export const LIGHTING_STYLE = Object.freeze({
 
 // Opening layout (v0.2.31): the cube no longer starts as a bare shell. A few
 // blocks are seeded onto the faces the 3/4 camera can already see, drawn from the
-// SAME pool the candidate slots use 鈥?same shapes, same colors 鈥?so the first
+// SAME pool the candidate slots use — same shapes, same colors — so the first
 // frame reads as a board in play instead of an empty cage. The hard rules live in
 // Board.seedOpening(): blocks never overlap, and a seed NEVER completes a line on
 // any face. `place()` only settles the face being played, so a line seeded on some
@@ -134,13 +145,13 @@ export const LIGHTING_STYLE = Object.freeze({
 // play that face.
 //
 // One entry per face; the value is a target CELL count for that face (not a shape
-// count 鈥?shapes run from 1 to 4 cells, so "2 shapes" could be 2 cells or 8 and the
+// count — shapes run from 1 to 4 cells, so "2 shapes" could be 2 cells or 8 and the
 // opening would swing between bare and crowded game to game). The 3/4 camera puts
 // the front face (+z) right in front of the player and the top face (+y) on the
 // roofline, so the front face carries most of the layout: seeding the top instead
 // reads as "blocks on the roof" above an empty play surface (first cut, v0.2.31).
 // ~13 of the shell's 98 cells (~13%), about a third of the front face: reads as a
-// board in play while keeping the airy v0.2.23 look. Tune with these numbers only 鈥?
+// board in play while keeping the airy v0.2.23 look. Tune with these numbers only —
 // the invalidity rules live in Board.seedOpening().
 export const OPENING_LAYOUT = Object.freeze({
   '+z': 7, // front face: the player's play surface, and what the camera faces
@@ -155,7 +166,7 @@ export const OPENING_LAYOUT = Object.freeze({
 // (screen Z axis, an in-plane spin) when it lands outside it. Whichever axis
 // wins, the gesture still moves the cube by at most ONE face: the step only
 // fires once the drag passes `stepThreshold`, otherwise the cube springs back
-// to the face it started on. The rest pose is then the bare 90掳 grid pose plus a
+// to the face it started on. The rest pose is then the bare 90° grid pose plus a
 // fixed presentation tilt (see below), so the face that ends up in front always
 // reads as a 3D body and never snaps to a mechanically flat square. Radian
 // values; degrees in the comments.
@@ -164,13 +175,13 @@ export const OPENING_LAYOUT = Object.freeze({
 // clamps the live angle to the same single face, so the cube can never show the
 // player a rotation the release is about to take back ("it turned while my finger
 // was down, then bounced back"), and the pitch pole limit that used to veto a
-// step after the fact is gone 鈥?every axis can be turned again and again.
+// step after the fact is gone — every axis can be turned again and again.
 //
 // v0.2.29 fixed two ways a gesture could turn into NOTHING (reported as "sometimes
 // it just won't turn, it feels locked"):
-//  1. The drag -> angle ruler was the CANVAS (dx / canvasWidth * 蟺), so the same
+//  1. The drag -> angle ruler was the CANVAS (dx / canvasWidth * π), so the same
 //     "one face" step cost ~65px of drag on a 390px phone but ~185px on a 1120px
-//     desktop canvas 鈥?on desktop an ordinary swipe simply sprang back. The ruler
+//     desktop canvas — on desktop an ordinary swipe simply sprang back. The ruler
 //     is now the CUBE's own on-screen silhouette (sampled where the gesture
 //     commits), so one face costs the same swipe length on every viewport and on
 //     both axes.
@@ -185,7 +196,7 @@ export const ROTATE_STYLE = Object.freeze({
   // make the cube's surface travel WITH the finger: swipe right and the front
   // face slides right (the left face comes around), swipe down inside the cube
   // and the front face slides down (the top face tips in), swipe down in a side
-  // band and the cube spins so that band's edge travels with the finger 鈥?
+  // band and the cube spins so that band's edge travels with the finger —
   // clockwise in the right band, anticlockwise in the left one (v0.8.1: a roll is
   // an in-plane spin, so "with the finger" is per band; the band picks the sign,
   // see swipe.js bandRollSign. One sign for both bands made the left band fight
@@ -194,41 +205,19 @@ export const ROTATE_STYLE = Object.freeze({
   // v0.2.26 flipped all three to the opposite side; v0.2.27 put them back, after
   // the "the direction feels reversed" report turned out to come from the axes
   // themselves following the cube (see main.js, fixed gesture axes). Do not flip
-  // these again to chase a direction report 鈥?check the axes first, and if only
+  // these again to chase a direction report — check the axes first, and if only
   // ONE band feels reversed, it is the band sign in swipe.js, not this knob.
   yawDirection: 1,
   pitchDirection: 1,
   rollDirection: -1,
-  // THE BEARING (v0.8.8). These are the SHIPPED DEFAULT of the angle the cube is
-  // presented at, not a constant the cube is pinned to: the player dials the
-  // bearing with sub-threshold drags and it is remembered across face turns (see
-  // main.js planAxisRelease). Until v0.8.7 the tilt was fixed, so every turn ended
-  // on exactly the same angle however the player had dragged 鈥?"姣忔杞畬锛岄兘鏄埌杈?
-  // 鍚屼竴涓搴?.
-  //
-  //   bearing = Rx(bearingPitch) 鈭?Ry(bearingYaw), applied OUTSIDE the grid pose
-  //
-  // Composited pitch-first/yaw-last for one reason: a world-Y rotation cannot move
-  // the world-Y direction, and that direction IS the cube's vertical edge, so this
-  // order keeps the cube plumb for EVERY bearing the player can dial. The reverse
-  // order leans the board (v0.8.6 measured 鈭?.8掳 on screen).
-  //
-  // The three-quarter read itself lives in the CAMERA (BOARD_STYLE.cameraDirection);
-  // this pair is only the extra turn on top of it. Default 鈭?掳 of yaw:
-  //   - negative turns the cube further toward the right-hand face (more side face
-  //     in view, main face smaller);
-  //   - positive turns the front face back toward the screen (main face larger).
-  // The dialable band is 卤ROTATE_STYLE.stepThreshold (鈮?0掳, see below).
-  bearingYaw: -0.0873, // 鈮堚垝5掳
-  bearingPitch: 0,
-  // A release keeps its offset as the new bearing while the bearing stays inside
-  // 卤stepThreshold (鈮?0掳); past that the gesture turns to the NEXT face instead.
-  // Deliberately the same knob as the drag threshold: "the cube is more than about
-  // a third of a face off the face" has to mean the same thing whether the player
-  // just dragged there or had already dialled it there. Do not widen this without
-  // re-checking `npm run probe:framing` 鈥?a bearing near the band edge changes the
-  // resting composition.
-  stepThreshold: 0.52, // 鈮?0掳 of drag (鈮?/6 of the cube's silhouette) before the gesture turns to the next face
+  stepThreshold: 0.52, // ≈30° of drag (≈1/6 of the cube's silhouette) before the gesture turns to the next face
+  // ...and the same knob is the band the bearing is dialled inside: once "the bearing
+  // the player has dialled plus this drag" leaves ±stepThreshold, the gesture turns a
+  // FACE instead of fine-tuning further. One number on purpose — "the cube is more
+  // than about a third of a face off the face" has to mean the same thing whether the
+  // player just dragged there or had already dialled it there. Note this is the OUTER
+  // bound; `bearingBand` below is the tighter, per-direction one that keeps the cube
+  // from flattening. Do not raise this without re-running `npm run probe:framing`.
   // Axis claim (v0.2.29). `axisLockPx` is the travel a drag must reach before any
   // axis may claim it; `axisDominance` is how far the leading direction must lead
   // the other one to claim it; a drag that is still ambiguous after
@@ -239,14 +228,64 @@ export const ROTATE_STYLE = Object.freeze({
   axisLockPx: 16, // travel before the dominant direction may claim the gesture
   axisDominance: 1.2, // lead / trail ratio that makes the dominant direction decisive
   axisHardLockPx: 44, // still ambiguous this far in? the leader takes it
-  // (The v0.8.6/v0.8.7 "presentation tilt + weight" pair lived here 鈥?
-  // presentationFadeAngle / presentationFadeOutEnd / presentationReturnStart. The
-  // fade existed to take a FIXED tilt out of the way of a turn. Now that the tilt
-  // is the player's own bearing, it must be visible while the finger is down and it
-  // must stay where the finger leaves it, so it is never faded: a yaw or pitch drag
-  // moves the bearing directly and a release either keeps that value or drops it
-  // for the next face. Removed rather than left dead.)
-  snapDuration: 0.22, // s 鈥?settle animation onto the resting pose
+  // ===== The bearing (v0.8.8): the angle the player leaves the cube resting at =====
+  //
+  // THE BEARING IS THE PLAYER'S, NOT A CONSTANT. v0.8.6/v0.8.7 kept a fixed tilt that
+  // every gesture settled back onto, so every turn ended on exactly the same angle
+  // however the player had dragged — "每次转完，都是到达同一个角度". A release that does
+  // not commit a face now KEEPS the offset the drag left behind, and that offset is
+  // remembered across face turns: the next face arrives at the bearing the player
+  // dialled. See main.js planAxisRelease().
+  //
+  //   rendered = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ (liveRotation ∘ gridPose)
+  //
+  // Composited PITCH FIRST, YAW LAST, and that order is load-bearing: a rotation about
+  // world Y cannot move the world-Y direction, and that direction IS the cube's
+  // vertical edge, so this order keeps the board plumb for EVERY bearing the player
+  // can dial. The reverse order leans it (v0.8.6 measured −4.8° on screen, "视觉上还
+  // 比较歪"). Pitch is allowed here precisely BECAUSE the order makes it safe.
+  //
+  // The three-quarter read itself lives in the CAMERA (BOARD_STYLE.cameraDirection);
+  // this pair is only the extra turn on top of it.
+  //   - negative yaw turns the cube further toward the right-hand face (more side
+  //     face in view, main face smaller);
+  //   - positive yaw turns the front face back toward the screen (main face larger).
+  bearingYaw: -0.0873, // ≈−5° — the shipped default
+  bearingPitch: 0,
+  // How far the bearing may be dialled, PER AXIS AND PER DIRECTION. Asymmetric, and
+  // the asymmetry is measured geometry rather than taste.
+  //
+  // The gate is "all three faces stay visible". Perspective puts that gate in very
+  // different places on the two sides of the default, because a face disappears the
+  // moment the camera crosses its plane (measured, 1280x900, npm run probe:framing):
+  //
+  //   yaw   -25° -> main 46%, side 43%   still a cube, just a heavier three-quarter
+  //          -5° -> main 71%, side 18%, top 10%   <- the shipped default
+  //          +5° -> main 84%, side 5%,  top 11%
+  //         +10° -> main 89%, side 0%   GONE — the cube is a plate with a roof
+  //   pitch +25° -> main 47%   a heavier three-quarter
+  //           0° -> the default
+  //          -5° -> main 84%, top 4%
+  //         -10° -> main 88%, top 0%   GONE
+  //
+  // So the "more frontal" direction — the one this band mostly exists for — runs out
+  // after about 10°, while "more three-quarter" stays readable for 30°+. Capping the
+  // frontal side is what stops the player from dialling the cube into a flat plate
+  // (measured 100% / 0% / 0% at yaw +25/pitch -25) and then having it STICK there,
+  // because a bearing is remembered across face turns and saved with the run.
+  //
+  // Raising `max` on yaw or lowering `min` on pitch re-opens exactly that failure.
+  // The values below keep both non-main faces at roughly 5% or more.
+  bearingBand: Object.freeze({
+    yaw: Object.freeze({ min: -0.5236, max: 0.0698 }), // -30° (more three-quarter) .. +4° (more frontal)
+    pitch: Object.freeze({ min: -0.0698, max: 0.5236 }), // -4° (more frontal) .. +30° (more three-quarter)
+  }),
+  // NOTE on the two directions: the band's ring-fenced side is the one with almost no
+  // headroom left. Between the fence and the ≈30° step threshold a frontal drag docks
+  // at the fence and does nothing more until it is long enough to turn a face instead.
+  // That is deliberate — the alternative is letting the cube flatten — but it is a
+  // feel decision, flagged in docs/Technical/KNOWN_GAPS.md.
+  snapDuration: 0.22, // s — settle animation onto the resting pose
 })
 
 export const VFX_CONFIG = Object.freeze({
@@ -290,29 +329,29 @@ export const VFX_CONFIG = Object.freeze({
   }),
 })
 
-// v0.4.4 drag ghost (03 搂4銆屾柟鍧楄窡闅忓厜鏍囩Щ鍔ㄣ€嶏紝v0.2.24~v0.4.3 涓€鐩寸己瀹炵幇).
+// v0.4.4 drag ghost (03 §4「方块跟随光标移动」，v0.2.24~v0.4.3 一直缺实现).
 // Until now a drag only lit the landing cells on the board: the piece itself
-// vanished the moment the finger left the slot, so on a phone 鈥?where the thumb
-// covers the very slot it came from 鈥?there was nothing on screen that said
+// vanished the moment the finger left the slot, so on a phone — where the thumb
+// covers the very slot it came from — there was nothing on screen that said
 // WHICH shape was in hand. The ghost is that piece: the same rounded voxel
 // geometry, roughness and lighting as the board and the slot preview
-// (05銆屽€欓€夐瑙堜笌妫嬬洏鍚屾簮銆?, drawn in the CAMERA's frame so it always faces the
+// (05「候选预览与棋盘同源」), drawn in the CAMERA's frame so it always faces the
 // player and never inherits the cube's rotation.
 //
-// v0.4.4 淇锛堝埗浣滀汉瀹炴祴鍙嶉锛夛細涓€涓洖鍚堥噷鐢婚潰涓?*鍙兘鏈変竴涓柟鍧?*銆?
-//   鈶?鎶崌鏀规垚鍥哄畾鐨勫皬甯搁噺銆傚師鍏堟槸"鍗婁釜鏂瑰潡楂樺害"锛屾闈?1440脳900 涓?4 鏍煎潡琚?
-//      椤跺埌鍏夋爣涓婃柟 107px锛屾柟鍧椾笉鍐嶅儚"鎵嬮噷鎷跨潃鐨勪笢瑗?锛岃璧锋潵灏辨槸"涓嶈窡鎵?銆?
-//   鈶?鏂瑰潡涓€鏃﹀惛闄勫埌鍏潰浣撻潰涓婏紝鎵嬮噷鐨勫菇鐏电珛鍒绘秷澶扁€斺€旀鐩樹笂鐨勮惤鐐归瑙?*灏辨槸**
-//      閭ｄ釜鏂瑰潡銆備箣鍓嶅菇鐏靛拰棰勮鍚屾椂鍦ㄥ睆锛岀帺瀹剁湅鍒?涓や釜鏂瑰潡"銆?
-//   鈶?鍥犱负 鈶★紝鍚搁檮锛堜互鍙婅惤鐐归瑙堬級鍙湪鎸囬拡鐪熸鍒拌揪鍏潰浣撻檮杩戞椂鎵嶅彂鐢燂紱鎸囬拡杩樺湪
-//      鐢诲竷绌虹櫧鍖烘椂锛屾柟鍧椾粛鐒?鍦ㄦ墜涓?锛屽彧鐢诲菇鐏点€?
+// v0.4.4 修订（制作人实测反馈）：一个回合里画面上**只能有一个方块**。
+//   ① 抬升改成固定的小常量。原先是"半个方块高度"，桌面 1440×900 上 4 格块被
+//      顶到光标上方 107px，方块不再像"手里拿着的东西"，读起来就是"不跟手"。
+//   ② 方块一旦吸附到六面体面上，手里的幽灵立刻消失——棋盘上的落点预览**就是**
+//      那个方块。之前幽灵和预览同时在屏，玩家看到"两个方块"。
+//   ③ 因为 ②，吸附（以及落点预览）只在指针真正到达六面体附近时才发生；指针还在
+//      画布空白区时，方块仍然"在手上"，只画幽灵。
 export const DRAG_GHOST = Object.freeze({
   // Cell edge as a fraction of the board's own cell pitch on screen (the cube
-  // silhouette 梅 SH). 0.9 lands a carried cell at 鈮?3px on a 390px phone 鈥?a
+  // silhouette ÷ SH). 0.9 lands a carried cell at ≈53px on a 390px phone — a
   // touch larger than the slot preview it came from, the same read as the board.
   cellRatio: 0.9,
   // TOUCH: the piece rides half its own height plus a small clearance above the
-  // contact point, so its BOTTOM EDGE stays just clear of the thumb 鈥?the "held
+  // contact point, so its BOTTOM EDGE stays just clear of the thumb — the "held
   // above the fingertip" read. A fixed offset cannot do this: a 2-row piece
   // centred 26px above the finger still had its whole bottom row under it.
   liftTouchPx: 12, // clearance between the piece's bottom edge and the contact point
@@ -322,7 +361,7 @@ export const DRAG_GHOST = Object.freeze({
   // is drawn on top of the canvas anyway; the offset that reads as "held in the
   // hand" on a touch screen reads as "the piece is not following the drag" when the
   // driver is a mouse (v0.4.4 pushed a 4-cell piece 107px above the cursor on
-  // desktop 鈥?the producer's "涓嶈窡鎵?).
+  // desktop — the producer's "不跟手").
   liftMousePx: 10,
   // How close the pointer has to get to the cube's screen silhouette before the
   // piece attaches to a face. Inside it the piece is on the board; outside it is
@@ -333,16 +372,16 @@ export const DRAG_GHOST = Object.freeze({
   // below compensates exactly) and only has to sit nearer than the cube.
   planeDistance: 8,
   opacity: 0.96, // over the canvas it must still read as the piece, not as a landing cell
-  invalidOpacity: 0.82, // red tint: on the cube but no room here (05銆岄潪娉曢瑙堛€?
+  invalidOpacity: 0.82, // red tint: on the cube but no room here (05「非法预览」)
   cancelOpacity: 0.34, // dragged back into the cancel strip: the UI there is the answer
 })
 
-// v0.3 feedback ladder (08-鑽ｈ獕涓庢帓琛屾绯荤粺.md 搂6, aligned with 03 搂7).
+// v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
 // honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
 // banner is owed); the seconds, shake and particle strength behind each level are
 // visual numbers and live here. Index = level, 0 = a placement that cleared nothing.
-// The gradient is the point: 涓€娈垫棩甯告湁鍙嶉銆佺█鏈夋墠闅嗛噸 鈥?L3 runs about twice a game,
-// L4 about once every three games, L5 about once every fifty (08 搂6), so the top of
+// The gradient is the point: 一段日常有反馈、稀有才隆重 — L3 runs about twice a game,
+// L4 about once every three games, L5 about once every fifty (08 §6), so the top of
 // the ladder must never become the background hum.
 export const FEEDBACK_STYLE = Object.freeze({
   levels: Object.freeze([
@@ -351,8 +390,8 @@ export const FEEDBACK_STYLE = Object.freeze({
     /* 2 two lines */ Object.freeze({ duration: 0.6, shake: 0.09, particleScale: 1.6, banner: 'small', badges: true }),
     /* 3 TRIPLE */ Object.freeze({ duration: 0.9, shake: 0.14, particleScale: 2.4, banner: 'name', badges: true }),
     /* 4 QUAD / TRIFACE */ Object.freeze({ duration: 1.4, shake: 0.2, particleScale: 3.5, banner: 'large', badges: true }),
-    // L5 gets the only "椤垮抚" in the game: a brief slowdown for the ceremony, which
-    // must never block input and must leave the board readable (03 搂7 hard rule).
+    // L5 gets the only "顿帧" in the game: a brief slowdown for the ceremony, which
+    // must never block input and must leave the board readable (03 §7 hard rule).
     /* 5 PENTA+ */ Object.freeze({ duration: 2.2, shake: 0.26, particleScale: 5, banner: 'full', badges: true, slowMo: Object.freeze({ scale: 0.6, ms: 400 }) }),
   ]),
   shakeDecay: 0.42, // per-second falloff of the camera shake
@@ -360,9 +399,9 @@ export const FEEDBACK_STYLE = Object.freeze({
 })
 
 // HUD rules that the design fixes rather than the art: the chain pill only exists
-// once a chain is real (08 搂7.5 鈥?a "CHAIN 脳1" that is always on screen would make
-// breaking it cost nothing), and the Game Over copy calls a gap "灏卞樊涓€鐐? only
-// inside this ratio of the record (08 搂7.5 宸€兼枃妗堜竴绛夊叕姘?.
+// once a chain is real (08 §7.5 — a "CHAIN ×1" that is always on screen would make
+// breaking it cost nothing), and the Game Over copy calls a gap "就差一点" only
+// inside this ratio of the record (08 §7.5 差值文案一等公民).
 export const HUD_STYLE = Object.freeze({
   chainMinVisible: 2,
   chainBarCap: 20, // chain length that fills the indicator bar
