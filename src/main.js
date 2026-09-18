@@ -566,7 +566,7 @@ scene.add(camera) // the ghost rides the camera, so the camera joins the graph
 const dragGhostInvalid = new THREE.Color(palette.invalid)
 const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
 
-// ---- Cube pose model (v0.8.6: logical pose + separate presentation tilt) -----
+// ---- Cube pose model (v0.8.8: logical pose + a player-tunable bearing) -------
 // The three gesture axes are FIXED to the screen/world and never follow the
 // cube: yaw is always world Y, pitch always world X, roll always world Z. Each
 // gesture is applied to whatever pose the cube currently has, i.e. "settle
@@ -578,30 +578,29 @@ const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.6
 // spin about world Z (an in-plane roll) instead of the screen-horizontal flip,
 // which reads exactly as "the X/Y axes rotated along with the cube".
 //
-// v0.2.28 fixed that with a quaternion grid pose, but kept the presentation skew
-// mixed into the same pose: the resting tilt was simply whatever a gesture had
-// overshot by, it was folded into the next gesture's starting angle, and it was
-// applied OUTSIDE the live rotation. So for as long as the tilt was non-zero the
-// cube turned about a visibly tilted axis — reported as "旋转中段发歪，像是带着
-// 停稳时的斜角一起旋转" — and the resting composition wandered, because the tilt
-// was an accident of the last swipe rather than a decision.
+// The pose is two things with one owner each:
 //
-// The pose is now three separate things with one owner each:
+//   cubeBase   the LOGICAL pose — a product of whole 90° steps about world axes,
+//              so it is always face-aligned and can never drift.
+//   bearing    how far off the face the player has dialled the view, in SCREEN
+//              space (world Y rotation then world X rotation), plus the live
+//              gesture's own rotation while a finger is down.
 //
-//   cubeBase      the LOGICAL pose — a product of whole 90° steps about world
-//                 axes, so it is always face-aligned and can never drift.
-//   cubeLive      the gesture in flight: one axis and one angle, measured from 0
-//                 so the angle IS the drag (nothing to fold in any more).
-//   presentation  a FIXED screen-space tilt (ROTATE_STYLE.presentationYaw/Pitch)
-//                 carried with a weight, 1 at rest and 0 while the cube moves.
-//
-//   rendered = tilt(weight) ∘ R_axis(angle) ∘ cubeBase
+//   rendered = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ cubeBase
+//            = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ R_axis(live) ∘ cubeBase
 //
 // Only the logical half is ever read back by gameplay: face detection, the step
-// threshold and the saved pose all use cubeBase, and a new gesture always starts
-// from cubeBase with the tilt outside it. The tilt can therefore never accumulate
-// into the geometry, and because it is premultiplied it is the same on screen for
-// all six faces instead of following each face's local axes.
+// decision and the saved pose all use cubeBase, and a new gesture always starts
+// from cubeBase with the bearing outside it, so the bearing can never accumulate
+// into the geometry.
+//
+// THE BEARING IS THE PLAYER'S, NOT A CONSTANT (v0.8.8). Until v0.8.7 it was a
+// fixed tilt that every gesture settled back onto, so every turn ended on exactly
+// the same angle no matter how the player had dragged — reported as "每次转完，
+// 都是到达同一个角度". Now a release that does NOT commit a face keeps whatever
+// offset the drag left behind, and that offset is remembered across face turns:
+// the cube returns to the bearing the player dialled, on the new face. See
+// planAxisRelease() for the band that separates "fine-tune" from "next face".
 const ROT_STEP = Math.PI / 2
 const AXIS_OF = {
   yaw: new THREE.Vector3(0, 1, 0),
@@ -610,19 +609,21 @@ const AXIS_OF = {
 }
 const cubeBase = new THREE.Quaternion() // face-aligned grid pose (the logical pose)
 const cubeQuat = new THREE.Quaternion() // pose actually rendered
-let cubePresentationWeight = 1 // 1 = fully tilted, 0 = bare grid pose
+// The player's view bearing. Starts at the shipped default and is dialled by
+// sub-threshold drags; `roll` has no bearing (Z is the straighten gesture, and a
+// residual spin would show up as a skewed grid).
+let bearingYaw = rotateStyle.bearingYaw
+let bearingPitch = rotateStyle.bearingPitch
 let cubeLive = null // the gesture in flight, see beginAxisGesture()
 const cubeSnapAnim = {
   active: false,
-  logicalFrom: new THREE.Quaternion(),
-  logicalTo: new THREE.Quaternion(),
-  weightFrom: 1,
+  from: new THREE.Quaternion(),
+  to: new THREE.Quaternion(),
   t: 0,
   duration: rotateStyle.snapDuration,
 }
 const scratchQuat = new THREE.Quaternion()
 const scratchLogical = new THREE.Quaternion()
-const scratchPresentation = new THREE.Quaternion()
 // v0.2.30 dropped the pitch pole limit (and its `pitchReach` bookkeeping). It was
 // the fixed-axis restatement of v0.2.25's Euler "clamp pitch to ±90°", but in the
 // quaternion model there is nothing to protect: pitching past a pole is an
@@ -637,36 +638,20 @@ function stepQuaternion(axis, steps) {
   return new THREE.Quaternion().setFromAxisAngle(AXIS_OF[axis], steps * ROT_STEP)
 }
 
-// The fixed presentation tilt, and the one ordering rule that matters:
-// PITCH FIRST, YAW LAST, i.e. `Rx(pitch) · Ry(yaw)`.
+// How the bearing is composed, and the one ordering rule that matters:
+// PITCH FIRST, YAW LAST, i.e. `Rx(bearingPitch) · Ry(bearingYaw)`.
 //
-// A rotation about world Y cannot move the world-Y direction, so a yaw applied
-// last leaves the cube's vertical edges exactly plumb; the same is true of a pitch
-// applied last. Applying both, only the LAST one is plumb and the other leans the
-// whole board — measured −4.8° on screen for the v0.8.6 first cut, which wrote
-// `Ry(yaw) · Rx(pitch)` with a 17.5°/15.5° tilt and read to the player as "视觉上还
-// 比较歪". ROTATE_STYLE.presentationPitch is 0 for the same reason: the
-// three-quarter read belongs to the camera, which cannot lean a grid-aligned pose.
-const IDENTITY_QUAT = new THREE.Quaternion()
-const PRESENTATION_TILT = new THREE.Quaternion()
-  .setFromAxisAngle(AXIS_OF.pitch, rotateStyle.presentationPitch)
-  .multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_OF.yaw, rotateStyle.presentationYaw))
-  .normalize()
-
-// Weighted tilt. `tilt(1)` is the resting look, `tilt(0)` is the bare pose a
-// rotation is performed on.
-function presentationTilt(weight, out = scratchPresentation) {
-  return out.copy(IDENTITY_QUAT).slerp(PRESENTATION_TILT, THREE.MathUtils.clamp(weight, 0, 1))
-}
-
-// The logical half of the pose: one rotation about one fixed world axis, on top
-// of the grid pose.
-function logicalPose(axis, angle, base, out = scratchLogical) {
-  return out.copy(scratchQuat.setFromAxisAngle(AXIS_OF[axis], angle)).multiply(base).normalize()
-}
-
-function composePose(logical, weight, out = cubeQuat) {
-  return out.copy(presentationTilt(weight)).multiply(logical).normalize()
+// A rotation about world Y cannot move the world-Y direction, and the world-Y
+// direction IS the cube's vertical edge; composing in this order therefore leaves
+// the cube plumb for EVERY bearing, which is what lets the player dial an angle
+// at all without the board starting to lean. The reverse order does not: v0.8.6
+// wrote `Ry(yaw) · Rx(pitch)` with a 17.5°/15.5° tilt and leaned the whole board
+// −4.8° on screen, reported as "视觉上还比较歪". Keep this order.
+const bearingScratch = new THREE.Quaternion()
+function bearingQuat(yaw, pitch, out = scratchLogical) {
+  return out.copy(scratchQuat.setFromAxisAngle(AXIS_OF.pitch, pitch))
+    .multiply(bearingScratch.setFromAxisAngle(AXIS_OF.yaw, yaw))
+    .normalize()
 }
 
 function applyCubeRotation() {
@@ -674,89 +659,91 @@ function applyCubeRotation() {
   cubeGroup.updateMatrixWorld(true)
 }
 
-// Start a gesture on one axis. The logical angle starts at 0, so the pose at
-// pointerdown is exactly the resting pose (tilt ∘ base) and the first moved pixel
-// is already part of the gesture's own delta — nothing is folded in, and the tilt
-// never becomes the next gesture's starting angle.
+// Start a gesture on one axis. The live rotation starts at 0, so the pose at
+// pointerdown is exactly the resting pose and the first moved pixel is already
+// part of the gesture's own delta — the bearing never becomes the next gesture's
+// starting angle.
 function beginAxisGesture(axis) {
-  cubeLive = { axis, angle: 0, rendered: 0, weight: cubePresentationWeight, base: cubeBase.clone() }
+  cubeLive = { axis, angle: 0, rendered: 0, base: cubeBase.clone(), yaw: bearingYaw, pitch: bearingPitch }
   setLiveAngle(0)
 }
 
-// Pose while the finger is down: the live rotation about the FIXED world axis,
-// applied on top of the grid pose. Because it is the outermost factor of the
-// logical half, an increment of the angle is exactly a rotation about that world
-// axis no matter what the cube looks like at that moment.
-//
-// The angle is clamped to the single face a gesture can commit (v0.2.30): the
-// drag renders AT MOST what the release will keep. Without the clamp a long drag
-// wound the cube past the face it had earned and the release had to unwind the
-// excess, which the player reads as "it turned while my finger was down, then
-// bounced back" (probe: the drag showed 136.4°, the release kept 90° and gave
-// 38.4° back). The clamp makes the finger a promise the release can always honour;
-// the only rotation a release still takes back is the sub-threshold flick, which
-// never gets past `stepThreshold` (≈30°) in the first place.
-//
-// The presentation tilt falls off with the angle, so the first ~12.6° of rotation
-// carry it away continuously (never a jump-to-square on pointerdown) and the rest
-// of the turn is a clean single-axis move (v0.8.6).
+// Pose while the finger is down. A yaw or pitch drag moves THE BEARING itself
+// rather than composing a second rotation on top of it, which is what makes the
+// release continuous: the pose at the moment of release is already the pose the
+// fine-tune keeps, so a nudge that does not commit a face simply stays where the
+// finger left it (no spring-back, no second animation).
 function setLiveAngle(angle) {
   const clamped = THREE.MathUtils.clamp(angle, -ROT_STEP, ROT_STEP)
-  const weight = Math.max(0, 1 - Math.abs(clamped) / rotateStyle.presentationFadeAngle)
   cubeLive.angle = clamped
   cubeLive.rendered = clamped
-  cubeLive.weight = weight
-  cubePresentationWeight = weight
-  composePose(logicalPose(cubeLive.axis, clamped, cubeLive.base), weight)
+  let yaw = cubeLive.yaw
+  let pitch = cubeLive.pitch
+  if (cubeLive.axis === 'yaw') yaw += clamped
+  else if (cubeLive.axis === 'pitch') pitch += clamped
+  bearingQuat(yaw, pitch)
+  if (cubeLive.axis === 'roll') {
+    // The spin is the one gesture that is NOT a bearing: it turns the cube on the
+    // face and springs back to the exact grid, because a residual in-plane spin is
+    // exactly the "残余小角度" the layout must not have.
+    scratchQuat.setFromAxisAngle(AXIS_OF.roll, clamped).premultiply(scratchLogical)
+    cubeQuat.copy(scratchQuat).multiply(cubeLive.base).normalize()
+  } else {
+    cubeQuat.copy(scratchLogical).multiply(cubeLive.base).normalize()
+  }
   applyCubeRotation()
 }
 
-// Plane one axis of the settle. `live` is where the drag left the angle, measured
-// from the gesture's own start. Over the threshold the gesture turns exactly one
-// face in the drag direction (never "the nearest face"); under it the cube
-// returns to its starting face. There is no per-axis leftover any more — the
-// resting tilt is the fixed presentation tilt, not a souvenir of the gesture.
-function planAxisStep(live) {
-  return Math.abs(live) >= rotateStyle.stepThreshold ? Math.sign(live) : 0
+// What a release commits. `bearing` is where the gesture's axis would end up if
+// the offset were kept; a fine-tune is kept only while it stays inside the band
+// (`stepThreshold`, ≈30°), so "more than about a third of a face off the face" is
+// the same decision for a drag and for a bearing the player has already dialled.
+// Past it the gesture turns exactly ONE face in the drag direction (never "the
+// nearest face"), the offset is dropped, and the bearing the player dialled is
+// restored — i.e. the cube turns to the tuned bearing on the next face.
+// `roll` never keeps an offset, so it always steps or springs back on the grid.
+function planAxisRelease(axis, startBearing, angle) {
+  if (axis === 'roll') {
+    // No bearing on Z: over the threshold it turns one face, under it the cube
+    // springs straight back to the grid (Z is the straighten gesture).
+    const stepped = Math.abs(angle) >= rotateStyle.stepThreshold ? Math.sign(angle) : 0
+    return { fineTune: false, stepped, bearing: startBearing }
+  }
+  const live = startBearing + angle
+  if (Math.abs(live) <= rotateStyle.stepThreshold) {
+    // Inside the band: the offset the finger left is KEPT as the new bearing.
+    return { fineTune: true, stepped: 0, bearing: live }
+  }
+  // Past the band: exactly one face in the drag direction, the offset is dropped,
+  // and the bearing the player dialled is what the next face arrives at.
+  return { fineTune: false, stepped: Math.sign(angle), bearing: startBearing }
 }
 
 function easeOutCubic(p) {
   return 1 - (1 - p) ** 3
 }
 
-// Where the presentation weight is during a settle: whatever the drag left
-// (usually 0) is removed over the first `presentationFadeOutEnd` of the
-// animation, and the resting tilt eases back in over the last stretch, so the
-// cube finishes its turn on the bare grid pose and is only then presented. A
-// keyboard turn starts at weight 1 and gets the same treatment, so its quarter
-// turn is a clean single-axis move too.
-function snapWeight(p, weightFrom) {
-  const back = rotateStyle.presentationReturnStart
-  const out = rotateStyle.presentationFadeOutEnd
-  if (weightFrom > 0 && p < out) return weightFrom * (1 - smoothstep(p / out))
-  if (p < back) return 0
-  return smoothstep((p - back) / Math.max(1 - back, 1e-6))
-}
-
-function smoothstep(x) {
-  const t = THREE.MathUtils.clamp(x, 0, 1)
-  return t * t * (3 - 2 * t)
-}
-
 function startCubeSnap(gesture) {
-  const stepped = planAxisStep(gesture.angle)
-  // The settle starts from the logical pose the cube is RENDERED at, never from
-  // the angle alone: a key press writes an angle it deliberately did not render
-  // (see rotateCubeByKey), and animating from that would teleport the cube.
-  logicalPose(gesture.axis, gesture.rendered, gesture.base, cubeSnapAnim.logicalFrom)
-  if (stepped !== 0) cubeBase.copy(gesture.base).premultiply(stepQuaternion(gesture.axis, stepped)).normalize()
-  cubeSnapAnim.logicalTo.copy(cubeBase)
-  cubeSnapAnim.weightFrom = gesture.weight
+  const startBearing = gesture.axis === 'pitch' ? gesture.pitch : gesture.yaw
+  const plan = planAxisRelease(gesture.axis, startBearing, gesture.angle)
+  cubeSnapAnim.from.copy(cubeQuat)
+  if (plan.stepped !== 0) {
+    cubeBase.copy(gesture.base).premultiply(stepQuaternion(gesture.axis, plan.stepped)).normalize()
+  } else if (gesture.axis === 'yaw') bearingYaw = plan.bearing
+  else if (gesture.axis === 'pitch') bearingPitch = plan.bearing
+  cubeSnapAnim.to.copy(bearingQuat(bearingYaw, bearingPitch)).multiply(cubeBase).normalize()
   cubeSnapAnim.active = true
   cubeSnapAnim.t = 0
   cubeSnapAnim.duration = rotateStyle.snapDuration
   cubeLive = null
-  cubePresentationWeight = gesture.weight
+  if (plan.fineTune) {
+    // Nothing to animate: the pose the finger left is the pose that is kept. Land
+    // it bit-exactly rather than running a zero-distance settle.
+    cubeQuat.copy(cubeSnapAnim.to)
+    cubeSnapAnim.active = false
+    applyCubeRotation()
+    return
+  }
   updateCubeSnap(0) // render frame 0 now, so the first frame after release does not jump
 }
 
@@ -765,12 +752,11 @@ function startCubeSnap(gesture) {
 function settleCubeSnap() {
   if (!cubeSnapAnim.active) return
   cubeSnapAnim.active = false
-  cubePresentationWeight = 1
-  composePose(cubeSnapAnim.logicalTo, 1)
+  cubeQuat.copy(cubeSnapAnim.to)
   applyCubeRotation()
 }
 
-// Return to the face-aligned start pose (used by Reset Game).
+// Return to the face-aligned start pose and the shipped bearing (Reset Game).
 function resetCubeRotation() {
   cubeSnapAnim.active = false
   cubeLive = null
@@ -778,30 +764,24 @@ function resetCubeRotation() {
   // may never come cannot leave rotation permanently blocked.
   viewDrag = null
   cubeBase.identity()
-  cubePresentationWeight = 1
-  composePose(IDENTITY_QUAT, 1)
+  bearingYaw = rotateStyle.bearingYaw
+  bearingPitch = rotateStyle.bearingPitch
+  cubeQuat.copy(bearingQuat(bearingYaw, bearingPitch))
   applyCubeRotation()
 }
 
-// Settle animation: the logical pose slerps from where the finger left it to the
-// exact target grid pose while the presentation weight runs its own curve on top.
-// Splitting the two is what keeps a settle honest — the rotation finishes on the
-// bare grid pose (no overshoot, no second wobble) and the tilt is restored
-// afterwards rather than being dragged through the turn. The target is reached
-// bit-exactly, so every settle lands on the 90° grid.
+// Settle animation: a slerp from where the finger left the pose to the target
+// pose, on the bearing the release decided. easeOutCubic, no overshoot — a spring
+// past the face and a second wobble after it were both explicitly rejected. The
+// target is reached bit-exactly, so every committed turn lands on the 90° grid.
 function updateCubeSnap(delta) {
   if (!cubeSnapAnim.active) return
   cubeSnapAnim.t += delta
   const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
-  const eased = easeOutCubic(p)
-  scratchLogical.copy(cubeSnapAnim.logicalFrom).slerp(cubeSnapAnim.logicalTo, eased).normalize()
-  const weight = snapWeight(p, cubeSnapAnim.weightFrom)
-  cubePresentationWeight = weight
-  composePose(scratchLogical, weight)
+  cubeQuat.copy(cubeSnapAnim.from).slerp(cubeSnapAnim.to, easeOutCubic(p)).normalize()
   applyCubeRotation()
   if (p >= 1) {
-    cubePresentationWeight = 1
-    composePose(cubeSnapAnim.logicalTo, 1)
+    cubeQuat.copy(cubeSnapAnim.to)
     cubeSnapAnim.active = false
     applyCubeRotation()
   }
@@ -2516,12 +2496,15 @@ function sessionSnapshot() {
       honorCounts: { ...run.honorCounts },
     },
     pose: {
-      // The LOGICAL pose only (v0.8.6). The presentation tilt is a fixed constant
-      // and the rendered quaternion is a mid-animation value on the frames a save
-      // can land on, so neither belongs in a save file: a resumed run rebuilds
-      // `pose = tilt(1) ∘ base`. Old saves carrying `quat`/`yaw`/`pitch` still load
-      // — their `base` is the only field that was ever load-bearing.
+      // The LOGICAL pose plus the player's dialled bearing. The rendered quaternion
+      // is a mid-animation value on the frames a save can land on, so it is never
+      // saved; the bearing however IS player state now (v0.8.8) — a resumed run has
+      // to come back at the angle the player dialled, not at the shipped default.
+      // Old saves carrying `quat`/`yaw`/`pitch` still load: `base` was the only
+      // load-bearing field they had.
       base: cubeBase.toArray(),
+      bearingYaw,
+      bearingPitch,
     },
   }
 }
@@ -2690,15 +2673,20 @@ function applySession(saved) {
   axisPickEl.classList.add('hidden')
   // Pose is restored from the LOGICAL base quaternion, so the cube comes back on
   // exactly the face it was left on (a face-aligned pose matters: the candidate's
-  // drop orientation is derived from it) with the standard presentation tilt on
-  // top. An unreadable pose starts face-aligned instead of guessing.
+  // drop orientation is derived from it), with the bearing the player had dialled —
+  // clamped to the band, so a hand-edited or stale save cannot produce a bearing the
+  // game would never have allowed. An unreadable pose starts face-aligned.
   if (saved.pose?.base) {
     cubeSnapAnim.active = false
     cubeLive = null
     viewDrag = null
     cubeBase.fromArray(saved.pose.base).normalize()
-    cubePresentationWeight = 1
-    composePose(cubeBase, 1)
+    const band = rotateStyle.stepThreshold
+    bearingYaw = Number.isFinite(saved.pose.bearingYaw)
+      ? THREE.MathUtils.clamp(saved.pose.bearingYaw, -band, band) : rotateStyle.bearingYaw
+    bearingPitch = Number.isFinite(saved.pose.bearingPitch)
+      ? THREE.MathUtils.clamp(saved.pose.bearingPitch, -band, band) : rotateStyle.bearingPitch
+    cubeQuat.copy(bearingQuat(bearingYaw, bearingPitch)).multiply(cubeBase).normalize()
     applyCubeRotation()
   } else {
     resetCubeRotation()
@@ -3196,15 +3184,15 @@ globalThis.__voxalblast = Object.freeze({
     }
   },
   // `pose` is the rendered orientation; `base` is the logical grid pose it settles
-  // around (a product of whole 90° steps about world axes, so it can never drift
-  // off the grid); `tilt` is the presentation tilt actually carried right now and
-  // `presentation` its weight (1 at rest, 0 while the cube is turning). The Euler
-  // triples are readability helpers for the checks (a pure yaw/pitch/roll pose
-  // decomposes exactly in ZYX order).
+  // around (a product of whole 90° steps about world axes, so it can never drift off
+  // the grid); `bearing` is how far the player has dialled the view off the face, in
+  // screen space, and `bearingDeg` the same in degrees. The Euler triples are
+  // readability helpers for the checks (a pure yaw/pitch/roll pose decomposes exactly
+  // in ZYX order).
   rotation: () => {
     const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
     const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
-    const tiltEuler = new THREE.Euler().setFromQuaternion(presentationTilt(cubePresentationWeight), 'ZYX')
+    const bearingEuler = new THREE.Euler().setFromQuaternion(bearingQuat(bearingYaw, bearingPitch), 'ZYX')
     return {
       yaw: poseEuler.y,
       pitch: poseEuler.x,
@@ -3212,9 +3200,13 @@ globalThis.__voxalblast = Object.freeze({
       baseYaw: baseEuler.y,
       basePitch: baseEuler.x,
       baseRoll: baseEuler.z,
-      tiltYaw: tiltEuler.y,
-      tiltPitch: tiltEuler.x,
-      presentation: cubePresentationWeight,
+      tiltYaw: bearingEuler.y,
+      tiltPitch: bearingEuler.x,
+      bearing: { yaw: bearingYaw, pitch: bearingPitch },
+      bearingDeg: {
+        yaw: Number(THREE.MathUtils.radToDeg(bearingYaw).toFixed(2)),
+        pitch: Number(THREE.MathUtils.radToDeg(bearingPitch).toFixed(2)),
+      },
       pose: cubeQuat.toArray(),
       base: cubeBase.toArray(),
       front: findFrontFace(),
@@ -3298,18 +3290,18 @@ globalThis.__voxalblast = Object.freeze({
         visible: cameraSide > 0,
       }
     })
-    // How far the PRESENTATION TILT leans the world vertical. 0 = the tilt is a pure
+    // How far the BEARING leans the world vertical. 0 = the bearing is a pure
     // screen-space yaw, which cannot tip the cube at all. This is the "视觉上还比较歪"
-    // number, and it has to stay ~0.
+    // number, and it has to stay ~0 for every bearing the player can dial.
     //
-    // It is measured on the TILT and not on the rendered pose on purpose: every grid
-    // pose maps world axes to world axes (they are signed permutations), so a
-    // grid-aligned cube can only ever be as plumb as the projection of the world
-    // axes themselves — measuring the pose would report 180° for a legitimately
+    // It is measured on the BEARING and not on the rendered pose on purpose: every
+    // grid pose maps world axes to world axes (they are signed permutations), so a
+    // grid-aligned cube can only ever be as plumb as the projection of the world axes
+    // themselves — measuring the pose would report 180° for a legitimately
     // upside-down face and 90° for one that arrived by a roll, neither of which is a
-    // lean. The only thing that can make the board LOOK tilted is a presentation
-    // component that moves world Y sideways, and this is exactly that.
-    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(presentationTilt(cubePresentationWeight))
+    // lean. The only thing that can make the board LOOK tilted is a bearing
+    // component that moves world Y sideways, and a yaw-last composition cannot.
+    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(bearingQuat(bearingYaw, bearingPitch))
     const uprightDeg = Number(THREE.MathUtils.radToDeg(Math.atan2(-tiltUp.x, Math.abs(tiltUp.y))).toFixed(3))
     const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
     const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)

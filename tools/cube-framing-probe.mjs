@@ -84,6 +84,11 @@ const TARGET = {
   // axis the bare (tilt-free) part of the gesture turns about must be STABLE.
   maxAxisDriftDeg: 1.0,
   maxAxisOffsetDeg: 12.0, // ...and the camera's own skew must stay bounded
+  // A roll is the one axis a three-quarter camera cannot show as an in-plane spin:
+  // its axis has to point at the camera for that, and the camera is pitched ~18°, so
+  // the world Z axis is ~30° off the view direction by construction. Graded against
+  // its own (looser) budget; its CONSISTENCY is still graded at 1° like the others.
+  maxRollAxisOffsetDeg: 15.0,
 }
 
 const EDGE_CANDIDATES = [
@@ -300,8 +305,26 @@ async function waitForCube(client) {
 
 const readJson = async (client, expression) => JSON.parse(await client.evaluate(`JSON.stringify(${expression})`))
 
-async function pressKeys(client, keys) {
-  for (const key of keys) {
+// A straight pointer drag from A to B, in `steps` moves. Same shape as
+// tools/swipe-probe.mjs's: the axis is claimed a few px in, which is what the
+// gesture partition expects.
+async function drag(client, from, to, steps = 8) {
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1 })
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+      button: 'left',
+      buttons: 1,
+    })
+    await sleep(16)
+  }
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1 })
+}
+
+async function pressKeys(client, keys) {  for (const key of keys) {
     const code = `Key${key.toUpperCase()}`
     await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: key.toUpperCase(), code, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) })
     await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: key.toUpperCase(), code, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) })
@@ -534,7 +557,7 @@ try {
       trace.push({
         dragPx: Number(distance.toFixed(1)),
         liveAngleDeg: current.live ? Number((current.live.angle * 180 / Math.PI).toFixed(2)) : null,
-        presentation: current.presentation,
+        bearingDeg: current.bearingDeg.yaw,
         deltaAngleDeg: delta.angleDeg,
         screenDeg: foldScreenDeg(delta.screenDeg),
         alongView: delta.alongView,
@@ -551,45 +574,102 @@ try {
     await sleep(SETTLE_MS)
     await client.frames()
 
-    const bare = trace.filter((entry) => entry.presentation === 0)
-    const clean = trace.filter((entry, index) => index > 0 && entry.presentation === 0 && trace[index - 1].presentation === 0)
-    // What the camera alone does to this axis: the reading once the tilt is out and
-    // the gesture has settled onto its axis. This is constant, so the two things
-    // worth asserting are that every later bare delta agrees with it (no residue
-    // from the fade) and that the offset itself is bounded.
-    const axisOffsetDeg = clean.length ? Math.max(...clean.map((entry) => screenAxisError(gesture.want, entry))) : null
-    const bareReadings = clean.map((entry) => (gesture.want === 'roll' ? entry.alongView * 90 : entry.screenDeg))
-    const axisDriftDeg = bareReadings.length > 1 ? Math.max(...bareReadings) - Math.min(...bareReadings) : 0
-    const fadeDoneDeg = trace.find((entry) => entry.presentation === 0)?.liveAngleDeg ?? null
-    if (axisOffsetDeg !== null && axisOffsetDeg > TARGET.maxAxisOffsetDeg) {
-      failures.push(`trajectory ${gesture.name}: rotation axis is ${axisOffsetDeg.toFixed(2)}° off its screen axis (camera skew budget ${TARGET.maxAxisOffsetDeg}°)`)
+    // The gesture's own axis, sampled against what the camera does to that world
+    // axis. Since the bearing is no longer faded out, every sample is a genuine
+    // increment of the same single-axis rotation and the reading has to be constant
+    // — that constancy is what "the cube turns on one clean axis" means here.
+    const axisOffsetDeg = trace.length > 2 ? Math.max(...trace.slice(2).map((entry) => screenAxisError(gesture.want, entry))) : null
+    const readings = trace.slice(2).map((entry) => (gesture.want === 'roll' ? entry.alongView * 90 : entry.screenDeg))
+    const axisDriftDeg = readings.length > 1 ? Math.max(...readings) - Math.min(...readings) : 0
+    const budget = gesture.want === 'roll' ? TARGET.maxRollAxisOffsetDeg : TARGET.maxAxisOffsetDeg
+    if (axisOffsetDeg !== null && axisOffsetDeg > budget) {
+      failures.push(`trajectory ${gesture.name}: rotation axis is ${axisOffsetDeg.toFixed(2)}° off its screen axis (budget ${budget}°)`)
     }
     if (axisDriftDeg > TARGET.maxAxisDriftDeg) {
-      failures.push(`trajectory ${gesture.name}: the bare gesture's axis drifts ${axisDriftDeg.toFixed(2)}° — the presentation fade is leaving a residue`)
-    }
-    // The fade has to be CONTINUOUS — a tilt that is already gone on the first
-    // sampled drag would mean the cube jumped to square the moment the finger went
-    // down, which is the thing the fade exists to avoid.
-    if (trace[0].presentation === 0) {
-      failures.push(`trajectory ${gesture.name}: the presentation tilt is already gone at ${trace[0].liveAngleDeg}° of drag (no fade, just a jump)`)
-    }
-    // ...and it must be over well before a whole face has been pulled (the ≈30°
-    // commit threshold), so the pose a release has to honour is never a tilted one.
-    if (fadeDoneDeg === null || Math.abs(fadeDoneDeg) > TARGET.maxTiltGoneDeg) {
-      failures.push(`trajectory ${gesture.name}: presentation tilt still present past ${fadeDoneDeg}° of drag`)
+      failures.push(`trajectory ${gesture.name}: the gesture's axis drifts ${axisDriftDeg.toFixed(2)}° mid-drag`)
     }
     trajectories.push({
       name: gesture.name,
       axis: gesture.want,
       pxToStep: Number((ROTATE_STYLE.stepThreshold / Math.PI * span).toFixed(1)),
-      bareSamples: bare.length,
-      fadeDoneByDeg: fadeDoneDeg,
       axisOffsetDeg: axisOffsetDeg === null ? null : Number(axisOffsetDeg.toFixed(2)),
       axisDriftDeg: Number(axisDriftDeg.toFixed(2)),
       trace,
     })
   }
   report.trajectory = trajectories
+
+  // ------------------------------------------------------------- 3. the bearing
+  // "每次转完，都是到达同一个角度" (v0.8.7 and earlier). These are the four things
+  // that make the bearing the player's instead of a constant: a sub-threshold drag
+  // is KEPT, it is REMEMBERED across a face turn, a drag that would leave the band
+  // turns the next face instead, and a roll never leaves a bearing behind.
+  const tuning = []
+  const readBearing = async () => {
+    const rotation = await readJson(client, 'globalThis.__voxalblast.rotation()')
+    return { yawDeg: rotation.bearingDeg.yaw, pitchDeg: rotation.bearingDeg.pitch, base: rotation.base }
+  }
+  const dragBy = async (axis, px) => {
+    const from = axis === 'pitch' ? { x: centreX, y: centreY } : { x: centreX, y: centreY }
+    const to = axis === 'pitch' ? { x: from.x, y: from.y + px } : { x: from.x + px, y: from.y }
+    await drag(client, from, to, 10)
+    await sleep(SETTLE_MS)
+    await client.frames()
+    return readBearing()
+  }
+  const band = ROTATE_STYLE.stepThreshold
+  const pxPerRadYaw = spanX / Math.PI // swipeAngle: angle = dx / span.x * π
+  const pxPerRadPitch = spanY / Math.PI
+
+  // (a) a sub-threshold drag is kept as the new bearing
+  await pressKeys(client, [])
+  const before1 = await readBearing()
+  const nudgeRad = band * 0.4
+  const after1 = await dragBy('yaw', -nudgeRad * pxPerRadYaw)
+  const keptDelta = after1.yawDeg - before1.yawDeg
+  const keptTarget = -nudgeRad * 180 / Math.PI
+  const nudgeKept = Math.abs(keptDelta - keptTarget) < 3 && qKey(after1.base) === qKey(before1.base)
+  tuning.push({ step: 'sub-threshold drag is kept', expectedDeg: Number(keptTarget.toFixed(2)), gotDeg: keptDelta, baseUnchanged: qKey(after1.base) === qKey(before1.base) })
+  if (!nudgeKept) failures.push(`bearing: a ${(keptTarget).toFixed(1)}° fine-tune settled at ${keptDelta.toFixed(2)}° instead`)
+
+  // (b) it survives a face turn: a committing drag keeps the bearing and steps base
+  const committed = await dragBy('yaw', -band * 1.5 * pxPerRadYaw)
+  const remembered = Math.abs(committed.yawDeg - after1.yawDeg) < 2
+  const stepped = qKey(committed.base) !== qKey(after1.base)
+  tuning.push({ step: 'bearing is remembered across a face turn', bearingDeg: committed.yawDeg, faceChanged: stepped })
+  if (!stepped) failures.push('bearing: a drag well past the band did not turn a face')
+  if (!remembered) failures.push(`bearing: the fine-tune was lost across a face turn (${after1.yawDeg}° -> ${committed.yawDeg}°)`)
+
+  // (c) past the band it turns a face instead of fine-tuning further. Push in the
+  // direction the bearing is already leaning, far enough that the total must leave
+  // ±band: `band − |bearing|` to reach the edge, plus a margin.
+  const after1Rad = committed.yawDeg * Math.PI / 180
+  const toEdgeRad = band - Math.abs(after1Rad) + band * 0.3
+  // Same direction the bearing is already leaning: swipeAngle's yaw term is
+  // `+dx / span * π`, so a negative bearing needs a negative drag to go further.
+  const overEdge = await dragBy('yaw', Math.sign(after1Rad || -1) * toEdgeRad * pxPerRadYaw)
+  const turnedInstead = qKey(overEdge.base) !== qKey(committed.base)
+  tuning.push({ step: 'past the band it turns the next face', faceChanged: turnedInstead, bearingDeg: overEdge.yawDeg })
+  if (!turnedInstead) {
+    failures.push(`bearing: a drag of ${(toEdgeRad * 180 / Math.PI).toFixed(1)}° from a ${committed.yawDeg}° bearing fine-tuned to ${overEdge.yawDeg} instead of turning a face`)
+  }
+
+  // (d) roll leaves no bearing behind (Z is the straighten gesture)
+  const beforeRoll = await readBearing()
+  if (sideX !== null) {
+    const to = { x: sideX, y: centreY + Math.round(band * 0.5 * pxPerRadPitch) }
+    await drag(client, { x: sideX, y: centreY }, to, 10)
+    await sleep(SETTLE_MS)
+    await client.frames()
+  }
+  const afterRoll = await readBearing()
+  const rollClean = qKey(afterRoll.base) === qKey(beforeRoll.base)
+    && Math.abs(afterRoll.yawDeg - beforeRoll.yawDeg) < 0.5
+    && Math.abs(afterRoll.pitchDeg - beforeRoll.pitchDeg) < 0.5
+  tuning.push({ step: 'a sub-threshold roll leaves no bearing', baseUnchanged: qKey(afterRoll.base) === qKey(beforeRoll.base) })
+  if (sideX !== null && !rollClean) failures.push('bearing: a sub-threshold side-band roll left a residual offset')
+  report.tuning = tuning
+  report.bearing = { afterYawNudgeDeg: after1.yawDeg, afterFaceTurnDeg: committed.yawDeg, afterRollDeg: afterRoll.yawDeg }
 
   const errs = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__errs || [])'))
   if (errs.length) failures.push(`page errors: ${errs.join(' | ')}`)
@@ -626,11 +706,16 @@ else {
     console.log('\ntrajectory')
     for (const gesture of report.trajectory) {
       if (gesture.skipped) { console.log(`  ${gesture.name}: skipped (${gesture.skipped})`); continue }
-      console.log(`  ${gesture.name}  (${gesture.pxToStep}px to commit)  tilt gone by ${gesture.fadeDoneByDeg}° of drag  bare axis offset ${gesture.axisOffsetDeg}°  drift ${gesture.axisDriftDeg}°`)
+      console.log(`  ${gesture.name}  (${gesture.pxToStep}px to commit)  axis offset ${gesture.axisOffsetDeg}°  drift ${gesture.axisDriftDeg}°`)
       for (const entry of gesture.trace) {
-        console.log(`    ${String(entry.dragPx).padStart(6)}px  drag ${String(entry.liveAngleDeg).padStart(7)}°  tilt ${entry.presentation.toFixed(2)}  Δ ${String(entry.deltaAngleDeg).padStart(6)}°  screen ${String(entry.screenDeg).padStart(7)}°  alongView ${entry.alongView}`)
+        console.log(`    ${String(entry.dragPx).padStart(6)}px  drag ${String(entry.liveAngleDeg).padStart(7)}°  Δ ${String(entry.deltaAngleDeg).padStart(6)}°  screen ${String(entry.screenDeg).padStart(7)}°  alongView ${entry.alongView}`)
       }
     }
+  }
+  if (report.tuning) {
+    console.log('\nbearing (微调方位)')
+    for (const row of report.tuning) console.log(`  ${row.step.padEnd(44)} ${JSON.stringify(row)}`)
+    console.log(`  bearing after the yaw nudge ${report.bearing.afterYawNudgeDeg}°  after a face turn ${report.bearing.afterFaceTurnDeg}°  after a roll ${report.bearing.afterRollDeg}°`)
   }
   if (failures.length) console.log(`\nFAIL:\n  ${failures.join('\n  ')}`)
   else console.log('\nframing and rotation trajectories are within target')
