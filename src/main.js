@@ -179,7 +179,12 @@ const scene = new THREE.Scene()
 scene.background = null
 // The opaque wooden shell supplies depth; the landscape behind the canvas is DOM,
 // not a skybox, and is independent of the scene's reflection environment.
-const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 0.1, 100)
+// v0.8.10: `far` had to grow with the weak-perspective camera. The distance solver
+// now puts the eye ~65 world units out (FOV 6° instead of 30°), and the wheel can
+// push `cameraZoom` to 1.7 — 110 units, past the old 100 plane, which would have
+// clipped the cube away as the player zoomed out. `near` moves with it so the depth
+// range stays sane for the contact-shadow pass.
+const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 1, 500)
 const cameraTarget = new THREE.Vector3(0, 0, 0)
 let cameraZoom = 1
 const minCameraZoom = 0.7

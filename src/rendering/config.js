@@ -73,26 +73,37 @@ export const BOARD_STYLE = Object.freeze({
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
   previewLift: 0.03,
   exposure: 1.0,
-  cameraFov: 30,
-  cameraFovMobile: 34,
-  // v0.8.6: a MODERATE three-quarter view. The cube stays upright on screen (with
-  // up = +Y a camera-only view always projects the cube's vertical edges plumb),
-  // the side and top faces stay real faces rather than slivers, and the front face
-  // is still clearly the subject.
+  // v0.8.10: a WEAK, NEARLY LEVEL three-quarter view. This is what finally removes
+  // the "停下来的时候沿着屏幕方向 Z 轴有旋转角度" report, and the reason is geometric
+  // rather than stylistic:
   //
-  // Two earlier settings bracket this one, and both were rejected on sight:
-  //   - v0.8.5's [0.52, 0.48, 1.05] (26.4° yaw / 22.3° pitch) left the three faces
-  //     at ~65% / 19% / 16%: the front face was not the subject, and the pitch put
-  //     world X 10.6° off horizontal on screen and world Z 37.4° off, so a vertical
-  //     swipe and a side-band spin turned visibly crooked.
-  //   - a dead-on camera [0, 0, 1] with the whole three-quarter read carried by a
-  //     17.5°/15.5° tilt of the CUBE put the front face at 83% — and that read as
-  //     "just a grid of squares, and it leans": a near-frontal face makes every
-  //     cell a near-square, and tilting the cube in two axes tips its vertical
-  //     edges off plumb (measured −4.8°), which no grid-aligned pose ever did.
-  // Keep the three-quarter in the CAMERA and keep the cube's grid pose plumb; use
-  // ROTATE_STYLE.bearingYaw for the small extra turn in screen space.
-  cameraDirection: Object.freeze([0.34, 0.33, 1.0]),
+  //   the front face's own u axis (a world-X edge) lands on screen at
+  //       u·U = -sin φ · sin(ψ - y)
+  //   where φ is the camera's PITCH, ψ its yaw and y the cube's yaw. Both terms have
+  //   to go: a level camera (φ = 0) makes it zero for any relative yaw at all, and a
+  //   weak projection removes the leftover from perspective convergence (the two ends
+  //   of a receding edge sit at different depths, so the drawn chord tilts further
+  //   than the direction does — measured +13.5° on screen against a 7.5° direction
+  //   tilt at v0.8.9's [0.34, 0.33, 1.0] / FOV 30 / D ≈ 14).
+  //
+  //   Lowering the pitch ALONE does not work: at the near camera the tilt only falls
+  //   to ~13–18° (the chord is still dominated by convergence) and the top face drops
+  //   out of view entirely below ~10° of pitch, because a face is only visible while
+  //   D·sin(tilt) > half. A weak projection has no such cliff, so a 5° pitch still
+  //   shows the roof as a band.
+  //
+  // Result (model, then verified in the probe): grid chord tilt ≈ 1.4° instead of
+  // 13.5°, vertical edges still exactly plumb, three faces, main face ≈ 73%.
+  // The three-quarter READ is unchanged — only the lens and the pitch moved.
+  cameraFov: 6,
+  cameraFovMobile: 7,
+  // yaw 16° / pitch 8°. NOTE for anyone retuning: the yaw stays here rather than on
+  // the cube because only the RELATIVE angle matters, and keeping it on the camera
+  // leaves ROTATE_STYLE.bearingYaw centred on 0 — which is what makes the ±stepThreshold
+  // fine-tune band symmetric in both directions. The pitch is the one knob that trades
+  // "roof visible" against "grid straight": the tilt above is ~2.2° here, ~1.4° at 5°,
+  // ~6.9° back at v0.8.9's 17.35°.
+  cameraDirection: Object.freeze([0.273, 0.139, 0.952]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
@@ -103,8 +114,8 @@ export const BOARD_STYLE = Object.freeze({
   // and 0.77~0.79 of the mobile canvas width, with equal roll bands on both sides
   // (302/220/376px on PC, 39~42px on mobile). `keepCubeInsideCanvas()`
   // additionally guarantees the cube cannot leave the canvas on any aspect.
-  safeFactorDesktop: 1.14,
-  safeFactorMobile: 1.0,
+  safeFactorDesktop: 0.887,
+  safeFactorMobile: 0.96,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0.1,
   targetYMobile: -0.3,
@@ -250,35 +261,29 @@ export const ROTATE_STYLE = Object.freeze({
   //   - negative yaw turns the cube further toward the right-hand face (more side
   //     face in view, main face smaller);
   //   - positive yaw turns the front face back toward the screen (main face larger).
-  bearingYaw: -0.0873, // ≈−5° — the shipped default
+  bearingYaw: 0, // ≈0° — the whole three-quarter read lives in the camera
   bearingPitch: 0,
-  // How far the bearing may be dialled, PER AXIS AND PER DIRECTION. Asymmetric, and
-  // the asymmetry is measured geometry rather than taste.
+  // How far the bearing may be dialled, PER AXIS AND PER DIRECTION. The gate is "all
+  // three faces stay visible and the front face stays the subject".
   //
-  // The gate is "all three faces stay visible". Perspective puts that gate in very
-  // different places on the two sides of the default, because a face disappears the
-  // moment the camera crosses its plane (measured, 1280x900, npm run probe:framing):
+  // v0.8.10 re-derived these for the weak-perspective camera (the old fence numbers
+  // were measured against a near camera with a visibility cliff, where a face could
+  // vanish outright; a weak projection has no cliff, so the limits are now gradual):
   //
-  //   yaw   -25° -> main 46%, side 43%   still a cube, just a heavier three-quarter
-  //          -5° -> main 71%, side 18%, top 10%   <- the shipped default
-  //          +5° -> main 84%, side 5%,  top 11%
-  //         +10° -> main 89%, side 0%   GONE — the cube is a plate with a roof
-  //   pitch +25° -> main 47%   a heavier three-quarter
-  //           0° -> the default
-  //          -5° -> main 84%, top 4%
-  //         -10° -> main 88%, top 0%   GONE
+  //   bearing yaw  -24° → main 51%, side 42%   the front face stops being the subject
+  //                -14° → main 60%, side 30%
+  //                  0° → main 75%, side 18%, top 8%   ← the shipped default
+  //                 +5° → main ~80%
+  //                +10° → main 86%, side 8%, top 5%   flat enough to read as a grid
+  //   bearing pitch +8° → main 67%, top 16%
+  //                  0° → the default
+  //                 -4° → main 79%, top 3%   the roof is down to a line
   //
-  // So the "more frontal" direction — the one this band mostly exists for — runs out
-  // after about 10°, while "more three-quarter" stays readable for 30°+. Capping the
-  // frontal side is what stops the player from dialling the cube into a flat plate
-  // (measured 100% / 0% / 0% at yaw +25/pitch -25) and then having it STICK there,
-  // because a bearing is remembered across face turns and saved with the run.
-  //
-  // Raising `max` on yaw or lowering `min` on pitch re-opens exactly that failure.
-  // The values below keep both non-main faces at roughly 5% or more.
+  // The band keeps the main face between roughly 60% and 80% and every face at ~5%
+  // or more — i.e. inside the composition the producer has approved, at both ends.
   bearingBand: Object.freeze({
-    yaw: Object.freeze({ min: -0.5236, max: 0.0698 }), // -30° (more three-quarter) .. +4° (more frontal)
-    pitch: Object.freeze({ min: -0.0698, max: 0.5236 }), // -4° (more frontal) .. +30° (more three-quarter)
+    yaw: Object.freeze({ min: -0.2443, max: 0.0873 }), // -14° (more three-quarter) .. +5° (more frontal)
+    pitch: Object.freeze({ min: -0.0349, max: 0.1396 }), // -2° (more frontal) .. +8° (more three-quarter)
   }),
   // NOTE on the two directions: the band's ring-fenced side is the one with almost no
   // headroom left. Between the fence and the ≈30° step threshold a frontal drag docks
