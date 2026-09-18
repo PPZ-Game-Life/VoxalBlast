@@ -637,12 +637,20 @@ function stepQuaternion(axis, steps) {
   return new THREE.Quaternion().setFromAxisAngle(AXIS_OF[axis], steps * ROT_STEP)
 }
 
-// The fixed presentation tilt: world Y first, then world X. Roll never
-// contributes — a residual Z spin would show up as a skewed face (ROTATE_STYLE).
+// The fixed presentation tilt, and the one ordering rule that matters:
+// PITCH FIRST, YAW LAST, i.e. `Rx(pitch) · Ry(yaw)`.
+//
+// A rotation about world Y cannot move the world-Y direction, so a yaw applied
+// last leaves the cube's vertical edges exactly plumb; the same is true of a pitch
+// applied last. Applying both, only the LAST one is plumb and the other leans the
+// whole board — measured −4.8° on screen for the v0.8.6 first cut, which wrote
+// `Ry(yaw) · Rx(pitch)` with a 17.5°/15.5° tilt and read to the player as "视觉上还
+// 比较歪". ROTATE_STYLE.presentationPitch is 0 for the same reason: the
+// three-quarter read belongs to the camera, which cannot lean a grid-aligned pose.
 const IDENTITY_QUAT = new THREE.Quaternion()
 const PRESENTATION_TILT = new THREE.Quaternion()
-  .setFromAxisAngle(AXIS_OF.yaw, rotateStyle.presentationYaw)
-  .multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_OF.pitch, rotateStyle.presentationPitch))
+  .setFromAxisAngle(AXIS_OF.pitch, rotateStyle.presentationPitch)
+  .multiply(new THREE.Quaternion().setFromAxisAngle(AXIS_OF.yaw, rotateStyle.presentationYaw))
   .normalize()
 
 // Weighted tilt. `tilt(1)` is the resting look, `tilt(0)` is the bare pose a
@@ -3286,10 +3294,23 @@ globalThis.__voxalblast = Object.freeze({
         offAxisDeg: Number(THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(facing, -1, 1))).toFixed(2)),
         areaPx: Number(quadArea([quad, across, opposite, along]).toFixed(1)),
         skewDeg: Number((((skewDeg + 180) % 180) - 90).toFixed(2)),
-        twistDeg: Number((((twistRaw % 90) + 90) % 90).toFixed(3)),
+        twistDeg: Number((((twistRaw % 90) + 135) % 90 - 45).toFixed(3)),
         visible: cameraSide > 0,
       }
     })
+    // How far the PRESENTATION TILT leans the world vertical. 0 = the tilt is a pure
+    // screen-space yaw, which cannot tip the cube at all. This is the "视觉上还比较歪"
+    // number, and it has to stay ~0.
+    //
+    // It is measured on the TILT and not on the rendered pose on purpose: every grid
+    // pose maps world axes to world axes (they are signed permutations), so a
+    // grid-aligned cube can only ever be as plumb as the projection of the world
+    // axes themselves — measuring the pose would report 180° for a legitimately
+    // upside-down face and 90° for one that arrived by a roll, neither of which is a
+    // lean. The only thing that can make the board LOOK tilted is a presentation
+    // component that moves world Y sideways, and this is exactly that.
+    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(presentationTilt(cubePresentationWeight))
+    const uprightDeg = Number(THREE.MathUtils.radToDeg(Math.atan2(-tiltUp.x, Math.abs(tiltUp.y))).toFixed(3))
     const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
     const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)
     const front = visible[0]
@@ -3301,6 +3322,7 @@ globalThis.__voxalblast = Object.freeze({
       others: visible.slice(1).map((entry) => ({ face: entry.face, share: Number((entry.areaPx / total).toFixed(4)) })),
       visible,
       faces: entries,
+      uprightDeg,
       camera: {
         position: camera.position.toArray().map((value) => Number(value.toFixed(3))),
         target: [cameraTarget.x, cameraTarget.y, cameraTarget.z].map((value) => Number(value.toFixed(3))),

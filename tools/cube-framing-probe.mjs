@@ -51,20 +51,39 @@ const QUICK = process.argv.includes('--quick')
 
 // 03 §2 / docs/Planning targets. Cited here so the probe fails against the
 // DOCUMENT and not against whatever the code happens to do today.
+// The targets the resting composition is graded on. Cited here so the probe fails
+// against the DOCUMENTED intent, not against whatever the code happens to do today.
+//
+// History, so these numbers are not "adjusted to whatever passes": the v0.8.6 first
+// cut chased 82–88% (82.8% measured) and the producer rejected it on sight — "整个
+// 就是一格一格的，然后视觉上还比较歪". A near-frontal face makes every cell a
+// near-square, which is exactly a flat grid; and the cube-tilt that bought the extra
+// share leaned the board −4.8° on screen. The targets now encode the corrected
+// intent: three faces visible and upright, front face clearly the subject.
 const TARGET = {
-  mainShareMin: 0.82,
-  mainShareMax: 0.88,
-  otherMax: 0.11,
-  othersTotalMax: 0.18,
+  mainShareMin: 0.66,
+  mainShareMax: 0.78,
+  // No non-main face may collapse into a sliver. This is the one that catches the
+  // flat-plate failure mode directly: with a close camera, a small tilt can leave a
+  // side face invisible entirely (measured 100% / 0 / 0 for a 6.6° cube tilt).
+  minOtherShare: 0.06,
+  maxUprightDeg: 0.5, // the cube's vertical edges stay plumb — "视觉上还比较歪" is this number
   maxOffAxisSpreadDeg: 0.05, // the presented face sits the same amount off the camera axis on all 24
-  // The presented face's in-plane roll (perspective-free) is NOT exactly constant,
-  // and cannot be: the presentation is a fixed SCREEN-space rotation, so composing it
-  // with the four in-plane rotations each face can arrive in leaves a few degrees of
-  // residual. Anything much beyond the tilt itself would mean the tilt had moved into
-  // the cube's frame. Graded loosely; see the probe header.
-  maxTwistSpreadDeg: 6.0,
+  // The presented face's in-plane roll (perspective-free) is not exactly constant
+  // and cannot be while the camera is three-quarter: the cube's grid poses are signed
+  // permutations of the world axes, so a face arrives with its grid aligned to
+  // whichever world axis, and those project at different angles on screen. The bound
+  // is therefore the camera's own spread, not zero — v0.8.5's camera measured ~10.6°
+  // for the same quantity, and this camera's is ~7.7°. It would go to ~0 only by
+  // making the camera frontal, which is the composition that was rejected.
+  maxTwistSpreadDeg: 9.0,
   maxTiltGoneDeg: 24, // the presentation tilt is fully out well before the ≈30° commit threshold
-  maxScreenAxisErrorDeg: 1.0, // a settled turn runs on its screen axis
+  // The gesture axes are world axes and the camera is tilted, so a vertical drag is
+  // NOT exactly plumb on screen — that skew is the camera's and is the price of the
+  // three-quarter look. What is asserted instead is that the fade adds nothing: the
+  // axis the bare (tilt-free) part of the gesture turns about must be STABLE.
+  maxAxisDriftDeg: 1.0,
+  maxAxisOffsetDeg: 12.0, // ...and the camera's own skew must stay bounded
 }
 
 const EDGE_CANDIDATES = [
@@ -306,7 +325,9 @@ function foldScreenDeg(deg) {
 // What "on its screen axis" means per gesture: a yaw turns about a vertical screen
 // axis (±90°), a pitch about a horizontal one (0°). A roll's axis points at the
 // camera, so it has no screen direction at all and the only honest reading is that
-// the axis is along the view (`alongView` ±1).
+// the axis is along the view (`alongView` ±1). Because the camera is deliberately
+// three-quarter, the world X axis is NOT exactly horizontal on screen — the reading
+// is compared against the camera's own skew, not against 0/90.
 function screenAxisError(axis, entry) {
   if (axis === 'roll') return Math.abs(1 - Math.abs(entry.alongView)) * 90
   return Math.abs(axis === 'yaw' ? Math.abs(entry.screenDeg) - 90 : entry.screenDeg)
@@ -393,6 +414,7 @@ try {
       mainTwistDeg: faces.visible[0]?.twistDeg ?? null,
       mainOffAxisDeg: faces.visible[0]?.offAxisDeg ?? null,
       sideFacesVisible: faces.visible.length > 1,
+      uprightDeg: faces.uprightDeg,
       camera: faces.camera,
       presentation: rotation.presentation,
     })
@@ -402,15 +424,19 @@ try {
 
   const shares = samples.map((sample) => sample.mainShare)
   const skews = samples.map((sample) => sample.mainSkewDeg)
+  const minOtherMax = Math.min(...samples.map((sample) => sample.others.length === 2 ? Math.min(...sample.others.map((other) => other.share)) : 0))
   const otherMax = Math.max(...samples.flatMap((sample) => sample.others.map((other) => other.share)))
-  const othersTotalMax = Math.max(...samples.map((sample) => sample.others.reduce((sum, other) => sum + other.share, 0)))
   const distinctPoses = new Set(samples.map((sample) => qKey(sample.base))).size
   report.framing = {
     orientations: samples.length,
     distinctPoses,
     mainShare: { min: Math.min(...shares), max: Math.max(...shares) },
     otherMax,
-    othersTotalMax,
+    otherMin: minOtherMax,
+    uprightDeg: {
+      min: Math.min(...samples.map((sample) => sample.uprightDeg)),
+      max: Math.max(...samples.map((sample) => sample.uprightDeg)),
+    },
     offAxisDeg: {
       min: Math.min(...samples.map((s) => s.mainOffAxisDeg)),
       max: Math.max(...samples.map((s) => s.mainOffAxisDeg)),
@@ -447,8 +473,14 @@ try {
   if (Math.min(...shares) < TARGET.mainShareMin || Math.max(...shares) > TARGET.mainShareMax) {
     failures.push(`framing: main share ${(Math.min(...shares) * 100).toFixed(1)}–${(Math.max(...shares) * 100).toFixed(1)}% outside ${TARGET.mainShareMin * 100}–${TARGET.mainShareMax * 100}%`)
   }
-  if (otherMax > TARGET.otherMax) failures.push(`framing: a non-main face reaches ${(otherMax * 100).toFixed(1)}% (max ${TARGET.otherMax * 100}%)`)
-  if (othersTotalMax > TARGET.othersTotalMax) failures.push(`framing: non-main faces total ${(othersTotalMax * 100).toFixed(1)}% (max ${TARGET.othersTotalMax * 100}%)`)
+  if (otherMax > 1 - TARGET.mainShareMin) failures.push(`framing: a non-main face reaches ${(otherMax * 100).toFixed(1)}%`)
+  if (minOtherMax < TARGET.minOtherShare) {
+    failures.push(`framing: a non-main face is down to ${(minOtherMax * 100).toFixed(1)}% — the cube is flattening into a plate (min ${TARGET.minOtherShare * 100}%)`)
+  }
+  const uprightAbs = Math.max(...samples.map((sample) => Math.abs(sample.uprightDeg)))
+  if (uprightAbs > TARGET.maxUprightDeg) {
+    failures.push(`framing: the cube leans ${uprightAbs.toFixed(2)}° on screen (max ${TARGET.maxUprightDeg}°) — vertical edges must stay plumb`)
+  }
   // The strict one: the presented face sits the same distance off the camera axis
   // on every orientation. A tilt applied in the cube's own frame (rather than in
   // screen space) fails this immediately — some face always comes out flatter.
@@ -519,16 +551,21 @@ try {
     await sleep(SETTLE_MS)
     await client.frames()
 
-    // How clean the turn is once the presentation tilt is out of the way. A delta
-    // that SPANS the fade still carries the tilt being removed (which is the fade
-    // doing its job), so only deltas between two already-bare poses are graded —
-    // those are the ones that have to be exactly on the screen axis.
     const bare = trace.filter((entry) => entry.presentation === 0)
     const clean = trace.filter((entry, index) => index > 0 && entry.presentation === 0 && trace[index - 1].presentation === 0)
-    const worst = clean.length ? Math.max(...clean.map((entry) => screenAxisError(gesture.want, entry))) : null
+    // What the camera alone does to this axis: the reading once the tilt is out and
+    // the gesture has settled onto its axis. This is constant, so the two things
+    // worth asserting are that every later bare delta agrees with it (no residue
+    // from the fade) and that the offset itself is bounded.
+    const axisOffsetDeg = clean.length ? Math.max(...clean.map((entry) => screenAxisError(gesture.want, entry))) : null
+    const bareReadings = clean.map((entry) => (gesture.want === 'roll' ? entry.alongView * 90 : entry.screenDeg))
+    const axisDriftDeg = bareReadings.length > 1 ? Math.max(...bareReadings) - Math.min(...bareReadings) : 0
     const fadeDoneDeg = trace.find((entry) => entry.presentation === 0)?.liveAngleDeg ?? null
-    if (worst !== null && worst > TARGET.maxScreenAxisErrorDeg) {
-      failures.push(`trajectory ${gesture.name}: rotation axis is ${worst.toFixed(2)}° off its screen axis once the tilt is out`)
+    if (axisOffsetDeg !== null && axisOffsetDeg > TARGET.maxAxisOffsetDeg) {
+      failures.push(`trajectory ${gesture.name}: rotation axis is ${axisOffsetDeg.toFixed(2)}° off its screen axis (camera skew budget ${TARGET.maxAxisOffsetDeg}°)`)
+    }
+    if (axisDriftDeg > TARGET.maxAxisDriftDeg) {
+      failures.push(`trajectory ${gesture.name}: the bare gesture's axis drifts ${axisDriftDeg.toFixed(2)}° — the presentation fade is leaving a residue`)
     }
     // The fade has to be CONTINUOUS — a tilt that is already gone on the first
     // sampled drag would mean the cube jumped to square the moment the finger went
@@ -547,7 +584,8 @@ try {
       pxToStep: Number((ROTATE_STYLE.stepThreshold / Math.PI * span).toFixed(1)),
       bareSamples: bare.length,
       fadeDoneByDeg: fadeDoneDeg,
-      worstScreenAxisErrorDeg: worst === null ? null : Number(worst.toFixed(2)),
+      axisOffsetDeg: axisOffsetDeg === null ? null : Number(axisOffsetDeg.toFixed(2)),
+      axisDriftDeg: Number(axisDriftDeg.toFixed(2)),
       trace,
     })
   }
@@ -576,7 +614,8 @@ else {
     console.log(`cube box ${report.ruler.cubeBox.width}x${report.ruler.cubeBox.height}px   one face ≈ ${report.ruler.pxPerFaceYaw}px drag (yaw) / ${report.ruler.pxPerFacePitch}px (pitch)`)
     console.log(`framing  ${framing.orientations} orientations (${framing.distinctPoses} distinct poses)`)
     console.log(`  main face share ${(framing.mainShare.min * 100).toFixed(1)}–${(framing.mainShare.max * 100).toFixed(1)}%   (target ${TARGET.mainShareMin * 100}–${TARGET.mainShareMax * 100}%)`)
-    console.log(`  largest non-main face ${(framing.otherMax * 100).toFixed(1)}% (max ${TARGET.otherMax * 100}%)   two others total ${(framing.othersTotalMax * 100).toFixed(1)}% (max ${TARGET.othersTotalMax * 100}%)`)
+    console.log(`  non-main faces ${(framing.otherMin * 100).toFixed(1)}–${(framing.otherMax * 100).toFixed(1)}%   (floor ${TARGET.minOtherShare * 100}%)`)
+    console.log(`  cube upright ${framing.uprightDeg.min.toFixed(2)}…${framing.uprightDeg.max.toFixed(2)}° (0 = vertical edges plumb)`)
     console.log(`  presented face twist ${framing.twistDeg.min.toFixed(2)}…${framing.twistDeg.max.toFixed(2)}° (spread ${framing.twistDeg.spread.toFixed(2)}°)   off-axis ${framing.offAxisDeg.min.toFixed(2)}…${framing.offAxisDeg.max.toFixed(2)}°`)
     console.log(`  projected edge angle (informational, carries perspective convergence) ${framing.skewRange.min.toFixed(2)}…${framing.skewRange.max.toFixed(2)}°`)
     for (const row of framing.perOrientation) {
@@ -587,7 +626,7 @@ else {
     console.log('\ntrajectory')
     for (const gesture of report.trajectory) {
       if (gesture.skipped) { console.log(`  ${gesture.name}: skipped (${gesture.skipped})`); continue }
-      console.log(`  ${gesture.name}  (${gesture.pxToStep}px to commit)  tilt gone by ${gesture.fadeDoneByDeg}° of drag  worst screen-axis error once bare: ${gesture.worstScreenAxisErrorDeg}°`)
+      console.log(`  ${gesture.name}  (${gesture.pxToStep}px to commit)  tilt gone by ${gesture.fadeDoneByDeg}° of drag  bare axis offset ${gesture.axisOffsetDeg}°  drift ${gesture.axisDriftDeg}°`)
       for (const entry of gesture.trace) {
         console.log(`    ${String(entry.dragPx).padStart(6)}px  drag ${String(entry.liveAngleDeg).padStart(7)}°  tilt ${entry.presentation.toFixed(2)}  Δ ${String(entry.deltaAngleDeg).padStart(6)}°  screen ${String(entry.screenDeg).padStart(7)}°  alongView ${entry.alongView}`)
       }

@@ -75,27 +75,24 @@ export const BOARD_STYLE = Object.freeze({
   exposure: 1.0,
   cameraFov: 30,
   cameraFovMobile: 34,
-  // v0.8.6: the camera looks DEAD ON at the cube, and the three-quarter read is a
-  // property of the cube instead (see ROTATE_STYLE.presentationYaw/Pitch).
+  // v0.8.6: a MODERATE three-quarter view. The cube stays upright on screen (with
+  // up = +Y a camera-only view always projects the cube's vertical edges plumb),
+  // the side and top faces stay real faces rather than slivers, and the front face
+  // is still clearly the subject.
   //
-  // Until v0.8.5 this was [0.52, 0.48, 1.05] — 26° of yaw and 22° of pitch — and
-  // that single number caused both of the reported framing problems:
-  //   - at rest three faces shared the silhouette almost equally (measured 52% /
-  //     26% / 21% of the visible area), so the face the player was working on was
-  //     not the visual subject;
-  //   - and because the tilt lived in the CAMERA and not in the cube, every
-  //     rotation axis was seen off-axis: world X projects to a screen line tilted
-  //     10.6° at that pitch and world Z to one tilted 37.6°, so a vertical swipe
-  //     or a side-band spin "turned crooked" no matter how clean the cube's own
-  //     pose was.
-  // A face can only dominate the silhouette while the view is close to its normal
-  // (the ratio is cosα·cosβ / (cosα·cosβ + sinα·cosβ + cosα·sinβ), which is ~85%
-  // at 5°/4° and only ~52% at 26°/22°), and a rotation only reads as a pure
-  // screen-axis turn while the camera is square to the cube. Both requirements
-  // point at the same change, so the camera went square and the cube kept a small
-  // fixed presentation tilt. Do NOT reintroduce an angle here to recover the old
-  // three-quarter look — that is what the cube's own tilt is for.
-  cameraDirection: Object.freeze([0, 0, 1]),
+  // Two earlier settings bracket this one, and both were rejected on sight:
+  //   - v0.8.5's [0.52, 0.48, 1.05] (26.4° yaw / 22.3° pitch) left the three faces
+  //     at ~65% / 19% / 16%: the front face was not the subject, and the pitch put
+  //     world X 10.6° off horizontal on screen and world Z 37.4° off, so a vertical
+  //     swipe and a side-band spin turned visibly crooked.
+  //   - a dead-on camera [0, 0, 1] with the whole three-quarter read carried by a
+  //     17.5°/15.5° tilt of the CUBE put the front face at 83% — and that read as
+  //     "just a grid of squares, and it leans": a near-frontal face makes every
+  //     cell a near-square, and tilting the cube in two axes tips its vertical
+  //     edges off plumb (measured −4.8°), which no grid-aligned pose ever did.
+  // Keep the three-quarter in the CAMERA and keep the cube's grid pose plumb; use
+  // ROTATE_STYLE.presentationYaw for the small extra turn in screen space.
+  cameraDirection: Object.freeze([0.34, 0.33, 1.0]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
@@ -244,18 +241,24 @@ export const ROTATE_STYLE = Object.freeze({
   // tips it down (exposing the top face), which keeps the v0.8.5 read of
   // front + right + top.
   //
-  // Magnitude. The main face's share of the silhouette is NOT 1/(1 + tanα + tanβ)
-  // here, because the camera is close (D ≈ 14 world units for a cube of half-size
-  // 2.5, FOV 30): a face is only visible at all while the camera is on the outer
-  // side of its own plane, i.e. while D·sin(tilt) > half, so below ~11° of tilt the
-  // side faces are simply not on screen and the cube renders as a bare flat square
-  // (measured: 100% / 0% / 0% at 6.6°/5.3°). The share has to be solved against the
-  // real projection, which is what tools/cube-framing-probe.mjs does — do not tune
-  // these by the orthographic formula. See docs/Temporary notes in the v0.8.6
-  // commit: 17.5°/15.5° measures ≈83% main share with the side and top faces
-  // visible at ≈10.7% and ≈6.1% (caps: 11% each, 18% total).
-  presentationYaw: -0.3054, // ≈17.5° — exposes the right-hand face
-  presentationPitch: 0.2705, // ≈15.5° — exposes the top face
+  // Magnitude, and WHY IT IS A YAW ONLY. The three-quarter read now lives in the
+  // camera (BOARD_STYLE.cameraDirection), so this is a small extra turn in SCREEN
+  // space on top of it: 5° of yaw and NOTHING else.
+  //
+  //   - A screen-space YAW never tips the cube. Rotation about world Y leaves the
+  //     world-Y direction exactly where it is, so the cube's vertical edges stay
+  //     plumb however large it gets. Adding a pitch does not: with the camera
+  //     dead-on, a 15.5° presentation pitch leaned the whole board −4.8° on screen
+  //     (measured, `__voxalblast.faces().uprightDeg`), which is what "视觉上还比较歪"
+  //     was. Pitch belongs to the camera, which cannot lean the cube at all.
+  //   - It is still worth having: the extra turn is what lifts the front face's
+  //     share above what the camera alone gives, and because it is applied OUTSIDE
+  //     the live rotation it can be faded out while the cube turns (below), so the
+  //     gesture itself is a clean single-axis rotation.
+  // Raising this is the wrong knob for "make the front face bigger" — past a few
+  // degrees the side face starts to collapse and the composition goes flat again.
+  presentationYaw: -0.0873, // ≈5° — a little more turn toward the right-hand face
+  presentationPitch: 0, // must stay 0: any pitch here leans the cube
   // A drag removes the tilt over its first `presentationFadeAngle` of rotation
   // (≈20°), so the tilt is fully out BEFORE the ≈30° commit threshold and the
   // gesture the release has to honour is never a tilted one. The fade is
