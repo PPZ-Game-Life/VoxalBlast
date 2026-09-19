@@ -1993,15 +1993,26 @@ function updatePreview(event, ndc) {
   drag.valid = valid
   drag.origin = origin
   const faceNormal = cubeVector(face, 'n')
+  // The marker is a translucent ghost OF THE PIECE IN HAND, so it takes the piece's
+  // OWN paint, not a fixed green: a green marker next to a purple piece in the tray
+  // reads as two different objects, and it throws away the one colour that says which
+  // of the three candidates is being placed. 05 §… "候选预览与棋盘同源" — the same
+  // reasoning that makes the board, the tray and the drag ghost share one material.
+  // Only the INVALID state keeps a colour of its own (`palette.invalid`, terracotta),
+  // because there the colour is carrying a different message: "no room here".
+  const markerColor = valid ? selectedPiece.shape.color : palette.invalid
+  const markerEdge = valid
+    ? new THREE.Color(selectedPiece.shape.color).multiplyScalar(0.58)
+    : new THREE.Color(0x7a2a17)
   cells.forEach(([u, v]) => {
     const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
     // The landing marker IS a ghost of the block: same cube, same cell, same gap to
     // its neighbours. The player therefore sees the board it is about to get, not a
     // highlight floating over it (05 §6「落点预览」).
-    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(valid ? palette.valid : palette.invalid, 0.72))
+    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(markerColor, 0.72))
     mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PREVIEW_LIFT)
     mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
-      color: valid ? 0x2f6b1f : 0x7a2a17,
+      color: markerEdge,
       transparent: true,
       opacity: 0.92,
       depthWrite: false,
@@ -3370,6 +3381,24 @@ globalThis.__voxalblast = Object.freeze({
   // Screen-space cube box + framing numbers, used to check the "inside vs
   // outside the cube" gesture split and how much of the canvas the cube fills.
   bounds: () => cubeScreenBounds(),
+  // The landing marker, next to the piece in hand. `cells[].color` is the material the
+  // marker is actually wearing, so a check can assert it matches `pieceColor` while the
+  // drop is legal and only turns into `palette.invalid` when it is not (v0.8.11 fixed
+  // this: the marker used to be a fixed green whatever the candidate's colour was).
+  // Read-only; no gameplay path reads it.
+  preview: () => {
+    const piece = selectedPiece
+    const hex = (color) => `#${new THREE.Color(color).getHexString()}`
+    return {
+      piece: piece ? piece.shape.name : null,
+      pieceColor: piece ? hex(piece.shape.color) : null,
+      valid: drag?.valid === true,
+      cells: previewGroup.children.map((mesh) => ({
+        color: hex(mesh.material.color),
+        opacity: Number(mesh.material.opacity.toFixed(3)),
+      })),
+    }
+  },
   // Candidate orientation on the current front face. `raw` is the top-left
   // layout the slot draws, `oriented` is what would actually be dropped, and
   // `uAxis` / `vAxis` project the lattice step the piece's +u / +v take, in
