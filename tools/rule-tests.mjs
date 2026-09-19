@@ -520,15 +520,55 @@ group('swipe', () => {
 })
 
 group('supply', () => {
-  // v0.8.4 weighted dealing: the four-cell pieces are twice as likely, but every one
-  // of the ten shapes must still be dealt, and the picker must consume exactly one
-  // random value so the three dealing sites keep their call count.
+  // v0.8.4 weighted dealing, extended in v0.8.12: every shape of 4 cells or more is
+  // twice as likely as the small ones, but every shipped shape must still be dealt,
+  // and the picker must consume exactly one random value so the three dealing sites
+  // keep their call count.
   const names = SHAPES.map((shape) => shape.name)
   check('every shipped shape carries a weight', names.every((name) => SHAPE_WEIGHTS[name] > 0), JSON.stringify(SHAPE_WEIGHTS))
   equal('the weight table names no extra shapes', Object.keys(SHAPE_WEIGHTS).length, SHAPES.length)
   const total = Object.values(SHAPE_WEIGHTS).reduce((sum, w) => sum + w, 0)
-  const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z'].reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0)
-  equal('four-cell candidates are 75% of the deal', fourCell / total, 0.75)
+  const shareOf = (list) => list.reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0) / total
+  const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
+  const big = [...fourCell, 'Rect 6', 'L 5']
+  // v0.8.12 added Rect 6 and L 5 to the pool. The v0.8.4 rule is literally "four-cell
+  // pieces ×2, everything else ×1", so the two new (larger) shapes joined at ×1 and
+  // the four-cell share moved 0.75 -> 2/3. Both numbers are asserted, so neither can
+  // drift silently — the producer's intent is "bigger pieces dominate the deal", and
+  // the four-cell number alone no longer expresses it.
+  equal('four-cell candidates are two thirds of the deal', shareOf(fourCell), 2 / 3)
+  equal('candidates of 4 cells or more are seven ninths of the deal', shareOf(big), 7 / 9)
+
+  // The two new shapes must fit a 5-wide face, not just exist in the table: a shape
+  // that cannot be placed anywhere on an empty face would be a dead deal (and Rect 6
+  // is the widest piece in the pool at 3x2).
+  const emptyBoard = new Board()
+  const unplaceable = SHAPES.filter((shape) => legalPlacements(emptyBoard, shape.cells).length === 0).map((shape) => shape.name)
+  check('every shape fits an empty face in at least one orientation', unplaceable.length === 0, unplaceable.join(','))
+  const longestRun = (cells) => {
+    let best = 0
+    for (const axis of [0, 1]) {
+      const lines = new Map()
+      for (const [u, v] of cells) {
+        const key = axis === 0 ? v : u
+        const along = axis === 0 ? u : v
+        if (!lines.has(key)) lines.set(key, new Set())
+        lines.get(key).add(along)
+      }
+      for (const set of lines.values()) {
+        let run = 0
+        for (let i = 0; i < 5; i += 1) { run = set.has(i) ? run + 1 : 0; best = Math.max(best, run) }
+      }
+    }
+    return best
+  }
+  const rect = SHAPES.find((shape) => shape.name === 'Rect 6')
+  equal('Rect 6 is six cells in a 3x2 box', `${rect.cells.length}x${Math.max(...rect.cells.map(([u]) => u)) + 1}x${Math.max(...rect.cells.map(([, v]) => v)) + 1}`, '6x3x2')
+  const l5 = SHAPES.find((shape) => shape.name === 'L 5')
+  equal('L 5 is five cells with a three-long arm', `${l5.cells.length}/${longestRun(l5.cells)}`, '5/3')
+  // The 4-long and 5-long LINES were removed on purpose; this pins that no shape —
+  // including the two new ones — smuggles a 4-long straight run back into the pool.
+  equal('no shape carries a straight run longer than three', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 3)
 
   let draws = 0
   const counted = () => { draws += 1; return 0 }
@@ -555,8 +595,10 @@ group('supply', () => {
   const next = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
   for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
   check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
-  const fourShare = ['Square', 'L', 'J', 'T', 'S', 'Z'].reduce((sum, name) => sum + counts.get(name), 0) / 20000
-  check('observed four-cell share tracks the weights', Math.abs(fourShare - 0.75) < 0.02, `observed ${fourShare.toFixed(3)}`)
+  const observedBig = big.reduce((sum, name) => sum + counts.get(name), 0) / 20000
+  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 7 / 9) < 0.02, `observed ${observedBig.toFixed(3)}`)
+  // The two new shapes must actually reach the board, not just the table.
+  check('both v0.8.12 shapes are dealt', counts.get('Rect 6') > 0 && counts.get('L 5') > 0, JSON.stringify({ 'Rect 6': counts.get('Rect 6'), 'L 5': counts.get('L 5') }))
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

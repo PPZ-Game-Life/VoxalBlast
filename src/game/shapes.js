@@ -8,14 +8,14 @@
 // a rescue from almost every "no legal placement" game over. v0.2.31 dropped the
 // 4-long line as well, by the producer's call: it was the only piece that ate 80%
 // of a face row, so whenever it fit it read as a free line instead of a choice.
-// 3 is the longest line now and the pool is 10 types; don't put a 4-long line back
-// without the producer asking for it.
+// 3 is the longest line in a shape's own silhouette and the pool is 12 types as of
+// v0.8.12; don't put a 4-long line back without the producer asking for it.
 //
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 //
 // v0.7 「田园木作」recoloured the pool to CRAYON PAINT: colours a wooden toy would
 // actually be painted, rather than the fluorescent v0.5 set. Chroma comes down a
-// step and the hues spread out, so ten pieces stay distinguishable against a warm
+// step and the hues spread out, so the pieces stay distinguishable against a warm
 // timber board AND against a green meadow. Keep them in the paint family — a neon
 // colour here is what makes the whole scene read as "3D render" instead of "toy".
 export const SHAPES = [
@@ -29,11 +29,26 @@ export const SHAPES = [
   { name: 'S',      color: 0x4faa4a, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] },
   { name: 'Z',      color: 0xc03fa0, cells: [[1, 0], [2, 0], [0, 1], [1, 1]] },
   { name: 'Corner', color: 0x35b6c9, cells: [[0, 0], [1, 0], [0, 1]] },
+  // v0.8.12, by the producer's ask: the two larger pieces. Both are the natural
+  // one-step-up of something already in the pool rather than new silhouettes —
+  // `Rect 6` is Square widened to 3×2, `L 5` is `L` with its arm and foot each
+  // extended by a cell (3-tall arm, 3-wide foot, still a 3×3 bounding box).
+  //
+  // ⚠️ `L 5` deliberately stops at a 3-long line. The 4-long and 5-long LINES were
+  // both removed on purpose (see the v0.2.24 / v0.2.31 notes above): on a 5-wide face
+  // they land on an empty row, clear it instantly and read as a free point rather
+  // than a choice. A 5-cell L drawn the other way (`[[0,0],[0,1],[0,2],[0,3],[1,3]]`,
+  // the textbook L-pentomino) carries a 4-long arm and would put that problem back —
+  // if the producer wants THAT silhouette, the line-length rule has to be revisited
+  // in the same breath.
+  { name: 'Rect 6', color: 0x3fa87a, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'L 5',    color: 0x93b23c, cells: [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]] },
 ]
 
-// Candidate weights (v0.8.4). The four-cell pieces come up twice as often as the
-// small ones, so 75% of dealt candidates are four-cell. Nothing leaves the pool:
-// Dot, Line 2 and Corner still appear, just less often.
+// Candidate weights (v0.8.4; the pool grew in v0.8.12, the RULE did not). The six
+// four-cell shapes carry weight 2 and every other shape carries 1, so a dealt
+// candidate is a four-cell piece 2 times out of 3 and one of the other six 1 time in
+// 3 — 77.8% of candidates are 4 cells or larger. Nothing leaves the pool.
 //
 // Why: measurement found the equal-weight pool leaves a competent player 80+ legal
 // placements on 81% of steps, with a tightest moment of 19 placements in a whole
@@ -44,7 +59,23 @@ export const SHAPES = [
 // rescue hatch a Dot or Line 2 provides on a crowded board. Weights are relative;
 // only their ratios matter. Keep every shape above zero unless the producer
 // explicitly asks for a smaller pool — and board.seedOpening keeps drawing
-// uniformly from SHAPES, so the opening decoration is unchanged.
+// uniformly from SHAPES, so the opening decoration follows the pool's membership.
+//
+// v0.8.12 measured the two new shapes at weight 1 as well as weight 2, because they
+// are the largest pieces in the pool and "bigger pieces are more common" made
+// weight 2 the obvious first guess. 1800 games per arm, seed 1/2/3, casual (random)
+// actor, 600-step cap:
+//
+//                    ended    p50 steps   p90 steps   tight-move
+//   ten-shape equal   99.3%      94          242        15.7%
+//   old soft82       100.0%      83          185        19.6%
+//   weight 1 (SHIP)  100.0%      50          113        17.7%
+//   weight 2         100.0%      41           89        17.8%
+//
+// So either weight finally makes the casual game END (the long-standing goal was a
+// 60–120-step median, and the pre-v0.8.12 pool sat above 600 for anything but random
+// play). Weight 1 lands nearest that band, so it ships; weight 2 is the stronger
+// dial if the producer wants more pressure, and it is a one-line change.
 export const SHAPE_WEIGHTS = Object.freeze({
   Dot: 1,
   'Line 2': 1,
@@ -56,6 +87,8 @@ export const SHAPE_WEIGHTS = Object.freeze({
   T: 2,
   S: 2,
   Z: 2,
+  'Rect 6': 1,
+  'L 5': 1,
 })
 
 const WEIGHTED_POOL = (() => {

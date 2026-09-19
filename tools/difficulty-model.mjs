@@ -15,6 +15,16 @@ const SMALL = Object.freeze(['Dot', 'Line 2'])
 const THREE = Object.freeze(['Line 3', 'Corner'])
 const FOUR = Object.freeze(['Square', 'L', 'J', 'T', 'S', 'Z'])
 const GROUPS = Object.freeze([SMALL, THREE, FOUR])
+// The pool as it stood BEFORE v0.8.12, spelled out on purpose and IN SHAPES ORDER:
+// the cumulative table is order-sensitive, so this list has to reproduce exactly what
+// `SHAPE_NAMES.filter(...)` produced before the two new shapes existed, or the
+// published pools stop mapping the same random value to the same shape.
+// `current`, `c` and `d` used to be derived from SHAPE_NAMES, so adding two shapes to
+// the game silently redefined three PUBLISHED measurement pools and every number in
+// DIFFICULTY_POOL.md would have stopped reproducing. Only `soft75` is supposed to
+// track the shipped pool (that is the anti-drift rule); the rest are historical
+// candidates and are frozen to the membership they were measured with.
+const TEN = Object.freeze(['Dot', 'Line 2', 'Line 3', 'Square', 'L', 'J', 'T', 'S', 'Z', 'Corner'])
 const CHALLENGE_WEIGHTS = Object.freeze([0, 0.1, 0.9])
 const RELIEF_WEIGHTS = Object.freeze([0.1, 0.2, 0.7])
 
@@ -29,20 +39,21 @@ export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 const POOL_SPECS = Object.freeze({
   // `current` is the pool the game shipped BEFORE v0.8.4 (ten shapes, equal weight).
   // It keeps that id so every command and number in the earlier reports still
-  // reproduces verbatim; `shipped` is what the game actually deals now.
-  current: { label: '十种等权重（v0.8.4 之前的正式池）', weights: Object.fromEntries(SHAPE_NAMES.map((name) => [name, 1])) },
-  // The pool the game actually deals since v0.8.4. It is imported from the shipped
-  // SHAPE_WEIGHTS rather than copied, so a game-side reweighting cannot leave the
-  // measurement silently pointing at the old pool.
-  soft75: { label: '正式加权池（v0.8.4：四格件×2，十种全留）', weights: { ...SHAPE_WEIGHTS } },
-  c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
-  d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(SHAPE_NAMES.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
+  // reproduces verbatim; `soft75` is what the game actually deals now.
+  current: { label: '十种等权重（v0.8.4 之前的正式池）', weights: Object.fromEntries(TEN.map((name) => [name, 1])) },
+  // The pool the game actually deals. It is imported from the shipped SHAPE_WEIGHTS
+  // rather than copied, so a game-side reweighting cannot leave the measurement
+  // silently pointing at the old pool — this is the ONE pool that is meant to move.
+  soft75: { label: '正式加权池（四格件×2、其余×1，十二种全留）', weights: { ...SHAPE_WEIGHTS } },
+  c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
+  d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
   w90: { label: '四格件×3＋直线3×2（小件权重0，即实际去掉三种）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
   e: { label: '只留六种四格件', weights: Object.fromEntries(FOUR.map((name) => [name, 1])) },
   e5: { label: '只留L/J/T/S/Z（去Square）', weights: Object.fromEntries(FOUR.filter((name) => name !== 'Square').map((name) => [name, 1])) },
-  // These two keep all ten shapes and only reweight them, so nothing leaves the
-  // pool: the four-cell shapes simply come up more often. `soft75` IS the shipped
-  // table above; `soft82` is the next, stronger step.
+  // These two keep all ten shapes of the pool they were measured against and only
+  // reweight them, so nothing leaves the pool: the four-cell shapes simply come up
+  // more often. `soft75` IS the shipped table above; `soft82` is the next, stronger
+  // step. soft82 stays on the ten it was measured with (see TEN).
   soft82: { label: '加权·保留十种（四格件82%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
 })
 

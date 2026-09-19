@@ -308,8 +308,13 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
   assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82'])
-  assert.equal(POOLS.current.entries.length, SHAPE_NAMES.length)
-  assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), SHAPE_NAMES.map(() => 1))
+  // `current`, `c`, `d` and `soft82` are frozen to the ten shapes they were MEASURED
+  // with (v0.8.12 added two shapes to the game; letting them into these pools would
+  // have silently redefined three published candidates and invalidated every number
+  // in DIFFICULTY_POOL.md). Only `soft75` follows the shipped weights.
+  const TEN = ['Dot', 'Line 2', 'Line 3', 'Corner', 'Square', 'L', 'J', 'T', 'S', 'Z']
+  assert.equal(POOLS.current.entries.length, TEN.length)
+  assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), TEN.map(() => 1))
   // The measurement pool must follow the shipped weights, so a game-side reweighting
   // cannot silently leave the tool measuring the old pool. Compare by name: the
   // cumulative table is order-sensitive, the weights are not.
@@ -324,17 +329,26 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   assert.equal(POOLS.d.members.has('Corner'), false)
   assert.equal(POOLS.w90.cumulative[POOLS.w90.cumulative.length - 1].upTo, 1)
   // A weighted pool is not automatically a non-destructive one: w90 has the same
-  // members as d (the small shapes are weight 0), while soft75/soft82 keep all ten.
+  // members as d (the small shapes are weight 0), while soft75 keeps every shipped
+  // shape and soft82 keeps the ten it was measured with.
   assert.deepEqual([...POOLS.w90.members].sort(), [...POOLS.d.members].sort())
-  for (const id of ['soft75', 'soft82']) assert.equal(POOLS[id].entries.length, SHAPE_NAMES.length)
-  const fourCellShare = (id) => {
+  assert.equal(POOLS.soft75.entries.length, SHAPE_NAMES.length)
+  assert.equal(POOLS.soft82.entries.length, TEN.length)
+  assert.ok(POOLS.soft75.members.has('Rect 6') && POOLS.soft75.members.has('L 5'))
+  assert.ok(!POOLS.soft82.members.has('Rect 6') && !POOLS.soft82.members.has('L 5'))
+  const shareOf = (id, names) => {
     const entries = POOLS[id].entries
     const total = entries.reduce((sum, entry) => sum + entry.weight, 0)
-    return entries.filter((entry) => ['Square', 'L', 'J', 'T', 'S', 'Z'].includes(entry.name)).reduce((sum, entry) => sum + entry.weight, 0) / total
+    return entries.filter((entry) => names.includes(entry.name)).reduce((sum, entry) => sum + entry.weight, 0) / total
   }
-  assert.ok(Math.abs(fourCellShare('soft75') - 0.75) < 1e-9)
-  assert.ok(Math.abs(fourCellShare('soft82') - 18 / 22) < 1e-9)
-  assert.ok(Math.abs(fourCellShare('w90') - 0.9) < 1e-9)
+  const FOUR = ['Square', 'L', 'J', 'T', 'S', 'Z']
+  // v0.8.12: Rect 6 and L 5 joined the pool at weight 1 (the v0.8.4 rule is "four-cell
+  // ×2, everything else ×1"), so the four-cell share moved 0.75 -> 2/3 and the
+  // "4 cells or larger" band is 7/9. Both are pinned.
+  assert.ok(Math.abs(shareOf('soft75', FOUR) - 2 / 3) < 1e-9)
+  assert.ok(Math.abs(shareOf('soft75', [...FOUR, 'Rect 6', 'L 5']) - 7 / 9) < 1e-9)
+  assert.ok(Math.abs(shareOf('soft82', FOUR) - 18 / 22) < 1e-9)
+  assert.ok(Math.abs(shareOf('w90', FOUR) - 0.9) < 1e-9)
 })
 
 test('uniform pool dealing honours weights, never leaves the pool and consumes two randoms per slot', () => {
@@ -387,14 +401,18 @@ test('staged dealing renormalizes over the groups a pool still covers', () => {
 
 test('current pool reproduces the shipped deal and legacy arms stay reproducible', () => {
   const a = rngFor(3, 1, 'deal'), b = rngFor(3, 1, 'deal'), c = rngFor(3, 1, 'deal')
+  // `current` is frozen to the ten shapes it was measured with — NOT SHAPE_NAMES, which
+  // grew to twelve in v0.8.12. The expectation has to index the pool's own member list
+  // in its own order, or this stops testing reproduction and starts testing drift.
+  const currentNames = POOLS.current.entries.map((entry) => entry.name)
   for (let i = 0; i < 50; i += 1) {
     const expected = []
     for (let slot = 0; slot < 3; slot += 1) {
-      expected.push(SHAPE_NAMES[Math.min(SHAPE_NAMES.length - 1, Math.floor(a() * SHAPE_NAMES.length))])
+      expected.push(currentNames[Math.min(currentNames.length - 1, Math.floor(a() * currentNames.length))])
       a() // the per-slot second draw is consumed but unused in uniform mode
     }
     assert.deepEqual(drawHand(b, i, false, 'current'), expected)
-    assert.deepEqual(drawHand(c, i, false), expected) // default pool stays the shipped one
+    assert.deepEqual(drawHand(c, i, false), expected) // default pool stays the shipped uniform one
   }
   const record = runGame({ group: 'c/uniform', seed: 1, gameIndex: 0, strategy: 'noise', stepCap: 40 }).record
   assert.equal(record.pool, 'c')
