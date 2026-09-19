@@ -49,10 +49,21 @@ export const SHAPES = [
   // Worth knowing before anyone "fixes" it: no two of its cells share a row or a
   // column, so this piece can never complete a line by itself, in any placement. It
   // is a pure filler — the rescue-hatch role a Dot or Line 2 plays, and the opposite
-  // end of the pool from Rect 6. That is also why its weight stays 1 (see below).
+  // end of the pool from Rect 6 / Block 9. That is also why its weight stays 1.
   { name: 'Slant 3', color: 0x6a5fb0, cells: [[0, 0], [1, 1], [2, 2]] },
+  // 3×3, the producer's "九个小块的 3✖️3". The biggest piece in the pool by a wide
+  // margin: it covers 9 of a face's 25 cells (36%) and needs a 3×3 free region, of
+  // which a 5-wide face has only 9 positions. Two things follow, and both are why it
+  // is worth measuring rather than assuming:
+  //   - it can never complete a line by itself (a face line is 5 cells and this is
+  //     3 wide), so it never self-clears — it is pure board pressure;
+  //   - a hand holding it is effectively a two-piece hand whenever the current face
+  //     has no 3×3 hole, which is most of the time on a busy board. `board.anyPlacement`
+  //     still scans all six faces, so it is a "rotate to find room" piece, not a dead
+  //     card — but see docs/Technical/DIFFICULTY_TENSION.md for what it does to the
+  //     ending rate before deciding to keep it at weight 1.
+  { name: 'Block 9', color: 0xa94fc4, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]] },
 ]
-
 // Candidate weights (v0.8.4; the pool grew in v0.8.12, the RULE did not). The six
 // four-cell shapes carry weight 2 and every other shape carries 1, so a dealt
 // candidate is a four-cell piece 2 times out of 3 and one of the other six 1 time in
@@ -84,11 +95,11 @@ export const SHAPES = [
 // 60–120-step median, and the pre-v0.8.12 pool sat above 600 for anything but random
 // play). Weight 1 lands nearest that band, so it ships; weight 2 is the stronger
 // dial if the producer wants more pressure, and it is a one-line change.
-// v0.8.13 added `Slant 3` at weight 1 for the same reason: the rule is "a shape is
-// weighted 2 only if it is a four-cell piece", and the staircase is a three-cell
-// filler. The pool is now 13 shapes and the shares are 12/19 four-cell, 14/19 for
-// four cells or larger. The measurement below was taken at v0.8.12 (twelve shapes);
-// see DIFFICULTY_TENSION.md for the v0.8.13 re-run.
+// v0.8.13 added `Slant 3` and v0.8.14 `Block 9` at weight 1 for the same reason: the
+// rule is "a shape is weighted 2 only if it is a four-cell piece". The pool is now 14
+// shapes and the shares are 12/20 four-cell, 15/20 for four cells or larger. The
+// measurement quoted below was taken at v0.8.12 (twelve shapes); see
+// DIFFICULTY_TENSION.md for the later re-runs, which is where Block 9's effect lands.
 export const SHAPE_WEIGHTS = Object.freeze({
   Dot: 1,
   'Line 2': 1,
@@ -103,6 +114,7 @@ export const SHAPE_WEIGHTS = Object.freeze({
   Z: 2,
   'Rect 6': 1,
   'L 5': 1,
+  'Block 9': 1,
 })
 
 const WEIGHTED_POOL = (() => {

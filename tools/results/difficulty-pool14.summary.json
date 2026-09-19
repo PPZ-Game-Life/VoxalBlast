@@ -1,0 +1,3078 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-19T11:36:52.845Z",
+  "command": "node tools/difficulty-abcd.mjs --arms=soft75/uniform,current/uniform --games=200 --seeds=1,2,3 --strategies=random,noise --out=tools/results/difficulty-pool14.json",
+  "options": {
+    "groups": [
+      "soft75/uniform",
+      "current/uniform"
+    ],
+    "arms": [
+      "soft75/uniform",
+      "current/uniform"
+    ],
+    "mode": "arms",
+    "strategies": [
+      "random",
+      "noise"
+    ],
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "games": 200,
+    "stepCap": 600,
+    "out": "tools/results/difficulty-pool14.json"
+  },
+  "fingerprints": {
+    "src/game/board.js": "9ba224981d06f6a05050e8e83079449cd52f211916b1cd2b76cbc23e43f74613",
+    "src/game/shapes.js": "ef666da32425591921f494122ae837314181e26d7533eebc5e27d0c0eebcb531",
+    "src/rendering/config.js": "4849a3e1ed5d0a49e24951f3791414f4b5f726401cc2ca39676294f35bbbb1e3",
+    "tools/difficulty-model.mjs": "dcd731cae96d7fb6dab80d0ea9aec9a2178c3a13c2eb593378eab28f254b1961",
+    "tools/difficulty-abcd.mjs": "765070666866cff10e72ba7f397a92244bf3ad866236bffe9fed6c8218d25d8d"
+  },
+  "design": {
+    "board": "5x5x5 shell / 98 unique cells",
+    "batch": 3,
+    "items": false,
+    "rng": "mulberry32, independently hashed seed/game/stream",
+    "mode": "arms",
+    "pools": [
+      {
+        "id": "soft75",
+        "label": "正式加权池（四格件×2、其余×1，十二种全留）",
+        "weights": {
+          "Dot": 1,
+          "Line 2": 1,
+          "Line 3": 1,
+          "Corner": 1,
+          "Slant 3": 1,
+          "Square": 2,
+          "L": 2,
+          "J": 2,
+          "T": 2,
+          "S": 2,
+          "Z": 2,
+          "Rect 6": 1,
+          "L 5": 1,
+          "Block 9": 1
+        }
+      },
+      {
+        "id": "current",
+        "label": "十种等权重（v0.8.4 之前的正式池）",
+        "weights": {
+          "Dot": 1,
+          "Line 2": 1,
+          "Line 3": 1,
+          "Square": 1,
+          "L": 1,
+          "J": 1,
+          "T": 1,
+          "S": 1,
+          "Z": 1,
+          "Corner": 1
+        }
+      }
+    ],
+    "openings": [
+      {
+        "id": "current",
+        "label": "现行预置 7/3/3",
+        "plan": {
+          "+z": 7,
+          "+y": 3,
+          "+x": 3,
+          "-x": 0,
+          "-y": 0,
+          "-z": 0
+        },
+        "targetCells": 13
+      }
+    ],
+    "openingNote": "Per-face CELL targets passed to the shipped Board.seedOpening; it may fall short and never seeds a line. A 5x5 face cannot legally hold more than 16 seeded cells, so max is best-effort.",
+    "poolDealing": "Uniform arms draw from the pool's cumulative weight table; staged arms renormalize the stage weights over the groups the pool still covers. Every slot consumes exactly two random values in both arms, so paired streams stay aligned.",
+    "structured": "Exact paired baseline cell count; fixed first hand; >=2 distinct shapes with >=2 unique placements; immediate +z clear with witnessed complete three-piece path; bounded search; explicit baseline fallback",
+    "stages": [
+      {
+        "step": 0,
+        "name": "opening",
+        "weights": [
+          0.2,
+          0.3,
+          0.5
+        ]
+      },
+      {
+        "step": 12,
+        "name": "pressure",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 30,
+        "name": "challenge",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      },
+      {
+        "step": 48,
+        "name": "relief",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 54,
+        "name": "challenge-cycle",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      },
+      {
+        "step": 72,
+        "name": "relief-cycle",
+        "weights": [
+          0.1,
+          0.2,
+          0.7
+        ]
+      },
+      {
+        "step": 78,
+        "name": "challenge-cycle",
+        "weights": [
+          0,
+          0.1,
+          0.9
+        ]
+      }
+    ],
+    "censoring": "Stop after exactly cap successful placements; check terminal state there. Quantiles beyond the observed range are >cap.",
+    "survival": "S(n)=P(successful placements >= n); no win condition",
+    "pressure": "Mobility counts unique occupied-cell placements per distinct remaining shape; tight<=8; samePreHandMobilityReleasePct is a geometric counterfactual: clear followed by SAME PRE-MOVE hand mobility increase >=8, not actual post-move hand recovery.",
+    "confidence": "Wilson intervals quantify Monte Carlo uncertainty under this model/actor only; not model error or real-player confidence intervals. See bySeed for seed sensitivity.",
+    "strategies": {
+      "noise": "First playable slot; 25% random unique physical placement, otherwise maximum immediate lines. New geometry enumeration/tie order differs from historical reachability; not a byte-identical historical replay.",
+      "greedy": "First playable slot, maximum immediate lines; not optimal.",
+      "space": "Across all slots, top-6 by 100000*immediately cleared unique cells + 100*empty shell cells + occupied orthogonal adjacency; select most remaining-hand legal placements, ties use preliminary score. Pruned moves cannot win; no future-deal knowledge; not optimal.",
+      "random": "Uniform across legal slot/unique-physical-placement moves; not calibrated to a novice."
+    },
+    "binning": "12-placement windows, observations conditional on still playing; survivor bias applies.",
+    "fallbackPolicy": "Baseline fallback retained in intention-to-treat comparison; never excluded as a failed sample."
+  },
+  "summaries": [
+    {
+      "strategy": "random",
+      "group": "soft75/uniform",
+      "label": "正式加权池（四格件×2、其余×1，十二种全留） × 等概率发牌 × 现行预置 7/3/3",
+      "games": 600,
+      "endedGames": 600,
+      "endedPct": 100,
+      "endedCi95": [
+        99.364,
+        100
+      ],
+      "censoredGames": 0,
+      "censoredPct": 0,
+      "restrictedMeanSteps": 27.693,
+      "endStepsAll": {
+        "p50": 23,
+        "p75": 35,
+        "p90": 50
+      },
+      "endStepsEndedOnly": {
+        "n": 600,
+        "p50": 23,
+        "p90": 50
+      },
+      "earlyEndBefore12Pct": 15.667,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 84.333,
+          "ci95": [
+            81.208,
+            87.022
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 34.833,
+          "ci95": [
+            31.128,
+            38.731
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 5.167,
+          "ci95": [
+            3.663,
+            7.24
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 0,
+          "ci95": [
+            0,
+            0.636
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 0,
+          "ci95": [
+            0,
+            0.636
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 0,
+          "ci95": [
+            0,
+            0.636
+          ]
+        }
+      ],
+      "firstClearObservedPct": 98,
+      "firstClearObservedP50": 5,
+      "firstClearBy3Pct": 27,
+      "clearMovePct": 40.028,
+      "longestDryP50": 5,
+      "tightMovePct": 12.434,
+      "samePreHandMobilityReleasePct": 11.762,
+      "freshDealStuckPct": 0.035,
+      "gamesEndingOnFreshDealPct": 0.333,
+      "meanOpeningCells": 17.403,
+      "openingCellHistogram": {
+        "13": 9,
+        "14": 45,
+        "15": 91,
+        "16": 126,
+        "17": 99,
+        "18": 67,
+        "19": 46,
+        "20": 35,
+        "21": 24,
+        "22": 23,
+        "23": 14,
+        "24": 10,
+        "25": 8,
+        "26": 2,
+        "27": 1
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 5758,
+      "totalDealtSlots": 17274,
+      "shapeCounts": {
+        "Dot": 882,
+        "Line 2": 842,
+        "Line 3": 869,
+        "Square": 1723,
+        "L": 1665,
+        "J": 1716,
+        "T": 1743,
+        "S": 1794,
+        "Z": 1733,
+        "Corner": 869,
+        "Rect 6": 879,
+        "L 5": 851,
+        "Slant 3": 881,
+        "Block 9": 827
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 5.106,
+        "Line 2": 4.874,
+        "Line 3": 5.031,
+        "Square": 9.975,
+        "L": 9.639,
+        "J": 9.934,
+        "T": 10.09,
+        "S": 10.386,
+        "Z": 10.032,
+        "Corner": 5.031,
+        "Rect 6": 5.089,
+        "L 5": 4.926,
+        "Slant 3": 5.1,
+        "Block 9": 4.788
+      },
+      "tension": {
+        "samples": 16616,
+        "meanMobility": 68.715,
+        "medianPerGameMinMobility": 3,
+        "p10PerGameMinMobility": 1,
+        "forcedMovePct": 5.573,
+        "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+        "playableByHand": {
+          "threeDistinct": {
+            "steps": 4414,
+            "onlyOnePct": 0.249,
+            "allThreePct": 89.601
+          },
+          "twoDistinct": {
+            "steps": 6495,
+            "onlyOnePct": 9.192
+          }
+        },
+        "mobilityBucketPct": {
+          "0": 0,
+          "1-4": 5.76,
+          "5-9": 8.402,
+          "10-19": 14.474,
+          "20-39": 19.559,
+          "40-79": 23.923,
+          "80+": 27.883
+        },
+        "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 27.42,
+          "endStepsAll": {
+            "p50": 23,
+            "p75": 35,
+            "p90": 50
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 23,
+            "p90": 50
+          },
+          "earlyEndBefore12Pct": 18,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 82,
+              "ci95": [
+                76.089,
+                86.705
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 32.5,
+              "ci95": [
+                26.392,
+                39.268
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 7.5,
+              "ci95": [
+                4.597,
+                12.004
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 97,
+          "firstClearObservedP50": 5,
+          "firstClearBy3Pct": 26.5,
+          "clearMovePct": 39.77,
+          "longestDryP50": 5,
+          "tightMovePct": 12.345,
+          "samePreHandMobilityReleasePct": 12.851,
+          "freshDealStuckPct": 0.053,
+          "gamesEndingOnFreshDealPct": 0.5,
+          "meanOpeningCells": 17.355,
+          "openingCellHistogram": {
+            "13": 4,
+            "14": 14,
+            "15": 29,
+            "16": 42,
+            "17": 34,
+            "18": 23,
+            "19": 15,
+            "20": 14,
+            "21": 9,
+            "22": 8,
+            "23": 3,
+            "24": 1,
+            "25": 3,
+            "26": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 1902,
+          "totalDealtSlots": 5706,
+          "shapeCounts": {
+            "Dot": 278,
+            "Line 2": 281,
+            "Line 3": 277,
+            "Square": 591,
+            "L": 579,
+            "J": 576,
+            "T": 556,
+            "S": 566,
+            "Z": 555,
+            "Corner": 271,
+            "Rect 6": 322,
+            "L 5": 285,
+            "Slant 3": 290,
+            "Block 9": 279
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 4.872,
+            "Line 2": 4.925,
+            "Line 3": 4.855,
+            "Square": 10.358,
+            "L": 10.147,
+            "J": 10.095,
+            "T": 9.744,
+            "S": 9.919,
+            "Z": 9.727,
+            "Corner": 4.749,
+            "Rect 6": 5.643,
+            "L 5": 4.995,
+            "Slant 3": 5.082,
+            "Block 9": 4.89
+          },
+          "tension": {
+            "samples": 5484,
+            "meanMobility": 68.887,
+            "medianPerGameMinMobility": 4,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 5.3,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 1471,
+                "onlyOnePct": 0.408,
+                "allThreePct": 89.667
+              },
+              "twoDistinct": {
+                "steps": 2133,
+                "onlyOnePct": 8.673
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 5.58,
+              "5-9": 8.37,
+              "10-19": 14.679,
+              "20-39": 19.22,
+              "40-79": 23.924,
+              "80+": 28.228
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 2,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 28.375,
+          "endStepsAll": {
+            "p50": 23,
+            "p75": 35,
+            "p90": 50
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 23,
+            "p90": 50
+          },
+          "earlyEndBefore12Pct": 15,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 85,
+              "ci95": [
+                79.394,
+                89.286
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 38,
+              "ci95": [
+                31.559,
+                44.893
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 3.5,
+              "ci95": [
+                1.706,
+                7.047
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 99,
+          "firstClearObservedP50": 5,
+          "firstClearBy3Pct": 26,
+          "clearMovePct": 39.965,
+          "longestDryP50": 5,
+          "tightMovePct": 12.123,
+          "samePreHandMobilityReleasePct": 12.064,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.71,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 14,
+            "15": 25,
+            "16": 44,
+            "17": 30,
+            "18": 23,
+            "19": 18,
+            "20": 9,
+            "21": 8,
+            "22": 7,
+            "23": 6,
+            "24": 6,
+            "25": 5,
+            "26": 1,
+            "27": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 1963,
+          "totalDealtSlots": 5889,
+          "shapeCounts": {
+            "Dot": 281,
+            "Line 2": 286,
+            "Line 3": 317,
+            "Square": 574,
+            "L": 549,
+            "J": 614,
+            "T": 609,
+            "S": 633,
+            "Z": 589,
+            "Corner": 295,
+            "Rect 6": 269,
+            "L 5": 284,
+            "Slant 3": 326,
+            "Block 9": 263
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 4.772,
+            "Line 2": 4.857,
+            "Line 3": 5.383,
+            "Square": 9.747,
+            "L": 9.322,
+            "J": 10.426,
+            "T": 10.341,
+            "S": 10.749,
+            "Z": 10.002,
+            "Corner": 5.009,
+            "Rect 6": 4.568,
+            "L 5": 4.823,
+            "Slant 3": 5.536,
+            "Block 9": 4.466
+          },
+          "tension": {
+            "samples": 5675,
+            "meanMobility": 68.069,
+            "medianPerGameMinMobility": 3,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 5.467,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 1511,
+                "onlyOnePct": 0.199,
+                "allThreePct": 89.676
+              },
+              "twoDistinct": {
+                "steps": 2202,
+                "onlyOnePct": 9.083
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 5.974,
+              "5-9": 7.877,
+              "10-19": 14.978,
+              "20-39": 19.965,
+              "40-79": 23.612,
+              "80+": 27.595
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 3,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 27.285,
+          "endStepsAll": {
+            "p50": 23,
+            "p75": 35,
+            "p90": 47
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 23,
+            "p90": 47
+          },
+          "earlyEndBefore12Pct": 14,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 86,
+              "ci95": [
+                80.51,
+                90.133
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 34,
+              "ci95": [
+                27.792,
+                40.812
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 4.5,
+              "ci95": [
+                2.385,
+                8.33
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 98,
+          "firstClearObservedP50": 5,
+          "firstClearBy3Pct": 28.5,
+          "clearMovePct": 40.352,
+          "longestDryP50": 5,
+          "tightMovePct": 12.846,
+          "samePreHandMobilityReleasePct": 10.414,
+          "freshDealStuckPct": 0.053,
+          "gamesEndingOnFreshDealPct": 0.5,
+          "meanOpeningCells": 17.145,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 17,
+            "15": 37,
+            "16": 40,
+            "17": 35,
+            "18": 21,
+            "19": 13,
+            "20": 12,
+            "21": 7,
+            "22": 8,
+            "23": 5,
+            "24": 3
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 1893,
+          "totalDealtSlots": 5679,
+          "shapeCounts": {
+            "Dot": 323,
+            "Line 2": 275,
+            "Line 3": 275,
+            "Square": 558,
+            "L": 537,
+            "J": 526,
+            "T": 578,
+            "S": 595,
+            "Z": 589,
+            "Corner": 303,
+            "Rect 6": 288,
+            "L 5": 282,
+            "Slant 3": 265,
+            "Block 9": 285
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 5.688,
+            "Line 2": 4.842,
+            "Line 3": 4.842,
+            "Square": 9.826,
+            "L": 9.456,
+            "J": 9.262,
+            "T": 10.178,
+            "S": 10.477,
+            "Z": 10.372,
+            "Corner": 5.335,
+            "Rect 6": 5.071,
+            "L 5": 4.966,
+            "Slant 3": 4.666,
+            "Block 9": 5.018
+          },
+          "tension": {
+            "samples": 5457,
+            "meanMobility": 69.215,
+            "medianPerGameMinMobility": 3,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 5.958,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 1432,
+                "onlyOnePct": 0.14,
+                "allThreePct": 89.455
+              },
+              "twoDistinct": {
+                "steps": 2160,
+                "onlyOnePct": 9.815
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 5.717,
+              "5-9": 8.979,
+              "10-19": 13.744,
+              "20-39": 19.48,
+              "40-79": 24.244,
+              "80+": 27.836
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "random",
+      "group": "current/uniform",
+      "label": "十种等权重（v0.8.4 之前的正式池） × 等概率发牌 × 现行预置 7/3/3",
+      "games": 600,
+      "endedGames": 599,
+      "endedPct": 99.833,
+      "endedCi95": [
+        99.062,
+        99.971
+      ],
+      "censoredGames": 1,
+      "censoredPct": 0.167,
+      "restrictedMeanSteps": 119.482,
+      "endStepsAll": {
+        "p50": 95,
+        "p75": 155,
+        "p90": 227
+      },
+      "endStepsEndedOnly": {
+        "n": 599,
+        "p50": 95,
+        "p90": 227
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            99.364,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 95.667,
+          "ci95": [
+            93.726,
+            97.026
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 74.5,
+          "ci95": [
+            70.864,
+            77.824
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 39.167,
+          "ci95": [
+            35.342,
+            43.129
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 3.833,
+          "ci95": [
+            2.568,
+            5.686
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 0.167,
+          "ci95": [
+            0.029,
+            0.938
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 6,
+      "firstClearBy3Pct": 19.833,
+      "clearMovePct": 43.811,
+      "longestDryP50": 7,
+      "tightMovePct": 15.638,
+      "samePreHandMobilityReleasePct": 14.896,
+      "freshDealStuckPct": 0.041,
+      "gamesEndingOnFreshDealPct": 1.667,
+      "meanOpeningCells": 17.403,
+      "openingCellHistogram": {
+        "13": 9,
+        "14": 45,
+        "15": 91,
+        "16": 126,
+        "17": 99,
+        "18": 67,
+        "19": 46,
+        "20": 35,
+        "21": 24,
+        "22": 23,
+        "23": 14,
+        "24": 10,
+        "25": 8,
+        "26": 2,
+        "27": 1
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 24136,
+      "totalDealtSlots": 72408,
+      "shapeCounts": {
+        "Dot": 7363,
+        "Line 2": 7159,
+        "Line 3": 7297,
+        "Square": 7094,
+        "L": 7167,
+        "J": 7266,
+        "T": 7175,
+        "S": 7302,
+        "Z": 7248,
+        "Corner": 7337,
+        "Rect 6": 0,
+        "L 5": 0,
+        "Slant 3": 0,
+        "Block 9": 0
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 10.169,
+        "Line 2": 9.887,
+        "Line 3": 10.078,
+        "Square": 9.797,
+        "L": 9.898,
+        "J": 10.035,
+        "T": 9.909,
+        "S": 10.085,
+        "Z": 10.01,
+        "Corner": 10.133,
+        "Rect 6": 0,
+        "L 5": 0,
+        "Slant 3": 0,
+        "Block 9": 0
+      },
+      "tension": {
+        "samples": 71689,
+        "meanMobility": 50.921,
+        "medianPerGameMinMobility": 1,
+        "p10PerGameMinMobility": 1,
+        "forcedMovePct": 1.443,
+        "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+        "playableByHand": {
+          "threeDistinct": {
+            "steps": 17490,
+            "onlyOnePct": 0.332,
+            "allThreePct": 97.181
+          },
+          "twoDistinct": {
+            "steps": 27906,
+            "onlyOnePct": 2.139
+          }
+        },
+        "mobilityBucketPct": {
+          "0": 0,
+          "1-4": 7.54,
+          "5-9": 10.02,
+          "10-19": 15.783,
+          "20-39": 19.406,
+          "40-79": 28.407,
+          "80+": 18.844
+        },
+        "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 113.045,
+          "endStepsAll": {
+            "p50": 92,
+            "p75": 146,
+            "p90": 197
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 92,
+            "p90": 197
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 95.5,
+              "ci95": [
+                91.67,
+                97.615
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 72,
+              "ci95": [
+                65.408,
+                77.763
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 33.5,
+              "ci95": [
+                27.324,
+                40.298
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 3.5,
+              "ci95": [
+                1.706,
+                7.047
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 6,
+          "firstClearBy3Pct": 14.5,
+          "clearMovePct": 43.646,
+          "longestDryP50": 7,
+          "tightMovePct": 15.56,
+          "samePreHandMobilityReleasePct": 14.696,
+          "freshDealStuckPct": 0.039,
+          "gamesEndingOnFreshDealPct": 1.5,
+          "meanOpeningCells": 17.355,
+          "openingCellHistogram": {
+            "13": 4,
+            "14": 14,
+            "15": 29,
+            "16": 42,
+            "17": 34,
+            "18": 23,
+            "19": 15,
+            "20": 14,
+            "21": 9,
+            "22": 8,
+            "23": 3,
+            "24": 1,
+            "25": 3,
+            "26": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 7613,
+          "totalDealtSlots": 22839,
+          "shapeCounts": {
+            "Dot": 2256,
+            "Line 2": 2177,
+            "Line 3": 2331,
+            "Square": 2261,
+            "L": 2275,
+            "J": 2276,
+            "T": 2243,
+            "S": 2284,
+            "Z": 2353,
+            "Corner": 2383,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 9.878,
+            "Line 2": 9.532,
+            "Line 3": 10.206,
+            "Square": 9.9,
+            "L": 9.961,
+            "J": 9.965,
+            "T": 9.821,
+            "S": 10,
+            "Z": 10.303,
+            "Corner": 10.434,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 22609,
+            "meanMobility": 51.364,
+            "medianPerGameMinMobility": 1,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.505,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 5539,
+                "onlyOnePct": 0.361,
+                "allThreePct": 96.985
+              },
+              "twoDistinct": {
+                "steps": 8816,
+                "onlyOnePct": 2.223
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 7.656,
+              "5-9": 9.748,
+              "10-19": 15.936,
+              "20-39": 19.209,
+              "40-79": 28.352,
+              "80+": 19.099
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 2,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 122.15,
+          "endStepsAll": {
+            "p50": 98,
+            "p75": 155,
+            "p90": 232
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 98,
+            "p90": 232
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 97.5,
+              "ci95": [
+                94.282,
+                98.928
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 77,
+              "ci95": [
+                70.692,
+                82.291
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 42,
+              "ci95": [
+                35.374,
+                48.928
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 4,
+              "ci95": [
+                2.041,
+                7.693
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 6,
+          "firstClearBy3Pct": 25.5,
+          "clearMovePct": 43.954,
+          "longestDryP50": 7,
+          "tightMovePct": 16.001,
+          "samePreHandMobilityReleasePct": 15.145,
+          "freshDealStuckPct": 0.036,
+          "gamesEndingOnFreshDealPct": 1.5,
+          "meanOpeningCells": 17.71,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 14,
+            "15": 25,
+            "16": 44,
+            "17": 30,
+            "18": 23,
+            "19": 18,
+            "20": 9,
+            "21": 8,
+            "22": 7,
+            "23": 6,
+            "24": 6,
+            "25": 5,
+            "26": 1,
+            "27": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 8225,
+          "totalDealtSlots": 24675,
+          "shapeCounts": {
+            "Dot": 2514,
+            "Line 2": 2545,
+            "Line 3": 2488,
+            "Square": 2417,
+            "L": 2455,
+            "J": 2431,
+            "T": 2476,
+            "S": 2491,
+            "Z": 2459,
+            "Corner": 2399,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.188,
+            "Line 2": 10.314,
+            "Line 3": 10.083,
+            "Square": 9.795,
+            "L": 9.949,
+            "J": 9.852,
+            "T": 10.034,
+            "S": 10.095,
+            "Z": 9.966,
+            "Corner": 9.722,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 24430,
+            "meanMobility": 50.24,
+            "medianPerGameMinMobility": 1,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.465,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 5917,
+                "onlyOnePct": 0.287,
+                "allThreePct": 97.195
+              },
+              "twoDistinct": {
+                "steps": 9514,
+                "onlyOnePct": 2.197
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 7.749,
+              "5-9": 10.18,
+              "10-19": 16.029,
+              "20-39": 19.247,
+              "40-79": 28.305,
+              "80+": 18.49
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 3,
+          "games": 200,
+          "endedGames": 199,
+          "endedPct": 99.5,
+          "endedCi95": [
+            97.223,
+            99.912
+          ],
+          "censoredGames": 1,
+          "censoredPct": 0.5,
+          "restrictedMeanSteps": 123.25,
+          "endStepsAll": {
+            "p50": 98,
+            "p75": 161,
+            "p90": 227
+          },
+          "endStepsEndedOnly": {
+            "n": 199,
+            "p50": 98,
+            "p90": 227
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 94,
+              "ci95": [
+                89.807,
+                96.535
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 74.5,
+              "ci95": [
+                68.037,
+                80.04
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 42,
+              "ci95": [
+                35.374,
+                48.928
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 4,
+              "ci95": [
+                2.041,
+                7.693
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0.5,
+              "ci95": [
+                0.088,
+                2.777
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 6,
+          "firstClearBy3Pct": 19.5,
+          "clearMovePct": 43.822,
+          "longestDryP50": 7,
+          "tightMovePct": 15.351,
+          "samePreHandMobilityReleasePct": 14.826,
+          "freshDealStuckPct": 0.048,
+          "gamesEndingOnFreshDealPct": 2,
+          "meanOpeningCells": 17.145,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 17,
+            "15": 37,
+            "16": 40,
+            "17": 35,
+            "18": 21,
+            "19": 13,
+            "20": 12,
+            "21": 7,
+            "22": 8,
+            "23": 5,
+            "24": 3
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 8298,
+          "totalDealtSlots": 24894,
+          "shapeCounts": {
+            "Dot": 2593,
+            "Line 2": 2437,
+            "Line 3": 2478,
+            "Square": 2416,
+            "L": 2437,
+            "J": 2559,
+            "T": 2456,
+            "S": 2527,
+            "Z": 2436,
+            "Corner": 2555,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.416,
+            "Line 2": 9.79,
+            "Line 3": 9.954,
+            "Square": 9.705,
+            "L": 9.79,
+            "J": 10.28,
+            "T": 9.866,
+            "S": 10.151,
+            "Z": 9.785,
+            "Corner": 10.264,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 24650,
+            "meanMobility": 51.191,
+            "medianPerGameMinMobility": 1,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.365,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 6034,
+                "onlyOnePct": 0.348,
+                "allThreePct": 97.348
+              },
+              "twoDistinct": {
+                "steps": 9576,
+                "onlyOnePct": 2.005
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 7.225,
+              "5-9": 10.11,
+              "10-19": 15.4,
+              "20-39": 19.744,
+              "40-79": 28.56,
+              "80+": 18.961
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "noise",
+      "group": "soft75/uniform",
+      "label": "正式加权池（四格件×2、其余×1，十二种全留） × 等概率发牌 × 现行预置 7/3/3",
+      "games": 600,
+      "endedGames": 598,
+      "endedPct": 99.667,
+      "endedCi95": [
+        98.793,
+        99.909
+      ],
+      "censoredGames": 2,
+      "censoredPct": 0.333,
+      "restrictedMeanSteps": 111.917,
+      "endStepsAll": {
+        "p50": 92,
+        "p75": 148,
+        "p90": 218
+      },
+      "endStepsEndedOnly": {
+        "n": 598,
+        "p50": 92,
+        "p90": 218
+      },
+      "earlyEndBefore12Pct": 0.333,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 99.667,
+          "ci95": [
+            98.793,
+            99.909
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 92.833,
+          "ci95": [
+            90.486,
+            94.636
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 72,
+          "ci95": [
+            68.276,
+            75.444
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 33,
+          "ci95": [
+            29.356,
+            36.86
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 2.833,
+          "ci95": [
+            1.776,
+            4.49
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 0.333,
+          "ci95": [
+            0.091,
+            1.207
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 97.667,
+      "clearMovePct": 65.025,
+      "longestDryP50": 3,
+      "tightMovePct": 1.695,
+      "samePreHandMobilityReleasePct": 2.724,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 17.403,
+      "openingCellHistogram": {
+        "13": 9,
+        "14": 45,
+        "15": 91,
+        "16": 126,
+        "17": 99,
+        "18": 67,
+        "19": 46,
+        "20": 35,
+        "21": 24,
+        "22": 23,
+        "23": 14,
+        "24": 10,
+        "25": 8,
+        "26": 2,
+        "27": 1
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 22596,
+      "totalDealtSlots": 67788,
+      "shapeCounts": {
+        "Dot": 3500,
+        "Line 2": 3406,
+        "Line 3": 3388,
+        "Square": 6735,
+        "L": 6697,
+        "J": 6731,
+        "T": 6807,
+        "S": 6890,
+        "Z": 6793,
+        "Corner": 3324,
+        "Rect 6": 3369,
+        "L 5": 3397,
+        "Slant 3": 3402,
+        "Block 9": 3349
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 5.163,
+        "Line 2": 5.024,
+        "Line 3": 4.998,
+        "Square": 9.935,
+        "L": 9.879,
+        "J": 9.929,
+        "T": 10.042,
+        "S": 10.164,
+        "Z": 10.021,
+        "Corner": 4.904,
+        "Rect 6": 4.97,
+        "L 5": 5.011,
+        "Slant 3": 5.019,
+        "Block 9": 4.94
+      },
+      "tension": {
+        "samples": 67150,
+        "meanMobility": 118.242,
+        "medianPerGameMinMobility": 4,
+        "p10PerGameMinMobility": 1,
+        "forcedMovePct": 1.703,
+        "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+        "playableByHand": {
+          "threeDistinct": {
+            "steps": 17443,
+            "onlyOnePct": 0.023,
+            "allThreePct": 96.468
+          },
+          "twoDistinct": {
+            "steps": 25781,
+            "onlyOnePct": 2.839
+          }
+        },
+        "mobilityBucketPct": {
+          "0": 0,
+          "1-4": 0.98,
+          "5-9": 0.871,
+          "10-19": 2.847,
+          "20-39": 10.806,
+          "40-79": 23.29,
+          "80+": 61.206
+        },
+        "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 200,
+          "endedGames": 200,
+          "endedPct": 100,
+          "endedCi95": [
+            98.115,
+            100
+          ],
+          "censoredGames": 0,
+          "censoredPct": 0,
+          "restrictedMeanSteps": 110.645,
+          "endStepsAll": {
+            "p50": 95,
+            "p75": 137,
+            "p90": 200
+          },
+          "endStepsEndedOnly": {
+            "n": 200,
+            "p50": 95,
+            "p90": 200
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 94,
+              "ci95": [
+                89.807,
+                96.535
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 76,
+              "ci95": [
+                69.627,
+                81.393
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 33,
+              "ci95": [
+                26.857,
+                39.783
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 2,
+              "ci95": [
+                0.78,
+                5.029
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0,
+              "ci95": [
+                0,
+                1.885
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 99,
+          "clearMovePct": 65.24,
+          "longestDryP50": 3,
+          "tightMovePct": 1.767,
+          "samePreHandMobilityReleasePct": 3.581,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.355,
+          "openingCellHistogram": {
+            "13": 4,
+            "14": 14,
+            "15": 29,
+            "16": 42,
+            "17": 34,
+            "18": 23,
+            "19": 15,
+            "20": 14,
+            "21": 9,
+            "22": 8,
+            "23": 3,
+            "24": 1,
+            "25": 3,
+            "26": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 7448,
+          "totalDealtSlots": 22344,
+          "shapeCounts": {
+            "Dot": 1114,
+            "Line 2": 1102,
+            "Line 3": 1113,
+            "Square": 2186,
+            "L": 2195,
+            "J": 2245,
+            "T": 2186,
+            "S": 2240,
+            "Z": 2261,
+            "Corner": 1062,
+            "Rect 6": 1183,
+            "L 5": 1177,
+            "Slant 3": 1126,
+            "Block 9": 1154
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 4.986,
+            "Line 2": 4.932,
+            "Line 3": 4.981,
+            "Square": 9.783,
+            "L": 9.824,
+            "J": 10.047,
+            "T": 9.783,
+            "S": 10.025,
+            "Z": 10.119,
+            "Corner": 4.753,
+            "Rect 6": 5.294,
+            "L 5": 5.268,
+            "Slant 3": 5.039,
+            "Block 9": 5.165
+          },
+          "tension": {
+            "samples": 22129,
+            "meanMobility": 117.801,
+            "medianPerGameMinMobility": 3,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.662,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 5773,
+                "onlyOnePct": 0.052,
+                "allThreePct": 96.57
+              },
+              "twoDistinct": {
+                "steps": 8485,
+                "onlyOnePct": 2.758
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 1.012,
+              "5-9": 0.908,
+              "10-19": 2.842,
+              "20-39": 10.864,
+              "40-79": 23.354,
+              "80+": 61.019
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 2,
+          "games": 200,
+          "endedGames": 199,
+          "endedPct": 99.5,
+          "endedCi95": [
+            97.223,
+            99.912
+          ],
+          "censoredGames": 1,
+          "censoredPct": 0.5,
+          "restrictedMeanSteps": 118.72,
+          "endStepsAll": {
+            "p50": 92,
+            "p75": 164,
+            "p90": 230
+          },
+          "endStepsEndedOnly": {
+            "n": 199,
+            "p50": 92,
+            "p90": 230
+          },
+          "earlyEndBefore12Pct": 0.5,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 99.5,
+              "ci95": [
+                97.223,
+                99.912
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 92,
+              "ci95": [
+                87.401,
+                95.016
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 72,
+              "ci95": [
+                65.408,
+                77.763
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 34.5,
+              "ci95": [
+                28.26,
+                41.324
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 4,
+              "ci95": [
+                2.041,
+                7.693
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0.5,
+              "ci95": [
+                0.088,
+                2.777
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 97,
+          "clearMovePct": 65.128,
+          "longestDryP50": 3,
+          "tightMovePct": 1.596,
+          "samePreHandMobilityReleasePct": 2.111,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.71,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 14,
+            "15": 25,
+            "16": 44,
+            "17": 30,
+            "18": 23,
+            "19": 18,
+            "20": 9,
+            "21": 8,
+            "22": 7,
+            "23": 6,
+            "24": 6,
+            "25": 5,
+            "26": 1,
+            "27": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 7985,
+          "totalDealtSlots": 23955,
+          "shapeCounts": {
+            "Dot": 1234,
+            "Line 2": 1217,
+            "Line 3": 1233,
+            "Square": 2378,
+            "L": 2413,
+            "J": 2384,
+            "T": 2427,
+            "S": 2448,
+            "Z": 2412,
+            "Corner": 1165,
+            "Rect 6": 1147,
+            "L 5": 1167,
+            "Slant 3": 1212,
+            "Block 9": 1118
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 5.151,
+            "Line 2": 5.08,
+            "Line 3": 5.147,
+            "Square": 9.927,
+            "L": 10.073,
+            "J": 9.952,
+            "T": 10.131,
+            "S": 10.219,
+            "Z": 10.069,
+            "Corner": 4.863,
+            "Rect 6": 4.788,
+            "L 5": 4.872,
+            "Slant 3": 5.059,
+            "Block 9": 4.667
+          },
+          "tension": {
+            "samples": 23744,
+            "meanMobility": 117.413,
+            "medianPerGameMinMobility": 4,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.69,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 6159,
+                "onlyOnePct": 0.016,
+                "allThreePct": 96.412
+              },
+              "twoDistinct": {
+                "steps": 9111,
+                "onlyOnePct": 2.821
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 0.897,
+              "5-9": 0.855,
+              "10-19": 2.906,
+              "20-39": 10.735,
+              "40-79": 23.724,
+              "80+": 60.883
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 3,
+          "games": 200,
+          "endedGames": 199,
+          "endedPct": 99.5,
+          "endedCi95": [
+            97.223,
+            99.912
+          ],
+          "censoredGames": 1,
+          "censoredPct": 0.5,
+          "restrictedMeanSteps": 106.385,
+          "endStepsAll": {
+            "p50": 83,
+            "p75": 143,
+            "p90": 221
+          },
+          "endStepsEndedOnly": {
+            "n": 199,
+            "p50": 83,
+            "p90": 221
+          },
+          "earlyEndBefore12Pct": 0.5,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 99.5,
+              "ci95": [
+                97.223,
+                99.912
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 92.5,
+              "ci95": [
+                87.996,
+                95.403
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 68,
+              "ci95": [
+                61.248,
+                74.073
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 31.5,
+              "ci95": [
+                25.462,
+                38.235
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 2.5,
+              "ci95": [
+                1.072,
+                5.718
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 0.5,
+              "ci95": [
+                0.088,
+                2.777
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 97,
+          "clearMovePct": 64.685,
+          "longestDryP50": 3,
+          "tightMovePct": 1.73,
+          "samePreHandMobilityReleasePct": 2.446,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.145,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 17,
+            "15": 37,
+            "16": 40,
+            "17": 35,
+            "18": 21,
+            "19": 13,
+            "20": 12,
+            "21": 7,
+            "22": 8,
+            "23": 5,
+            "24": 3
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 7163,
+          "totalDealtSlots": 21489,
+          "shapeCounts": {
+            "Dot": 1152,
+            "Line 2": 1087,
+            "Line 3": 1042,
+            "Square": 2171,
+            "L": 2089,
+            "J": 2102,
+            "T": 2194,
+            "S": 2202,
+            "Z": 2120,
+            "Corner": 1097,
+            "Rect 6": 1039,
+            "L 5": 1053,
+            "Slant 3": 1064,
+            "Block 9": 1077
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 5.361,
+            "Line 2": 5.058,
+            "Line 3": 4.849,
+            "Square": 10.103,
+            "L": 9.721,
+            "J": 9.782,
+            "T": 10.21,
+            "S": 10.247,
+            "Z": 9.866,
+            "Corner": 5.105,
+            "Rect 6": 4.835,
+            "L 5": 4.9,
+            "Slant 3": 4.951,
+            "Block 9": 5.012
+          },
+          "tension": {
+            "samples": 21277,
+            "meanMobility": 119.626,
+            "medianPerGameMinMobility": 4,
+            "p10PerGameMinMobility": 1,
+            "forcedMovePct": 1.76,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 5511,
+                "onlyOnePct": 0,
+                "allThreePct": 96.425
+              },
+              "twoDistinct": {
+                "steps": 8185,
+                "onlyOnePct": 2.944
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 1.039,
+              "5-9": 0.851,
+              "10-19": 2.787,
+              "20-39": 10.824,
+              "40-79": 22.738,
+              "80+": 61.762
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        }
+      ]
+    },
+    {
+      "strategy": "noise",
+      "group": "current/uniform",
+      "label": "十种等权重（v0.8.4 之前的正式池） × 等概率发牌 × 现行预置 7/3/3",
+      "games": 600,
+      "endedGames": 6,
+      "endedPct": 1,
+      "endedCi95": [
+        0.459,
+        2.164
+      ],
+      "censoredGames": 594,
+      "censoredPct": 99,
+      "restrictedMeanSteps": 597.983,
+      "endStepsAll": {
+        "p50": ">600",
+        "p75": ">600",
+        "p90": ">600"
+      },
+      "endStepsEndedOnly": {
+        "n": 6,
+        "p50": 359,
+        "p90": 598
+      },
+      "earlyEndBefore12Pct": 0,
+      "survival": [
+        {
+          "step": 12,
+          "pct": 100,
+          "ci95": [
+            99.364,
+            100
+          ]
+        },
+        {
+          "step": 30,
+          "pct": 100,
+          "ci95": [
+            99.364,
+            100
+          ]
+        },
+        {
+          "step": 60,
+          "pct": 100,
+          "ci95": [
+            99.364,
+            100
+          ]
+        },
+        {
+          "step": 120,
+          "pct": 100,
+          "ci95": [
+            99.364,
+            100
+          ]
+        },
+        {
+          "step": 300,
+          "pct": 99.667,
+          "ci95": [
+            98.793,
+            99.909
+          ]
+        },
+        {
+          "step": 600,
+          "pct": 99,
+          "ci95": [
+            97.836,
+            99.541
+          ]
+        }
+      ],
+      "firstClearObservedPct": 100,
+      "firstClearObservedP50": 1,
+      "firstClearBy3Pct": 97.333,
+      "clearMovePct": 60.172,
+      "longestDryP50": 5,
+      "tightMovePct": 0.181,
+      "samePreHandMobilityReleasePct": 6.912,
+      "freshDealStuckPct": 0,
+      "gamesEndingOnFreshDealPct": 0,
+      "meanOpeningCells": 17.403,
+      "openingCellHistogram": {
+        "13": 9,
+        "14": 45,
+        "15": 91,
+        "16": 126,
+        "17": 99,
+        "18": 67,
+        "19": 46,
+        "20": 35,
+        "21": 24,
+        "22": 23,
+        "23": 14,
+        "24": 10,
+        "25": 8,
+        "26": 2,
+        "27": 1
+      },
+      "structured": {
+        "games": 0,
+        "fallbacks": 0,
+        "fallbackPct": null,
+        "baselineAlreadyQualified": 0,
+        "resampledQualified": 0,
+        "fallbackReasons": {},
+        "meanAttempts": null,
+        "searchBudgetExhaustions": 0,
+        "exactOccupancyMatches": 0
+      },
+      "totalDeals": 120193,
+      "totalDealtSlots": 360579,
+      "shapeCounts": {
+        "Dot": 36134,
+        "Line 2": 35690,
+        "Line 3": 36299,
+        "Square": 36194,
+        "L": 35846,
+        "J": 36061,
+        "T": 35959,
+        "S": 35825,
+        "Z": 36160,
+        "Corner": 36411,
+        "Rect 6": 0,
+        "L 5": 0,
+        "Slant 3": 0,
+        "Block 9": 0
+      },
+      "shapePctOfDealtSlots": {
+        "Dot": 10.021,
+        "Line 2": 9.898,
+        "Line 3": 10.067,
+        "Square": 10.038,
+        "L": 9.941,
+        "J": 10.001,
+        "T": 9.973,
+        "S": 9.935,
+        "Z": 10.028,
+        "Corner": 10.098,
+        "Rect 6": 0,
+        "L 5": 0,
+        "Slant 3": 0,
+        "Block 9": 0
+      },
+      "tension": {
+        "samples": 358790,
+        "meanMobility": 133.771,
+        "medianPerGameMinMobility": 9,
+        "p10PerGameMinMobility": 4,
+        "forcedMovePct": 0.004,
+        "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+        "playableByHand": {
+          "threeDistinct": {
+            "steps": 86261,
+            "onlyOnePct": 0,
+            "allThreePct": 99.983
+          },
+          "twoDistinct": {
+            "steps": 139668,
+            "onlyOnePct": 0.006
+          }
+        },
+        "mobilityBucketPct": {
+          "0": 0,
+          "1-4": 0.034,
+          "5-9": 0.219,
+          "10-19": 1.718,
+          "20-39": 7.5,
+          "40-79": 20.359,
+          "80+": 70.17
+        },
+        "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+      },
+      "bySeed": [
+        {
+          "seed": 1,
+          "games": 200,
+          "endedGames": 2,
+          "endedPct": 1,
+          "endedCi95": [
+            0.275,
+            3.572
+          ],
+          "censoredGames": 198,
+          "censoredPct": 99,
+          "restrictedMeanSteps": 597.825,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 2,
+            "p50": 167,
+            "p90": 598
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 99.5,
+              "ci95": [
+                97.223,
+                99.912
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 99,
+              "ci95": [
+                96.428,
+                99.725
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 98.5,
+          "clearMovePct": 60.143,
+          "longestDryP50": 5,
+          "tightMovePct": 0.203,
+          "samePreHandMobilityReleasePct": 8.642,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.355,
+          "openingCellHistogram": {
+            "13": 4,
+            "14": 14,
+            "15": 29,
+            "16": 42,
+            "17": 34,
+            "18": 23,
+            "19": 15,
+            "20": 14,
+            "21": 9,
+            "22": 8,
+            "23": 3,
+            "24": 1,
+            "25": 3,
+            "26": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 40054,
+          "totalDealtSlots": 120162,
+          "shapeCounts": {
+            "Dot": 11945,
+            "Line 2": 11956,
+            "Line 3": 12066,
+            "Square": 12005,
+            "L": 11989,
+            "J": 12001,
+            "T": 11943,
+            "S": 11932,
+            "Z": 12108,
+            "Corner": 12217,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 9.941,
+            "Line 2": 9.95,
+            "Line 3": 10.041,
+            "Square": 9.991,
+            "L": 9.977,
+            "J": 9.987,
+            "T": 9.939,
+            "S": 9.93,
+            "Z": 10.076,
+            "Corner": 10.167,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 119565,
+            "meanMobility": 133.641,
+            "medianPerGameMinMobility": 8,
+            "p10PerGameMinMobility": 3,
+            "forcedMovePct": 0.005,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 28784,
+                "onlyOnePct": 0,
+                "allThreePct": 99.972
+              },
+              "twoDistinct": {
+                "steps": 46471,
+                "onlyOnePct": 0.009
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 0.044,
+              "5-9": 0.224,
+              "10-19": 1.787,
+              "20-39": 7.562,
+              "40-79": 20.38,
+              "80+": 70.002
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 2,
+          "games": 200,
+          "endedGames": 1,
+          "endedPct": 0.5,
+          "endedCi95": [
+            0.088,
+            2.777
+          ],
+          "censoredGames": 199,
+          "censoredPct": 99.5,
+          "restrictedMeanSteps": 599.155,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 1,
+            "p50": 431,
+            "p90": 431
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 99.5,
+              "ci95": [
+                97.223,
+                99.912
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 97,
+          "clearMovePct": 60.226,
+          "longestDryP50": 5,
+          "tightMovePct": 0.155,
+          "samePreHandMobilityReleasePct": 5.376,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.71,
+          "openingCellHistogram": {
+            "13": 3,
+            "14": 14,
+            "15": 25,
+            "16": 44,
+            "17": 30,
+            "18": 23,
+            "19": 18,
+            "20": 9,
+            "21": 8,
+            "22": 7,
+            "23": 6,
+            "24": 6,
+            "25": 5,
+            "26": 1,
+            "27": 1
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 40143,
+          "totalDealtSlots": 120429,
+          "shapeCounts": {
+            "Dot": 12032,
+            "Line 2": 11933,
+            "Line 3": 12188,
+            "Square": 12089,
+            "L": 11921,
+            "J": 12045,
+            "T": 12112,
+            "S": 11943,
+            "Z": 12178,
+            "Corner": 11988,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 9.991,
+            "Line 2": 9.909,
+            "Line 3": 10.12,
+            "Square": 10.038,
+            "L": 9.899,
+            "J": 10.002,
+            "T": 10.057,
+            "S": 9.917,
+            "Z": 10.112,
+            "Corner": 9.954,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 119831,
+            "meanMobility": 134.025,
+            "medianPerGameMinMobility": 9,
+            "p10PerGameMinMobility": 4,
+            "forcedMovePct": 0.003,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 28852,
+                "onlyOnePct": 0,
+                "allThreePct": 99.986
+              },
+              "twoDistinct": {
+                "steps": 46647,
+                "onlyOnePct": 0.004
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 0.024,
+              "5-9": 0.202,
+              "10-19": 1.65,
+              "20-39": 7.496,
+              "40-79": 20.246,
+              "80+": 70.382
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        },
+        {
+          "seed": 3,
+          "games": 200,
+          "endedGames": 3,
+          "endedPct": 1.5,
+          "endedCi95": [
+            0.511,
+            4.317
+          ],
+          "censoredGames": 197,
+          "censoredPct": 98.5,
+          "restrictedMeanSteps": 596.97,
+          "endStepsAll": {
+            "p50": ">600",
+            "p75": ">600",
+            "p90": ">600"
+          },
+          "endStepsEndedOnly": {
+            "n": 3,
+            "p50": 359,
+            "p90": 581
+          },
+          "earlyEndBefore12Pct": 0,
+          "survival": [
+            {
+              "step": 12,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 30,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 60,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 120,
+              "pct": 100,
+              "ci95": [
+                98.115,
+                100
+              ]
+            },
+            {
+              "step": 300,
+              "pct": 99.5,
+              "ci95": [
+                97.223,
+                99.912
+              ]
+            },
+            {
+              "step": 600,
+              "pct": 98.5,
+              "ci95": [
+                95.683,
+                99.489
+              ]
+            }
+          ],
+          "firstClearObservedPct": 100,
+          "firstClearObservedP50": 1,
+          "firstClearBy3Pct": 96.5,
+          "clearMovePct": 60.147,
+          "longestDryP50": 5,
+          "tightMovePct": 0.186,
+          "samePreHandMobilityReleasePct": 6.306,
+          "freshDealStuckPct": 0,
+          "gamesEndingOnFreshDealPct": 0,
+          "meanOpeningCells": 17.145,
+          "openingCellHistogram": {
+            "13": 2,
+            "14": 17,
+            "15": 37,
+            "16": 40,
+            "17": 35,
+            "18": 21,
+            "19": 13,
+            "20": 12,
+            "21": 7,
+            "22": 8,
+            "23": 5,
+            "24": 3
+          },
+          "structured": {
+            "games": 0,
+            "fallbacks": 0,
+            "fallbackPct": null,
+            "baselineAlreadyQualified": 0,
+            "resampledQualified": 0,
+            "fallbackReasons": {},
+            "meanAttempts": null,
+            "searchBudgetExhaustions": 0,
+            "exactOccupancyMatches": 0
+          },
+          "totalDeals": 39996,
+          "totalDealtSlots": 119988,
+          "shapeCounts": {
+            "Dot": 12157,
+            "Line 2": 11801,
+            "Line 3": 12045,
+            "Square": 12100,
+            "L": 11936,
+            "J": 12015,
+            "T": 11904,
+            "S": 11950,
+            "Z": 11874,
+            "Corner": 12206,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "shapePctOfDealtSlots": {
+            "Dot": 10.132,
+            "Line 2": 9.835,
+            "Line 3": 10.039,
+            "Square": 10.084,
+            "L": 9.948,
+            "J": 10.014,
+            "T": 9.921,
+            "S": 9.959,
+            "Z": 9.896,
+            "Corner": 10.173,
+            "Rect 6": 0,
+            "L 5": 0,
+            "Slant 3": 0,
+            "Block 9": 0
+          },
+          "tension": {
+            "samples": 119394,
+            "meanMobility": 133.648,
+            "medianPerGameMinMobility": 9,
+            "p10PerGameMinMobility": 4,
+            "forcedMovePct": 0.004,
+            "forcedDenominator": "steps where the hand still held >=2 distinct shapes",
+            "playableByHand": {
+              "threeDistinct": {
+                "steps": 28625,
+                "onlyOnePct": 0,
+                "allThreePct": 99.99
+              },
+              "twoDistinct": {
+                "steps": 46550,
+                "onlyOnePct": 0.006
+              }
+            },
+            "mobilityBucketPct": {
+              "0": 0,
+              "1-4": 0.034,
+              "5-9": 0.232,
+              "10-19": 1.718,
+              "20-39": 7.44,
+              "40-79": 20.452,
+              "80+": 70.125
+            },
+            "note": "Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement."
+          }
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "strategy": "random",
+      "left": "soft75/uniform",
+      "right": "current/uniform",
+      "pairs": 600,
+      "restrictedMeanStepDifferenceRightMinusLeft": 91.788,
+      "endedPctPointDifferenceRightMinusLeft": -0.167,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 15.667,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 94
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 60.833,
+          "leftOnlySurvived": 9,
+          "rightOnlySurvived": 374
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 69.333,
+          "leftOnlySurvived": 10,
+          "rightOnlySurvived": 426
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 39.167,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 235
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 3.833,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 23
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 0.167,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 1
+        }
+      ]
+    },
+    {
+      "strategy": "noise",
+      "left": "soft75/uniform",
+      "right": "current/uniform",
+      "pairs": 600,
+      "restrictedMeanStepDifferenceRightMinusLeft": 486.067,
+      "endedPctPointDifferenceRightMinusLeft": -98.667,
+      "thresholds": [
+        {
+          "step": 12,
+          "survivalPctPointDifferenceRightMinusLeft": 0.333,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 2
+        },
+        {
+          "step": 30,
+          "survivalPctPointDifferenceRightMinusLeft": 7.167,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 43
+        },
+        {
+          "step": 60,
+          "survivalPctPointDifferenceRightMinusLeft": 28,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 168
+        },
+        {
+          "step": 120,
+          "survivalPctPointDifferenceRightMinusLeft": 67,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 402
+        },
+        {
+          "step": 300,
+          "survivalPctPointDifferenceRightMinusLeft": 96.833,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 581
+        },
+        {
+          "step": 600,
+          "survivalPctPointDifferenceRightMinusLeft": 98.667,
+          "leftOnlySurvived": 0,
+          "rightOnlySurvived": 592
+        }
+      ]
+    }
+  ],
+  "elapsedMs": 16893,
+  "omitted": {
+    "records": 2400,
+    "traces": 12,
+    "curves": "per-step survivalCurve and 12-step bins live in the full JSON and the HTML only",
+    "note": "Per-game records, traces and curves are omitted from this committed summary; the full JSON sits next to it and is not versioned."
+  }
+}

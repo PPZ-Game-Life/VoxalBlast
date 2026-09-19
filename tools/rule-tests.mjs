@@ -530,14 +530,14 @@ group('supply', () => {
   const total = Object.values(SHAPE_WEIGHTS).reduce((sum, w) => sum + w, 0)
   const shareOf = (list) => list.reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0) / total
   const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
-  const big = [...fourCell, 'Rect 6', 'L 5']
-  // v0.8.12/v0.8.13 added Rect 6, L 5 and Slant 3 to the pool. The v0.8.4 rule is
-  // literally "four-cell pieces x2, everything else x1", so all three new shapes
-  // joined at x1 and the four-cell share moved 0.75 -> 12/19. Both numbers are
+  const big = [...fourCell, 'Rect 6', 'L 5', 'Block 9']
+  // v0.8.12–v0.8.14 added Rect 6, L 5, Slant 3 and Block 9 to the pool. The v0.8.4 rule
+  // is literally "four-cell pieces x2, everything else x1", so all four new shapes
+  // joined at x1 and the four-cell share moved 0.75 -> 12/20. Both numbers are
   // asserted, so neither can drift silently — the producer's intent is "bigger pieces
   // dominate the deal", and the four-cell number alone no longer expresses it.
-  equal('four-cell candidates are 12/19 of the deal', shareOf(fourCell), 12 / 19)
-  equal('candidates of 4 cells or more are 14/19 of the deal', shareOf(big), 14 / 19)
+  equal('four-cell candidates are 12/20 of the deal', shareOf(fourCell), 12 / 20)
+  equal('candidates of 4 cells or more are 15/20 of the deal', shareOf(big), 15 / 20)
 
   // The two new shapes must fit a 5-wide face, not just exist in the table: a shape
   // that cannot be placed anywhere on an empty face would be a dead deal (and Rect 6
@@ -574,6 +574,16 @@ group('supply', () => {
     const cells = rotateCells(slant.cells, quarter)
     return new Set(cells.map(([u]) => u)).size === cells.length && new Set(cells.map(([, v]) => v)).size === cells.length
   }))
+  // Block 9 is the widest AND tallest piece in the pool; it has to fit a 5-wide face
+  // with room to slide, and like every other shape it must not be able to complete a
+  // line on its own (a face line is 5 cells, this is 3 wide).
+  const block9 = SHAPES.find((shape) => shape.name === 'Block 9')
+  equal('Block 9 is nine cells in a 3x3 box', `${block9.cells.length}x${Math.max(...block9.cells.map(([u]) => u)) + 1}x${Math.max(...block9.cells.map(([, v]) => v)) + 1}`, '9x3x3')
+  equal('Block 9 cannot complete a line by itself', longestRun(block9.cells), 3)
+  // 3x3 origins x 4 in-plane rotations x 6 faces = 216. (The four rotations of a square
+  // are the same cell set, but legalPlacements enumerates the orientations the cube can
+  // bring to the front, so it counts all four — same as for Square and Line 2.)
+  check('Block 9 has somewhere to slide on an empty face', legalPlacements(emptyBoard, block9.cells).length === 216, `${legalPlacements(emptyBoard, block9.cells).length} placements (3x3 origins x 4 rotations x 6 faces)`)
   // The 4-long and 5-long LINES were removed on purpose; this pins that no shape —
   // including the two new ones — smuggles a 4-long straight run back into the pool.
   equal('no shape carries a straight run longer than three', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 3)
@@ -604,10 +614,10 @@ group('supply', () => {
   for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
   check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
   const observedBig = big.reduce((sum, name) => sum + counts.get(name), 0) / 20000
-  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 14 / 19) < 0.02, `observed ${observedBig.toFixed(3)}`)
-  // The shapes added in v0.8.12/v0.8.13 must actually reach the board, not just the table.
-  const added = ['Rect 6', 'L 5', 'Slant 3']
-  check('every v0.8.12/v0.8.13 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
+  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 15 / 20) < 0.02, `observed ${observedBig.toFixed(3)}`)
+  // The shapes added in v0.8.12–v0.8.14 must actually reach the board, not just the table.
+  const added = ['Rect 6', 'L 5', 'Slant 3', 'Block 9']
+  check('every v0.8.12–v0.8.14 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]
