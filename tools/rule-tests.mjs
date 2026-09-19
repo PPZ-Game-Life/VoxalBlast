@@ -531,13 +531,13 @@ group('supply', () => {
   const shareOf = (list) => list.reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0) / total
   const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
   const big = [...fourCell, 'Rect 6', 'L 5']
-  // v0.8.12 added Rect 6 and L 5 to the pool. The v0.8.4 rule is literally "four-cell
-  // pieces ×2, everything else ×1", so the two new (larger) shapes joined at ×1 and
-  // the four-cell share moved 0.75 -> 2/3. Both numbers are asserted, so neither can
-  // drift silently — the producer's intent is "bigger pieces dominate the deal", and
-  // the four-cell number alone no longer expresses it.
-  equal('four-cell candidates are two thirds of the deal', shareOf(fourCell), 2 / 3)
-  equal('candidates of 4 cells or more are seven ninths of the deal', shareOf(big), 7 / 9)
+  // v0.8.12/v0.8.13 added Rect 6, L 5 and Slant 3 to the pool. The v0.8.4 rule is
+  // literally "four-cell pieces x2, everything else x1", so all three new shapes
+  // joined at x1 and the four-cell share moved 0.75 -> 12/19. Both numbers are
+  // asserted, so neither can drift silently — the producer's intent is "bigger pieces
+  // dominate the deal", and the four-cell number alone no longer expresses it.
+  equal('four-cell candidates are 12/19 of the deal', shareOf(fourCell), 12 / 19)
+  equal('candidates of 4 cells or more are 14/19 of the deal', shareOf(big), 14 / 19)
 
   // The two new shapes must fit a 5-wide face, not just exist in the table: a shape
   // that cannot be placed anywhere on an empty face would be a dead deal (and Rect 6
@@ -566,6 +566,14 @@ group('supply', () => {
   equal('Rect 6 is six cells in a 3x2 box', `${rect.cells.length}x${Math.max(...rect.cells.map(([u]) => u)) + 1}x${Math.max(...rect.cells.map(([, v]) => v)) + 1}`, '6x3x2')
   const l5 = SHAPES.find((shape) => shape.name === 'L 5')
   equal('L 5 is five cells with a three-long arm', `${l5.cells.length}/${longestRun(l5.cells)}`, '5/3')
+  // The staircase is the pool's pure filler: no two cells share a row or a column, so
+  // it can never complete a line on its own, in any orientation.
+  const slant = SHAPES.find((shape) => shape.name === 'Slant 3')
+  equal('Slant 3 is three diagonal cells with no straight run at all', `${slant.cells.length}/${longestRun(slant.cells)}`, '3/1')
+  check('Slant 3 can never complete a line by itself', [0, 1, 2, 3].every((quarter) => {
+    const cells = rotateCells(slant.cells, quarter)
+    return new Set(cells.map(([u]) => u)).size === cells.length && new Set(cells.map(([, v]) => v)).size === cells.length
+  }))
   // The 4-long and 5-long LINES were removed on purpose; this pins that no shape —
   // including the two new ones — smuggles a 4-long straight run back into the pool.
   equal('no shape carries a straight run longer than three', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 3)
@@ -596,9 +604,10 @@ group('supply', () => {
   for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
   check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
   const observedBig = big.reduce((sum, name) => sum + counts.get(name), 0) / 20000
-  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 7 / 9) < 0.02, `observed ${observedBig.toFixed(3)}`)
-  // The two new shapes must actually reach the board, not just the table.
-  check('both v0.8.12 shapes are dealt', counts.get('Rect 6') > 0 && counts.get('L 5') > 0, JSON.stringify({ 'Rect 6': counts.get('Rect 6'), 'L 5': counts.get('L 5') }))
+  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 14 / 19) < 0.02, `observed ${observedBig.toFixed(3)}`)
+  // The shapes added in v0.8.12/v0.8.13 must actually reach the board, not just the table.
+  const added = ['Rect 6', 'L 5', 'Slant 3']
+  check('every v0.8.12/v0.8.13 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

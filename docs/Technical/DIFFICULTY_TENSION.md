@@ -1,15 +1,15 @@
 # 紧张度测量：「太轻松」是结构性的，不是参数问题
 
-> **v0.8.12 追加**：候选池加入矩形 6（3×2，6 格）与 L 5（5 格）之后，本文以下所有数字描述的是**旧池**。现行池的重测（1800 局/臂、seed 1/2/3、600 步上限，摘要 `tools/results/difficulty-pool12.summary.json`）：
+> **v0.8.13 追加**：池再增至 13 类（新增斜三格 `Slant 3`，纯填充件，权重 1）。现行池的复测（1800 局/臂、seed 1/2/3、600 步上限，摘要 `tools/results/difficulty-pool13.summary.json`）：
 >
 > | 池 | 打法 | 自然结束率 | 中位步数 | p90 步数 | 最紧时刻比例 |
 > | --- | --- | ---: | ---: | ---: | ---: |
-> | 十种等权（旧 `current`） | 随意 | 99.3% | 94 | 242 | 15.7% |
-> | 十二种加权（现行 `soft75`） | 随意 | **100%** | **50** | 113 | 17.7% |
-> | 十种等权 | 乱放 | 1.5% | >600 | >600 | 0.17% |
-> | 十二种加权（现行） | 乱放 | **13.3%** | >600 | >600 | 0.75% |
+> | 十种等权（对照） | 随意 | 100% | 97 | 233 | 15.8% |
+> | **十三种加权（现行 `soft75`）** | 随意 | **100%** | **47** | 116 | 17.4% |
+> | 十种等权（对照） | 乱放 | 2.3% | >600 | >600 | 0.17% |
+> | **十三种加权（现行）** | 乱放 | **19%** | >600 | >600 | 0.86% |
 >
-> 复现：`node tools/difficulty-abcd.mjs --arms=soft75/uniform,current/uniform --games=200 --seeds=1,2,3 --strategies=random,noise --out=tools/results/difficulty-pool12.json`。两个新形状按「四格件×2、其余×1」取 1 份权重；实测把它们提到 2 份会更强（随意打法中位 41 步、乱放结束率 24.8%、贪心 0.667% → 1.0%），属一行可调的档位。
+> 对照臂上一次跑是 94 步、这次 97 步，**单次运行本身有约 3 步波动**，所以 `Slant 3` 带来的 50 → 47 可视为难度中性。复现：`node tools/difficulty-abcd.mjs --arms=soft75/uniform,current/uniform --games=200 --seeds=1,2,3 --strategies=random,noise --out=tools/results/difficulty-pool13.json`。
 
 > 测量 schema 1，基于正式游戏 v0.8.3（2026-09-17）。只修改 `tools/` 与技术文档：**不修改正式玩法、版本号、渲染、存档或依赖**。前三轮（开局×发牌、候选池、开局密度）见 [A/B/C/D](DIFFICULTY_ABCD.md)、[候选池](DIFFICULTY_POOL.md)、[开局密度](DIFFICULTY_OPENING.md)。
 

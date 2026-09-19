@@ -342,11 +342,11 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
     return entries.filter((entry) => names.includes(entry.name)).reduce((sum, entry) => sum + entry.weight, 0) / total
   }
   const FOUR = ['Square', 'L', 'J', 'T', 'S', 'Z']
-  // v0.8.12: Rect 6 and L 5 joined the pool at weight 1 (the v0.8.4 rule is "four-cell
-  // ×2, everything else ×1"), so the four-cell share moved 0.75 -> 2/3 and the
-  // "4 cells or larger" band is 7/9. Both are pinned.
-  assert.ok(Math.abs(shareOf('soft75', FOUR) - 2 / 3) < 1e-9)
-  assert.ok(Math.abs(shareOf('soft75', [...FOUR, 'Rect 6', 'L 5']) - 7 / 9) < 1e-9)
+  // v0.8.12/v0.8.13: Rect 6, L 5 and Slant 3 joined the pool at weight 1 (the v0.8.4
+  // rule is "four-cell x2, everything else x1"), so the four-cell share moved
+  // 0.75 -> 12/19 and the "4 cells or larger" band is 14/19. Both are pinned.
+  assert.ok(Math.abs(shareOf('soft75', FOUR) - 12 / 19) < 1e-9)
+  assert.ok(Math.abs(shareOf('soft75', [...FOUR, 'Rect 6', 'L 5']) - 14 / 19) < 1e-9)
   assert.ok(Math.abs(shareOf('soft82', FOUR) - 18 / 22) < 1e-9)
   assert.ok(Math.abs(shareOf('w90', FOUR) - 0.9) < 1e-9)
 })

@@ -8,8 +8,8 @@
 // a rescue from almost every "no legal placement" game over. v0.2.31 dropped the
 // 4-long line as well, by the producer's call: it was the only piece that ate 80%
 // of a face row, so whenever it fit it read as a free line instead of a choice.
-// 3 is the longest line in a shape's own silhouette and the pool is 12 types as of
-// v0.8.12; don't put a 4-long line back without the producer asking for it.
+// 3 is the longest line in a shape's own silhouette and the pool is 13 types as of
+// v0.8.13; don't put a 4-long line back without the producer asking for it.
 //
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 //
@@ -43,6 +43,14 @@ export const SHAPES = [
   // in the same breath.
   { name: 'Rect 6', color: 0x3fa87a, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'L 5',    color: 0x93b23c, cells: [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]] },
+  // The staircase triomino — the third shape the producer asked for ("斜着的三个小块连着").
+  // It is the second free triomino; `Corner` is the other one.
+  //
+  // Worth knowing before anyone "fixes" it: no two of its cells share a row or a
+  // column, so this piece can never complete a line by itself, in any placement. It
+  // is a pure filler — the rescue-hatch role a Dot or Line 2 plays, and the opposite
+  // end of the pool from Rect 6. That is also why its weight stays 1 (see below).
+  { name: 'Slant 3', color: 0x6a5fb0, cells: [[0, 0], [1, 1], [2, 2]] },
 ]
 
 // Candidate weights (v0.8.4; the pool grew in v0.8.12, the RULE did not). The six
@@ -76,11 +84,17 @@ export const SHAPES = [
 // 60–120-step median, and the pre-v0.8.12 pool sat above 600 for anything but random
 // play). Weight 1 lands nearest that band, so it ships; weight 2 is the stronger
 // dial if the producer wants more pressure, and it is a one-line change.
+// v0.8.13 added `Slant 3` at weight 1 for the same reason: the rule is "a shape is
+// weighted 2 only if it is a four-cell piece", and the staircase is a three-cell
+// filler. The pool is now 13 shapes and the shares are 12/19 four-cell, 14/19 for
+// four cells or larger. The measurement below was taken at v0.8.12 (twelve shapes);
+// see DIFFICULTY_TENSION.md for the v0.8.13 re-run.
 export const SHAPE_WEIGHTS = Object.freeze({
   Dot: 1,
   'Line 2': 1,
   'Line 3': 1,
   Corner: 1,
+  'Slant 3': 1,
   Square: 2,
   L: 2,
   J: 2,
