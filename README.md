@@ -12,6 +12,7 @@ npm run shot       # 桌面 + 移动端实机截图（需先跑 dev）
 npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手（需先跑 dev）
 npm run probe:framing # 停稳构图实机断言：24 朝向主面占比 + 旋转轴屏幕方向（需先跑 dev）
 npm run probe:fragility # 几何对照：3×3 在 5×5 面 vs 8×8 板上"放不下"的概率（纯几何，无浏览器）
+npm run probe:shapes # 方块几何对照：两个游戏每种形状的落位数/占盘面/占行长/能否自清（纯几何）
 npm run probe:rescue # 救局判定实机断言：卡住时换批/清理类/耗尽三个分支（需先跑 dev）
 ```
 

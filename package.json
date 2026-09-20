@@ -12,6 +12,7 @@
     "probe:swipe": "node tools/swipe-probe.mjs",
     "probe:framing": "node tools/cube-framing-probe.mjs",
     "probe:fragility": "node tools/face-fragility.mjs",
+    "probe:shapes": "node tools/shape-geometry.mjs",
     "probe:rescue": "node tools/rescue-probe.mjs",
     "reachability": "node tools/reachability.mjs all"
   },
