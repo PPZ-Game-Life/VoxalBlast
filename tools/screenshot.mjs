@@ -45,6 +45,13 @@ const SHOTS = [
   { name: 'desktop-board', width: 1440, height: 900, mode: 'board' },
   { name: 'mobile-board', width: 390, height: 844, mode: 'board' },
   { name: 'widescreen-board', width: 2048, height: 900, mode: 'board' },
+  // v0.8.15: the Game Over card is now a first-class capture. It was reachable only
+  // on a shell jam (rare before the pool expansion), which is exactly why a CSS rule
+  // that hid its PLAY AGAIN button on every viewport ≤900px survived from 2026-09-07
+  // to here: no mobile run ever ended. These two shots are the hard gate — mobile
+  // first, because that is the width where the button used to disappear.
+  { name: 'mobile-gameover', width: 390, height: 844, mode: 'gameover' },
+  { name: 'desktop-gameover', width: 1440, height: 900, mode: 'gameover' },
 ]
 
 // Only the screenshot page receives this seed; gameplay remains genuinely random.
@@ -202,13 +209,26 @@ async function capture(browser, shot) {
       await send(ws, 5, 'Page.navigate', { url })
       await sleep(3200)
 
-      if (mode === 'board') {
+      if (mode === 'board' || mode === 'gameover') {
         const click = await send(ws, 6, 'Runtime.evaluate', {
           expression: '(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()',
           returnByValue: true,
         })
         if (click.result?.value !== 'clicked') throw new Error(`home cover not dismissed: ${click.result?.value}`)
         await sleep(2600)
+      }
+
+      // The Game Over card cannot be reached by playing (endGame() fires only on a
+      // shell jam), so the shot goes through the dev-only handle. It exists only on
+      // the dev server: a production build deliberately ships no such hook, and a
+      // capture that silently fell back to the home screen would be a false pass.
+      if (mode === 'gameover') {
+        const ended = await send(ws, 22, 'Runtime.evaluate', {
+          expression: '(() => { const dev = globalThis.__voxalblastDev; if (typeof dev?.endGame !== "function") return "no-dev-handle"; dev.endGame(); return "ended"; })()',
+          returnByValue: true,
+        })
+        if (ended.result?.value !== 'ended') throw new Error(`game over shot needs the dev server (${ended.result?.value}); point npm run shot at npm run dev`)
+        await sleep(900)
       }
 
       // Two rAFs and a short pause: the last state has to reach the compositor,
@@ -236,6 +256,31 @@ async function capture(browser, shot) {
             version: ${JSON.stringify(version)},
             home: document.querySelector('#home').className,
             canvases: document.querySelectorAll('canvas').length,
+            gameOver: (() => {
+              const measure = (sel) => {
+                const el = document.querySelector(sel)
+                if (!el) return null
+                const box = el.getBoundingClientRect()
+                const x = Math.round(box.left + box.width / 2)
+                const y = Math.round(box.top + box.height / 2)
+                const top = document.elementFromPoint(x, y)
+                return {
+                  display: getComputedStyle(el).display,
+                  width: Math.round(box.width),
+                  height: Math.round(box.height),
+                  at: [x, y],
+                  // A control painted off-screen or covered by another layer is as
+                  // unreachable as one that was never rendered.
+                  onTop: !!top && (top === el || el.contains(top)),
+                }
+              }
+              const card = document.querySelector('#game-over')
+              return {
+                cardShown: !!card && getComputedStyle(card).display !== 'none',
+                playAgain: measure('#reset-modal'),
+                leaderboardEntry: measure('#leaderboard-button'),
+              }
+            })(),
             errors: globalThis.__errs || [],
           })
         })()`,
@@ -258,6 +303,17 @@ async function capture(browser, shot) {
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')
       if (parsed.rendering?.meshes !== 98 || parsed.rendering?.uniqueCells !== 98) failures.push('board must contain exactly 98 unique meshes')
+      if (mode === 'gameover') {
+        // v0.8.15 gate: the panel's only restart affordance must be rendered, sized and
+        // hittable at EVERY width. A `display: none` from a media query is invisible to
+        // a desktop-only check, so this shot exists at 390px and 1440px.
+        const { cardShown, playAgain, leaderboardEntry } = parsed.gameOver
+        if (!cardShown) failures.push('game over card is not shown')
+        if (playAgain?.display === 'none') failures.push('PLAY AGAIN is hidden by CSS at this width')
+        if (!playAgain?.width || !playAgain?.height) failures.push('PLAY AGAIN has no layout box')
+        if (playAgain && !playAgain.onTop) failures.push(`PLAY AGAIN is covered at its own centre (${playAgain.at})`)
+        if (leaderboardEntry && !leaderboardEntry.onTop) failures.push('排行榜 entry is covered at its own centre')
+      }
       const clean = failures.length === 0
       console.log(`${clean ? 'OK  ' : 'FAIL'} ${shot.name.padEnd(13)} ${width}x${height}  ${out}`)
       console.log(`     ${JSON.stringify(parsed)}`)
