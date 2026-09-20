@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.8.15",
+  "version": "0.8.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "probe:swipe": "node tools/swipe-probe.mjs",
     "probe:framing": "node tools/cube-framing-probe.mjs",
     "probe:fragility": "node tools/face-fragility.mjs",
+    "probe:rescue": "node tools/rescue-probe.mjs",
     "reachability": "node tools/reachability.mjs all"
   },
   "dependencies": {

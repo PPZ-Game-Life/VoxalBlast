@@ -29,7 +29,7 @@ import {
   RenderMode,
   SizeOverLife,
 } from 'three.quarks'
-import { Board, SH, FACES, faceLattice } from './game/board.js'
+import { Board, SH, FACES, faceLattice, isShell } from './game/board.js'
 import { SHAPES, pickShape, normalizeCells, maxOrigin } from './game/shapes.js'
 import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
@@ -1795,12 +1795,29 @@ function hasPlaceablePiece() {
   return pieces.some((piece) => !piece.used && board.anyPlacement(piece.cells))
 }
 
+// 07 §3.1 B1 (v0.8.16): a jam no longer ends the run while a blocking-clear tool is
+// still charged — the item that can open a hole has to be allowed to be used, or three
+// of the four tools are decorative exactly when they matter. This is deliberately NOT a
+// solvability check: whether hammer / rocket / bomb can actually open a legal spot is
+// the player's judgement, and the exhaustive search (6 faces × 25 targets × 3 tools × 3
+// candidate cells × their orientations) costs far more than it is worth. The charges
+// are what keep this from looping: every prompt names a tool the player can spend, and
+// the run ends when the last one is gone.
+function hasBlockingClearTool() {
+  return itemCounts.hammer > 0 || itemCounts.rocket > 0 || itemCounts.bomb > 0
+}
+
 function checkStuckAndPrompt() {
   if (gameEnded || isPaused || !pieces.length) return
   if (hasPlaceablePiece()) return
   if (itemCounts.refresh > 0) {
     setStatus('No spot - use Refresh')
     showToast('No spot - try Refresh')
+    return
+  }
+  if (hasBlockingClearTool()) {
+    setStatus('No spot - clear a path')
+    showToast('No spot - clear a path')
     return
   }
   endGame()
@@ -3564,6 +3581,29 @@ if (import.meta.env.DEV) {
     endGame: () => endGame(),
     openLeaderboard: () => openLeaderboard(),
     records: () => recordStore.all(),
+    // v0.8.16 rescue probe (07 §3.1 B1). A shell jam is common in real play but cannot
+    // be produced on demand, so the three judgement branches could not be asserted
+    // without a way to build one: `jam()` fills every free shell cell (nothing fits
+    // anywhere), `setItems()` sets the charges, and `stuckCheck()` runs the very same
+    // judgement the gameplay path runs — no mock of it.
+    setItems: (counts) => {
+      for (const [id, count] of Object.entries(counts || {})) {
+        if (id in itemCounts) itemCounts[id] = Math.max(0, Math.trunc(Number(count) || 0))
+      }
+      renderItemBar()
+      return { ...itemCounts }
+    },
+    items: () => ({ ...itemCounts }),
+    jam: () => {
+      const records = []
+      for (let x = 0; x < SH; x += 1) for (let y = 0; y < SH; y += 1) for (let z = 0; z < SH; z += 1) {
+        if (isShell(x, y, z) && !board.has(x, y, z)) records.push({ x, y, z, color: 0 })
+      }
+      board.addCells(records)
+      renderBoard()
+      return { filled: records.length, occupied: board.occupied().length }
+    },
+    stuckCheck: () => checkStuckAndPrompt(),
     // Visual triggers for the headless UI checks: they call the very same functions
     // the gameplay path calls, so a screenshot of them is a screenshot of the real
     // rendering, not a hand-built mock of it.
