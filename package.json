@@ -11,6 +11,7 @@
     "shot": "node tools/screenshot.mjs",
     "probe:swipe": "node tools/swipe-probe.mjs",
     "probe:framing": "node tools/cube-framing-probe.mjs",
+    "probe:fragility": "node tools/face-fragility.mjs",
     "reachability": "node tools/reachability.mjs all"
   },
   "dependencies": {

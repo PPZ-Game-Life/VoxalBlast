@@ -11,6 +11,7 @@ npm run preview    # 预览产物
 npm run shot       # 桌面 + 移动端实机截图（需先跑 dev）
 npm run probe:swipe # 手势方向实机断言：左右侧带自转是否跟手（需先跑 dev）
 npm run probe:framing # 停稳构图实机断言：24 朝向主面占比 + 旋转轴屏幕方向（需先跑 dev）
+npm run probe:fragility # 几何对照：3×3 在 5×5 面 vs 8×8 板上"放不下"的概率（纯几何，无浏览器）
 ```
 
 当前版本 **0.8.15**：修掉一个**只有真的卡住才会暴露**的旧 bug——结算面板的「再来一局」在**所有 ≤900px 的视口**（含全部手机）被 CSS 藏了。`src/styles.css` 的 `@media (max-width: 900px)` 里一条 `.restart-button { display: none }` 是 2026-09-07 为面板内那个旧 RESTART RUN 按钮写的，但结算卡的「再来一局」用的是同一个类名（`#reset-modal`），于是被一起隐藏——手机上卡住后，面板上只剩「排行榜」一个按钮，看完榜点叉回来**没有任何开始下一局的入口**。池扩张之前局终几乎不发生（乱放结束率 1%），所以这条规则一直没被人撞到。现在该媒体查询只针对 `#reset-button`，结算面板的两个入口在 390px 与 1440px 都实测可见、可点。`npm run shot` 新增 **`mobile-gameover` / `desktop-gameover`** 两张实机图与硬门（`display`、布局盒、中心点命中测试）。
