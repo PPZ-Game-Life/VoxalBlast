@@ -82,9 +82,15 @@ function emptyMobilityPanel() {
     // an unconditional "only one option" share would just report the hand size (~33%)
     // instead of pressure. Layering by hand composition removes that artifact.
     composition: {},
+    // v0.8.15: per-shape pressure. The whole-hand mobility hides the question "is THIS
+    // shape the bottleneck?" — with six 5x5 faces a 3x3 has 6x9 windows to choose from,
+    // so the answer is not obvious from the geometry of one face. Keyed by shape NAME
+    // and counted once per step (a hand holding the same shape twice contributes its
+    // first slot only).
+    byShape: {},
   }
 }
-function addMobilitySample(panel, mobility, shapeOptions) {
+function addMobilitySample(panel, mobility, shapeOptions, hand = []) {
   const playableShapes = shapeOptions.filter((count) => count > 0).length
   const distinct = shapeOptions.length
   const multiShape = distinct >= 2
@@ -96,6 +102,17 @@ function addMobilitySample(panel, mobility, shapeOptions) {
   panel.forcedSteps += Number(multiShape && playableShapes <= 1)
   panel.buckets[MOBILITY_BUCKETS.find((b) => mobility <= b.max).label] += 1
   panel.composition[key] = (panel.composition[key] || 0) + 1
+  const seen = new Set()
+  hand.forEach((name, slot) => {
+    if (seen.has(name)) return
+    seen.add(name)
+    const cell = panel.byShape[name] || (panel.byShape[name] = { steps: 0, zeroSteps: 0, sum: 0, min: null })
+    const count = shapeOptions[slot] ?? 0
+    cell.steps += 1
+    cell.sum += count
+    cell.zeroSteps += Number(count === 0)
+    cell.min = cell.min == null ? count : Math.min(cell.min, count)
+  })
 }
 // Share of steps with only one distinct shape playable, conditioned on the hand
 // actually holding 2 or 3 distinct shapes.
@@ -147,7 +164,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   let firstClearStep = null, clearMoves = 0, clearedCells = 0, addedCells = 0
   let dry = 0, longestDry = 0, tightMoves = 0, samePreHandMobilityReleases = 0
   const mobilityPanel = emptyMobilityPanel()
-  let deals = 1, freshDealStuck = 0, justDealt = true, lineTotal = 0
+  let deals = 1, freshDealStuck = 0, justDealt = true, lineTotal = 0, terminalHand = null
   const bins = new Map(), traceRows = [], dealShapeCounts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
   hand.forEach((s) => dealShapeCounts[s]++)
   for (;;) {
@@ -160,13 +177,16 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
     if (!move) {
       ended = true
       if (justDealt) freshDealStuck++
+      // Every shape still in hand has zero legal placements at this moment (that is
+      // exactly why there is no move), so the hand itself names the bottleneck piece(s).
+      terminalHand = [...hand]
       break
     }
     // At exactly the cap check terminal status, but never execute cap+1.
     if (steps === stepCap) break
     const shapeOptions = shapeMobility(state, hand)
     const before = shapeOptions.reduce((sum, count) => sum + count, 0)
-    addMobilitySample(mobilityPanel, before, shapeOptions)
+    addMobilitySample(mobilityPanel, before, shapeOptions, hand)
     const beforeCount = occupiedCount(state)
     const tight = before <= 8
     const result = settle(state, move.pl)
@@ -199,6 +219,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
     opening: openingMeta, firstHand, firstClearStep, clearMoves, lineTotal,
     addedCells, clearedCells, longestDry, tightMoves, samePreHandMobilityReleases,
     deals, freshDealStuck, finalOccupied: occupiedCount(state), dealShapeCounts,
+    endHand: terminalHand,
     mobilityPanel,
   }
   return { record, bins: [...bins.values()], trace: trace ? { ...record, openingWitness: witness ?? null, moves: traceRows } : null }
@@ -271,6 +292,38 @@ export function summarizeGames(records, stepCap = 600) {
       mobilityBucketPct: Object.fromEntries(MOBILITY_BUCKETS.map((bucket) => [bucket.label,
         pct(records.reduce((a, g) => a + (g.mobilityPanel?.buckets?.[bucket.label] || 0), 0), Math.max(1, records.reduce((a, g) => a + (g.mobilityPanel?.samples || 0), 0)))])),
       note: 'Mobility counts unique physical placements for the distinct shapes still in hand. Buckets are coarse; forcedMovePct means fewer than two distinct shapes had any legal placement.',
+    },
+    // v0.8.15, per shape: "is this piece the bottleneck?" A 3x3 has 6 faces x 9 windows
+    // to choose from, so "36% of one face" is not the whole story — this is the measured
+    // answer. `zeroSteps` counts executed steps where that shape was in hand and had no
+    // legal placement at all.
+    shapePressure: Object.fromEntries(SHAPE_NAMES.map((name) => {
+      const sample = (g) => g.mobilityPanel?.byShape?.[name] || { steps: 0, zeroSteps: 0, sum: 0, min: null }
+      const steps = records.reduce((a, g) => a + sample(g).steps, 0)
+      const zeroSteps = records.reduce((a, g) => a + sample(g).zeroSteps, 0)
+      const sum = records.reduce((a, g) => a + sample(g).sum, 0)
+      const mins = records.map((g) => sample(g).min).filter((x) => x != null)
+      return [name, {
+        stepsInHand: steps, zeroSteps, zeroPct: pct(zeroSteps, Math.max(1, steps)),
+        meanPlacements: steps ? round(sum / steps) : null,
+        minPlacements: mins.length ? Math.min(...mins) : null,
+        // Share of the games that ever held this shape at a decision point. The pool
+        // share alone (shapePctOfDealtSlots) does not tell you how often a run meets it.
+        gamesHoldingPct: pct(records.filter((g) => sample(g).steps > 0).length, n),
+      }]
+    })),
+    // Which hand the run died on. Every shape still in hand at that step had zero legal
+    // placements, so `containsPct` per shape is a direct attribution of the deaths —
+    // no arm comparison needed.
+    deathHand: {
+      endedGames: ended.length,
+      emptyHandDeaths: ended.filter((g) => (g.endHand || []).length === 0).length,
+      handSizeHistogram: Object.fromEntries([...new Set(ended.map((g) => (g.endHand || []).length))].sort((a, b) => a - b)
+        .map((size) => [size, ended.filter((g) => (g.endHand || []).length === size).length])),
+      containsPct: Object.fromEntries(SHAPE_NAMES.map((name) => [name,
+        pct(ended.filter((g) => (g.endHand || []).includes(name)).length, Math.max(1, ended.length))])),
+      containsCount: Object.fromEntries(SHAPE_NAMES.map((name) => [name,
+        ended.filter((g) => (g.endHand || []).includes(name)).length])),
     },
   }
 }
