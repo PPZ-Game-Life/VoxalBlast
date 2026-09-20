@@ -307,7 +307,7 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82'])
+  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9'])
   // `current`, `c`, `d` and `soft82` are frozen to the ten shapes they were MEASURED
   // with (v0.8.12 added two shapes to the game; letting them into these pools would
   // have silently redefined three published candidates and invalidated every number
@@ -336,6 +336,14 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   assert.equal(POOLS.soft82.entries.length, TEN.length)
   assert.ok(POOLS.soft75.members.has('Rect 6') && POOLS.soft75.members.has('L 5'))
   assert.ok(!POOLS.soft82.members.has('Rect 6') && !POOLS.soft82.members.has('L 5'))
+  // The v0.8.15 Block 9 diagnostic arms follow the shipped pool and only move that
+  // one weight, so they can never drift into measuring a different 13th/14th shape.
+  const weightOf = (id, name) => POOLS[id].entries.find((entry) => entry.name === name)?.weight
+  assert.equal(POOLS.b9w04.entries.length, SHAPE_NAMES.length)
+  assert.equal(weightOf('b9w04', 'Block 9'), 0.4)
+  assert.equal(POOLS.no9.members.size, SHAPE_NAMES.length - 1)
+  assert.equal(POOLS.no9.members.has('Block 9'), false)
+  assert.equal(POOLS.no9.entries.length, SHAPE_NAMES.length - 1)
   const shareOf = (id, names) => {
     const entries = POOLS[id].entries
     const total = entries.reduce((sum, entry) => sum + entry.weight, 0)

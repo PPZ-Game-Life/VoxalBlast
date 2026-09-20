@@ -55,6 +55,13 @@ const POOL_SPECS = Object.freeze({
   // more often. `soft75` IS the shipped table above; `soft82` is the next, stronger
   // step. soft82 stays on the ten it was measured with (see TEN).
   soft82: { label: '加权·保留十种（四格件82%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
+  // v0.8.15 diagnostic: the shipped pool with the 14th shape turned down or removed.
+  // The 14-shape pool is the first one where even a greedy bot dies (92.5% of runs,
+  // median 206 steps) — and `Block 9` is the only piece that needs a 3×3 gap, of
+  // which a 5-wide face offers just 9. These two arms attribute that jump, they are
+  // not proposals: nothing here is wired into the game.
+  b9w04: { label: '正式加权池 × Block 9 权重 0.4（14 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0.4 } },
+  no9: { label: '正式加权池去掉 Block 9（13 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0 } },
 })
 
 export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))
