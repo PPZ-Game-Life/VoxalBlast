@@ -64,10 +64,11 @@ export const SHAPES = [
   //     ending rate before deciding to keep it at weight 1.
   { name: 'Block 9', color: 0xa94fc4, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]] },
 ]
-// Candidate weights (v0.8.4; the pool grew in v0.8.12, the RULE did not). The six
-// four-cell shapes carry weight 2 and every other shape carries 1, so a dealt
-// candidate is a four-cell piece 2 times out of 3 and one of the other six 1 time in
-// 3 — 77.8% of candidates are 4 cells or larger. Nothing leaves the pool.
+// Candidate weights (v0.8.4; the pool grew in v0.8.12/13/14, the RULE did not). The six
+// four-cell shapes carry weight 2 and every other shape carries 1. With the shipping
+// 14-shape pool that is 20 weight units: 12/20 = 60% of dealt slots are four-cell
+// pieces, and 15/20 = 75% are four cells or larger (the 77.8% quoted here before
+// v0.8.14 was the twelve-shape pool). Nothing leaves the pool.
 //
 // Why: measurement found the equal-weight pool leaves a competent player 80+ legal
 // placements on 81% of steps, with a tightest moment of 19 placements in a whole

@@ -22,6 +22,7 @@
 | [待办与验证边界](Technical/KNOWN_GAPS.md) | 哪些仍是提案、缺口或未验证能力？ |
 | [难度与单局长度测量](Technical/DIFFICULTY_BASELINE.md) | 现行候选池下对局为什么不会结束，改池/改手牌各能拉高多少难度？ |
 | [现行池难度曲线](Technical/DIFFICULTY_CURVE_POOL14.md) | 14 类池现在有多难、曲线是什么形状、难在哪一个形状上？ |
+| [方块清单对照](Technical/SHAPE_POOL_VS_BLOCKBLAST.md) | 与 Block Blast 比，方块类型谁多谁少、每个方块的指标各是多少？ |
 | [v0.5.0 验收记录](Technical/VISUAL_REFRESH_050.md) | 上一轮实际做过哪些检查？ |
 
 ## 目录职责
