@@ -118,6 +118,8 @@
 
 ## 8. 与 Block Blast 的结构对照：为什么同一个 3×3 在那边不致命
 
+（产品侧的竞品结论见 [竞品拆解 Block Blast](../Planning/竞品拆解-Block-Blast.md)；本节只负责几何与实测口径。）
+
 **Block Blast 的规则事实**（第三方资料，非官方文档）：Hungry Studio 出品，iOS 于 2022-04-03 上线，2024–2025 成为全球头部休闲游戏；玩法是 **8×8 单平面（64 格）+ 每批三块 + 拖放 + 不可旋转 + 满行/满列消除 + 无计时**，三块都放不下即结束，可立刻重开；模式含经典无尽、Adventure、每日挑战（[blockblast.co FAQ](https://blockblast.co/ko/faq)、[namu.wiki](https://en.namu.wiki/w/Block%20Blast!)，国内媒体亦有"3 亿 MAU、月流水超千万、曾遭谷歌下架"与腾讯洽谈入股的报道：[网易 1](https://m.163.com/dy/article/KUB4I348052685Q5.html)、[网易 2](https://m.163.com/dy/article/KMPVCEM605568W0A.html)）。它的发牌是否看盘面**没有官方说法**；公开分析普遍称其"随机选取、不检查未来可行性"（[Playgama FAQ](https://playgama.com/blog/game-faqs/why-does-block-blast-sometimes-have-no-solution/)），属二手说法，不能当成已证事实。
 
 **关键差异不是"有没有 3×3"，而是 3×3 相对于盘面有多大。** 同一个九格件：
