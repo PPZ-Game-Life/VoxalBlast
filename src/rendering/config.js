@@ -11,6 +11,9 @@ export const RENDER_PALETTE = Object.freeze({
   gridGlow: 0xd9ae72,
   candidate: 0xf7c13c,
   valid: 0x7ed957, // fresh leaf green: "it fits here"
+  // v0.8.17: terracotta is the INVALID marker's colour and no longer a paint in the
+  // pool (it used to be `Dot`'s), so "no room here" can never be painted in the very
+  // colour of the piece being dragged. See src/game/shapes.js for the wood-band rule.
   invalid: 0xe8543f, // terracotta, not a UI error red (05「不要警告色」)
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })

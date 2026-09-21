@@ -55,7 +55,13 @@ const SHOTS = [
 ]
 
 // Only the screenshot page receives this seed; gameplay remains genuinely random.
-const CAPTURE_SEED = 20260916
+//
+// v0.8.17: `SHOT_SEED=<n> npm run shot` re-rolls the draw. The fixed seed is what
+// makes a run reproducible, but it also freezes WHICH candidate colours are on
+// screen — and a fixed seed that never deals, say, `L 5` cannot show whether a new
+// paint reads against the timber, which is exactly what a colour change has to prove.
+// Three or four seeds cover the 14-shape pool; each run is still fully deterministic.
+const CAPTURE_SEED = Number(process.env.SHOT_SEED || 20260916)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 

@@ -18,12 +18,50 @@
 // step and the hues spread out, so the pieces stay distinguishable against a warm
 // timber board AND against a green meadow. Keep them in the paint family — a neon
 // colour here is what makes the whole scene read as "3D render" instead of "toy".
+//
+// v0.8.17 — the WOOD-FREE HUE BAND. The producer reported that a few candidates
+// "和空置时候的木色方块太接近了，看不清". Measured in Lab against the three tones the
+// board's timber actually renders as (front `#D3A36F`, base `#E4A16D`, top `#E3C7AC`),
+// exactly four paints sat inside the wood's own warm band (hue ≤ 80°):
+//
+//   L      #EF9127 h32°  ΔE 30.5   ← the worst offender: an orange block ON an orange board
+//   Line 3 #F2B52B h42°  ΔE 36.8   ← amber vs lit timber is ΔE 39 with the same luminance
+//   Dot    #E8543F h 7°  ΔE 40.6
+//   L 5    #93B23C h76°  ΔE 44.2
+//
+// A placed block and an empty one are the SAME cube in a different material (see
+// BOARD_STYLE), so "is this cell filled?" is carried by colour and nothing else — a
+// paint that lives in the timber's band answers that question wrongly. The rule now:
+// **no paint may sit in the wood band.** Every colour must clear the wood either by
+// HUE (≥ 35° away from the timber's ~27°) or by LIGHTNESS (|ΔL*| ≥ 22), which is what
+// the four replacements do — the band 0–95° is now empty of paint:
+//
+//   Dot    #E8543F → #C22B58  raspberry       ΔE 40.6 → 56.0
+//   Line 3 #F2B52B → #293894  deep navy       ΔE 36.8 → 90.5
+//   L      #EF9127 → #217D6E  deep teal       ΔE 30.5 → 52.7
+//   L 5    #93B23C → #90C22D  lime            ΔE 44.2 → 57.4
+//
+// Why these four and not "just darken the orange": the pool is 14 shapes and the
+// wheel outside the band (95°–350°) already carries 10 of them, so the freed slots go
+// to the families with room — a lime at h80 (the one remaining yellowish note, now
+// 51° off the timber), a teal at h170, a navy at h232 and a raspberry at h342.
+// Assignments respect the shape pairs: `L`/`J` are mirror images and must not both be
+// blue, so navy went to `Line 3`, not to `L`.
+//
+// Two things this also fixes, both checked before shipping:
+//   - `Dot` WAS bit-identical to `palette.invalid` (`#E8543F`), so dragging a Dot onto
+//     an illegal cell painted the invalid ghost in the piece's own colour — the one
+//     case where "no room here" was invisible. The raspberry is ΔE 33.6 off terracotta.
+//   - The tightest NEW pair is `Line 3`/`J` at ΔE 16.8, no worse than the pairs the
+//     pool already ships with (`J`/`Slant 3` 16.5, `Square`/`Block 9` 12.2).
+// Full 14-colour table: docs/Planning/05 §3. Keep new colours inside the crayon family
+// (S ≈ 0.55–0.85, V ≈ 0.45–0.90) — that, not the hue, is what still reads as "toy".
 export const SHAPES = [
-  { name: 'Dot',    color: 0xe8543f, cells: [[0, 0]] },
+  { name: 'Dot',    color: 0xc22b58, cells: [[0, 0]] },
   { name: 'Line 2', color: 0x3f8fe0, cells: [[0, 0], [1, 0]] },
-  { name: 'Line 3', color: 0xf2b52b, cells: [[0, 0], [1, 0], [2, 0]] },
+  { name: 'Line 3', color: 0x293894, cells: [[0, 0], [1, 0], [2, 0]] },
   { name: 'Square', color: 0x8b57c9, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
-  { name: 'L',      color: 0xef9127, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
+  { name: 'L',      color: 0x217d6e, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'J',      color: 0x2f5fc4, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'T',      color: 0xe0658f, cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'S',      color: 0x4faa4a, cells: [[0, 0], [1, 0], [1, 1], [2, 1]] },
@@ -42,7 +80,7 @@ export const SHAPES = [
   // if the producer wants THAT silhouette, the line-length rule has to be revisited
   // in the same breath.
   { name: 'Rect 6', color: 0x3fa87a, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]] },
-  { name: 'L 5',    color: 0x93b23c, cells: [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]] },
+  { name: 'L 5',    color: 0x90c22d, cells: [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]] },
   // The staircase triomino — the third shape the producer asked for ("斜着的三个小块连着").
   // It is the second free triomino; `Corner` is the other one.
   //
