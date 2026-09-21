@@ -5,7 +5,7 @@ import { Board, SH, FACES, faceLattice } from '../src/game/board.js'
 import { SHAPES } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 import {
-  CELLS, PLACEMENTS, SHAPE_NAMES, POOLS, POOL_IDS, poolById, OPENINGS, OPENING_IDS, openingById,
+  CELLS, PLACEMENTS, SHAPE_NAMES, ALL_SHAPE_NAMES, EXTRA_SHAPES, BY_SHAPE, EMPTY_STATE, POOLS, POOL_IDS, poolById, OPENINGS, OPENING_IDS, openingById,
   stateFromBoard, boardFromState, stateKey,
   occupiedCount, canPlace, settle, rngFor, stageAt, drawHand, makeOpening,
   legalCount, chooseMove,
@@ -307,7 +307,7 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9'])
+  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9', 'bb4', 'bb5', 'bb'])
   // `current`, `c`, `d` and `soft82` are frozen to the ten shapes they were MEASURED
   // with (v0.8.12 added two shapes to the game; letting them into these pools would
   // have silently redefined three published candidates and invalidated every number
@@ -322,8 +322,10 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   assert.deepEqual(weightsOf('soft75'), { ...SHAPE_WEIGHTS })
   assert.equal(POOLS.soft75.members.size, SHAPE_NAMES.length)
   for (const name of ['Solid', 'Line 4', 'current ', '']) assert.throws(() => poolById(name))
-  // Every pool must name shipped shapes only; a typo would otherwise silently deal a smaller pool.
-  for (const id of POOL_IDS) for (const entry of POOLS[id].entries) assert.ok(SHAPE_NAMES.includes(entry.name))
+  // Every pool must name known shapes only (shipped ones, plus the two measurement-only
+  // Block Blast lines declared in EXTRA_SHAPES); a typo would otherwise silently deal a
+  // smaller pool. The shipped-pool guard below keeps the extras out of `soft75`.
+  for (const id of POOL_IDS) for (const entry of POOLS[id].entries) assert.ok(ALL_SHAPE_NAMES.includes(entry.name))
   assert.deepEqual([...POOLS.e.members].sort(), ['J', 'L', 'S', 'Square', 'T', 'Z'])
   assert.deepEqual([...POOLS.e5.members].sort(), ['J', 'L', 'S', 'T', 'Z'])
   assert.equal(POOLS.d.members.has('Corner'), false)
@@ -344,6 +346,25 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   assert.equal(POOLS.no9.members.size, SHAPE_NAMES.length - 1)
   assert.equal(POOLS.no9.members.has('Block 9'), false)
   assert.equal(POOLS.no9.entries.length, SHAPE_NAMES.length - 1)
+  // v0.8.16 Block Blast alignment arms: the shipped pool plus the long lines the game
+  // dropped. The extras live in the MEASUREMENT only (`EXTRA_SHAPES`), so the guard is
+  // that they stay out of every shipped-shaped pool and out of SHAPE_NAMES.
+  assert.deepEqual(EXTRA_SHAPES.map((shape) => shape.name), ['Line 4', 'Line 5'])
+  assert.equal(ALL_SHAPE_NAMES.length, SHAPE_NAMES.length + EXTRA_SHAPES.length)
+  assert.ok(!SHAPE_NAMES.includes('Line 4') && !SHAPE_NAMES.includes('Line 5'))
+  assert.equal(POOLS.bb4.entries.length, SHAPE_NAMES.length + 1)
+  assert.equal(POOLS.bb5.entries.length, SHAPE_NAMES.length + 1)
+  assert.equal(POOLS.bb.entries.length, SHAPE_NAMES.length + 2)
+  assert.equal(weightOf('bb', 'Line 4'), 1)
+  assert.equal(weightOf('bb', 'Line 5'), 1)
+  assert.ok(POOLS.bb.members.has('Line 4') && POOLS.bb.members.has('Line 5'))
+  assert.ok(!POOLS.soft75.members.has('Line 4') && !POOLS.soft75.members.has('Line 5'))
+  assert.ok(!POOLS.b9w04.members.has('Line 4') && !POOLS.no9.members.has('Line 5'))
+  // The extras must be placeable and dealable, or the arm would measure nothing.
+  for (const name of ['Line 4', 'Line 5']) {
+    assert.ok(PLACEMENTS.some((placement) => placement.shape === name), `${name} has no placements`)
+  }
+  assert.equal(PLACEMENTS.filter((p) => p.shape === 'Line 5').length, 6 * 2 * 5)
   const shareOf = (id, names) => {
     const entries = POOLS[id].entries
     const total = entries.reduce((sum, entry) => sum + entry.weight, 0)
@@ -527,6 +548,51 @@ test('tension panel counts every executed step exactly once', () => {
   // cap (median death is around 90 steps), which is what makes the panel meaningful.
   const wide = runGame({ group: 'current/uniform', seed: 4, gameIndex: 3, strategy: 'random', stepCap: 600 })
   assert.ok(wide.record.ended, 'a uniformly random actor should end inside the cap')
+})
+
+// v0.8.16 (BB alignment arms): the 5-long line is not "a piece that can be placed" —
+// on a 5-wide face it can only sit on a COMPLETELY EMPTY row/column, so every legal
+// placement fills that line and clears it. This is why it was removed from the shipped
+// pool, and the assertion is here so that putting it back cannot be done quietly.
+test('a 5-long line always clears a line by itself on a 5-wide face', () => {
+  const line5 = BY_SHAPE.get('Line 5')
+  assert.ok(line5.length > 0)
+  let legal = 0
+  let cleared = 0
+  let multi = 0
+  // Real states from a real game, not a synthetic board.
+  const opening = makeOpening({ seed: 1, gameIndex: 0, structured: false, staged: false, poolId: 'soft75', openingId: 'current' })
+  const rng = rngFor(1, 0, 'policy')
+  const dealRng = rngFor(1, 0, 'deal')
+  let state = opening.state
+  let hand = [...opening.hand]
+  for (let step = 0; step < 120; step += 1) {
+    if (!hand.length) hand = drawHand(dealRng, step, false, 'soft75')
+    for (const placement of line5) {
+      if (!canPlace(state, placement)) continue
+      const result = settle(state, placement)
+      legal += 1
+      if (result.lines > 0) cleared += 1
+      if (result.lines > 1) multi += 1
+    }
+    const move = chooseMove(state, hand, rng, 'noise')
+    if (!move) break
+    state = settle(state, move.pl).state
+    hand.splice(move.slot, 1)
+  }
+  assert.ok(legal > 100, `expected many legal 5-line placements, saw ${legal}`)
+  assert.equal(cleared, legal, `every legal 5-line placement must clear a line (${cleared}/${legal})`)
+  assert.ok(multi > 0, 'a 5-line should sometimes clear more than one line')
+  // And on an empty board: all 60 placements (6 faces x 2 orientations x 5 positions).
+  let emptyLegal = 0
+  let emptyCleared = 0
+  for (const placement of line5) {
+    if (!canPlace(EMPTY_STATE, placement)) continue
+    emptyLegal += 1
+    if (settle(EMPTY_STATE, placement).lines > 0) emptyCleared += 1
+  }
+  assert.equal(emptyLegal, 60)
+  assert.equal(emptyCleared, 60)
 })
 
 console.log(`\n${checks}/${checks} measurement test groups passed. The harness imports the shipped board, shapes, weights and opening plan.`)

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import {
-  SHAPE_NAMES, PLACEMENTS, POOLS, poolById, OPENINGS, openingById,
+  SHAPE_NAMES, ALL_SHAPE_NAMES, PLACEMENTS, POOLS, poolById, OPENINGS, openingById,
   rngFor, stageAt, drawHand, makeOpening,
   occupiedCount, legalCount, chooseMove, settle,
 } from './difficulty-model.mjs'
@@ -130,7 +130,7 @@ function playableByHand(records) {
   }
   return { threeDistinct: three, twoDistinct: two }
 }
-const SHAPE_SIZE = Object.fromEntries(SHAPE_NAMES.map((name) => [name, PLACEMENTS.find((p) => p.shape === name).indices.length]))
+const SHAPE_SIZE = Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name, PLACEMENTS.find((p) => p.shape === name).indices.length]))
 const mean = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
 const round = (x, digits = 3) => x == null ? null : Number(x.toFixed(digits))
 const pct = (n, d) => d ? round(100 * n / d) : null
@@ -165,7 +165,7 @@ export function runGame({ group, seed, gameIndex, strategy = 'noise', stepCap = 
   let dry = 0, longestDry = 0, tightMoves = 0, samePreHandMobilityReleases = 0
   const mobilityPanel = emptyMobilityPanel()
   let deals = 1, freshDealStuck = 0, justDealt = true, lineTotal = 0, terminalHand = null
-  const bins = new Map(), traceRows = [], dealShapeCounts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, 0]))
+  const bins = new Map(), traceRows = [], dealShapeCounts = Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name, 0]))
   hand.forEach((s) => dealShapeCounts[s]++)
   for (;;) {
     if (!hand.length) {
@@ -241,7 +241,7 @@ export function summarizeGames(records, stepCap = 600) {
   const fallbacks = structured.filter((g) => g.opening.fallback).length
   const totalSteps = records.reduce((a, g) => a + g.steps, 0)
   const totalDeals = records.reduce((a, g) => a + g.deals, 0)
-  const shapeCounts = Object.fromEntries(SHAPE_NAMES.map((name) => [name, records.reduce((a, g) => a + (g.dealShapeCounts?.[name] || 0), 0)]))
+  const shapeCounts = Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name, records.reduce((a, g) => a + (g.dealShapeCounts?.[name] || 0), 0)]))
   const totalDealtSlots = Object.values(shapeCounts).reduce((sum, count) => sum + count, 0)
   return {
     games: n, endedGames: ended.length, endedPct: pct(ended.length, n), endedCi95: wilson(ended.length, n),
@@ -277,7 +277,7 @@ export function summarizeGames(records, stepCap = 600) {
     },
     totalDeals, totalDealtSlots,
     shapeCounts, // Raw exposure totals, NOT directly comparable probabilities.
-    shapePctOfDealtSlots: Object.fromEntries(SHAPE_NAMES.map((name) => [name, pct(shapeCounts[name], totalDealtSlots)])),
+    shapePctOfDealtSlots: Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name, pct(shapeCounts[name], totalDealtSlots)])),
     // Tension panel: pooled over every executed step of every game. The bucket
     // shares answer "how often was the player actually constrained", which is a
     // different question from "how likely is the game to end".
@@ -297,7 +297,7 @@ export function summarizeGames(records, stepCap = 600) {
     // to choose from, so "36% of one face" is not the whole story — this is the measured
     // answer. `zeroSteps` counts executed steps where that shape was in hand and had no
     // legal placement at all.
-    shapePressure: Object.fromEntries(SHAPE_NAMES.map((name) => {
+    shapePressure: Object.fromEntries(ALL_SHAPE_NAMES.map((name) => {
       const sample = (g) => g.mobilityPanel?.byShape?.[name] || { steps: 0, zeroSteps: 0, sum: 0, min: null }
       const steps = records.reduce((a, g) => a + sample(g).steps, 0)
       const zeroSteps = records.reduce((a, g) => a + sample(g).zeroSteps, 0)
@@ -320,9 +320,9 @@ export function summarizeGames(records, stepCap = 600) {
       emptyHandDeaths: ended.filter((g) => (g.endHand || []).length === 0).length,
       handSizeHistogram: Object.fromEntries([...new Set(ended.map((g) => (g.endHand || []).length))].sort((a, b) => a - b)
         .map((size) => [size, ended.filter((g) => (g.endHand || []).length === size).length])),
-      containsPct: Object.fromEntries(SHAPE_NAMES.map((name) => [name,
+      containsPct: Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name,
         pct(ended.filter((g) => (g.endHand || []).includes(name)).length, Math.max(1, ended.length))])),
-      containsCount: Object.fromEntries(SHAPE_NAMES.map((name) => [name,
+      containsCount: Object.fromEntries(ALL_SHAPE_NAMES.map((name) => [name,
         ended.filter((g) => (g.endHand || []).includes(name)).length])),
     },
   }

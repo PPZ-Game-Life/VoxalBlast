@@ -10,7 +10,9 @@ import { OPENING_LAYOUT } from '../src/rendering/config.js'
 
 const WORDS = 4
 const EMPTY_STATE = Object.freeze([0, 0, 0, 0])
-const SHAPE_BY_NAME = new Map(SHAPES.map((shape) => [shape.name, shape]))
+// Filled in below once ALL_SHAPES exists (it is declared after the pool helpers in
+// reading order); this placeholder keeps the shape lookup a single source.
+let SHAPE_BY_NAME = new Map(SHAPES.map((shape) => [shape.name, shape]))
 const SMALL = Object.freeze(['Dot', 'Line 2'])
 const THREE = Object.freeze(['Line 3', 'Corner'])
 const FOUR = Object.freeze(['Square', 'L', 'J', 'T', 'S', 'Z'])
@@ -29,6 +31,24 @@ const CHALLENGE_WEIGHTS = Object.freeze([0, 0.1, 0.9])
 const RELIEF_WEIGHTS = Object.freeze([0.1, 0.2, 0.7])
 
 export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
+
+// v0.8.16 measurement-only: Block Blast's two long lines, which the game deliberately
+// does NOT have (v0.2.24 removed Line 5, v0.2.31 removed Line 4 — on a 5-wide face the
+// 5-line can only land on a completely empty row and clears it instantly, and the
+// 4-line ate 80% of a row). They exist here for the "BB alignment" arms so the claim
+// "putting them back is free points" can be measured instead of asserted.
+// ⚠️ Nothing in src/ knows about these names; they must never be added to a shipped
+// pool without the producer's call.
+export const EXTRA_SHAPES = Object.freeze([
+  { name: 'Line 4', cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
+  { name: 'Line 5', cells: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] },
+])
+const ALL_SHAPES = Object.freeze([...SHAPES, ...EXTRA_SHAPES])
+// Every name the measurement can deal or place. Aggregations must use this list, not
+// SHAPE_NAMES, or a BB-arm piece would silently vanish from the per-shape tables.
+export const ALL_SHAPE_NAMES = Object.freeze(ALL_SHAPES.map((shape) => shape.name))
+// Rebound so `chooseMove` / the lookahead can place an extra (measurement-only) piece.
+SHAPE_BY_NAME = new Map(ALL_SHAPES.map((shape) => [shape.name, shape]))
 
 // Named measurement pools. `current` reproduces the shipped ten-shape equal pool
 // exactly; the rest are the documented compression candidates. Weights are
@@ -62,6 +82,13 @@ const POOL_SPECS = Object.freeze({
   // not proposals: nothing here is wired into the game.
   b9w04: { label: '正式加权池 × Block 9 权重 0.4（14 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0.4 } },
   no9: { label: '正式加权池去掉 Block 9（13 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0 } },
+  // v0.8.16 Block Blast alignment arms: the shipped pool plus the long lines BB deals
+  // and we deliberately dropped. `bb` adds both (BB has both), `bb4`/`bb5` isolate one
+  // at a time so the effect of the self-clearing 5-line can be separated from the
+  // 4-line. Measurement-only — see EXTRA_SHAPES.
+  bb4: { label: '正式池 + Line 4（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 4': 1 } },
+  bb5: { label: '正式池 + Line 5（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 5': 1 } },
+  bb: { label: '正式池 + Line 4 + Line 5（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 4': 1, 'Line 5': 1 } },
 })
 
 export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))
@@ -234,12 +261,12 @@ const LINES_BY_INDEX = Array.from({ length: CELLS.length }, () => [])
 for (const line of LINES) for (const index of line.indices) LINES_BY_INDEX[index].push(line.id)
 
 export const PLACEMENTS = []
-export const BY_SHAPE = new Map(SHAPE_NAMES.map((name) => [name, []]))
+export const BY_SHAPE = new Map(ALL_SHAPE_NAMES.map((name) => [name, []]))
 // Stable order here is shape -> rotation -> face -> origin. The older
 // reachability.mjs builds face -> rotation -> origin instead, so deterministic
 // ties are reproducible inside this experiment but trajectories are NOT expected
 // to be byte-identical to that older simulator.
-for (const shape of SHAPES) {
+for (const shape of ALL_SHAPES) {
   const orientations = new Set()
   for (let quarter = 0; quarter < 4; quarter += 1) {
     const cells = rotateCells(shape.cells, quarter)
