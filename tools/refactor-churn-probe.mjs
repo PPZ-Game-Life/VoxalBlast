@@ -559,31 +559,46 @@ try {
   } else {
     const targets = [[0, 0], [0.35, 0], [-0.35, 0], [0, 0.35], [0, -0.35], [0.35, 0.35], [-0.35, -0.35]]
       .map(([dx, dy]) => ({ x: Math.round(midX + dx * halfW), y: Math.round(midY + dy * halfH) }))
+    // A drag can only ever land on the face the pointer projects onto, which is always the
+    // FRONT face. The opening layout only guarantees that SOME candidate fits on SOME of the
+    // six faces, so sweeping the front face alone is not guaranteed to succeed — the first
+    // version of this check could report SKIP half the time for that reason. Rotating one
+    // face between sweeps walks all six, so the guarantee does apply, and the check also
+    // proves rotation still works after the churn.
     let live = null
     let attached = false
-    let swept = 0
-    for (const slot of slots) {
-      for (const target of targets) {
-        swept += 1
-        await input.pressAndHold(slot, target)
-        await client.frames()
-        live = await client.readJson('globalThis.__voxalblast.ghost()')
-        if (live.attached === true && live.mode === 'snap' && live.previewCells > 0) { attached = true; break }
-        await input.up(target.x, target.y)
-        await sleep(80)
+    let attempts = 0
+    let rotations = 0
+    const MAX_ROTATIONS = 5
+    for (; rotations <= MAX_ROTATIONS && !attached; rotations += 1) {
+      for (const slot of slots) {
+        for (const target of targets) {
+          attempts += 1
+          await input.pressAndHold(slot, target)
+          await client.frames()
+          live = await client.readJson('globalThis.__voxalblast.ghost()')
+          if (live.attached === true && live.mode === 'snap' && live.previewCells > 0) { attached = true; break }
+          await input.up(target.x, target.y)
+          await sleep(70)
+        }
+        if (attached) break
       }
       if (attached) break
+      // One quarter turn about world Y, through the real key handler.
+      await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 })
+      await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 })
+      await sleep(450)
     }
     if (attached) {
+      // Release on the cell the preview showed, so this also completes a real placement.
+      const placed = await client.readJson('globalThis.__voxalblast.ghost()')
       await input.up(midX, midY)
       await sleep(300)
-      check('E a real drag still attaches after the churn', true, `mode=snap marker=${live.previewCells} after ${swept} attempt(s)`)
+      check('E a real drag still attaches after the churn', true,
+        `mode=snap marker=${placed.previewCells} after ${attempts} attempt(s), ${rotations} rotation(s)`)
     } else {
-      // Every unused candidate was tried over the whole cube and none could be placed on the
-      // face the pointer projected onto. That is a rule-level state, so the liveness this
-      // case exists to prove was never exercised — say so rather than pass or fail on it.
       skip('E a real drag still attaches after the churn',
-        `no unused candidate had room on the front face after ${swept} attempt(s) (last mode=${live?.mode ?? 'none'})`)
+        `no unused candidate had room on any of the 6 faces after ${attempts} attempt(s) (last mode=${live?.mode ?? 'none'})`)
     }
     const after = await sample(client)
     check('E the board still holds exactly 98 unique tiles', after.meshes === 98 && after.uniqueCells === 98,
