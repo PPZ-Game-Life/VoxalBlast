@@ -49,6 +49,7 @@ import { collectDom } from './ui/dom.js'
 import { createGameOver } from './ui/gameOver.js'
 import { createHud } from './ui/hud.js'
 import { createHome } from './ui/home.js'
+import { createSettings } from './ui/settings.js'
 
 installToyIcons()
 
@@ -111,10 +112,10 @@ const {
   homeSettingsEl,
   homeSettingEl,
   gameLayers,
+  settingsCloseEl,
+  restartSettingEl,
 } = collectDom()
 
-const soundKey = 'voxalblast-sound'
-const hapticsKey = 'voxalblast-haptics'
 // The version tag is ALWAYS shown (04「UI 与发布」; v0.2.20 regression, and the v0.8.21
 // report that it was missing on a phone). It ships in the release build like everything
 // else: "which build is this device actually running" is the one question a badge
@@ -127,24 +128,16 @@ let drag = null
 let viewDrag = null
 let isPaused = false
 let gameEnded = false
-let settingsOpen = false
-// v0.4 home screen. The cover's open flag now lives in ui/home.js (read back through
-// `homeUi.isOpen()`); it stays a third pause source next to document.hidden and the modals.
-// `runLive` means "the player has entered a board and has not finished it", which is what
-// makes a resume snapshot worth writing. They are separate on purpose: the game boots on the
-// home screen with no run open, and writing a slot there would offer 继续游戏 on a board
-// nobody has touched.
+// The settings / controls open flags, the sound+haptics preferences and the legend's
+// per-axis spin counters now live in ui/settings.js (plan §3 state table). Read back
+// through `settingsUi.isOpen()` / `isControlsOpen()` / `getSoundOn()` / `getHapticsOn()`.
+// v0.4 home screen: the cover's open flag lives in ui/home.js, read back through
+// `homeUi.isOpen()`. `runLive` means "the player has entered a board and has not finished
+// it", which is what makes a resume snapshot worth writing. They are separate on purpose:
+// the game boots on the home screen with no run open, and writing a slot there would offer
+// 继续游戏 on a board nobody has touched.
 let runLive = false
-// v0.4.1 PC keyboard legend. The card pauses the board like the settings panel, but
-// the rotation keys keep working inside it — they drive the mini cube of their own
-// row, so the mapping can be tried out without leaving the legend (03 §13.3).
-let controlsOpen = false
-// Per-axis quarter-turn counters behind the legend's mini cubes (--spin on each row).
-const controlSpin = { pitch: 0, yaw: 0, roll: 0 }
-let soundOn = localStorage.getItem(soundKey) !== 'off'
-let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
 let audioContext
-let axisHintTimer
 let cameraShake = 0
 let transientEffects = []
 let suppressPieceClickUntil = 0
@@ -1515,7 +1508,8 @@ function cancelActiveDrag(showFeedback = true) {
 // value so a caller can branch on it in the same statement.
 function syncPause() {
   const previous = isPaused
-  isPaused = homeUi.isOpen() || document.hidden || gameEnded || settingsOpen || controlsOpen || introPlaying()
+  isPaused = homeUi.isOpen() || document.hidden || gameEnded
+    || settingsUi.isOpen() || settingsUi.isControlsOpen() || introPlaying()
   // The item strip's only "not yet" affordance is a class derived from isPaused
   // (canUseItemsNow), so whoever changes the pause state has to restore it: the opening
   // wave and the settings panel both grey the buttons on the way in, and without this the
@@ -1525,40 +1519,33 @@ function syncPause() {
   return isPaused
 }
 
-function updateSettingsUi() {
-  soundSettingEl.classList.toggle('enabled', soundOn)
-  soundSettingEl.setAttribute('aria-pressed', String(soundOn))
-  hapticsSettingEl.classList.toggle('enabled', hapticsOn)
-  hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
-}
-
 function openSettings() {
   // Reachable from the home screen and from a finished run too: 回到主页 has to be
   // available "at any time", and the sounds/haptics switches are not less useful
   // after a game over than during one.
-  settingsOpen = true
+  // The pause source is set BEFORE the gestures are cancelled, exactly as before: the
+  // cancel path reaches renderItemBar(), which reads the pause state.
+  settingsUi.setSettingsOpen(true)
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
   clearGroup(previewGroup)
   clearDragGhost()
-  settingsEl.classList.remove('hidden')
-  syncPause()
+  settingsUi.showSettings()
   platform.gameplayStop()
   setStatus('Paused')
-  updateSettingsUi()
-  document.querySelector('#settings-close').focus()
+  settingsUi.updateSettingsUi()
+  settingsUi.focusSettingsClose()
 }
 
 function closeSettings() {
-  if (!settingsOpen) return
-  settingsOpen = false
-  settingsEl.classList.add('hidden')
-  syncPause()
+  if (!settingsUi.isOpen()) return
+  settingsUi.setSettingsOpen(false)
+  settingsUi.hideSettings()
   if (!isPaused) {
     platform.gameplayStart()
     setStatus('Pick a shape')
   }
-  settingsButtonEl.focus()
+  settingsUi.focusSettingsButton()
 }
 
 // ============================================================
@@ -1593,84 +1580,46 @@ function rotateCubeByKey(axis, direction) {
   return true
 }
 
-// The legend's own feedback: the row's mini cube takes the same quarter the real one
-// just took, and the keycap that caused it sinks. Also the only feedback available
-// while the card is open, because the board behind it is paused on purpose.
-// `--spin` is degrees (CSS angles), the same sign convention the mini cube's rotation
-// uses for all three axes — see the v0.4.1 block in styles.css.
-function spinControlCube(axis, direction, key) {
-  const row = controlRows.get(axis)
-  if (!row) return
-  controlSpin[axis] += direction * 90
-  row.style.setProperty('--spin', `${controlSpin[axis]}deg`)
-  const cap = row.querySelector(`kbd[data-key="${key.toLowerCase()}"]`)
-  if (!cap) return
-  cap.classList.add('active')
-  setTimeout(() => cap.classList.remove('active'), 180)
-}
-
-// Which axis just turned, as a badge under the cube: the axis ring the legend uses,
-// plus the keycap that did it. Half a second of confirmation, then gone.
-function showAxisHint(key, axis) {
-  axisHintKeyEl.textContent = key.toUpperCase()
-  axisHintAxisEl.textContent = { pitch: 'X', yaw: 'Y', roll: 'Z' }[axis] || '?'
-  axisHintEl.dataset.axis = axis
-  axisHintEl.classList.add('visible')
-  clearTimeout(axisHintTimer)
-  axisHintTimer = setTimeout(() => axisHintEl.classList.remove('visible'), 700)
-}
-
+// The legend's own feedback lives in ui/settings.js (`spinControlCube` / `showAxisHint`);
+// this is the only remaining caller and it just routes the key.
+//
 // Returns true when the event was a rotation binding and has been consumed.
 function handleRotateKey(event) {
   if (event.metaKey || event.ctrlKey || event.altKey) return false
   const binding = axisForKey(event.key)
   if (!binding) return false
-  if (controlsOpen) {
-    spinControlCube(binding.axis, binding.direction, event.key)
+  if (settingsUi.isControlsOpen()) {
+    settingsUi.spinControlCube(binding.axis, binding.direction, event.key)
     return true
   }
   // Hold-to-repeat is off: one press = one face, exactly like one gesture = one face
   // (§3). A held key that spun the cube would be the only input in the game that can
   // outrun what the player sees.
   if (event.repeat) return true
-  if (isPaused || drag || itemActive || homeUi.isOpen() || settingsOpen) return false
+  if (isPaused || drag || itemActive || homeUi.isOpen() || settingsUi.isOpen()) return false
   if (!rotateCubeByKey(binding.axis, binding.direction)) return true
-  showAxisHint(event.key, binding.axis)
+  settingsUi.showAxisHint(event.key, binding.axis)
   return true
 }
 
-let controlsOpener = null
 function openControls() {
-  if (controlsOpen) return
-  controlsOpen = true
-  // NOT closing the settings panel: the card is opened from a row inside it, and
-  // closing that row's panel would leave the player back on the board after reading
-  // the legend.
-  controlsOpener = document.activeElement
-  controlsEl.classList.remove('hidden')
-  syncPause()
+  if (!settingsUi.openControls()) return
   platform.gameplayStop()
   setStatus('Paused')
-  controlsCloseEl.focus()
+  settingsUi.focusControlsClose()
 }
 
 function closeControls() {
-  if (!controlsOpen) return
-  controlsOpen = false
-  controlsEl.classList.add('hidden')
-  syncPause()
+  if (!settingsUi.closeControls()) return
   if (!isPaused) {
     platform.gameplayStart()
     setStatus('Pick a shape')
   }
-  const opener = controlsOpener
-  controlsOpener = null
-  if (opener instanceof HTMLElement && opener.isConnected && !opener.closest('.hidden')) opener.focus()
-  else if (settingsOpen) controlsSettingEl.focus()
+  settingsUi.restoreControlsFocus()
 }
 
 function playTone(frequency, duration = 0.08, volume = 0.045, delay = 0) {
-  if (!soundOn) return
+  if (!settingsUi.getSoundOn()) return
   const AudioContext = window.AudioContext || window.webkitAudioContext
   if (!AudioContext) return
   audioContext ||= new AudioContext()
@@ -1725,7 +1674,7 @@ function playChainBreakSound(chain) {
 }
 
 function playHaptic(pattern = 15) {
-  if (hapticsOn && navigator.vibrate) navigator.vibrate(pattern)
+  if (settingsUi.getHapticsOn() && navigator.vibrate) navigator.vibrate(pattern)
 }
 
 // 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
@@ -1764,7 +1713,7 @@ function clampCellIndex(value) {
 }
 
 function canUseItemsNow() {
-  return !gameEnded && !isPaused && !drag && !settingsOpen && performance.now() >= itemBusyUntil
+  return !gameEnded && !isPaused && !drag && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
 }
 
 function setRocketOrientation(axis) {
@@ -2831,8 +2780,8 @@ function openHome() {
   clearDragGhost()
   // The panel is closed rather than kept behind the cover: it would otherwise still
   // be open (and still holding the socket) the next time the player opens it.
-  settingsOpen = false
-  settingsEl.classList.add('hidden')
+  settingsUi.setSettingsOpen(false)
+  settingsUi.hideSettingsSilently()
   // Snapshot before the board stops being visible, so whatever was built is still
   // there behind the 继续游戏 button.
   saveSession()
@@ -3020,10 +2969,10 @@ function resetGame() {
   resetItems()
   resetRun()
   gameEnded = false
-  settingsOpen = false
+  settingsUi.setSettingsOpen(false)
   cameraShake = 0
   slowMo = null
-  settingsEl.classList.add('hidden')
+  settingsUi.hideSettingsSilently()
   gameOverEl.classList.add('hidden')
   selectedPiece = null
   drag = null
@@ -3199,14 +3148,14 @@ renderer.domElement.addEventListener('wheel', (event) => {
 }, { passive: false })
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
-  if (event.key === 'Escape' && controlsOpen) { event.preventDefault(); closeControls(); return }
+  if (event.key === 'Escape' && settingsUi.isControlsOpen()) { event.preventDefault(); closeControls(); return }
   if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
   if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
-  if (event.key === 'Escape' && settingsOpen) { closeSettings(); return }
+  if (event.key === 'Escape' && settingsUi.isOpen()) { closeSettings(); return }
   // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
   // can be learned while it is open, and before the rocket keys so nothing steals them.
   if (handleRotateKey(event)) { event.preventDefault(); return }
-  if (settingsOpen || controlsOpen) return
+  if (settingsUi.isOpen() || settingsUi.isControlsOpen()) return
   if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
     setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
   }
@@ -3227,11 +3176,9 @@ leaderboardEl.addEventListener('click', (event) => {
   if (event.target === leaderboardEl) closeLeaderboard()
 })
 // v0.4.1 controls card: the top bar entry (PC widths only), the settings row, and the
-// backdrop/Escape ways out — the same three ways in as the other panels have.
-controlsButtonEl.addEventListener('click', () => openControls())
-controlsSettingEl.addEventListener('click', () => openControls())
-controlsCloseEl.addEventListener('click', () => closeControls())
-controlsEl.addEventListener('click', (event) => { if (event.target === controlsEl) closeControls() })
+// backdrop/Escape ways out — the same three ways in as the other panels have. The settings
+// panel's own listeners (gear, close, backdrop, the two switches, the restart row) and the
+// controls card's four are registered by ui/settings.js from its own `bind()`, once.
 // v0.4 home screen. 排行榜 opens the same Layer-1 panel the Game Over screen opens
 // (the 总榜 reading of the board: 单局最高分 + 最近十局 + 荣誉收集), plus the platform
 // entry at the bottom of the card.
@@ -3246,22 +3193,6 @@ homeSettingEl.addEventListener('click', () => {
 // PLAY AGAIN / RESTART both start a real run, which means both have to open a resume
 // slot: the reset board is the new unfinished game.
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', beginRun)
-settingsButtonEl.addEventListener('click', openSettings)
-document.querySelector('#settings-close').addEventListener('click', closeSettings)
-settingsEl.addEventListener('pointerdown', (event) => { if (event.target === settingsEl) closeSettings() })
-soundSettingEl.addEventListener('click', () => {
-  soundOn = !soundOn
-  localStorage.setItem(soundKey, soundOn ? 'on' : 'off')
-  updateSettingsUi()
-  if (soundOn) playTone(520, 0.08, 0.035)
-})
-hapticsSettingEl.addEventListener('click', () => {
-  hapticsOn = !hapticsOn
-  localStorage.setItem(hapticsKey, hapticsOn ? 'on' : 'off')
-  updateSettingsUi()
-  if (hapticsOn) playHaptic(18)
-})
-document.querySelector('#restart-setting').addEventListener('click', beginRun)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
   if (document.hidden && drag) cancelActiveDrag(false)
@@ -3280,12 +3211,43 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) settleIntro()
   syncPause()
   if (document.hidden) { platform.gameplayStop(); setStatus(homeUi.isOpen() ? 'Home' : 'Paused') }
-  else if (gameEnded || settingsOpen || homeUi.isOpen()) return
+  else if (gameEnded || settingsUi.isOpen() || homeUi.isOpen()) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 // Losing the window ends a mouse gesture the same way (button released outside).
 window.addEventListener('blur', cancelViewDrag)
-updateSettingsUi()
+
+// Settings panel, controls card and their entries (see ui/settings.js). Built and bound
+// once, here, after every orchestration function it calls exists. `bind()` returns a
+// disposer and refuses to bind twice, so a future re-entry cannot double-register.
+const settingsUi = createSettings({
+  settingsEl,
+  settingsButtonEl,
+  settingsCloseEl,
+  soundSettingEl,
+  hapticsSettingEl,
+  restartSettingEl,
+  controlsButtonEl,
+  controlsSettingEl,
+  controlsEl,
+  controlsCloseEl,
+  axisHintEl,
+  axisHintKeyEl,
+  axisHintAxisEl,
+  controlRows,
+  onOpen: () => syncPause(),
+  onClose: () => syncPause(),
+})
+settingsUi.bind({
+  openSettings,
+  closeSettings,
+  openControls,
+  closeControls,
+  beginRun,
+  playTone,
+  playHaptic,
+})
+settingsUi.updateSettingsUi()
 
 // The canvas is sized from the wrap's client box, but that box keeps changing
 // AFTER the boot-time resize(): resetGame() is what fills `#piece-slots` and
@@ -3826,9 +3788,9 @@ globalThis.__voxalblast = Object.freeze({
   // can never advertise a key that does nothing (and vice versa).
   keys: () => KEY_BINDINGS.map((binding) => ({ axis: binding.axis, keys: [...binding.keys] })),
   controls: () => ({
-    open: controlsOpen,
+    open: settingsUi.isControlsOpen(),
     axes: [...controlRows.keys()],
-    spin: { ...controlSpin },
+    spin: settingsUi.getControlSpin(),
   }),
   // The candidate pool itself: name, color and cell count per type.
   shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
