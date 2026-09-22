@@ -42,7 +42,8 @@ import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
-import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps, blockSurfaceArtStatus } from './rendering/woodTexture.js'
+import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } from './rendering/woodTexture.js'
+import { createBlockResources } from './rendering/blockResources.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -313,7 +314,7 @@ const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // THE block. ONE geometry instance is shared by the board's 98 blocks, the three
 // candidate slots and the drag ghost, so a piece in the hand and a piece on the
 // board are literally the same object — same size, same six flat faces, same bevel.
-const blockGeometry = new RoundedBoxGeometry(style.blockSize, style.blockSize, style.blockSize, style.blockSegments, style.blockRadius)
+const blocks = createBlockResources({ cubeBody })
 
 // Six 5×5 faces share their edge/corner cells: 98 unique blocks on the board,
 // and every one of them is the SAME cube at the same gap from its neighbours, so
@@ -321,43 +322,9 @@ const blockGeometry = new RoundedBoxGeometry(style.blockSize, style.blockSize, s
 // paints one of them; it does not add, grow, lift or move anything.
 const gridGroup = new THREE.Group()
 cubeGroup.add(gridGroup)
-// One material per (state × tone step): the idle timber, the lighter timber of the
-// face under the camera, and one cached paint per colour. A block swaps a MATERIAL,
-// never a geometry. A small cache shares the three surface variants.
-function blockWoodMaterial(baseColor, step, variant) {
-  return new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(baseColor).multiplyScalar(step),
-    ...blockSurfaceMaps(false, variant),
-    bumpScale: style.woodBumpScale,
-    roughness: style.woodRoughness,
-    clearcoat: style.woodClearcoat,
-    clearcoatRoughness: style.woodClearcoatRoughness,
-    metalness: 0,
-  })
-}
-const BLOCK_TONES = style.blockToneSteps.length
-const blockWoodMaterials = style.blockToneSteps.map((step, variant) => ({
-  idle: blockWoodMaterial(style.blockColor, step, variant),
-  active: blockWoodMaterial(style.blockActiveColor, step, variant),
-}))
-const paintMaterials = new Map()
-function paintMaterial(color, variant = 0) {
-  const key = `${color}:${variant % 3}`
-  if (paintMaterials.has(key)) return paintMaterials.get(key)
-  const material = makeMaterial(color, 1, variant)
-  paintMaterials.set(key, material)
-  return material
-}
-
-// A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
-// the reference is visibly assembled from separate pieces of timber. So every block
-// gets its own tone step, picked from a deterministic hash of its lattice cell —
-// deterministic because the grain must be identical on every load, or two
-// screenshots of the same build would not compare.
-function toneIndexFor(x, y, z) {
-  const hash = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791)
-  return Math.abs(hash) % BLOCK_TONES
-}
+// The wood and paint material family — one material per (state x tone step), plus a cache
+// of paint per colour — and the deterministic per-cell tone hash both live in
+// rendering/blockResources.js, reached through `blocks` above.
 
 function buildFaceTiles() {
   const cells = new Map()
@@ -372,8 +339,8 @@ function buildFaceTiles() {
           cells.get(key).userData.faces.push(face)
           continue
         }
-        const tone = toneIndexFor(...cell)
-        const mesh = new THREE.Mesh(blockGeometry, blockWoodMaterials[tone].idle)
+        const tone = blocks.toneIndexFor(...cell)
+        const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.blockWoodMaterials[tone].idle)
         // A block is a cube centred in its cell: no orientation needed, and its
         // outer face lands flush with the big cube's surface.
         mesh.position.copy(cellLocal(face, u, v))
@@ -921,22 +888,8 @@ function colorToVector4(color, alpha = 1) {
 // board to the signboards — the UI and the cube are visibly the same material
 // (05「同源」), and a piece keeps this exact material from the tray, through the
 // drag, onto the board.
-function makeMaterial(color, opacity = 1, variant = 0) {
-  return new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(color),
-    ...blockSurfaceMaps(true, variant),
-    bumpScale: style.paintBumpScale,
-    roughness: style.paintRoughness,
-    clearcoat: style.paintClearcoat,
-    clearcoatRoughness: style.paintClearcoatRoughness,
-    metalness: 0,
-    transparent: opacity < 1,
-    opacity,
-  })
-}
-
-const SHARED_BOARD_GEOMETRY = [blockGeometry, cubeBody.geometry]
-const edgeGeometry = new THREE.EdgesGeometry(blockGeometry)
+// `makeMaterial`, the shared edge outline and the list of geometries a node may NOT
+// dispose all live in rendering/blockResources.js (reached through `blocks`).
 const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
 const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
 function buildStarShape(outer = 0.5, inner = 0.2, points = 5) {
@@ -966,7 +919,7 @@ scene.add(particleRenderer)
 
 function disposeNode(node) {
   node.traverse((child) => {
-    if (child.geometry && !SHARED_BOARD_GEOMETRY.includes(child.geometry)) child.geometry.dispose()
+    if (child.geometry && !blocks.sharedGeometries.includes(child.geometry)) child.geometry.dispose()
     if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose())
     else if (child.material) child.material.dispose()
   })
@@ -1001,8 +954,8 @@ function applyTileMaterials() {
     group.children.forEach((tile) => {
       const active = tile.userData.faces.includes(front)
       const color = occupiedColors.get(tile.userData.cell.join(','))
-      if (color !== undefined) tile.material = paintMaterial(color, tile.userData.tone)
-      else tile.material = blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
+      if (color !== undefined) tile.material = blocks.paintMaterial(color, tile.userData.tone)
+      else tile.material = blocks.blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
     })
   })
 }
@@ -1383,10 +1336,10 @@ function createPiecePreview(piece, canvas, slot) {
   root.scale.setScalar(baseScale)
   const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
   const meshes = positions.map((position) => {
-    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(piece.shape.color))
+    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
     mesh.scale.setScalar(0.7)
     mesh.position.copy(position)
-    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
+    mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
     root.add(mesh)
     return mesh
   })
@@ -1855,7 +1808,7 @@ function rebuildItemOverlay() {
   const normal = cubeVector(itemActive.face, 'n')
   scope.forEach(([x, y, z]) => {
     const occupied = board.has(x, y, z)
-    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
+    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
     mesh.scale.setScalar(occupied ? 1 : 0.72)
     // The marker is a ghost of the BLOCK that would sit in this cell, lifted just
     // clear of the one already there so the two cannot z-fight.
@@ -2240,9 +2193,9 @@ function updatePreview(event, ndc) {
     // The landing marker IS a ghost of the block: same cube, same cell, same gap to
     // its neighbours. The player therefore sees the board it is about to get, not a
     // highlight floating over it (05 §6「落点预览」).
-    const mesh = new THREE.Mesh(blockGeometry, makeMaterial(markerColor, 0.72))
+    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(markerColor, 0.72))
     mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PREVIEW_LIFT)
-    mesh.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
+    mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
       color: markerEdge,
       transparent: true,
       opacity: 0.92,
@@ -2275,7 +2228,7 @@ function buildDragGhost(piece) {
   // Rows the shape spans on screen: what the fingertip clearance is measured from.
   dragGhost.userData.rows = cells.reduce((max, [, v]) => Math.max(max, v), 0) + 1
   for (const position of flatPreviewPositions(cells, 1)) {
-    const material = makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
+      const material = blocks.makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
     // Fog is a depth cue for the board; at the ghost plane it would only wash the
     // piece out as the camera zooms.
     material.fog = false
@@ -2285,12 +2238,12 @@ function buildDragGhost(piece) {
     material.depthTest = false
     material.depthWrite = false
     material.transparent = true
-    const mesh = new THREE.Mesh(blockGeometry, material)
+    const mesh = new THREE.Mesh(blocks.blockGeometry, material)
     mesh.position.copy(position)
     mesh.renderOrder = 12
     mesh.userData.fillColor = fill.clone()
     mesh.userData.edgeColor = outline.clone()
-    const edges = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({
+    const edges = new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
       color: outline,
       transparent: true,
       opacity: 0.7,
@@ -3338,7 +3291,7 @@ globalThis.__voxalblast = Object.freeze({
     return {
       meshes: tiles.length,
       uniqueCells: new Set(tiles.map((tile) => tile.userData.cell.join(','))).size,
-      trianglesPerBlock: blockGeometry.attributes.position.count / 3,
+      trianglesPerBlock: blocks.blockGeometry.attributes.position.count / 3,
       surfaceArt: blockSurfaceArtStatus(),
       environment: Boolean(scene.environment),
       hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
