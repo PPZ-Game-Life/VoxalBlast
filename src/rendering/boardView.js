@@ -30,11 +30,11 @@
 // is read against the real camera, and dropping a half-finished pointer gesture when the pose
 // resets is input's business (the gesture record stays in main until gameInput, P7).
 import * as THREE from 'three'
-import { FACES, faceLattice } from '../game/board.js'
+import { FACES, SH, faceLattice } from '../game/board.js'
 import { normalizeCells } from '../game/shapes.js'
 import { ROTATE_STYLE as rotateStyle } from './config.js'
 
-export function createBoardView({ metrics, getCubeGroup, camera, onRotationReset }) {
+export function createBoardView({ metrics, getCubeGroup, camera, getBlocks, onRotationReset }) {
   // Per-face placement plane in cube-local space. n = outward face normal,
   // u/v = the in-plane axes matching the board's face->lattice mapping.
   const FACE_PLANE = {
@@ -380,6 +380,99 @@ export function createBoardView({ metrics, getCubeGroup, camera, onRotationReset
     ]))
   }
 
+  // ---- The 98 tiles and the material they wear (P3c) --------------------------
+  // Moved from main.js. `gridGroup` is created here but ATTACHED by main through
+  // attachTiles(), at the exact point it always was: cubeGroup's child order is
+  // load-bearing (cubeBody carries renderOrder -2 and the preview groups come after it).
+  // Six 5×5 faces share their edge/corner cells: 98 unique blocks on the board,
+  // and every one of them is the SAME cube at the same gap from its neighbours, so
+  // no block can ever look taller, thicker or larger than any other. Placing a piece
+  // paints one of them; it does not add, grow, lift or move anything.
+  const gridGroup = new THREE.Group()
+  // The wood and paint material family — one material per (state x tone step), plus a cache
+  // of paint per colour — and the deterministic per-cell tone hash both live in
+  // rendering/blockResources.js, reached through `blocks` above.
+
+  function buildFaceTiles() {
+    const cells = new Map()
+    FACES.forEach((face) => {
+      const group = new THREE.Group()
+      group.userData.face = face
+      for (let u = 0; u < SH; u += 1) {
+        for (let v = 0; v < SH; v += 1) {
+          const cell = faceLattice(face, u, v)
+          const key = cell.join(',')
+          if (cells.has(key)) {
+            cells.get(key).userData.faces.push(face)
+            continue
+          }
+          const tone = getBlocks().toneIndexFor(...cell)
+          const mesh = new THREE.Mesh(getBlocks().blockGeometry, getBlocks().blockWoodMaterials[tone].idle)
+          // A block is a cube centred in its cell: no orientation needed, and its
+          // outer face lands flush with the big cube's surface.
+          mesh.position.copy(cellLocal(face, u, v))
+          mesh.castShadow = true
+          mesh.receiveShadow = true
+          mesh.userData.cell = cell
+          mesh.userData.faces = [face]
+          mesh.userData.tone = tone
+          cells.set(key, mesh)
+          group.add(mesh)
+        }
+      }
+      gridGroup.add(group)
+    })
+  }
+
+  // ============================================================
+  // Board rendering
+  // ============================================================
+  // cellWorld (same cell in world space) is boardView's, destructured above.
+
+  // Occupancy is paint, not geometry. Each unique lattice cell keeps one mesh and
+  // one material; its adjacent faces share that same solid corner block.
+  let occupiedColors = new Map()
+  let tileFrontFace = null
+
+  // The single place that decides which material a tile wears. The per-frame front
+  // face pass and the board render both go through here, so the two can never
+  // disagree about what colour a cell is.
+  function applyTileMaterials() {
+    const front = findFrontFace()
+    tileFrontFace = front
+    gridGroup.children.forEach((group) => {
+      group.children.forEach((tile) => {
+        const active = tile.userData.faces.includes(front)
+        const color = occupiedColors.get(tile.userData.cell.join(','))
+        if (color !== undefined) tile.material = getBlocks().paintMaterial(color, tile.userData.tone)
+        else tile.material = getBlocks().blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
+      })
+    })
+  }
+
+  // Attach the lattice to the cube and build it. Kept as one call so main keeps the timing
+  // it always had -- nothing between the old add and the old build touched the group.
+  function attachTiles() {
+    getCubeGroup().add(gridGroup)
+    buildFaceTiles()
+  }
+
+  // The board's own single source of truth hands over the painted cells and the tiles are
+  // repainted from them. main's renderBoard() still calls updateHud() right after this, in
+  // the same order it always did.
+  function sync(cells) {
+    occupiedColors = new Map(cells.map((cell) => [`${cell.x},${cell.y},${cell.z}`, cell.color]))
+    applyTileMaterials()
+  }
+
+  // Which face the tiles were last painted for. The frame loop re-applies the materials only
+  // when the front face has actually changed, so it needs to read this back.
+  function getTileFrontFace() { return tileFrontFace }
+
+  // TEMPORARY (removed in P3d): the opening creation wave is still in main and reads the
+  // occupancy map to decide which blocks earn the painted shine.
+  function getOccupiedColors() { return occupiedColors }
+
   // ---- Accessors for the two `let`s -------------------------------------------
   // `bearingYaw` / `bearingPitch` and `cubeLive` are REASSIGNED, not mutated in place, so
   // destructuring them would hand main a stale snapshot. These four functions are the only
@@ -411,6 +504,16 @@ export function createBoardView({ metrics, getCubeGroup, camera, onRotationReset
     cellLocal,
     cellWorld,
     facePlaneLocalCenter,
+    // The 98 tiles and the material they wear (P3c). `gridGroup` is a const Group mutated in
+    // place, so it is handed out directly and binds back to the name main has always used:
+    // the frame loop, the two read-only hooks and the home cover's clone all walk it.
+    // `buildFaceTiles`, `occupiedColors` and `tileFrontFace` stay private.
+    gridGroup,
+    attachTiles,
+    sync,
+    applyTileMaterials,
+    getTileFrontFace,
+    getOccupiedColors,
     // Pose state. The three const objects are owned here and mutated in place; main binds
     // them back to the names it has always used. The two `let`s go through the accessors.
     ROT_STEP,

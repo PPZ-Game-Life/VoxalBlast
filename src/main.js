@@ -270,6 +270,9 @@ scene.add(cubeGroup)
 const boardView = createBoardView({
   metrics: () => ({ cs, half }),
   getCubeGroup: () => cubeGroup,
+  // blockResources is built after this factory (it needs cubeBody), so it arrives as a getter
+  // rather than being captured -- the same lazy-binding rule as gameScene's metrics.
+  getBlocks: () => blocks,
   camera,
   // A reset can land in the middle of a pointer gesture. The gesture record is main's
   // pointer state (gameInput, P7), so boardView asks for the drop through this callback
@@ -283,6 +286,12 @@ const {
   cellLocal,
   cellWorld,
   facePlaneLocalCenter,
+  // The 98 tiles and the material they wear (P3c). `gridGroup` is a const Group mutated in
+  // place, so it binds back to the name this file has always used; the rest are commands.
+  gridGroup,
+  attachTiles,
+  sync: syncBoard,
+  applyTileMaterials,
   // Pose model (P3b). The three const objects are owned by boardView and mutated in place,
   // so binding them back to these names leaves every call site in this file untouched. The
   // module's two `let`s (the bearing and the live gesture) are NOT handed out this way: a
@@ -343,47 +352,17 @@ const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // board are literally the same object — same size, same six flat faces, same bevel.
 const blocks = createBlockResources({ cubeBody })
 
-// Six 5×5 faces share their edge/corner cells: 98 unique blocks on the board,
-// and every one of them is the SAME cube at the same gap from its neighbours, so
-// no block can ever look taller, thicker or larger than any other. Placing a piece
-// paints one of them; it does not add, grow, lift or move anything.
-const gridGroup = new THREE.Group()
-cubeGroup.add(gridGroup)
-// The wood and paint material family — one material per (state x tone step), plus a cache
-// of paint per colour — and the deterministic per-cell tone hash both live in
-// rendering/blockResources.js, reached through `blocks` above.
+// The 98 blocks live in rendering/boardView.js (refactor P3c). attachTiles() runs here, where
+// the group used to be attached and built: cubeGroup's child order is load-bearing (cubeBody
+// carries renderOrder -2 and the preview groups are added after it).
+boardView.attachTiles()
 
-function buildFaceTiles() {
-  const cells = new Map()
-  FACES.forEach((face) => {
-    const group = new THREE.Group()
-    group.userData.face = face
-    for (let u = 0; u < SH; u += 1) {
-      for (let v = 0; v < SH; v += 1) {
-        const cell = faceLattice(face, u, v)
-        const key = cell.join(',')
-        if (cells.has(key)) {
-          cells.get(key).userData.faces.push(face)
-          continue
-        }
-        const tone = blocks.toneIndexFor(...cell)
-        const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.blockWoodMaterials[tone].idle)
-        // A block is a cube centred in its cell: no orientation needed, and its
-        // outer face lands flush with the big cube's surface.
-        mesh.position.copy(cellLocal(face, u, v))
-        mesh.castShadow = true
-        mesh.receiveShadow = true
-        mesh.userData.cell = cell
-        mesh.userData.faces = [face]
-        mesh.userData.tone = tone
-        cells.set(key, mesh)
-        group.add(mesh)
-      }
-    }
-    gridGroup.add(group)
-  })
+// The board's own single source of truth hands the painted cells to the view, which repaints
+// the tiles from them; the HUD follows, in the order it always did.
+function renderBoard() {
+  syncBoard(board.occupied())
+  updateHud()
 }
-buildFaceTiles()
 
 // ============================================================
 // Camera fit (cube rotates; camera stays put)
@@ -480,37 +459,7 @@ function clearGroup(group) {
   }
 }
 
-// ============================================================
-// Board rendering
-// ============================================================
-// cellWorld (same cell in world space) is boardView's, destructured above.
 
-// Occupancy is paint, not geometry. Each unique lattice cell keeps one mesh and
-// one material; its adjacent faces share that same solid corner block.
-let occupiedColors = new Map()
-let tileFrontFace = null
-
-// The single place that decides which material a tile wears. The per-frame front
-// face pass and the board render both go through here, so the two can never
-// disagree about what colour a cell is.
-function applyTileMaterials() {
-  const front = findFrontFace()
-  tileFrontFace = front
-  gridGroup.children.forEach((group) => {
-    group.children.forEach((tile) => {
-      const active = tile.userData.faces.includes(front)
-      const color = occupiedColors.get(tile.userData.cell.join(','))
-      if (color !== undefined) tile.material = blocks.paintMaterial(color, tile.userData.tone)
-      else tile.material = blocks.blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
-    })
-  })
-}
-
-function renderBoard() {
-  occupiedColors = new Map(board.occupied().map((cell) => [`${cell.x},${cell.y},${cell.z}`, cell.color]))
-  applyTileMaterials()
-  updateHud()
-}
 
 // ============================================================
 // Opening creation wave (v0.8.21, 03 §「进入单局」)
@@ -607,7 +556,7 @@ function buildIntroEntries(reduced) {
       // nothing is recomputed from the shape pool, and a resumed run's colours are
       // whatever the save says they are.
       finalColor: tile.material.color.clone(),
-      painted: occupiedColors.has(tile.userData.cell.join(',')),
+      painted: boardView.getOccupiedColors().has(tile.userData.cell.join(',')),
       buildDelay: 0,
       paintDelay: 0,
       key: 0,
@@ -2818,7 +2767,7 @@ function animate() {
   // only happens on the frames where the cube actually finished turning. While a wave
   // is playing the blocks wear their own wave material instead and must not be
   // repainted under it.
-  if (!introPlaying() && findFrontFace() !== tileFrontFace) applyTileMaterials()
+  if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
   updatePiecePreviews()
   updateCameraShake(delta)
   composer.render(delta)
