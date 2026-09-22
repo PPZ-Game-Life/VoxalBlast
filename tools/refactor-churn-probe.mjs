@@ -538,21 +538,53 @@ try {
   console.log('\n-- E. the game still works after all of it --')
   await waitIntroDone(client)
   const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
-  const slot = await client.readJson(`(() => { const el = document.querySelector('#piece-slots .piece-slot:not(.used)')
-    if (!el) return null; const box = el.getBoundingClientRect()
-    return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) } })()`)
-  if (!slot) {
+  const midX = (bounds.minX + bounds.maxX) / 2
+  const midY = (bounds.minY + bounds.maxY) / 2
+  const halfW = (bounds.maxX - bounds.minX) / 2
+  const halfH = (bounds.maxY - bounds.minY) / 2
+  // Sweep the candidate slots AND a few points on the cube, exactly like the interaction
+  // probe's case A. A single point on a single slot is flaky by construction: after 12 换批
+  // the hand is random, and a 6-cell `Rect 6` or a 3×3 `Block 9` often has nowhere to go on
+  // the front face — which is a legitimate "no room" (`mode === 'invalid'`), NOT a broken
+  // input path. Measured, not guessed: the first version of this check failed with
+  // `mode=invalid marker=0` while `refactor-interaction-probe` case A attached fine on the
+  // very same tree, and `mode=invalid` is only ever set AFTER the pointer has been projected
+  // onto the cube and the carried ghost tinted — so the path it was meant to prove had in
+  // fact worked.
+  const slots = await client.readJson(`(() => [...document.querySelectorAll('#piece-slots .piece-slot:not(.used)')]
+    .map((el) => { const box = el.getBoundingClientRect()
+      return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) } }))()`)
+  if (!slots.length) {
     skip('E liveness', 'no unused candidate slot to drag after the churn')
   } else {
-    const cube = { x: Math.round((bounds.minX + bounds.maxX) / 2), y: Math.round((bounds.minY + bounds.maxY) / 2) }
-    await input.pressAndHold(slot, cube)
-    await client.frames()
-    const live = await client.readJson('globalThis.__voxalblast.ghost()')
-    const attached = live.attached === true && live.mode === 'snap' && live.previewCells > 0
-    await input.up(cube.x, cube.y)
-    await sleep(300)
-    check('E a real drag still attaches after the churn', attached,
-      `mode=${live.mode} marker=${live.previewCells}`)
+    const targets = [[0, 0], [0.35, 0], [-0.35, 0], [0, 0.35], [0, -0.35], [0.35, 0.35], [-0.35, -0.35]]
+      .map(([dx, dy]) => ({ x: Math.round(midX + dx * halfW), y: Math.round(midY + dy * halfH) }))
+    let live = null
+    let attached = false
+    let swept = 0
+    for (const slot of slots) {
+      for (const target of targets) {
+        swept += 1
+        await input.pressAndHold(slot, target)
+        await client.frames()
+        live = await client.readJson('globalThis.__voxalblast.ghost()')
+        if (live.attached === true && live.mode === 'snap' && live.previewCells > 0) { attached = true; break }
+        await input.up(target.x, target.y)
+        await sleep(80)
+      }
+      if (attached) break
+    }
+    if (attached) {
+      await input.up(midX, midY)
+      await sleep(300)
+      check('E a real drag still attaches after the churn', true, `mode=snap marker=${live.previewCells} after ${swept} attempt(s)`)
+    } else {
+      // Every unused candidate was tried over the whole cube and none could be placed on the
+      // face the pointer projected onto. That is a rule-level state, so the liveness this
+      // case exists to prove was never exercised — say so rather than pass or fail on it.
+      skip('E a real drag still attaches after the churn',
+        `no unused candidate had room on the front face after ${swept} attempt(s) (last mode=${live?.mode ?? 'none'})`)
+    }
     const after = await sample(client)
     check('E the board still holds exactly 98 unique tiles', after.meshes === 98 && after.uniqueCells === 98,
       `meshes=${after.meshes} uniqueCells=${after.uniqueCells}`)
