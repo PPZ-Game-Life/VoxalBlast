@@ -37,7 +37,7 @@ import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, INTRO_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from './rendering/swipe.js'
 import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
@@ -104,8 +104,12 @@ const controlRows = new Map(
 
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
+// The version tag is ALWAYS shown (04「UI 与发布」; v0.2.20 regression, and the v0.8.21
+// report that it was missing on a phone). It ships in the release build like everything
+// else: "which build is this device actually running" is the one question a badge
+// exists to answer, and a badge that only exists on the dev server cannot answer it.
+// It only shrinks on narrow screens — never display:none.
 versionEl.textContent = `v${packageInfo.version}`
-versionEl.hidden = !import.meta.env.DEV
 let pieces = []
 let selectedPiece = null
 let drag = null
@@ -970,6 +974,225 @@ function renderBoard() {
 }
 
 // ============================================================
+// Opening creation wave (v0.8.21, 03 §「进入单局」)
+// ============================================================
+// The board is ASSEMBLED, not revealed: one wavefront crosses the cube along the
+// screen diagonal (bottom-left → top-right) and the 98 surface blocks are built as
+// it passes, so the six faces are written by a single continuous sweep instead of
+// six planes lighting up in turn.
+//
+// Three rules this block obeys, and they are the whole reason it is written the way
+// it is:
+//   1. IT READS, IT NEVER WRITES. The wave's only view of the game is `occupiedColors`
+//      — the same Map the tiles are painted from — the tiles' own authored transforms,
+//      and the camera. No second board, no per-block write to game state, and
+//      `intro()` in the read-only hook proves the board is byte-identical afterwards.
+//   2. IT OWNS NOTHING WHEN IT IS DONE. Blocks are put back on their authored
+//      transform and handed the SHARED material instance they came in with; the
+//      per-block clones are reused by the next wave, never leaked into the board.
+//   3. IT IS THE ONLY CLOCK. No timers, no tweens: `updateIntro(delta)` is driven by
+//      the same rAF loop that draws the game, so a cancelled or backgrounded wave
+//      cannot leave anything running behind it.
+//
+// Input is locked while it plays, and the lock is the game's own single switch:
+// syncPause() reads introPlaying(), so every existing gate (drag, view drag, items,
+// keyboard, candidate selection) is closed by the one flag and released by it too.
+let intro = null
+
+function introPlaying() { return intro !== null }
+
+function prefersReducedMotion() {
+  return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+}
+
+// Deterministic 0..1 from a lattice cell: the same block always scatters the same
+// way, so two runs of the same opening can be compared frame for frame. Deliberately
+// not Math.random() — this is the same reason the timber tones are hashed, not drawn.
+function cellScatter([x, y, z]) {
+  const hash = (x * 73856093) ^ (y * 19349663) ^ (z * 83492791)
+  return ((hash >>> 0) % 997) / 997
+}
+
+// The wave needs one material per block (opacity, and the painted blocks' shine, are
+// per-block) while the board itself shares one material per colour × tone step. So
+// each tile keeps ONE clone for its whole lifetime, created once and re-filled by
+// copy() on every wave — the maps and the physical parameters come over by
+// reference, so a wave costs no GPU upload and no per-run allocation.
+function introMaterialFor(tile) {
+  if (!tile.userData.introMaterial) {
+    tile.userData.introMaterial = new THREE.MeshPhysicalMaterial()
+    tile.userData.introMaterial.needsUpdate = true
+  }
+  return tile.userData.introMaterial
+}
+
+function buildIntroEntries(reduced) {
+  const entries = []
+  gridGroup.children.flatMap((group) => group.children).forEach((tile) => {
+    const material = introMaterialFor(tile)
+    material.copy(tile.material)
+    material.transparent = true
+    material.opacity = 0
+    material.emissive.set(INTRO_STYLE.shineColor)
+    material.emissiveIntensity = 0
+    const home = tile.position.clone()
+    // A block starts inside its own cell and travels out along the direction its face
+    // points. For the 12 edge and 8 corner cells — shared by two or three faces — that
+    // direction is the sum of those normals, i.e. the cube-local radial, which is the
+    // one direction that is the same whichever face you ask.
+    const inward = home.clone().normalize().negate()
+    const entry = {
+      tile,
+      material,
+      home,
+      inward,
+      start: home.clone().addScaledVector(inward, INTRO_STYLE.inset),
+      base: tile.material,
+      painted: occupiedColors.has(tile.userData.cell.join(',')),
+      delay: 0,
+      key: 0,
+    }
+    entries.push(entry)
+    tile.material = material
+    // prefers-reduced-motion gets a whole-board FADE: the blocks stay exactly where
+    // they are and only their opacity moves, so there is no per-block motion to
+    // reduce and nothing for a shadow to slide under.
+    if (!reduced) {
+      tile.scale.setScalar(INTRO_STYLE.scaleFrom)
+      tile.position.copy(entry.start)
+    }
+  })
+  return entries
+}
+
+// Delays are fixed once, on the first frame the board is actually on screen — that
+// is when the camera and the cube pose the player will see are the ones in play.
+// Everything after this is arithmetic.
+function scheduleIntroWave() {
+  camera.updateMatrixWorld()
+  cubeGroup.updateMatrixWorld(true)
+  const probe = new THREE.Vector3()
+  let min = Infinity
+  let max = -Infinity
+  intro.entries.forEach((entry) => {
+    // Screen-space diagonal: NDC has +x right and +y up, so (x + y) runs exactly
+    // bottom-left → top-right. The depth term keeps the far side of the cube a
+    // fraction of a beat behind the near side instead of interleaving with it, which
+    // is what makes the front travel across the VISIBLE faces in one pass.
+    probe.copy(entry.home).applyMatrix4(cubeGroup.matrixWorld).project(camera)
+    entry.key = probe.x + probe.y + INTRO_STYLE.depthBias * probe.z
+    min = Math.min(min, entry.key)
+    max = Math.max(max, entry.key)
+  })
+  const span = Math.max(max - min, 1e-6)
+  const bands = Math.max(1, INTRO_STYLE.bandCount)
+  intro.entries.forEach((entry) => {
+    const band = Math.round(((entry.key - min) / span) * (bands - 1))
+    entry.delay = band * INTRO_STYLE.bandStagger
+      + (cellScatter(entry.tile.userData.cell) - 0.5) * INTRO_STYLE.jitter
+      + (entry.painted ? INTRO_STYLE.occupiedDelay : 0)
+  })
+  intro.scheduled = true
+  intro.total = (bands - 1) * INTRO_STYLE.bandStagger + INTRO_STYLE.duration
+    + INTRO_STYLE.occupiedDelay + INTRO_STYLE.jitter
+}
+
+// Arm a wave. Called from every entry point that puts a live run in front of the
+// player; a wave already in flight is settled first, so a restart can never stack two.
+function armIntro() {
+  settleIntro()
+  if (!INTRO_STYLE.enabled) return false
+  // The colours and the front face's lighter timber are settled BEFORE they are
+  // copied: the wave clones what the board is honestly wearing, including a resumed
+  // run's painted cells.
+  applyTileMaterials()
+  const reduced = prefersReducedMotion()
+  intro = {
+    entries: buildIntroEntries(reduced),
+    elapsed: 0,
+    total: reduced ? INTRO_STYLE.reducedMotionDuration : 0,
+    reduced,
+    scheduled: reduced,
+  }
+  syncPause()
+  return true
+}
+
+function updateIntro(delta) {
+  if (!intro) return
+  if (!intro.scheduled) scheduleIntroWave()
+  intro.elapsed += delta
+  const S = INTRO_STYLE
+  if (intro.reduced) {
+    const a = easeOutCubic(THREE.MathUtils.clamp(intro.elapsed / S.reducedMotionDuration, 0, 1))
+    intro.entries.forEach((entry) => { entry.material.opacity = a })
+  } else {
+    intro.entries.forEach((entry) => {
+      const p = (intro.elapsed - entry.delay) / S.duration
+      if (p <= 0) {
+        entry.material.opacity = 0
+        entry.material.depthWrite = false
+        entry.material.emissiveIntensity = 0
+        entry.tile.castShadow = false
+        entry.tile.scale.setScalar(S.scaleFrom)
+        entry.tile.position.copy(entry.start)
+        return
+      }
+      const q = Math.min(p, 1)
+      // Arrive early, peak once, settle: `rise` is the build itself, `settle` is what
+      // takes the 1.04 peak back to exactly 1. At q = 1 both are 1 and the scale is
+      // exactly scaleFrom + (overshoot − scaleFrom) − (overshoot − 1) = 1.
+      const rise = easeOutCubic(Math.min(1, q / S.overshootAt))
+      const settle = q <= S.overshootAt ? 0 : easeOutCubic((q - S.overshootAt) / (1 - S.overshootAt))
+      const opacity = easeOutCubic(Math.min(1, q / S.fadeAt))
+      entry.material.opacity = opacity
+      // A block that is still fading must not write depth: an invisible block that
+      // does would cut a hole in the hull behind it. Same for its shadow — a shadow
+      // of a block that does not exist yet is a bug you can see.
+      entry.material.depthWrite = opacity > 0.99
+      entry.tile.castShadow = opacity > 0.99
+      entry.tile.scale.setScalar(S.scaleFrom + (S.scaleOvershoot - S.scaleFrom) * rise - (S.scaleOvershoot - 1) * settle)
+      entry.tile.position.copy(entry.home).addScaledVector(entry.inward, S.inset * (1 - rise))
+      // Painted blocks get one soft lift of brightness, and it is back to zero by the
+      // time the block is finished — a residual emissive would be a permanent edit.
+      entry.material.emissiveIntensity = entry.painted ? S.shine * Math.sin(Math.PI * q) : 0
+    })
+  }
+  if (intro.elapsed >= intro.total) settleIntro()
+}
+
+// The end of every wave, and the only place a block is put back. The transform is
+// restored EXPLICITLY from the copy taken at arm time rather than left at whatever
+// the last frame's arithmetic produced, so no block can drift a fraction of a
+// millimetre off the flush surface over a session of restarts.
+function settleIntro() {
+  if (!intro) return
+  const entries = intro.entries
+  intro = null // cleared first: the repaint below must not see a live wave
+  entries.forEach((entry) => {
+    entry.tile.position.copy(entry.home)
+    entry.tile.scale.setScalar(1)
+    entry.tile.castShadow = true
+    entry.tile.material = entry.base
+    entry.material.opacity = 1
+    entry.material.depthWrite = true
+    entry.material.emissiveIntensity = 0
+  })
+  // Then let the board's own single source of truth repaint them, so the front
+  // face's tone is right even if the wave ended in a different pose.
+  applyTileMaterials()
+  syncPause()
+}
+
+// The wave starts when the player can SEE the board. beginRun() is also called with
+// the home cover still up (the 新游戏 path), and a wave played behind a cover would
+// be over before the player arrived — so the two call sites are "a run just became
+// visible" and "a run was rebuilt in place".
+function armIntroIfVisible() {
+  if (!homeOpen) armIntro()
+}
+
+// ============================================================
 // HUD / pieces / previews
 // ============================================================
 function updateHud() {
@@ -1173,7 +1396,7 @@ function cancelActiveDrag(showFeedback = true) {
 // moment a screen is added — and the home screen is that screen. Returns the new
 // value so a caller can branch on it in the same statement.
 function syncPause() {
-  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen || controlsOpen
+  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen || controlsOpen || introPlaying()
   return isPaused
 }
 
@@ -2621,6 +2844,10 @@ function refreshHome() {
 
 function openHome() {
   if (homeOpen) return
+  // The cover is about to be painted over the board, and the home's own hero is a
+  // CLONE of the live tiles: settling first is what keeps a wave caught mid-flight
+  // from being cloned into the hero as a half-built cube.
+  settleIntro()
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
   clearGroup(previewGroup)
@@ -2654,6 +2881,9 @@ function leaveHome() {
     platform.gameplayStart()
     setStatus('Pick a shape')
   }
+  // Last, so the run has already announced itself to the platform before the wave
+  // takes the input lock (syncPause() is the lock).
+  armIntroIfVisible()
 }
 
 // Every entry point that starts a REAL run for the player (home 新游戏, the settings
@@ -2663,6 +2893,10 @@ function beginRun() {
   resetGame()
   runLive = true
   saveSession()
+  // RESTART and PLAY AGAIN rebuild the run in place, with the player already looking
+  // at the board: the wave plays again here. The 新游戏 path leaves this to
+  // leaveHome(), which arms it once the run is actually visible.
+  armIntroIfVisible()
 }
 
 function continueRun() {
@@ -3148,6 +3382,10 @@ document.addEventListener('visibilitychange', () => {
   // A run that is simply closed (tab, phone, browser) has to be resumable without
   // having visited the home screen first.
   if (document.hidden) saveSession()
+  // A wave cannot play while the page is not painting, and a half-built cube waiting
+  // behind a backgrounded tab is not what the player should come back to: it is
+  // settled here rather than left for the browser to resume mid-air.
+  if (document.hidden) settleIntro()
   syncPause()
   if (document.hidden) { platform.gameplayStop(); setStatus(homeOpen ? 'Home' : 'Paused') }
   else if (gameEnded || settingsOpen || homeOpen) return
@@ -3196,13 +3434,22 @@ platform.initialize().catch(() => showToast('Offline mode'))
 const clock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
-  const raw = Math.min(clock.getDelta(), 0.05)
+  const measure = clock.getDelta()
+  const raw = Math.min(measure, 0.05)
   if (slowMo && performance.now() > slowMo.until) slowMo = null
   // The L5 dip scales the animation clock only — never input, never the board state.
   const delta = slowMo ? raw * slowMo.scale : raw
   // The home cover hides the canvas: nothing behind it is on screen, and the board
   // under it must not drift (the pose snap is part of the paused branch anyway).
   if (homeOpen) return
+  // The opening wave runs on its own clock. It is deliberately NOT inside the
+  // `!isPaused` branch below: it is the thing that raised isPaused (that is the input
+  // lock), so gating it there would deadlock it on its own first frame. It also gets
+  // the UNCLAMPED delta: the 0.05s clamp exists so a stalled frame cannot teleport a
+  // snap or a particle system, but applying it to the wave would stretch a 1.05s
+  // introduction into five seconds of half-built cube on a device that cannot hold
+  // 60fps. If the frames are that slow, the wave should simply be over.
+  updateIntro(measure)
   if (!isPaused) {
     particleRenderer.update(delta)
     updateTransientEffects(delta)
@@ -3210,8 +3457,10 @@ function animate() {
   }
   // Bare tiles wear the lighter timber on the face the player is working on
   // (05 §2). 98 material assignments is cheap, but the cached front face means it
-  // only happens on the frames where the cube actually finished turning.
-  if (findFrontFace() !== tileFrontFace) applyTileMaterials()
+  // only happens on the frames where the cube actually finished turning. While a wave
+  // is playing the blocks wear their own wave material instead and must not be
+  // repainted under it.
+  if (!introPlaying() && findFrontFace() !== tileFrontFace) applyTileMaterials()
   updatePiecePreviews()
   updateCameraShake(delta)
   composer.render(delta)
@@ -3575,6 +3824,73 @@ globalThis.__voxalblast = Object.freeze({
     hasSavedRun: Boolean(sessionStore.read()),
     persistent: sessionStore.persistent,
   }),
+  // v0.8.21 opening wave, read-only. Two halves, because the wave has to be graded on
+  // both of them: what it is doing mid-flight (progress + the per-block schedule, so a
+  // check can prove the front really runs bottom-left → top-right) and what it left
+  // behind (`integrity`, measured against the AUTHORED transform of every block and
+  // the shared material it must be wearing — not against whatever the last frame
+  // happened to compute).
+  intro: () => {
+    const tiles = gridGroup.children.flatMap((group) => group.children)
+    const integrity = { tiles: tiles.length, scaleOff: 0, positionOff: 0, materialOff: 0, opacityOff: 0, shadowOff: 0, maxScaleErr: 0, maxPositionErr: 0 }
+    tiles.forEach((tile) => {
+      const scaleErr = Math.abs(tile.scale.x - 1) + Math.abs(tile.scale.y - 1) + Math.abs(tile.scale.z - 1)
+      const positionErr = tile.position.distanceTo(cellToWorld(...tile.userData.cell))
+      if (scaleErr > 1e-9) integrity.scaleOff += 1
+      if (positionErr > 1e-6) integrity.positionOff += 1
+      // The tile must NOT still be holding the per-block wave clone.
+      if (tile.material === tile.userData.introMaterial) integrity.materialOff += 1
+      if (tile.material.opacity !== 1) integrity.opacityOff += 1
+      if (!tile.castShadow) integrity.shadowOff += 1
+      integrity.maxScaleErr = Math.max(integrity.maxScaleErr, scaleErr)
+      integrity.maxPositionErr = Math.max(integrity.maxPositionErr, positionErr)
+    })
+    if (!intro) {
+      return { active: false, locked: isPaused, integrity, blocks: tiles.length, progress: [] }
+    }
+    camera.updateMatrixWorld()
+    cubeGroup.updateMatrixWorld(true)
+    const probe = new THREE.Vector3()
+    const progress = intro.entries.map((entry) => {
+      probe.copy(entry.home).applyMatrix4(cubeGroup.matrixWorld).project(camera)
+      return {
+        cell: entry.tile.userData.cell.join(','),
+        faces: entry.tile.userData.faces,
+        painted: entry.painted,
+        delay: Number(entry.delay.toFixed(4)),
+        opacity: Number(entry.material.opacity.toFixed(4)),
+        scale: Number(entry.tile.scale.x.toFixed(4)),
+        emissive: Number(entry.material.emissiveIntensity.toFixed(4)),
+        // Where the block's own place on the cube lands on screen, in NDC: the
+        // diagonal (x·0.5 + y·0.5 + 0.5) is the wave's own coordinate.
+        x: Number(probe.x.toFixed(4)),
+        y: Number(probe.y.toFixed(4)),
+      }
+    })
+    return {
+      active: true,
+      reduced: intro.reduced,
+      scheduled: intro.scheduled,
+      elapsed: Number(intro.elapsed.toFixed(4)),
+      total: Number(intro.total.toFixed(4)),
+      locked: isPaused,
+      blocks: tiles.length,
+      built: progress.filter((entry) => entry.opacity > 0.99).length,
+      pending: progress.filter((entry) => entry.opacity <= 0).length,
+      config: {
+        duration: INTRO_STYLE.duration,
+        bandCount: INTRO_STYLE.bandCount,
+        bandStagger: INTRO_STYLE.bandStagger,
+        occupiedDelay: INTRO_STYLE.occupiedDelay,
+        scaleFrom: INTRO_STYLE.scaleFrom,
+        scaleOvershoot: INTRO_STYLE.scaleOvershoot,
+        inset: INTRO_STYLE.inset,
+        reducedMotionDuration: INTRO_STYLE.reducedMotionDuration,
+      },
+      integrity,
+      progress,
+    }
+  },
   candidateFrames: () => [...piecePreviews.values()].map(preview => {
     preview.root.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(preview.root)
@@ -3614,6 +3930,11 @@ if (import.meta.env.DEV) {
     endGame: () => endGame(),
     openLeaderboard: () => openLeaderboard(),
     records: () => recordStore.all(),
+    // v0.8.21: replay the opening wave on demand, so the probe can drive it without
+    // depending on where a click landed. It calls armIntro() itself — the same
+    // function every real entry point calls.
+    replayIntro: () => armIntro(),
+    settleIntro: () => { settleIntro(); return introPlaying() },
     // v0.8.16 rescue probe (07 §3.1 B1). A shell jam is common in real play but cannot
     // be produced on demand, so the three judgement branches could not be asserted
     // without a way to build one: `jam()` fills every free shell cell (nothing fits

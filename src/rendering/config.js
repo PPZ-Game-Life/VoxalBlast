@@ -417,6 +417,45 @@ export const HUD_STYLE = Object.freeze({
   bestGapRatio: 0.1,
 })
 
+// ============================================================
+// Opening creation wave (v0.8.21, 03 §「进入单局」)
+// ============================================================
+// A run does not open on a finished cube: one diagonal wavefront crosses it from
+// screen bottom-left to top-right and the 98 surface blocks are built into place as
+// it passes. Presentation only — the wave reads the board the rules already made and
+// never writes to it (see the intro block in main.js).
+//
+// The one number that had to be reconciled is the stagger. 98 blocks 25–40ms apart
+// need 2.4–3.9s and cannot fit the 0.8–1.2s the art direction also asks for, so the
+// diagonal order is cut into `bandCount` bands: adjacent BANDS are 32ms apart (the
+// 25–40ms figure), and the ~4 blocks sharing a band start together. A band is ~27px
+// wide along the screen diagonal while a block is ~55px, so the front still reads as
+// continuous rather than as a staircase of fours.
+//
+// Total = (bandCount−1)·bandStagger + duration + occupiedDelay + jitter ≈ 1.05s.
+export const INTRO_STYLE = Object.freeze({
+  enabled: true,
+  duration: 0.19, // one block: fade + scale + travel. 160–220ms
+  bandCount: 26, // wavefront bands across the screen diagonal
+  bandStagger: 0.032, // delay between adjacent bands. 25–40ms
+  jitter: 0.012, // ≤12ms of per-block scatter inside a band, hashed from the cell
+  occupiedDelay: 0.05, // painted blocks join a beat after the bare timber. 40–60ms
+  // Scale: 0.72 → 1.04 → exactly 1. The 1.04 is ONE planned step, not a spring that
+  // rings: `rise` reaches it at overshootAt, `settle` takes it back, and nothing
+  // crosses 1 twice.
+  scaleFrom: 0.72,
+  scaleOvershoot: 1.04,
+  overshootAt: 0.62,
+  fadeAt: 0.55, // opacity reaches 1 here, i.e. before the block lands
+  inset: 0.42, // how far inside its cell a block starts, along its own face normal
+  // How far the far side of the cube trails the near side in the same wavefront.
+  // 0 would interleave the back faces with the front ones and read as noise.
+  depthBias: 0.16,
+  shine: 0.22, // emissive lift a painted block gets at its own peak
+  shineColor: 0xffe6bd,
+  reducedMotionDuration: 0.18, // prefers-reduced-motion: one whole-board fade, 150–200ms
+})
+
 export function getRenderQuality() {
   const lowPower = window.matchMedia?.('(max-width: 700px)').matches || (navigator.hardwareConcurrency || 8) <= 4
   return Object.freeze({

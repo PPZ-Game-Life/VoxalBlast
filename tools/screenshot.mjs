@@ -285,6 +285,31 @@ async function capture(browser, shot) {
             backdropZ: layer ? getComputedStyle(layer).zIndex : null,
             woodGrain: getComputedStyle(document.documentElement).getPropertyValue('--wood-grain').slice(0, 26),
             version: ${JSON.stringify(version)},
+            // v0.8.21: the version tag ships in the release build and must be READABLE
+            // on every viewport, including 320px. It is the only way to tell which
+            // build a phone is running, and it was silently dev-only before.
+            versionBadge: (() => {
+              const el = document.querySelector('#app-version')
+              if (!el) return null
+              const cs = getComputedStyle(el)
+              const box = el.getBoundingClientRect()
+              return {
+                text: el.textContent,
+                hidden: el.hidden,
+                display: cs.display,
+                visibility: cs.visibility,
+                width: Math.round(box.width),
+                height: Math.round(box.height),
+              }
+            })(),
+            // v0.8.21 opening wave: by the time any shot is taken it must be over, and
+            // every block must be back on its authored transform wearing the shared
+            // material — a wave that left a block scaled or dimmed is a regression the
+            // eye would only catch on the frame it happened.
+            introWave: (() => {
+              const i = globalThis.__voxalblast?.intro?.()
+              return i ? { active: i.active, locked: i.locked, total: i.total, integrity: i.integrity } : null
+            })(),
             home: document.querySelector('#home').className,
             canvases: document.querySelectorAll('canvas').length,
             gameOver: (() => {
@@ -336,6 +361,18 @@ async function capture(browser, shot) {
       if (parsed.rendering?.meshes !== 98 || parsed.rendering?.uniqueCells !== 98) failures.push('board must contain exactly 98 unique meshes')
       if (parsed.rendering?.surfaceArt !== (SURFACE_FALLBACK ? 'fallback' : 'ready')) failures.push('block surface asset / fallback not ready')
       const onHome = mode === 'home' || mode === 'home-return'
+      // The badge is inside the hidden topbar while the home cover is up, so on those
+      // two shots only its box and text are graded.
+      if (!parsed.versionBadge || parsed.versionBadge.text !== `v${version}`) failures.push('version badge missing or does not match package.json')
+      else if (parsed.versionBadge.display === 'none' || !parsed.versionBadge.width || !parsed.versionBadge.height) failures.push('version badge has no visible box')
+      else if (!onHome && (parsed.versionBadge.hidden || parsed.versionBadge.visibility !== 'visible')) failures.push('version badge is hidden in a live run')
+      if (parsed.introWave) {
+        if (parsed.introWave.active) failures.push('opening wave still running when the shot was taken')
+        const integrity = parsed.introWave.integrity
+        if (integrity && Object.entries(integrity).some(([key, value]) => key.endsWith('Off') && value > 0)) {
+          failures.push(`opening wave left blocks off their authored state (${JSON.stringify(integrity)})`)
+        }
+      }
       if (parsed.gameLayers.some(layer => layer.visibility !== (onHome ? 'hidden' : 'visible') || layer.inert !== onHome || !layer.width || !layer.height)) failures.push('game layer visibility, input isolation or preserved layout incorrect')
       if (!onHome) {
         if (parsed.candidateFrames.length !== 3 || parsed.candidateFrames.some(frame => ![frame.minX, frame.maxX, frame.minY, frame.maxY].every(Number.isFinite) || frame.minX < -0.99 || frame.maxX > 0.99 || frame.minY < -0.99 || frame.maxY > 0.99)) failures.push('candidate volume clipped by camera')

@@ -1,6 +1,6 @@
 # 技术结构与开发入口
 
-> 渲染章节同步至 v0.8.20 / 2026-09-22，依据仓库文件核对；非运行性能报告。
+> 渲染章节同步至 v0.8.21 / 2026-09-22，依据仓库文件核对；非运行性能报告。
 
 ## 模块地图
 
@@ -46,6 +46,8 @@ Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采
 v0.8.20：主页 `.home-open` 令局内 `.topbar/.game-layout` 不可见且 `inert`，保留布局尺寸与相机状态，离开主页时恢复；主页独立 hero 与田园层照常显示。候选预览创建/尺寸变化时用实体包围盒的相机空间范围适配正交视野，宽高两轴保留约 10px 留白，最小半高 1.6；只读 `candidateFrames()` 返回各形状完整包围盒的 NDC 范围，截图检查相机裁切和 DOM 裁切。按钮用 CSS 多层木框/凹面和 SVG 渐变雕刻图标；渐变 ID 每个入口唯一。
 
 背景从 `${import.meta.env.BASE_URL}art/pastoral-valley.webp` 加载，使用 `object-fit: cover` 中心裁切；成功后才隐藏原 SVG，失败时移除图片并保留 SVG。背景为 `aria-hidden`、不接收指针的独立 DOM 层，天空底色留在 `html`、`body` 透明。资产为随构建发布的本地 WebP，不依赖在线生图服务；尺寸和来源见 [资产说明](../../public/art/README.md)。
+
+v0.8.21 开场创建波次（`src/main.js` 的 intro 区块 + `INTRO_STYLE`）。98 个格块在进入一局时由一道斜向波次创建：首帧把每格的**作者位姿**投影到屏幕，按 `(x + y) + depthBias·z` 排入 26 个波次；每格在 `duration` 内做透明度、`0.72 → 1.04 → 1` 缩放与沿自身面法线的内缩回位，已占用格块额外延后并有一次 `emissive` 提升。实现要点三条：**逐格材质 clone 由 `tile.userData.introMaterial` 复用**（`copy()` 按引用带入贴图，不产生 GPU 上传，结束时交还共享实例）；**变换在 arm 时逐格快照**，`settleIntro()` 显式还原而不是沿用末帧算术；**时钟只有 rAF 一个**，`updateIntro()` 取未钳制的 `clock.getDelta()`（游戏其余部分沿用 0.05s 钳制），没有 timer/tween，因此取消、隐藏、重开都不会留下残影。输入锁复用 `syncPause()`（`introPlaying()` 是它的一个来源），`armIntro()` 每次先 `settleIntro()`，所以任何时刻最多一轮。只读回读 `__voxalblast.intro()` 返回进行中的逐格进度与结束后的完整性计数；`tools/intro-probe.mjs`（`npm run probe:intro`）据此断言波向、跨面、节奏、结束后位姿/材质/缩放零误差，并用 CDP screencast 录下开场帧序。
 
 主画布由 ResizeObserver 追踪容器尺寸。resize 先更新 renderer 尺寸及相机 FOV/aspect/投影、重新取景，再调用 `composer.setSize()`，保证 SSAO 缓存的是新投影矩阵及其逆矩阵。NormalPass 的 render target 随 composer 调整尺寸，Three.js 在绑定时同步其独立深度纹理尺寸，无需替换 `contactDepth`。棋盘姿态采用四元数基准与展示偏摆；鼠标/触摸的面坐标通过投影换算，不从屏幕像素直接改规则格子。
 
