@@ -46,61 +46,67 @@ import { addToyLights } from './rendering/toyLights.js'
 import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps, blockSurfaceArtStatus, blockSurfaceArtReady } from './rendering/woodTexture.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
+import { collectDom } from './ui/dom.js'
 
 installToyIcons()
 
 const board = new Board()
 const platform = createCrazyGamesAdapter()
-const sceneWrap = document.querySelector('#scene-wrap')
-const scoreEl = document.querySelector('#score')
-const statusEl = document.querySelector('#status')
-const toastEl = document.querySelector('#toast')
-const slotsEl = document.querySelector('#piece-slots')
-const piecesPanelEl = document.querySelector('.bottom-panel')
-const cancelZoneEl = document.querySelector('#cancel-zone')
-const itemBarEl = document.querySelector('#item-bar')
-const axisPickEl = document.querySelector('#axis-pick')
-const axisCancelEl = document.querySelector('#axis-cancel')
-const gameOverEl = document.querySelector('#game-over')
-const finalScoreEl = document.querySelector('#final-score')
-const versionEl = document.querySelector('#app-version')
-const settingsEl = document.querySelector('#settings-modal')
-const settingsButtonEl = document.querySelector('#settings-button')
-const soundSettingEl = document.querySelector('#sound-setting')
-const hapticsSettingEl = document.querySelector('#haptics-setting')
-const bestEl = document.querySelector('#best')
-const chainEl = document.querySelector('#chain')
-const chainValueEl = document.querySelector('#chain-value')
-const chainBarEl = document.querySelector('#chain-bar')
-const honorLayerEl = document.querySelector('#honor-layer')
-const gameOverBestEl = document.querySelector('#game-over-best')
-const gameOverFacesEl = document.querySelector('#game-over-faces')
-const gameOverHonorsEl = document.querySelector('#game-over-honors')
-const gameOverStatsEl = document.querySelector('#game-over-stats')
-const leaderboardButtonEl = document.querySelector('#leaderboard-button')
-const leaderboardEl = document.querySelector('#leaderboard')
-const leaderboardBodyEl = document.querySelector('#leaderboard-body')
-const leaderboardCloseEl = document.querySelector('#leaderboard-close')
-const leaderboardPlatformEl = document.querySelector('#leaderboard-platform')
-const homeEl = document.querySelector('#home')
-const homePrimaryEl = document.querySelector('#home-primary')
-const homePrimaryLabelEl = document.querySelector('#home-primary-label')
-const homeBestEl = document.querySelector('#home-best')
-const homeResumeNoteEl = document.querySelector('#home-resume-note')
-const homeLeaderboardEl = document.querySelector('#home-leaderboard')
-const homeSettingsEl = document.querySelector('#home-settings')
-const homeSettingEl = document.querySelector('#home-setting')
-const controlsButtonEl = document.querySelector('#controls-button')
-const controlsSettingEl = document.querySelector('#controls-setting')
-const controlsEl = document.querySelector('#controls-modal')
-const controlsCloseEl = document.querySelector('#controls-close')
-const axisHintEl = document.querySelector('#axis-hint')
-const axisHintKeyEl = document.querySelector('#axis-hint-key')
-const axisHintAxisEl = document.querySelector('#axis-hint-axis')
-// axis -> the legend row that carries that axis's mini cube and keycaps.
-const controlRows = new Map(
-  [...document.querySelectorAll('.ctrl-row')].map((row) => [row.dataset.axis, row]),
-)
+// Static DOM handles (refactor P1). The names are kept EXACTLY as they were when this file
+// queried the document itself, so every use site below still reads the identifier it
+// always did — this is a change of owner, not a change of behaviour. The scattered
+// `#settings-close` / `#home-hero` / `#app` / `.topbar, .game-layout` queries further down
+// stay where they are for now: each belongs to the panel that will own it (P1b-2), and
+// moving them here would only move the scattering, not remove it.
+const {
+  sceneWrap,
+  versionEl,
+  scoreEl,
+  bestEl,
+  chainEl,
+  chainValueEl,
+  chainBarEl,
+  statusEl,
+  toastEl,
+  honorLayerEl,
+  slotsEl,
+  piecesPanelEl,
+  cancelZoneEl,
+  itemBarEl,
+  axisPickEl,
+  axisCancelEl,
+  settingsEl,
+  settingsButtonEl,
+  soundSettingEl,
+  hapticsSettingEl,
+  controlsEl,
+  controlsButtonEl,
+  controlsSettingEl,
+  controlsCloseEl,
+  axisHintEl,
+  axisHintKeyEl,
+  axisHintAxisEl,
+  controlRows,
+  gameOverEl,
+  finalScoreEl,
+  gameOverBestEl,
+  gameOverFacesEl,
+  gameOverHonorsEl,
+  gameOverStatsEl,
+  leaderboardButtonEl,
+  leaderboardEl,
+  leaderboardBodyEl,
+  leaderboardCloseEl,
+  leaderboardPlatformEl,
+  homeEl,
+  homePrimaryEl,
+  homePrimaryLabelEl,
+  homeBestEl,
+  homeResumeNoteEl,
+  homeLeaderboardEl,
+  homeSettingsEl,
+  homeSettingEl,
+} = collectDom()
 
 const soundKey = 'voxalblast-sound'
 const hapticsKey = 'voxalblast-haptics'
