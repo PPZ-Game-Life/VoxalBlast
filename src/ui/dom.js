@@ -31,6 +31,7 @@ export function collectDom(root = document) {
   return {
     // Board canvas host and the top bar.
     sceneWrap: need('#scene-wrap'),
+    app: need('#app'),
     versionEl: need('#app-version'),
 
     // HUD: score, best, chain, status line and the transient toast.
@@ -87,6 +88,7 @@ export function collectDom(root = document) {
 
     // Home cover.
     homeEl: need('#home'),
+    homeHeroEl: need('#home-hero'),
     homePrimaryEl: need('#home-primary'),
     homePrimaryLabelEl: need('#home-primary-label'),
     homeBestEl: need('#home-best'),
@@ -94,5 +96,13 @@ export function collectDom(root = document) {
     homeLeaderboardEl: need('#home-leaderboard'),
     homeSettingsEl: need('#home-settings'),
     homeSettingEl: need('#home-setting'),
+    // The in-game layers the cover hides and makes inert. A LIST, not a required single
+    // node: the selector legitimately matches two elements, and an empty result would be a
+    // markup change worth reporting rather than a crash.
+    gameLayers: [...root.querySelectorAll('.topbar, .game-layout')],
+
+    // Settings panel's own close button and the restart row (used by ui/settings.js).
+    settingsCloseEl: need('#settings-close'),
+    restartSettingEl: need('#restart-setting'),
   }
 }

@@ -33,9 +33,8 @@ import { Board, SH, FACES, faceLattice, isShell } from './game/board.js'
 import { SHAPES, pickShape, normalizeCells, maxOrigin } from './game/shapes.js'
 import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
-import { recordStore, RECORD_FIELDS, weekKey } from './game/records.js'
+import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
-import { TIER_CUTS, tierForScore, tiersReady } from './game/tiers.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, INTRO_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from './rendering/swipe.js'
@@ -43,12 +42,13 @@ import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
-import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps, blockSurfaceArtStatus, blockSurfaceArtReady } from './rendering/woodTexture.js'
+import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps, blockSurfaceArtStatus } from './rendering/woodTexture.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
 import { createGameOver } from './ui/gameOver.js'
 import { createHud } from './ui/hud.js'
+import { createHome } from './ui/home.js'
 
 installToyIcons()
 
@@ -62,6 +62,7 @@ const platform = createCrazyGamesAdapter()
 // moving them here would only move the scattering, not remove it.
 const {
   sceneWrap,
+  app: appEl,
   versionEl,
   scoreEl,
   bestEl,
@@ -101,6 +102,7 @@ const {
   leaderboardCloseEl,
   leaderboardPlatformEl,
   homeEl,
+  homeHeroEl,
   homePrimaryEl,
   homePrimaryLabelEl,
   homeBestEl,
@@ -108,6 +110,7 @@ const {
   homeLeaderboardEl,
   homeSettingsEl,
   homeSettingEl,
+  gameLayers,
 } = collectDom()
 
 const soundKey = 'voxalblast-sound'
@@ -125,12 +128,12 @@ let viewDrag = null
 let isPaused = false
 let gameEnded = false
 let settingsOpen = false
-// v0.4 home screen. `homeOpen` is a third pause source next to document.hidden and
-// the modals; `runLive` means "the player has entered a board and has not finished
-// it", which is what makes a resume snapshot worth writing. They are separate on
-// purpose: the game boots on the home screen with no run open, and writing a slot
-// there would offer 继续游戏 on a board nobody has touched.
-let homeOpen = false
+// v0.4 home screen. The cover's open flag now lives in ui/home.js (read back through
+// `homeUi.isOpen()`); it stays a third pause source next to document.hidden and the modals.
+// `runLive` means "the player has entered a board and has not finished it", which is what
+// makes a resume snapshot worth writing. They are separate on purpose: the game boots on the
+// home screen with no run open, and writing a slot there would offer 继续游戏 on a board
+// nobody has touched.
 let runLive = false
 // v0.4.1 PC keyboard legend. The card pauses the board like the settings panel, but
 // the rotation keys keep working inside it — they drive the mini cube of their own
@@ -1318,7 +1321,7 @@ function settleIntro() {
 // be over before the player arrived — so the two call sites are "a run just became
 // visible" and "a run was rebuilt in place".
 function armIntroIfVisible() {
-  if (!homeOpen) armIntro()
+  if (!homeUi.isOpen()) armIntro()
 }
 
 // ============================================================
@@ -1512,7 +1515,7 @@ function cancelActiveDrag(showFeedback = true) {
 // value so a caller can branch on it in the same statement.
 function syncPause() {
   const previous = isPaused
-  isPaused = homeOpen || document.hidden || gameEnded || settingsOpen || controlsOpen || introPlaying()
+  isPaused = homeUi.isOpen() || document.hidden || gameEnded || settingsOpen || controlsOpen || introPlaying()
   // The item strip's only "not yet" affordance is a class derived from isPaused
   // (canUseItemsNow), so whoever changes the pause state has to restore it: the opening
   // wave and the settings panel both grey the buttons on the way in, and without this the
@@ -1630,7 +1633,7 @@ function handleRotateKey(event) {
   // (§3). A held key that spun the cube would be the only input in the game that can
   // outrun what the player sees.
   if (event.repeat) return true
-  if (isPaused || drag || itemActive || homeOpen || settingsOpen) return false
+  if (isPaused || drag || itemActive || homeUi.isOpen() || settingsOpen) return false
   if (!rotateCubeByKey(binding.axis, binding.direction)) return true
   showAxisHint(event.key, binding.axis)
   return true
@@ -2780,57 +2783,44 @@ function clearSession() {
   return sessionStore.clear()
 }
 
-let homeRenderer
-let homeScene
-let homeCamera
-let homeModel
-// The home hero is rendered on demand; refresh it if its first frame used the
-// fallback surface while the art asset was still in flight.
-blockSurfaceArtReady.then(() => {
-  if (homeOpen && homeRenderer) homeRenderer.render(homeScene, homeCamera)
+// Home cover + leaderboard (see ui/home.js). `openHome`/`leaveHome` stay here: they settle
+// the intro wave, cancel a live drag, drop the item selection and write the resume snapshot.
+// The cover's open flag lives in the module and is read back through `isOpen()`.
+const homeUi = createHome({
+  els: {
+    app: appEl,
+    homeEl,
+    homeHeroEl,
+    homePrimaryEl,
+    homePrimaryLabelEl,
+    homeBestEl,
+    homeResumeNoteEl,
+    leaderboardEl,
+    leaderboardBodyEl,
+    leaderboardCloseEl,
+    leaderboardPlatformEl,
+    gameLayers,
+  },
+  getSavedRun: () => sessionStore.read(),
+  getBest: () => bestScore,
+  getRecords: () => recordStore.all(),
+  platform,
+  cloneSources: { cubeBody, gridGroup },
+  // Whoever changes the open state recomputes the pause lock — one place decides.
+  onOpen: () => syncPause(),
+  onClose: () => syncPause(),
 })
-function renderHomeBoard() {
-  const host = document.querySelector('#home-hero')
-  if (!host || !host.clientWidth || !host.clientHeight) return
-  if (!homeRenderer) {
-    homeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
-    homeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
-    homeRenderer.outputColorSpace = THREE.SRGBColorSpace
-    homeRenderer.toneMapping = THREE.ACESFilmicToneMapping
-    homeRenderer.toneMappingExposure = style.exposure
-    host.appendChild(homeRenderer.domElement)
-    homeScene = new THREE.Scene()
-    addToyLights(homeScene)
-    homeCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
-    homeCamera.position.set(9, 7, 12)
-    homeCamera.lookAt(0, 0, 0)
-    new ResizeObserver(renderHomeBoard).observe(host)
-  }
-  if (homeModel) homeScene.remove(homeModel)
-  homeModel = new THREE.Group()
-  // Clones share owned geometry/materials; do not dispose shared resources here.
-  homeModel.add(cubeBody.clone(), gridGroup.clone(true))
-  homeScene.add(homeModel)
-  homeRenderer.setSize(host.clientWidth, host.clientHeight, false)
-  homeCamera.aspect = host.clientWidth / host.clientHeight
-  homeCamera.updateProjectionMatrix()
-  homeRenderer.render(homeScene, homeCamera)
-}
 
-function refreshHome() {
-  requestAnimationFrame(renderHomeBoard)
-  const saved = sessionStore.read()
-  homePrimaryEl.classList.toggle('resume', Boolean(saved))
-  homePrimaryLabelEl.textContent = saved ? '继续游戏' : '新游戏'
-  homeBestEl.textContent = bestScore.toLocaleString('en-US')
-  homeResumeNoteEl.textContent = saved
-    ? `未完成的一局：${saved.board.score.toLocaleString('en-US')} 分 · ${saved.board.cells.length} 格`
-    : ''
-  return saved
-}
+// Bound to the module's own names so the existing call sites below read as they always did.
+const {
+  refreshHome,
+  renderHomeBoard,
+  openLeaderboard,
+  closeLeaderboard,
+} = homeUi
 
 function openHome() {
-  if (homeOpen) return
+  if (homeUi.isOpen()) return
   // The cover is about to be painted over the board, and the home's own hero is a
   // CLONE of the live tiles: settling first is what keeps a wave caught mid-flight
   // from being cloned into the hero as a half-built cube.
@@ -2846,23 +2836,16 @@ function openHome() {
   // Snapshot before the board stops being visible, so whatever was built is still
   // there behind the 继续游戏 button.
   saveSession()
-  homeOpen = true
-  document.querySelector('#app').classList.add('home-open')
-  document.querySelectorAll('.topbar, .game-layout').forEach(el => { el.inert = true })
-  homeEl.classList.remove('hidden')
-  refreshHome()
-  syncPause()
+  if (!homeUi.showCover()) return
   platform.gameplayStop()
   setStatus('Home')
-  homePrimaryEl.focus()
+  // Last, exactly where it was: focus lands on the cover's primary button only once the
+  // cover is up and the run has announced itself to the platform.
+  homeUi.focusPrimary()
 }
 
 function leaveHome() {
-  homeOpen = false
-  document.querySelector('#app').classList.remove('home-open')
-  document.querySelectorAll('.topbar, .game-layout').forEach(el => { el.inert = false })
-  homeEl.classList.add('hidden')
-  syncPause()
+  homeUi.hideCover()
   renderItemBar()
   if (!isPaused) {
     platform.gameplayStart()
@@ -2975,84 +2958,6 @@ function applySession(saved) {
   renderItemBar()
   syncPause()
   setStatus('Pick a shape')
-}
-
-// ============================================================
-// Leaderboard panel (08 §7.5) — Layer 1 in-game, plus the platform entry
-// ============================================================
-// The panel has three entry points now (Game Over, the home screen, and the dev
-// handle), so focus is returned to whoever opened it instead of to one hard-coded
-// button — returning to the Game Over button while the home screen is up would drop
-// focus onto a covered element.
-let leaderboardOpener = null
-
-function openLeaderboard() {
-  renderLeaderboard()
-  leaderboardOpener = document.activeElement
-  leaderboardEl.classList.remove('hidden')
-  leaderboardCloseEl.focus()
-}
-
-function closeLeaderboard() {
-  leaderboardEl.classList.add('hidden')
-  const opener = leaderboardOpener
-  leaderboardOpener = null
-  if (opener instanceof HTMLElement && opener.isConnected && !opener.closest('.hidden')) opener.focus()
-}
-
-function renderLeaderboard() {
-  const records = recordStore.all()
-  const tier = tierForScore(records.best.score)
-  // The tier badge: the mechanism is finished, the cut scores are deliberately
-  // empty (08 §4.6, 交接单 §2 — 99.3% of games never end, so no absolute number
-  // can be calibrated yet). A badge with invented thresholds would be worse than
-  // no badge, so the panel says what it is waiting for.
-  const tierHtml = tier
-    ? `<div class="lb-tier"><span class="lb-tier-badge">T${tier.tier}</span><span class="lb-tier-copy"><strong>${tier.name}</strong><small>${tier.title}</small></span></div>`
-    : `<div class="lb-tier uncalibrated"><span class="lb-tier-badge">T?</span><span class="lb-tier-copy"><strong>阶位待校准</strong><small>难度定稿后按真实玩家分位分档（08 §4.6）</small></span></div>`
-
-  const recent = records.recent
-  const top = Math.max(1, ...recent.map((entry) => entry.score))
-  const bars = recent.length
-    ? recent.map((entry, index) => `<li class="lb-bar-row"><span class="lb-bar-index">${index + 1}</span><span class="lb-bar"><i style="width:${Math.max(4, Math.round((entry.score / top) * 100))}%"></i></span><span class="lb-bar-score">${entry.score.toLocaleString('en-US')}</span></li>`).join('')
-    : '<li class="lb-empty">还没有对局记录</li>'
-
-  const recordRows = RECORD_FIELDS
-    .map((field) => `<li><span>${field.label}</span><strong>${records.records[field.key]}</strong></li>`)
-    .join('')
-  const honorRows = HONORS
-    .map((honor) => `<li><span>${honor.label}<small>${honor.title}</small></span><strong>${records.honors[honor.id] || 0}</strong></li>`)
-    .join('')
-
-  leaderboardBodyEl.innerHTML = `
-    ${tierHtml}
-    <section class="lb-section">
-      <h2>最近 ${recent.length || 0} 局</h2>
-      <ol class="lb-bars">${bars}</ol>
-    </section>
-    <section class="lb-section">
-      <h2>个人最佳</h2>
-      <ul class="lb-list">
-        <li><span>最高分</span><strong>${records.best.score.toLocaleString('en-US')}</strong></li>
-        <li><span>本周最佳</span><strong>${(records.weekly.key === weekKey() ? records.weekly.score : 0).toLocaleString('en-US')}</strong></li>
-        <li><span>已玩局数</span><strong>${records.records.gamesPlayed}</strong></li>
-        ${recordRows}
-      </ul>
-    </section>
-    <section class="lb-section">
-      <h2>荣誉收集</h2>
-      <ul class="lb-list lb-list-honors">${honorRows}</ul>
-      ${tiersReady(TIER_CUTS) ? '' : '<p class="lb-note">阶位分档取自真实玩家分位数，难度定稿后一次性标定；当前不出具体数字（08 §12 待决策 4）。</p>'}
-    </section>`
-
-  // Layer 2 entry: without an invitation the platform has nothing to show, so the
-  // button is greyed with "即将开放" and never fires a request (§7.4).
-  const invited = platform.leaderboardAvailable()
-  leaderboardPlatformEl.innerHTML = `<p>全球榜由 CrazyGames 提供</p>`
-    + (invited
-      ? '<button id="platform-button" class="ghost-button" type="button">打开全球榜</button>'
-      : '<button class="ghost-button disabled" type="button" disabled>即将开放</button>')
-  leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
 }
 
 // L5 ceremony (08 §6): the only time-dilation in the game, ≤400ms at 0.6×, and it
@@ -3335,7 +3240,7 @@ homeLeaderboardEl.addEventListener('click', () => openLeaderboard())
 homeSettingsEl.addEventListener('click', () => openSettings())
 homeSettingEl.addEventListener('click', () => {
   // Already home: the row only has to close the panel it sits in.
-  if (homeOpen) closeSettings()
+  if (homeUi.isOpen()) closeSettings()
   else openHome()
 })
 // PLAY AGAIN / RESTART both start a real run, which means both have to open a resume
@@ -3374,8 +3279,8 @@ document.addEventListener('visibilitychange', () => {
   // settled here rather than left for the browser to resume mid-air.
   if (document.hidden) settleIntro()
   syncPause()
-  if (document.hidden) { platform.gameplayStop(); setStatus(homeOpen ? 'Home' : 'Paused') }
-  else if (gameEnded || settingsOpen || homeOpen) return
+  if (document.hidden) { platform.gameplayStop(); setStatus(homeUi.isOpen() ? 'Home' : 'Paused') }
+  else if (gameEnded || settingsOpen || homeUi.isOpen()) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 // Losing the window ends a mouse gesture the same way (button released outside).
@@ -3437,7 +3342,7 @@ function animate() {
   const delta = slowMo ? raw * slowMo.scale : raw
   // The home cover hides the canvas: nothing behind it is on screen, and the board
   // under it must not drift (the pose snap is part of the paused branch anyway).
-  if (homeOpen) return
+  if (homeUi.isOpen()) return
   // The opening wave runs on its own clock. It is deliberately NOT inside the
   // `!isPaused` branch below: it is the thing that raised isPaused (that is the input
   // lock), so gating it there would deadlock it on its own first frame. It also gets
@@ -3814,7 +3719,7 @@ globalThis.__voxalblast = Object.freeze({
   // is waiting behind it (the checks assert the slot survives a page load, which is
   // the whole point of storing it).
   home: () => ({
-    open: homeOpen,
+    open: homeUi.isOpen(),
     label: homePrimaryLabelEl.textContent,
     note: homeResumeNoteEl.textContent,
     hasSavedRun: Boolean(sessionStore.read()),
