@@ -37,6 +37,7 @@ import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } fro
 import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
+import { createPieceView } from './rendering/pieceView.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -136,7 +137,6 @@ let cameraShake = 0
 let transientEffects = []
 let suppressPieceClickUntil = 0
 const particleSystems = new Set()
-const piecePreviews = new Map()
 
 // ============================================================
 // Run state (v0.3 honors / records)
@@ -375,6 +375,22 @@ function renderBoard() {
   updateHud()
 }
 
+// The candidate previews (refactor P4a) own their renderers; this file owns the slot DOM.
+const pieceView = createPieceView({
+  blocks,
+  // A new deal replaces the piece objects and every click reassigns the selection, so both are
+  // read through getters rather than captured.
+  getCells: currentCells,
+  getSelectedPiece: () => selectedPiece,
+})
+const {
+  flatPreviewPositions,
+  disposePiecePreviews,
+  createPiecePreview,
+  updatePieceSlotSelection,
+  updatePiecePreviews,
+} = pieceView
+
 // ============================================================
 // Camera fit (cube rotates; camera stays put)
 // ============================================================
@@ -505,97 +521,10 @@ function colorHex(color) {
   return `#${new THREE.Color(color).getHexString()}`
 }
 
-// Flat, face-on preview positions: (u,v) -> screen space (x right, y down).
-// `pitch` is the cell edge: the slot thumbnails pack the cells tighter (0.8) so
-// the outline fits the card, the drag ghost uses the board's own 1.0 pitch.
-function flatPreviewPositions(cells, pitch = 0.8) {
-  const maxU = Math.max(...cells.map(([u]) => u))
-  const maxV = Math.max(...cells.map(([, v]) => v))
-  const cx = maxU / 2
-  const cy = maxV / 2
-  return cells.map(([u, v]) => new THREE.Vector3((u - cx) * pitch, (cy - v) * pitch, 0))
-}
-
-function disposePiecePreviews() {
-  piecePreviews.forEach((preview) => {
-    preview.meshes.forEach((mesh) => {
-      mesh.material.dispose()
-      mesh.children.forEach((child) => child.material?.dispose())
-    })
-    preview.renderer.dispose()
-    preview.renderer.forceContextLoss?.()
-  })
-  piecePreviews.clear()
-}
-
-function createPiecePreview(piece, canvas, slot) {
-  const previewRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' })
-  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
-  previewRenderer.outputColorSpace = THREE.SRGBColorSpace
-  previewRenderer.toneMapping = THREE.ACESFilmicToneMapping
-  previewRenderer.toneMappingExposure = style.exposure
-  previewRenderer.setClearColor(0x000000, 0)
-
-  const previewScene = new THREE.Scene()
-  addToyLights(previewScene)
-
-  const previewCamera = new THREE.OrthographicCamera(-2.5, 2.5, 2.2, -2.2, 0.1, 40)
-  previewCamera.position.set(2.5, 2.9, 5.4)
-  previewCamera.lookAt(0, 0, 0)
-  const root = new THREE.Group()
-  previewScene.add(root)
-  const positions = flatPreviewPositions(currentCells(piece))
-  const size = new THREE.Box3().setFromPoints(positions.map((p) => p.clone())).getSize(new THREE.Vector3()).addScalar(0.62)
-  const baseScale = THREE.MathUtils.clamp(3.2 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
-  root.scale.setScalar(baseScale)
-  const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
-  const meshes = positions.map((position) => {
-    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
-    mesh.scale.setScalar(0.7)
-    mesh.position.copy(position)
-    mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
-    root.add(mesh)
-    return mesh
-  })
-  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes, frameWidth: 0, frameHeight: 0 })
-}
-
-function updatePieceSlotSelection() {
-  piecePreviews.forEach((preview, piece) => {
-    preview.slot.classList.toggle('selected', selectedPiece === piece)
-    preview.slot.classList.toggle('used', piece.used)
-  })
-}
-
-function updatePiecePreviews() {
-  piecePreviews.forEach((preview) => {
-    const width = Math.max(preview.renderer.domElement.clientWidth, 1)
-    const height = Math.max(preview.renderer.domElement.clientHeight, 1)
-    if (preview.frameWidth !== width || preview.frameHeight !== height) {
-      preview.renderer.setSize(width, height, false)
-      preview.frameWidth = width
-      preview.frameHeight = height
-      // Fit the actual projected volume, including the cubes' depth. A 3×3
-      // shape's oblique projection was taller than the old fixed 3.2-unit view.
-      preview.root.updateMatrixWorld(true)
-      preview.camera.updateMatrixWorld(true)
-      const bounds = new THREE.Box3().setFromObject(preview.root).applyMatrix4(preview.camera.matrixWorldInverse)
-      const size = bounds.getSize(new THREE.Vector3())
-      const center = bounds.getCenter(new THREE.Vector3())
-      const usable = Math.max(0.5, 1 - 20 / Math.min(width, height))
-      const halfHeight = Math.max(1.6, size.y / (2 * usable), size.x * height / (2 * width * usable))
-      const halfWidth = halfHeight * width / height
-      preview.camera.left = center.x - halfWidth
-      preview.camera.right = center.x + halfWidth
-      preview.camera.top = center.y + halfHeight
-      preview.camera.bottom = center.y - halfHeight
-      preview.camera.updateProjectionMatrix()
-    }
-    preview.camera.position.set(2.5, 2.9, 5.4)
-    preview.camera.lookAt(0, 0, 0)
-    preview.renderer.render(preview.scene, preview.camera)
-  })
-}
+// The three candidate previews (refactor P4a) live in rendering/pieceView.js: each slot owns
+// its own renderer, scene and camera, and the module owns the map holding them. renderPieceSlots
+// below still builds the slot DOM and its pointer wiring -- that half moves to ui/hud only after
+// the input state it reads has moved too (P7).
 
 function renderPieceSlots() {
   disposePiecePreviews()
@@ -2855,20 +2784,7 @@ globalThis.__voxalblast = Object.freeze({
     persistent: sessionStore.persistent,
   }),
   intro: () => boardView.introReport(),
-  candidateFrames: () => [...piecePreviews.values()].map(preview => {
-    preview.root.updateMatrixWorld(true)
-    const bounds = new THREE.Box3().setFromObject(preview.root)
-    const points = []
-    for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
-      points.push(new THREE.Vector3(x, y, z).project(preview.camera))
-    }
-    return {
-      name: preview.piece.shape.name,
-      blocks: preview.meshes.length,
-      minX: Math.min(...points.map(p => p.x)), maxX: Math.max(...points.map(p => p.x)),
-      minY: Math.min(...points.map(p => p.y)), maxY: Math.max(...points.map(p => p.y)),
-    }
-  }),
+  candidateFrames: () => pieceView.candidateFrames(),
   session: () => sessionStore.read(),
   // v0.4.1: the keyboard bindings the game actually honours. The headless check reads
   // this and compares it against the keycaps printed in the controls card, so a legend
