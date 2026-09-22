@@ -57,9 +57,10 @@ export function createHud({
     bestEl.textContent = getBest().toLocaleString('en-US')
   }
 
-  // 荣誉名号. A placement that clears nothing still pops its placement score, which
-  // is the entire purpose of the 放置分 layer (§4.1): "this turn built instead of
-  // clearing" must not read as nothing happened.
+  // 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
+  // 荣誉名号 — and the point of the placement-score layer (§4.1) is that a placement
+  // clearing nothing still pops its score: "this turn built instead of clearing" must not
+  // read as nothing happened. Overlay only; nothing here is modal or eats a gesture.
   function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = false } = {}) {
     const pop = document.createElement('div')
     pop.className = quiet ? 'score-pop quiet' : 'score-pop'

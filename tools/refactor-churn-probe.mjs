@@ -569,6 +569,7 @@ try {
     let attached = false
     let attempts = 0
     let rotations = 0
+    let attachedTarget = null
     const MAX_ROTATIONS = 5
     for (; rotations <= MAX_ROTATIONS && !attached; rotations += 1) {
       for (const slot of slots) {
@@ -577,7 +578,7 @@ try {
           await input.pressAndHold(slot, target)
           await client.frames()
           live = await client.readJson('globalThis.__voxalblast.ghost()')
-          if (live.attached === true && live.mode === 'snap' && live.previewCells > 0) { attached = true; break }
+          if (live.attached === true && live.mode === 'snap' && live.previewCells > 0) { attached = true; attachedTarget = target; break }
           await input.up(target.x, target.y)
           await sleep(70)
         }
@@ -590,12 +591,15 @@ try {
       await sleep(450)
     }
     if (attached) {
-      // Release on the cell the preview showed, so this also completes a real placement.
-      const placed = await client.readJson('globalThis.__voxalblast.ghost()')
-      await input.up(midX, midY)
+      // Release where the preview actually attached, not at the cube centre: this is the
+      // cell the board is drawing the piece on, so letting go here completes a real
+      // placement as well as proving the drag still attaches. (The earlier version of this
+      // check released at (midX, midY) while the comment and the commit message claimed
+      // otherwise — caught by an independent verifier, fixed here.)
+      await input.up(attachedTarget.x, attachedTarget.y)
       await sleep(300)
       check('E a real drag still attaches after the churn', true,
-        `mode=snap marker=${placed.previewCells} after ${attempts} attempt(s), ${rotations} rotation(s)`)
+        `mode=snap marker=${live.previewCells} after ${attempts} attempt(s), ${rotations} rotation(s)`)
     } else {
       skip('E a real drag still attaches after the churn',
         `no unused candidate had room on any of the 6 faces after ${attempts} attempt(s) (last mode=${live?.mode ?? 'none'})`)

@@ -1443,7 +1443,6 @@ function playHaptic(pattern = 15) {
   if (settingsUi.getHapticsOn() && navigator.vibrate) navigator.vibrate(pattern)
 }
 
-// 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
 // ============================================================
 // Items (front-face based)
 // ============================================================
