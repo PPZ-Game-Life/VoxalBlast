@@ -261,14 +261,20 @@ const cubeSide = SH * cs // 5
 const cubeGroup = new THREE.Group()
 scene.add(cubeGroup)
 
-// The cube's coordinate system — per-face normals/in-plane axes, lattice cell -> local ->
-// world — lives in rendering/boardView.js (refactor P3a). Bound back to the names this file
-// has always used, so every conversion below is unchanged. The pitch and half-side stay
-// main's own constants via `metrics()`: the plan forbids boardView holding a second copy of
-// the lattice mapping. The group is read through a getter because it rotates.
+// The cube's coordinate system and its pose model both live in rendering/boardView.js
+// (refactor P3a/P3b). Bound back to the names this file has always used, so every conversion
+// and every pose call below is unchanged. The pitch and half-side stay main's own constants
+// via `metrics()`: the plan forbids boardView holding a second copy of the lattice mapping.
+// The group and the camera are read live — the cube rotates, so a cached matrix would freeze
+// the front-face test to the pose it was first drawn at.
 const boardView = createBoardView({
   metrics: () => ({ cs, half }),
   getCubeGroup: () => cubeGroup,
+  camera,
+  // A reset can land in the middle of a pointer gesture. The gesture record is main's
+  // pointer state (gameInput, P7), so boardView asks for the drop through this callback
+  // rather than reaching into it.
+  onRotationReset: () => { viewDrag = null },
 })
 const {
   FACE_PLANE,
@@ -277,6 +283,27 @@ const {
   cellLocal,
   cellWorld,
   facePlaneLocalCenter,
+  // Pose model (P3b). The three const objects are owned by boardView and mutated in place,
+  // so binding them back to these names leaves every call site in this file untouched. The
+  // module's two `let`s (the bearing and the live gesture) are NOT handed out this way: a
+  // destructured copy would go stale the moment they are reassigned, so they go through
+  // boardView.getBearing() / setBearing() / getLive() / setLive() instead.
+  ROT_STEP,
+  cubeBase,
+  cubeQuat,
+  cubeSnapAnim,
+  bearingQuat,
+  applyCubeRotation,
+  beginAxisGesture,
+  setLiveAngle,
+  startCubeSnap,
+  settleCubeSnap,
+  updateCubeSnap,
+  resetCubeRotation,
+  findFrontFace,
+  faceOrientedCells,
+  // The opening wave (still in main until P3c) eases with the same curve. One definition.
+  easeOutCubic,
 } = boardView
 
 // Opaque timber body. The shell is only a BACKING: it occludes the far faces and
@@ -395,299 +422,6 @@ scene.add(camera) // the ghost rides the camera, so the camera joins the graph
 // Reused per drag so tinting an invalid drop never reallocates a Color.
 const dragGhostInvalid = new THREE.Color(palette.invalid)
 const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
-
-// ---- Cube pose model (v0.8.8: logical pose + a player-tunable bearing) -------
-// The three gesture axes are FIXED to the screen/world and never follow the
-// cube: yaw is always world Y, pitch always world X, roll always world Z. Each
-// gesture is applied to whatever pose the cube currently has, i.e. "settle
-// first, then turn the cube about the axis the finger drove".
-//
-// v0.2.25/26 stored three Euler components (pitch/yaw/roll) and wrote one of
-// them per gesture. That made a gesture's REAL axis depend on the other two
-// angles: once the cube was yawed 90°, Rz·Ry·Rx turned a vertical swipe into a
-// spin about world Z (an in-plane roll) instead of the screen-horizontal flip,
-// which reads exactly as "the X/Y axes rotated along with the cube".
-//
-// The pose is two things with one owner each:
-//
-//   cubeBase   the LOGICAL pose — a product of whole 90° steps about world axes,
-//              so it is always face-aligned and can never drift.
-//   bearing    how far off the face the player has dialled the view, in SCREEN
-//              space (world Y rotation then world X rotation), plus the live
-//              gesture's own rotation while a finger is down.
-//
-//   rendered = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ cubeBase
-//            = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ R_axis(live) ∘ cubeBase
-//
-// Only the logical half is ever read back by gameplay: face detection, the step
-// decision and the saved pose all use cubeBase, and a new gesture always starts
-// from cubeBase with the bearing outside it, so the bearing can never accumulate
-// into the geometry.
-//
-// THE BEARING IS THE PLAYER'S, NOT A CONSTANT (v0.8.8). Until v0.8.7 it was a
-// fixed tilt that every gesture settled back onto, so every turn ended on exactly
-// the same angle no matter how the player had dragged — reported as "每次转完，
-// 都是到达同一个角度". Now a release that does NOT commit a face keeps whatever
-// offset the drag left behind, and that offset is remembered across face turns:
-// the cube returns to the bearing the player dialled, on the new face. See
-// planAxisRelease() for the band that separates "fine-tune" from "next face".
-const ROT_STEP = Math.PI / 2
-const AXIS_OF = {
-  yaw: new THREE.Vector3(0, 1, 0),
-  pitch: new THREE.Vector3(1, 0, 0),
-  roll: new THREE.Vector3(0, 0, 1),
-}
-const cubeBase = new THREE.Quaternion() // face-aligned grid pose (the logical pose)
-const cubeQuat = new THREE.Quaternion() // pose actually rendered
-// The player's view bearing. Starts at the shipped default and is dialled by
-// sub-threshold drags; `roll` has no bearing (Z is the straighten gesture, and a
-// residual spin would show up as a skewed grid).
-let bearingYaw = rotateStyle.bearingYaw
-let bearingPitch = rotateStyle.bearingPitch
-let cubeLive = null // the gesture in flight, see beginAxisGesture()
-const cubeSnapAnim = {
-  active: false,
-  from: new THREE.Quaternion(),
-  to: new THREE.Quaternion(),
-  t: 0,
-  duration: rotateStyle.snapDuration,
-}
-const scratchQuat = new THREE.Quaternion()
-const scratchLogical = new THREE.Quaternion()
-// v0.2.30 dropped the pitch pole limit (and its `pitchReach` bookkeeping). It was
-// the fixed-axis restatement of v0.2.25's Euler "clamp pitch to ±90°", but in the
-// quaternion model there is nothing to protect: pitching past a pole is an
-// ordinary quarter turn that brings the back face round, exactly like yaw. What
-// the limit DID do was refuse a step after the drag had already rendered it — the
-// player turned the cube a full face with their finger and watched the release
-// undo all of it (probe: drag 105.5° -> bounce 89.5°, and every repeat in that
-// direction stayed dead). No axis can now be entered into a dead direction.
-
-// Quarter turn about one FIXED world axis. `steps` is in 90° units.
-function stepQuaternion(axis, steps) {
-  return new THREE.Quaternion().setFromAxisAngle(AXIS_OF[axis], steps * ROT_STEP)
-}
-
-// How the bearing is composed, and the one ordering rule that matters:
-// PITCH FIRST, YAW LAST, i.e. `Rx(bearingPitch) · Ry(bearingYaw)`.
-//
-// A rotation about world Y cannot move the world-Y direction, and the world-Y
-// direction IS the cube's vertical edge; composing in this order therefore leaves
-// the cube plumb for EVERY bearing, which is what lets the player dial an angle
-// at all without the board starting to lean. The reverse order does not: v0.8.6
-// wrote `Ry(yaw) · Rx(pitch)` with a 17.5°/15.5° tilt and leaned the whole board
-// −4.8° on screen, reported as "视觉上还比较歪". Keep this order.
-const bearingScratch = new THREE.Quaternion()
-function bearingQuat(yaw, pitch, out = scratchLogical) {
-  return out.copy(scratchQuat.setFromAxisAngle(AXIS_OF.pitch, pitch))
-    .multiply(bearingScratch.setFromAxisAngle(AXIS_OF.yaw, yaw))
-    .normalize()
-}
-
-function applyCubeRotation() {
-  cubeGroup.quaternion.copy(cubeQuat)
-  cubeGroup.updateMatrixWorld(true)
-}
-
-// Start a gesture on one axis. The live rotation starts at 0, so the pose at
-// pointerdown is exactly the resting pose and the first moved pixel is already
-// part of the gesture's own delta — the bearing never becomes the next gesture's
-// starting angle.
-function beginAxisGesture(axis) {
-  cubeLive = { axis, angle: 0, rendered: 0, base: cubeBase.clone(), yaw: bearingYaw, pitch: bearingPitch }
-  setLiveAngle(0)
-}
-
-// Pose while the finger is down. A yaw or pitch drag moves THE BEARING itself
-// rather than composing a second rotation on top of it, which is what makes the
-// release continuous: the pose at the moment of release is already the pose the
-// fine-tune keeps, so a nudge that does not commit a face simply stays where the
-// finger left it (no spring-back, no second animation).
-function setLiveAngle(angle) {
-  const clamped = THREE.MathUtils.clamp(angle, -ROT_STEP, ROT_STEP)
-  cubeLive.angle = clamped
-  cubeLive.rendered = clamped
-  let yaw = cubeLive.yaw
-  let pitch = cubeLive.pitch
-  if (cubeLive.axis === 'yaw') yaw += clamped
-  else if (cubeLive.axis === 'pitch') pitch += clamped
-  bearingQuat(yaw, pitch)
-  if (cubeLive.axis === 'roll') {
-    // The spin is the one gesture that is NOT a bearing: it turns the cube on the
-    // face and springs back to the exact grid, because a residual in-plane spin is
-    // exactly the "残余小角度" the layout must not have.
-    scratchQuat.setFromAxisAngle(AXIS_OF.roll, clamped).premultiply(scratchLogical)
-    cubeQuat.copy(scratchQuat).multiply(cubeLive.base).normalize()
-  } else {
-    cubeQuat.copy(scratchLogical).multiply(cubeLive.base).normalize()
-  }
-  applyCubeRotation()
-}
-
-// What a release commits. `bearing` is where the gesture's axis would end up if the
-// offset were kept; a fine-tune is kept only while it stays inside the band, so
-// "more than about a third of a face off the face" is the same decision for a drag
-// and for a bearing the player has already dialled. Past it the gesture turns exactly
-// ONE face in the drag direction (never "the nearest face"), the offset is dropped,
-// and the bearing the player dialled is restored — i.e. the cube turns to the tuned
-// bearing on the next face.
-//
-// The kept value is then clamped into `ROTATE_STYLE.bearingBand[axis]`, which is
-// ASYMMETRIC and much tighter on the frontal side. That clamp is what stops a player
-// from dialling the cube into a flat plate — measured 100% main / 0% / 0% at
-// yaw +25°/pitch −25° — and, worse, having it STICK there, because a bearing is
-// remembered across face turns and saved with the run. Hitting the clamp just means
-// the cube stops turning further in that direction; there is nothing else it may
-// safely do (§KNOWN_GAPS).
-//
-// `roll` never keeps an offset at all, so it always steps or springs back on the grid.
-function planAxisRelease(axis, startBearing, angle) {
-  if (axis === 'roll') {
-    const stepped = Math.abs(angle) >= rotateStyle.stepThreshold ? Math.sign(angle) : 0
-    return { fineTune: false, stepped, bearing: startBearing }
-  }
-  const live = startBearing + angle
-  if (Math.abs(live) <= rotateStyle.stepThreshold) {
-    const band = rotateStyle.bearingBand[axis]
-    return { fineTune: true, stepped: 0, bearing: THREE.MathUtils.clamp(live, band.min, band.max) }
-  }
-  return { fineTune: false, stepped: Math.sign(angle), bearing: startBearing }
-}
-
-function easeOutCubic(p) {
-  return 1 - (1 - p) ** 3
-}
-
-function startCubeSnap(gesture) {
-  const startBearing = gesture.axis === 'pitch' ? gesture.pitch : gesture.yaw
-  const plan = planAxisRelease(gesture.axis, startBearing, gesture.angle)
-  cubeSnapAnim.from.copy(cubeQuat)
-  if (plan.stepped !== 0) {
-    cubeBase.copy(gesture.base).premultiply(stepQuaternion(gesture.axis, plan.stepped)).normalize()
-  } else if (gesture.axis === 'yaw') bearingYaw = plan.bearing
-  else if (gesture.axis === 'pitch') bearingPitch = plan.bearing
-  cubeSnapAnim.to.copy(bearingQuat(bearingYaw, bearingPitch)).multiply(cubeBase).normalize()
-  cubeSnapAnim.active = true
-  cubeSnapAnim.t = 0
-  cubeSnapAnim.duration = rotateStyle.snapDuration
-  cubeLive = null
-  if (plan.fineTune) {
-    // Nothing to animate: the pose the finger left is the pose that is kept. Land
-    // it bit-exactly rather than running a zero-distance settle.
-    cubeQuat.copy(cubeSnapAnim.to)
-    cubeSnapAnim.active = false
-    applyCubeRotation()
-    return
-  }
-  updateCubeSnap(0) // render frame 0 now, so the first frame after release does not jump
-}
-
-// A new gesture must start from a stable pose: settle any running animation
-// instantly, otherwise the drag would be writing over an animation in flight.
-function settleCubeSnap() {
-  if (!cubeSnapAnim.active) return
-  cubeSnapAnim.active = false
-  cubeQuat.copy(cubeSnapAnim.to)
-  applyCubeRotation()
-}
-
-// Return to the face-aligned start pose and the shipped bearing (Reset Game).
-function resetCubeRotation() {
-  cubeSnapAnim.active = false
-  cubeLive = null
-  // A reset can land in the middle of a gesture; drop it so the pointerup that
-  // may never come cannot leave rotation permanently blocked.
-  viewDrag = null
-  cubeBase.identity()
-  bearingYaw = rotateStyle.bearingYaw
-  bearingPitch = rotateStyle.bearingPitch
-  cubeQuat.copy(bearingQuat(bearingYaw, bearingPitch))
-  applyCubeRotation()
-}
-
-// Settle animation: a slerp from where the finger left the pose to the target
-// pose, on the bearing the release decided. easeOutCubic, no overshoot — a spring
-// past the face and a second wobble after it were both explicitly rejected. The
-// target is reached bit-exactly, so every committed turn lands on the 90° grid.
-function updateCubeSnap(delta) {
-  if (!cubeSnapAnim.active) return
-  cubeSnapAnim.t += delta
-  const p = THREE.MathUtils.clamp(cubeSnapAnim.t / cubeSnapAnim.duration, 0, 1)
-  cubeQuat.copy(cubeSnapAnim.from).slerp(cubeSnapAnim.to, easeOutCubic(p)).normalize()
-  applyCubeRotation()
-  if (p >= 1) {
-    cubeQuat.copy(cubeSnapAnim.to)
-    cubeSnapAnim.active = false
-    applyCubeRotation()
-  }
-}
-
-// ---- Candidate orientation on the front face (v0.2.28) ----------------------
-// Front face = the one whose outward normal (rotated into world) points most
-// toward the camera. Read off the RENDERED pose, which is what the raycast and
-// the player's eye both use; the presentation tilt is far under 45°, so it can
-// never change which face wins.
-const frontProbe = new THREE.Vector3()
-const toCameraProbe = new THREE.Vector3()
-function frontFaceOf(quat) {
-  const toCamera = toCameraProbe.copy(camera.position).sub(cubeGroup.position).normalize()
-  let best = '+z'
-  let bestDot = -Infinity
-  for (const face of FACES) {
-    frontProbe.set(...FACE_PLANE[face].n).applyQuaternion(quat)
-    const dot = frontProbe.dot(toCamera)
-    if (dot > bestDot) { bestDot = dot; best = face }
-  }
-  return best
-}
-function findFrontFace() {
-  return frontFaceOf(cubeGroup.quaternion)
-}
-
-// Shape data and the flat slot both use a top-left origin: piece +u points
-// screen-right and piece +v points screen-down. A face's own (u, v) lattice axes
-// turn WITH the cube, so placing raw cells would spin or flip the piece whenever
-// the cube turns. Re-express both source axes in the front face's current
-// screen-right / screen-down basis so the drop preserves the exact silhouette
-// shown in the slot, including asymmetric L/J/S/Z pieces.
-const screenRightLocal = new THREE.Vector3()
-const screenDownLocal = new THREE.Vector3()
-const cubeInverseQuat = new THREE.Quaternion()
-
-function updateScreenAxesLocal() {
-  camera.updateMatrixWorld()
-  cubeGroup.updateMatrixWorld()
-  // The placement preview lives in the cube's local frame, so express the
-  // camera's right/down directions there. Camera matrix column 1 is screen-up.
-  cubeInverseQuat.copy(cubeGroup.quaternion).invert()
-  screenRightLocal.setFromMatrixColumn(camera.matrixWorld, 0).applyQuaternion(cubeInverseQuat)
-  screenDownLocal.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(-1).applyQuaternion(cubeInverseQuat)
-}
-
-// The front face's residual tilt is far under 45°, so each projected screen
-// direction resolves to exactly one signed lattice axis. Mapping source +u and
-// +v independently is intentional: the face lattice conventions do not all
-// share the slot's top-left handedness, while the on-screen silhouette must.
-function faceOrientedCells(face, cells) {
-  updateScreenAxesLocal()
-  const normal = cubeVector(face, 'n')
-  const right = screenRightLocal.clone().addScaledVector(normal, -screenRightLocal.dot(normal)).normalize()
-  const down = screenDownLocal.clone().addScaledVector(normal, -screenDownLocal.dot(normal)).normalize()
-  const uAxis = cubeVector(face, 'u')
-  const vAxis = cubeVector(face, 'v')
-  const uRight = uAxis.dot(right)
-  const vRight = vAxis.dot(right)
-  const across = Math.abs(uRight) >= Math.abs(vRight)
-    ? { u: uRight >= 0 ? 1 : -1, v: 0 }
-    : { u: 0, v: vRight >= 0 ? 1 : -1 }
-  const along = across.u !== 0
-    ? { u: 0, v: vAxis.dot(down) >= 0 ? 1 : -1 }
-    : { u: uAxis.dot(down) >= 0 ? 1 : -1, v: 0 }
-  return normalizeCells(cells.map(([u, v]) => [
-    u * across.u + v * along.u,
-    u * across.v + v * along.v,
-  ]))
-}
 
 // ============================================================
 // Materials / helpers
@@ -1337,12 +1071,15 @@ function rotateCubeByKey(axis, direction) {
   // A turn still in flight is settled instantly rather than queued: fast repeated
   // presses stay with the fingers instead of lagging behind a backlog.
   if (cubeSnapAnim.active) settleCubeSnap()
-  if (cubeLive) return false // a drag owns the pose right now
+  if (boardView.getLive()) return false // a drag owns the pose right now
   beginAxisGesture(axis)
   const knob = axis === 'yaw' ? rotateStyle.yawDirection
     : axis === 'pitch' ? rotateStyle.pitchDirection : rotateStyle.rollDirection
-  cubeLive.angle = direction * knob * ROT_STEP
-  startCubeSnap(cubeLive)
+  // The live gesture is handed back as the module's OWN record on purpose: this path writes
+  // `angle` onto it WITHOUT rendering it, then passes that same object to startCubeSnap().
+  const gesture = boardView.getLive()
+  gesture.angle = direction * knob * ROT_STEP
+  startCubeSnap(gesture)
   return true
 }
 
@@ -2477,8 +2214,8 @@ function sessionSnapshot() {
       // Old saves carrying `quat`/`yaw`/`pitch` still load: `base` was the only
       // load-bearing field they had.
       base: cubeBase.toArray(),
-      bearingYaw,
-      bearingPitch,
+      bearingYaw: boardView.getBearing().yaw,
+      bearingPitch: boardView.getBearing().pitch,
     },
   }
 }
@@ -2652,16 +2389,19 @@ function applySession(saved) {
   // game would never have allowed. An unreadable pose starts face-aligned.
   if (saved.pose?.base) {
     cubeSnapAnim.active = false
-    cubeLive = null
+    boardView.setLive(null)
     viewDrag = null
     cubeBase.fromArray(saved.pose.base).normalize()
     const bandYaw = rotateStyle.bearingBand.yaw
     const bandPitch = rotateStyle.bearingBand.pitch
-    bearingYaw = Number.isFinite(saved.pose.bearingYaw)
+    // Resolve both bearing components first, then hand them to the module in one call. The
+    // clamp, the defaults and the write-then-applyCubeRotation() order are exactly as before.
+    const restoredYaw = Number.isFinite(saved.pose.bearingYaw)
       ? THREE.MathUtils.clamp(saved.pose.bearingYaw, bandYaw.min, bandYaw.max) : rotateStyle.bearingYaw
-    bearingPitch = Number.isFinite(saved.pose.bearingPitch)
+    const restoredPitch = Number.isFinite(saved.pose.bearingPitch)
       ? THREE.MathUtils.clamp(saved.pose.bearingPitch, bandPitch.min, bandPitch.max) : rotateStyle.bearingPitch
-    cubeQuat.copy(bearingQuat(bearingYaw, bearingPitch)).multiply(cubeBase).normalize()
+    boardView.setBearing(restoredYaw, restoredPitch)
+    cubeQuat.copy(bearingQuat(restoredYaw, restoredPitch)).multiply(cubeBase).normalize()
     applyCubeRotation()
   } else {
     resetCubeRotation()
@@ -2792,7 +2532,8 @@ function finishViewDrag(event) {
   viewDrag = null
   releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
   // No axis was claimed (a tap, or a drag that never committed): the pose never moved.
-  if (cubeLive) startCubeSnap(cubeLive)
+  const live = boardView.getLive()
+  if (live) startCubeSnap(live)
 }
 
 // A view gesture can outlive its pointer: the page goes hidden, a native gesture
@@ -2803,9 +2544,10 @@ function finishViewDrag(event) {
 // turn, it feels locked"). Every path that can lose a pointer ends the gesture
 // here and settles the halfway pose it left behind.
 function cancelViewDrag() {
-  if (!viewDrag && !cubeLive) return
+  const live = boardView.getLive()
+  if (!viewDrag && !live) return
   viewDrag = null
-  if (cubeLive) startCubeSnap(cubeLive)
+  if (live) startCubeSnap(live)
 }
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
@@ -3115,7 +2857,11 @@ globalThis.__voxalblast = Object.freeze({
   rotation: () => {
     const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
     const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
-    const bearingEuler = new THREE.Euler().setFromQuaternion(bearingQuat(bearingYaw, bearingPitch), 'ZYX')
+    // Read the two module-owned `let`s once, through their accessors. getBearing() hands
+    // back a copy, so the read-out can never alias the module's own state.
+    const bearing = boardView.getBearing()
+    const live = boardView.getLive()
+    const bearingEuler = new THREE.Euler().setFromQuaternion(bearingQuat(bearing.yaw, bearing.pitch), 'ZYX')
     return {
       yaw: poseEuler.y,
       pitch: poseEuler.x,
@@ -3125,16 +2871,16 @@ globalThis.__voxalblast = Object.freeze({
       baseRoll: baseEuler.z,
       tiltYaw: bearingEuler.y,
       tiltPitch: bearingEuler.x,
-      bearing: { yaw: bearingYaw, pitch: bearingPitch },
+      bearing: { yaw: bearing.yaw, pitch: bearing.pitch },
       bearingDeg: {
-        yaw: Number(THREE.MathUtils.radToDeg(bearingYaw).toFixed(2)),
-        pitch: Number(THREE.MathUtils.radToDeg(bearingPitch).toFixed(2)),
+        yaw: Number(THREE.MathUtils.radToDeg(bearing.yaw).toFixed(2)),
+        pitch: Number(THREE.MathUtils.radToDeg(bearing.pitch).toFixed(2)),
       },
       pose: cubeQuat.toArray(),
       base: cubeBase.toArray(),
       front: findFrontFace(),
       settling: cubeSnapAnim.active,
-      live: cubeLive ? { axis: cubeLive.axis, angle: cubeLive.angle, rendered: cubeLive.rendered } : null,
+      live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered } : null,
     }
   },
   // v0.8.6 framing read-out: how the cube's screen silhouette is divided between
@@ -3224,7 +2970,8 @@ globalThis.__voxalblast = Object.freeze({
     // upside-down face and 90° for one that arrived by a roll, neither of which is a
     // lean. The only thing that can make the board LOOK tilted is a bearing
     // component that moves world Y sideways, and a yaw-last composition cannot.
-    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(bearingQuat(bearingYaw, bearingPitch))
+    const tiltBearing = boardView.getBearing()
+    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(bearingQuat(tiltBearing.yaw, tiltBearing.pitch))
     const uprightDeg = Number(THREE.MathUtils.radToDeg(Math.atan2(-tiltUp.x, Math.abs(tiltUp.y))).toFixed(3))
     const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
     const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)
