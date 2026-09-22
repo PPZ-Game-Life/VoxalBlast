@@ -52,25 +52,25 @@ export const BOARD_STYLE = Object.freeze({
   blockSize: 0.94, // narrow joints, with readable rounded shoulders
   blockRadius: 0.085, // broad polished shoulder, with 82% of the face still flat
   blockSegments: 3,
-  blockColor: 0xe4a16d,
-  blockActiveColor: 0xe7a773,
+  blockColor: 0xff9c66,
+  blockActiveColor: 0xffa16c,
   // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
   blockToneSteps: Object.freeze([0.94, 0.97, 1, 1.02, 1.04, 1.06]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.46,
-  woodClearcoat: 0.38,
-  woodClearcoatRoughness: 0.3,
-  woodBumpScale: 0.022,
-  paintBumpScale: 0.011,
+  woodRoughness: 0.43,
+  woodClearcoat: 0.65,
+  woodClearcoatRoughness: 0.18,
+  woodBumpScale: 0.009,
+  paintBumpScale: 0.005,
   environmentIntensity: 0.7,
   // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.31,
-  paintClearcoat: 0.85,
-  paintClearcoatRoughness: 0.17,
+  paintRoughness: 0.3,
+  paintClearcoat: 1,
+  paintClearcoatRoughness: 0.12,
   voxelEdgeOpacity: 0.12,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
@@ -143,8 +143,9 @@ export const LIGHTING_STYLE = Object.freeze({
   shadowNormalBias: 0.012,
   environmentWidth: 256,
   environmentHeight: 128,
-  reflectionKeyIntensity: 12,
-  reflectionKeyFocus: 48,
+  reflectionKeyIntensity: 14,
+  reflectionKeyWidth: 0.48,
+  reflectionKeyHeight: 0.16,
   reflectionRimIntensity: 4,
   reflectionRimFocus: 32,
 })

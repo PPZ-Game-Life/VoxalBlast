@@ -19,6 +19,8 @@ function toyEnvironment() {
   const data = new Uint16Array(width * height * 4)
   const direction = new THREE.Vector3()
   const key = new THREE.Vector3(...light.keyPosition).normalize()
+  const keyRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), key).normalize()
+  const keyUp = new THREE.Vector3().crossVectors(key, keyRight).normalize()
   const rim = new THREE.Vector3(...light.rimPosition).normalize()
   for (let y = 0; y < height; y += 1) {
     // DataTexture rows start at v=0: inverse of Three's equirectUv().
@@ -27,7 +29,13 @@ function toyEnvironment() {
       const phi = ((x + 0.5) / width - 0.5) * Math.PI * 2
       direction.set(Math.sin(theta) * Math.cos(phi), Math.cos(theta), Math.sin(theta) * Math.sin(phi))
       const sky = Math.max(0, direction.y)
-      const softbox = light.reflectionKeyIntensity * Math.pow(Math.max(0, direction.dot(key)), light.reflectionKeyFocus)
+      // A soft rectangular sky opening gives varnish a broad ribbon reflection
+      // across rounded shoulders, instead of the old point-like Gaussian spot.
+      const facing = direction.dot(key)
+      const softbox = facing > 0 ? light.reflectionKeyIntensity * Math.exp(
+        -Math.pow(direction.dot(keyRight) / (facing * light.reflectionKeyWidth), 4)
+        -Math.pow(direction.dot(keyUp) / (facing * light.reflectionKeyHeight), 4),
+      ) : 0
       const rimbox = light.reflectionRimIntensity * Math.pow(Math.max(0, direction.dot(rim)), light.reflectionRimFocus)
       const offset = (y * width + x) * 4
       const rgb = [

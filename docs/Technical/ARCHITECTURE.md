@@ -1,6 +1,6 @@
 # 技术结构与开发入口
 
-> 渲染章节同步至 v0.8.5 / 2026-09-17，依据仓库文件核对；非运行性能报告。
+> 渲染章节同步至 v0.8.20 / 2026-09-22，依据仓库文件核对；非运行性能报告。
 
 ## 模块地图
 
@@ -15,9 +15,9 @@
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光与程序化线性 HDR 环境纹理 |
-| src/rendering/woodTexture.js | 原木 / 彩漆各三组确定性域扭曲云纹，独立 `map`、`bumpMap`、`roughnessMap`；UI 另用固定种子的 CSS 木纹 data URL |
+| src/rendering/woodTexture.js | AI 中性笔触底图生成原木 / 彩漆三组表面变体，独立色彩/高度/粗糙度；异步加载、程序兜底；UI 独立 CSS 木纹 |
 | src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
-| public/art/ | 背景 WebP 与来源、提示词、尺寸说明 |
+| public/art/ | 背景与方块色素 WebP，以及来源、提示词、尺寸说明 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射 |
 | src/rendering/threeCompat.js | three.quarks / postprocessing 与 Three.js 的兼容桥，须先于粒子导入 |
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
@@ -30,9 +30,9 @@ Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采
 
 棋盘逻辑保持 5×5×5 外壳的 98 个唯一格，六面合计 150 个表面格。`buildFaceTiles()` 按晶格坐标去重，只创建 98 个 mesh；棱/角 mesh 的 `userData.faces` 同时记录相邻两面/三面，Three.js 场景树仍只有一个父 group。当前面提亮检查这一归属列表，放置按 cell 换材质，不再在每面叠放同一实体。棋盘、候选与拖拽共用 `RoundedBoxGeometry(0.94, 0.94, 0.94, 3, 0.085)`；`hullInset = 0.68` 指背板总边长减少量，背板为 4.32³，单侧缩进 0.34，不能当作单侧 0.68 使用。
 
-`blockSurfaceMaps(painted, variant)` 为原木和彩漆各缓存三组 256×256 域扭曲云纹，将色彩、高度、粗糙度分开生成；`map` 为 sRGB，`bumpMap` 与 `roughnessMap` 保持数据色彩空间。纹理不烘焙方向光。原木基色/当前面基色为 `#E4A16D / #E7A773`，另按晶格坐标取确定性色调和变体。方块均用 `MeshPhysicalMaterial`：原木的 `roughness / clearcoat / clearcoatRoughness / bumpScale` 为 `0.46 / 0.38 / 0.3 / 0.022`，彩漆为 `0.31 / 0.85 / 0.17 / 0.011`；粗糙度图调制基础 roughness。背板和 UI 保留各自的纹理入口。
+`blockSurfaceMaps(painted, variant)` 为原木和彩漆各缓存三组 256×256 表面。`public/art/block-pigment.webp`（768×768，26,764 bytes）异步加载，按固定裁切/旋转取三组笔触，去除原图色偏和平均亮度后调制原木/彩漆；不烘焙方向光。`map` 为 sRGB，`bumpMap` 与 `roughnessMap` 为数据图；后者同时作为 `clearcoatRoughnessMap`。加载前/失败时保留程序纹理，成功后更新原 CanvasTexture 并重绘已有的主页场景，不重建 mesh。原木基色/当前面基色为 `#FF9C66 / #FFA16C`，按晶格坐标取确定性色调和变体。`MeshPhysicalMaterial` 的 `roughness / clearcoat / clearcoatRoughness / bumpScale`：原木 `0.43 / 0.65 / 0.18 / 0.009`，彩漆 `0.3 / 1 / 0.12 / 0.005`。背板和 UI 保留独立纹理入口。只读 `__voxalblast.rendering().surfaceArt` 返回 `loading / ready / fallback`，用于截图验收。
 
-`toyLights.js` 生成共享的 256×128 HalfFloat 线性 HDR 等距柱状环境纹理，由各 WebGLRenderer 的 PMREM 分别处理，不跨 WebGL context 复用 GPU render target。`environmentIntensity = 0.7`；主反射光箱强度/集中指数为 `12 / 48`，轮廓反射光箱为 `4 / 32`，方向与各自直接光一致。主 renderer 使用 `NoToneMapping`，composer 使用 HalfFloat 缓冲，并在最终效果链执行一次 `ACES_FILMIC`；候选与主页直接使用 renderer 的 `ACESFilmicToneMapping`，曝光统一取 `BOARD_STYLE.exposure = 1`。
+`toyLights.js` 生成共享的 256×128 HalfFloat 线性 HDR 等距柱状环境纹理，由各 WebGLRenderer 的 PMREM 分别处理，不跨 WebGL context 复用 GPU render target。`environmentIntensity = 0.7`；主反射光箱为软矩形，强度 14，切平面宽/高参数 `0.48 / 0.16`，轮廓反射光箱强度/集中指数为 `4 / 32`，方向与各自直接光一致。主 renderer 使用 `NoToneMapping`，composer 使用 HalfFloat 缓冲，并在最终效果链执行一次 `ACES_FILMIC`；候选与主页直接使用 renderer 的 `ACESFilmicToneMapping`，曝光统一取 `BOARD_STYLE.exposure = 1`。
 
 主画布 pass 顺序为 `RenderPass → NormalPass → EffectPass(SSAO) → EffectPass(Bloom, ACES, SMAA)`。`NormalPass.renderTarget` 自持一个独立 `DepthTexture`（`UnsignedIntType`），先绘制本帧法线与深度，再由 `occlusionPass.setDepthTexture(contactDepth)` 提供给 AO；这是真实场景深度，不是占位纹理，也不需要 composer 的 stable-depth blit。AO 为暖褐 `#60422E`，主要参数 `radius 0.075 / intensity 1.65 / bias 0.012 / fade 0.018`，世界接近阈值/衰减 `0.35 / 0.45`，亮度影响 0.15。桌面采样/圈数/分辨率比例 `16 / 3 / 0.75`，移动或低性能档 `11 / 3 / 0.5`；采样数不取圈数的整倍数。主 composer 保留桌面 4× MSAA，低性能档为 0。
 
@@ -43,6 +43,8 @@ Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采
 
 三个候选各有透明 WebGLRenderer 与正交相机，主页另有静态按需渲染器。主页打开时主动画循环跳过场景绘制。质量档位初始化时选择，像素比/后处理/粒子与阴影作相应降级；不宣称已有运行时 FPS 自适应。
 
+v0.8.20：主页 `.home-open` 令局内 `.topbar/.game-layout` 不可见且 `inert`，保留布局尺寸与相机状态，离开主页时恢复；主页独立 hero 与田园层照常显示。候选预览创建/尺寸变化时用实体包围盒的相机空间范围适配正交视野，宽高两轴保留约 10px 留白，最小半高 1.6；只读 `candidateFrames()` 返回各形状完整包围盒的 NDC 范围，截图检查相机裁切和 DOM 裁切。按钮用 CSS 多层木框/凹面和 SVG 渐变雕刻图标；渐变 ID 每个入口唯一。
+
 背景从 `${import.meta.env.BASE_URL}art/pastoral-valley.webp` 加载，使用 `object-fit: cover` 中心裁切；成功后才隐藏原 SVG，失败时移除图片并保留 SVG。背景为 `aria-hidden`、不接收指针的独立 DOM 层，天空底色留在 `html`、`body` 透明。资产为随构建发布的本地 WebP，不依赖在线生图服务；尺寸和来源见 [资产说明](../../public/art/README.md)。
 
 主画布由 ResizeObserver 追踪容器尺寸。resize 先更新 renderer 尺寸及相机 FOV/aspect/投影、重新取景，再调用 `composer.setSize()`，保证 SSAO 缓存的是新投影矩阵及其逆矩阵。NormalPass 的 render target 随 composer 调整尺寸，Three.js 在绑定时同步其独立深度纹理尺寸，无需替换 `contactDepth`。棋盘姿态采用四元数基准与展示偏摆；鼠标/触摸的面坐标通过投影换算，不从屏幕像素直接改规则格子。
@@ -51,6 +53,8 @@ Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采
 
 - voxalblast.records.v1：已结束局纪录、周最佳和最近十局。
 - voxalblast.session.v1：棋盘、分数、三候选、道具、局内荣誉/链和姿态。
+
+v0.8.19：`session.migrate()` 将历史棋盘 RGB 按原形状身份映射到现行 `SHAPES` 配色（涵盖 v0.7 前十色与 v0.8.17 前四个暖色）。不改变存档结构/键名和版本，不改棋盘占用或进度；读写均迁移且幂等，未知及现行颜色原样保留。恢复测试 fixture 为 `tools/fixtures/legacy-palette-session.json`，截图时设置 `SHOT_SESSION` 指向该文件、`SHOT_ONLY=desktop-board,mobile-board`；注入仅发生于截图工具的隔离浏览器。v0.8.19 的 278 项规则检查、生产构建、桌面/手机旧局恢复截图均通过。
 - voxalblast-sound / voxalblast-haptics：独立声音/触感偏好。
 
 records/session 有数据校验及存储失败后的内存降级；偏好的直接 localStorage 读取不在这一降级封装内，限制见 [待办](KNOWN_GAPS.md)。存档不等于云存档。

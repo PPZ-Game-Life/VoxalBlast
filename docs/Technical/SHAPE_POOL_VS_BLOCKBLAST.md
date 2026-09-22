@@ -1,6 +1,6 @@
 # 备选方块清单对照：我们 14 类 vs Block Blast
 
-> v0.8.16 / 2026-09-20。本文只做**清单与指标对照**：我方数据来自 `src/game/shapes.js`（形状定义与权重）与 `tools/results/difficulty-shape-pressure.summary.json`（现行 14 类池，典型打法 `noise` 600 局 / 贪心 600 局，3 种子，无道具，600 步上限）；Block Blast 一侧的清单**没有官方来源**，见 §5 的判读边界。相关：[难度曲线](DIFFICULTY_CURVE_POOL14.md)、[竞品拆解](../Planning/竞品拆解-Block-Blast.md)。
+> v0.8.16 / 2026-09-20。本文只做**清单与指标对照**：我方实现事实来自 `src/game/shapes.js`；压力数字来自 `tools/results/difficulty-shape-pressure.summary.json` 的无道具固定机器人模拟（`noise` / `greedy` 各 600 局、3 种子、600 步上限），**不是真人实测或线上验证**。Block Blast 一侧没有官方完整清单或概率表，见 §5。相关：[难度曲线](DIFFICULTY_CURVE_POOL14.md)、[竞品拆解](../Planning/竞品拆解-Block-Blast.md)。
 
 ## 1. 一句话结论
 

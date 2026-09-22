@@ -1,6 +1,6 @@
-# 现行 14 类候选池的难度曲线（v0.8.15 实测）
+# 现行 14 类候选池的难度曲线（v0.8.15 离线模拟）
 
-> v0.8.15 / 2026-09-20。**纯测量**：只动 `tools/`（新增两个 Block 9 归因臂）与技术文档，玩法、发牌权重、渲染、存档、版本号一律未改。模拟直接 import 规则层（board / shapes / `SHAPE_WEIGHTS` / 开局预置），5×5×5 外壳、98 个唯一格、每批三候选、**无道具**、上限 600 步。
+> **历史实验（v0.8.15，2026-09-20），形状与权重仍匹配 v0.8.16，但结束流程已不完整。** 本轮只动 `tools/` 与技术文档；模拟直接 import 棋盘、形状、`SHAPE_WEIGHTS` 与开局预置，采用固定机器人、**无道具**、600 步上限。v0.8.16 在无候选可放时，只要 Refresh / Hammer / Rocket / Bomb 任一仍有次数就保持局面，因此本文的“自然结束/死亡”应读作**无道具模型中的自然卡住**，不能当实际 Game Over、真人试玩或线上数据。
 > 原始结果（入库）：[池 14 类主表](../../tools/results/difficulty-pool14-curve.html)、[熟练打法](../../tools/results/difficulty-pool14-curve-space.html)、[Block 9 归因](../../tools/results/difficulty-block9-sweep.html)，同名 `.summary.json` 存聚合值；逐局记录与完整曲线只在本地全量 JSON 里（不入库）。上一轮的紧张度基线见 [紧张度测量](DIFFICULTY_TENSION.md)（十类池），本文是它的现行池续篇。
 
 ## 1. 结论

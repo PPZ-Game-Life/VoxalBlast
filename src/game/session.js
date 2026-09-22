@@ -26,6 +26,21 @@ const STORAGE_KEY = 'voxalblast.session.v1'
 export const SESSION_PIECE_SLOTS = 3
 
 const SHAPE_NAMES = new Set(SHAPES.map((shape) => shape.name))
+// Saved board cells carry RGB values, while candidates carry shape names. A pool
+// recolour alone therefore leaves old occupied cells orange/yellow on resume.
+// Resolve known historical colours by identity; never guess from hue or alter
+// unknown colours, cell occupancy, counters or the snapshot supplied by callers.
+const LEGACY_PAINT_NAMES = new Map([
+  [0xe8543f, 'Dot'], [0xf2b52b, 'Line 3'], [0xef9127, 'L'], [0x93b23c, 'L 5'],
+  [0xff6d5c, 'Dot'], [0x35c3ff, 'Line 2'], [0xffcb1f, 'Line 3'],
+  [0xa349ff, 'Square'], [0xff8a2a, 'L'], [0x4a6cff, 'J'],
+  [0xff5d6f, 'T'], [0x00c2a0, 'S'], [0xc24bff, 'Z'], [0x45d8f1, 'Corner'],
+])
+const CURRENT_PAINT = new Map(SHAPES.map(shape => [shape.name, shape.color]))
+function restorePaint(color) {
+  if (!Number.isFinite(color)) return 0xffffff
+  return CURRENT_PAINT.get(LEGACY_PAINT_NAMES.get(color)) ?? color
+}
 const FACE_KEYS = new Set(FACES)
 
 const toCount = (value) => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0)
@@ -57,7 +72,7 @@ export function migrate(raw) {
       const key = `${x},${y},${z}`
       if (seen.has(key)) return
       seen.add(key)
-      cells.push([x, y, z, Number.isFinite(color) ? color : 0xffffff])
+      cells.push([x, y, z, restorePaint(color)])
     })
   }
 

@@ -167,19 +167,39 @@ body { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%
 
 /* --- Wooden buttons ------------------------------------------------------ */
 .icon-button, .topbar .icon-button, .item-button, .modal-close {
-  color: var(--bark-ink);
-  background: radial-gradient(ellipse at 40% 12%, #fff4dccc, transparent 70%), linear-gradient(180deg, #f8d4a0, #e9b97f 72%, #dba063);
-  border: 2px solid #b57740;
-  border-bottom: 4px solid #986132;
-  box-shadow: inset 0 0 0 2px #fff2d1c9, inset 0 -5px 8px #a6642d26, 0 3px 0 #774824, 0 8px 15px #4b3a1a2b;
+  color: #52270f;
+  background: linear-gradient(125deg, #ffd298 0%, #df9a55 32%, #ae5c2c 75%, #e9ae69);
+  border: 2px solid #8d4a24;
+  border-bottom: 4px solid #854020;
+  box-shadow: inset 0 1px 1px #fff6d8, inset 1px 0 1px #fff0c8b3, inset -1px -2px 2px #77351566, 0 3px 0 #693219, 0 5px 0 #c0884d, 0 9px 13px #492a1738;
 }
-.icon-button:hover, .icon-button:focus-visible { background: linear-gradient(180deg, #ffe8be, #edbc84); transform: translateY(-2px); }
+.icon-button, .home-primary, .home-secondary { position: relative; }
+.icon-button, .item-button, .modal-close, .home-primary, .home-secondary { isolation: isolate; }
+.icon-button::before, .item-button::before, .modal-close::before, .home-primary::before, .home-secondary::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 4px 4px 5px;
+  border-radius: inherit;
+  border: 1px solid #ffe5b7;
+  background-image: radial-gradient(ellipse at 28% 10%, #fff9e5a6, transparent 65%), var(--button-face, linear-gradient(155deg, #ffe2b6e8, #e7ae73da)), url('/art/block-pigment.webp');
+  background-size: auto, auto, 150px 150px;
+  box-shadow: 0 1px 2px #71391080, inset 0 2px 1px #fff8e1b3, inset 2px 0 3px #fff0ce66, inset -2px -3px 6px #a35a283b;
+  pointer-events: none;
+}
+.icon-button:hover, .icon-button:focus-visible { --button-face: linear-gradient(155deg, #fff0d0ed, #efbe83e8); transform: translateY(-2px); }
+.item-button:not(.disabled):hover { --button-face: linear-gradient(155deg, #fff0d0ed, #efbe83e8); }
+.item-button.active { --button-face: linear-gradient(155deg, #fff1bcf2, #f4c164e8); }
+.icon-button:active, .item-button:active:not(.disabled), .home-secondary:active, .modal-close:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 1px #fff6d8, 0 1px 0 #693219, 0 3px 5px #492a1738;
+}
 .item-button .toy-icon, .modal-close { color: var(--bark-ink); }
 .item-button .item-count {
   color: #fff8e6;
-  background: linear-gradient(180deg, #f2994a, #e2762a);
+  background: linear-gradient(180deg, #ff5e45, #d92922);
   border: 2px solid #fff4dc;
-  box-shadow: 0 2px 0 #a9531a;
+  box-shadow: inset 0 1px 0 #ffb79c, 0 2px 0 #962c1a, 0 3px 4px #60231133;
 }
 .item-button.active { outline: 3px solid var(--sun); background-image: linear-gradient(180deg, #ffe6a6, #f7c95c); }
 .item-button.disabled { opacity: .42; filter: grayscale(.7); }
@@ -257,6 +277,10 @@ body { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%
 .ghost-button { color: var(--bark-ink); background: var(--cream-1); border: 3px solid var(--wood-4); }
 .ghost-button:hover:not(.disabled) { background: #fff6e2; }
 
+/* Hide the run itself, preserving layout and the renderer's framing. The meadow
+   and the home's own hero stay visible through the translucent home wash. */
+.home-open > .topbar, .home-open > .game-layout { visibility: hidden; pointer-events: none; }
+
 /* --- Home screen: the same meadow, softened so the copy stays readable --- */
 .home-screen { background: linear-gradient(180deg, #b6e2f88c 0%, #e2f3e888 52%, #fbf3e2cf 100%); }
 .home-brand h1 {
@@ -269,24 +293,25 @@ body { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%
 .home-record strong { color: var(--bark-ink); }
 .home-primary {
   color: #43300f;
-  background: linear-gradient(180deg, #ffdd85, #f2ab2d);
-  border-top: 3px solid #fff1c2;
-  border-bottom: 6px solid #c07d1c;
+  --button-face: linear-gradient(155deg, #ffe8b0eb, #f0ba67e6);
+  background: linear-gradient(125deg, #ffd298, #d48d43 45%, #a45b2c);
+  border: 2px solid #915020;
+  border-bottom: 5px solid #854020;
   border-radius: 24px;
-  box-shadow: inset 0 2px 0 #fff6d8, 0 8px 0 #a5681a, 0 16px 28px #6b4a1530;
+  box-shadow: inset 0 2px 0 #ffe9bf, 0 5px 0 #6f381d, 0 8px 0 #be874c, 0 14px 24px #6b4a1538;
   text-shadow: 0 1px 0 #ffeab4;
 }
-.home-primary.resume { background: linear-gradient(180deg, #7fc3f0, #4189cf); color: #fffaf0; border-top-color: #bfe3fb; border-bottom-color: #2a5f95; box-shadow: inset 0 2px 0 #d9efff, 0 8px 0 #275b8e, 0 16px 28px #1d426630; }
+.home-primary.resume { color: #43300f; background: linear-gradient(125deg, #ffd298, #d48d43 45%, #a45b2c); border-color: #915020; border-bottom-color: #854020; box-shadow: inset 0 2px 0 #ffe9bf, 0 5px 0 #6f381d, 0 8px 0 #be874c, 0 14px 24px #6b4a1538; }
 .home-primary:active { box-shadow: 0 2px 0 #a5681a; }
 .home-resume-note { color: #6b5230; }
 .home-secondary {
   color: var(--bark-ink);
-  background-image: linear-gradient(180deg, #f8dbadeb, #dba467eb), var(--wood-grain);
+  background-image: linear-gradient(125deg, #ffd298, #d48d43 45%, #a45b2c);
   background-size: auto, 180% 180%;
   background-position: center;
-  border: 3px solid #ffffff9e;
-  border-bottom: 6px solid var(--wood-5);
-  box-shadow: inset 0 2px 0 #ffffff70, 0 6px 0 #6f4c22, 0 12px 22px #4b3a1a30;
+  border: 2px solid #915020;
+  border-bottom: 4px solid #854020;
+  box-shadow: inset 0 2px 0 #ffe9bf, 0 3px 0 #6f381d, 0 5px 0 #be874c, 0 10px 18px #4b3a1a30;
   text-shadow: 0 1px 0 #ffeacb;
 }
 .home-hero::after { background: radial-gradient(ellipse, #4b3a1a3d, transparent 70%); }

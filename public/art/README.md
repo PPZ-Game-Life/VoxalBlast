@@ -1,4 +1,21 @@
-# Pastoral valley background
+# Runtime art assets
+
+## Block pigment surface — v0.8.18
+
+- Runtime asset: `block-pigment.webp`, 768 × 768, 26,764 bytes.
+- Created 2026-09-21 using the built-in `image_gen.imagegen` reference-image workflow (not a direct external API call). User reference: `codex-clipboard-7a701ff7-ca40-419d-83ff-416b601b81d8.png`, inspected locally and passed through `referenced_image_paths`.
+- Original remains in the tool's generated-images directory as `exec-f110a4ec-7174-446d-8186-46b663233750.png`. The requested size was 1024 × 1024; the tool returned 1254 × 1254. Runtime conversion uses Sharp resize to 768 × 768 and WebP quality 90, without repainting.
+- The image supplies neutral brushwork only. Runtime removes its colour cast and mean brightness, creates three deterministic crops/rotations, and tints them using existing material colours. Height and roughness remain separate from the painted albedo. Lighting, glints, geometry and shadows are real-time; the reference screenshot is not shipped.
+- Loaded from Vite's base URL. Procedural surfaces remain available while loading or after failure; no runtime image-generation service is required.
+- Since v0.8.20 the same small pigment asset also supplies subtle brushwork on CSS button faces, underneath translucent gradients; button frames and icons remain CSS/SVG.
+
+Prompt:
+
+```text
+Create a production game texture asset inspired ONLY by the subtle painterly surface of the wooden and lacquered cubes in the supplied reference. Output ONE square 1024x1024 flat, edge-to-edge, seamless material texture, viewed perfectly straight on. Monochrome grayscale, very light ivory-gray overall (average value about 220/255). A refined hand-painted maple / lacquer underpainting: broad overlapping irregular polygonal brush washes, softly angular translucent pigment patches, sparse softly flowing maple growth contours. Medium-scale shapes should be readable even reduced to 64 pixels. Very subtle pores; no dense fibers, no scratches, no cracks, no long parallel stripes. Restrained variation from light gray to near-white, avoid pure black. NO actual cube, NO bevel, NO border, NO grid, NO lighting or reflections, NO shadows, NO perspective, NO background scenery, NO UI, NO text. This is unlit albedo pigment only, to be tinted with saturated colors and illuminated by real-time 3D lights. Painterly polished premium casual mobile game art, matching the reference block surfaces rather than photoreal wood.
+```
+
+## Pastoral valley background
 
 - Runtime asset: `pastoral-valley.webp` (1672 × 941 px, approximately 16:9; 324,012 bytes).
 - Created on 2026-09-16 with Codex's built-in `image_gen.imagegen` tool.

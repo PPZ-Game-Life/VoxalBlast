@@ -43,7 +43,7 @@ import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
-import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps } from './rendering/woodTexture.js'
+import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceMaps, blockSurfaceArtStatus, blockSurfaceArtReady } from './rendering/woodTexture.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 
@@ -1048,7 +1048,7 @@ function createPiecePreview(piece, canvas, slot) {
     root.add(mesh)
     return mesh
   })
-  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes })
+  piecePreviews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes, frameWidth: 0, frameHeight: 0 })
 }
 
 function updatePieceSlotSelection() {
@@ -1062,15 +1062,24 @@ function updatePiecePreviews() {
   piecePreviews.forEach((preview) => {
     const width = Math.max(preview.renderer.domElement.clientWidth, 1)
     const height = Math.max(preview.renderer.domElement.clientHeight, 1)
-    if (preview.renderer.domElement.width !== Math.round(width * preview.renderer.getPixelRatio()) || preview.renderer.domElement.height !== Math.round(height * preview.renderer.getPixelRatio())) {
+    if (preview.frameWidth !== width || preview.frameHeight !== height) {
       preview.renderer.setSize(width, height, false)
-      // Keep the same scale on wide trays, fit the full piece on narrow cards.
-      const halfHeight = 1.6 * Math.max(1, height / width)
+      preview.frameWidth = width
+      preview.frameHeight = height
+      // Fit the actual projected volume, including the cubes' depth. A 3×3
+      // shape's oblique projection was taller than the old fixed 3.2-unit view.
+      preview.root.updateMatrixWorld(true)
+      preview.camera.updateMatrixWorld(true)
+      const bounds = new THREE.Box3().setFromObject(preview.root).applyMatrix4(preview.camera.matrixWorldInverse)
+      const size = bounds.getSize(new THREE.Vector3())
+      const center = bounds.getCenter(new THREE.Vector3())
+      const usable = Math.max(0.5, 1 - 20 / Math.min(width, height))
+      const halfHeight = Math.max(1.6, size.y / (2 * usable), size.x * height / (2 * width * usable))
       const halfWidth = halfHeight * width / height
-      preview.camera.left = -halfWidth
-      preview.camera.right = halfWidth
-      preview.camera.top = halfHeight
-      preview.camera.bottom = -halfHeight
+      preview.camera.left = center.x - halfWidth
+      preview.camera.right = center.x + halfWidth
+      preview.camera.top = center.y + halfHeight
+      preview.camera.bottom = center.y - halfHeight
       preview.camera.updateProjectionMatrix()
     }
     preview.camera.position.set(2.5, 2.9, 5.4)
@@ -2565,6 +2574,11 @@ let homeRenderer
 let homeScene
 let homeCamera
 let homeModel
+// The home hero is rendered on demand; refresh it if its first frame used the
+// fallback surface while the art asset was still in flight.
+blockSurfaceArtReady.then(() => {
+  if (homeOpen && homeRenderer) homeRenderer.render(homeScene, homeCamera)
+})
 function renderHomeBoard() {
   const host = document.querySelector('#home-hero')
   if (!host || !host.clientWidth || !host.clientHeight) return
@@ -2619,6 +2633,8 @@ function openHome() {
   // there behind the 继续游戏 button.
   saveSession()
   homeOpen = true
+  document.querySelector('#app').classList.add('home-open')
+  document.querySelectorAll('.topbar, .game-layout').forEach(el => { el.inert = true })
   homeEl.classList.remove('hidden')
   refreshHome()
   syncPause()
@@ -2629,6 +2645,8 @@ function openHome() {
 
 function leaveHome() {
   homeOpen = false
+  document.querySelector('#app').classList.remove('home-open')
+  document.querySelectorAll('.topbar, .game-layout').forEach(el => { el.inert = false })
   homeEl.classList.add('hidden')
   syncPause()
   renderItemBar()
@@ -3209,6 +3227,7 @@ globalThis.__voxalblast = Object.freeze({
       meshes: tiles.length,
       uniqueCells: new Set(tiles.map((tile) => tile.userData.cell.join(','))).size,
       trianglesPerBlock: blockGeometry.attributes.position.count / 3,
+      surfaceArt: blockSurfaceArtStatus(),
       environment: Boolean(scene.environment),
       hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
       contactShadows: {
@@ -3555,6 +3574,20 @@ globalThis.__voxalblast = Object.freeze({
     note: homeResumeNoteEl.textContent,
     hasSavedRun: Boolean(sessionStore.read()),
     persistent: sessionStore.persistent,
+  }),
+  candidateFrames: () => [...piecePreviews.values()].map(preview => {
+    preview.root.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(preview.root)
+    const points = []
+    for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+      points.push(new THREE.Vector3(x, y, z).project(preview.camera))
+    }
+    return {
+      name: preview.piece.shape.name,
+      blocks: preview.meshes.length,
+      minX: Math.min(...points.map(p => p.x)), maxX: Math.max(...points.map(p => p.x)),
+      minY: Math.min(...points.map(p => p.y)), maxY: Math.max(...points.map(p => p.y)),
+    }
   }),
   session: () => sessionStore.read(),
   // v0.4.1: the keyboard bindings the game actually honours. The headless check reads

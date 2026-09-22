@@ -392,6 +392,35 @@ group('session', () => {
   equal('the slot round-trips the pose', read.pose.quat.length, 4)
   check('the slot reports the current version', read.v === SESSION_VERSION)
 
+  const legacyPairs = [
+    [0xef9127, 'L'], [0xf2b52b, 'Line 3'], [0xe8543f, 'Dot'], [0x93b23c, 'L 5'],
+    [0xff8a2a, 'L'], [0xffcb1f, 'Line 3'], [0xff6d5c, 'Dot'], [0x35c3ff, 'Line 2'],
+    [0xa349ff, 'Square'], [0x4a6cff, 'J'], [0xff5d6f, 'T'],
+    [0x00c2a0, 'S'], [0xc24bff, 'Z'], [0x45d8f1, 'Corner'],
+  ]
+  const oldRun = { ...snapshot, board: {
+    ...snapshot.board,
+    cells: legacyPairs.map(([color], i) => [i % SH, Math.floor(i / SH), 4, color]),
+  } }
+  const original = JSON.stringify(oldRun)
+  const recoloured = migrateSession(oldRun)
+  check('legacy board paints match their current candidate colours', recoloured.board.cells.every((cell, i) =>
+    cell[3] === SHAPES.find(shape => shape.name === legacyPairs[i][1]).color))
+  equal('palette migration preserves occupied coordinates', JSON.stringify(recoloured.board.cells.map(cell => cell.slice(0, 3))), JSON.stringify(oldRun.board.cells.map(cell => cell.slice(0, 3))))
+  check('palette migration preserves score and line count', recoloured.board.score === oldRun.board.score && recoloured.board.totalLines === oldRun.board.totalLines)
+  equal('palette migration preserves the rest of the run', JSON.stringify({ ...recoloured, board: null }), JSON.stringify({ ...migrateSession(snapshot), board: null }))
+  equal('palette migration does not mutate the input', JSON.stringify(oldRun), original)
+  equal('palette migration is idempotent', JSON.stringify(migrateSession(recoloured)), JSON.stringify(recoloured))
+  for (const color of [...SHAPES.map(shape => shape.color), 0x123456]) {
+    const same = migrateSession({ ...snapshot, board: { cells: [[0, 0, 4, color]] } })
+    equal(`current or unknown paint ${color.toString(16)} stays unchanged`, same.board.cells[0][3], color)
+  }
+  fake.set('voxalblast.session.v1', JSON.stringify(oldRun))
+  const resumed = createSessionStore(storage).read()
+  equal('an existing persisted save gets the new palette on read', JSON.stringify(resumed.board), JSON.stringify(recoloured.board))
+  store.save(resumed)
+  equal('re-saving keeps the migrated palette', JSON.stringify(createSessionStore(storage).read().board), JSON.stringify(recoloured.board))
+
   store.clear()
   equal('a cleared slot reads as no saved run', store.read(), null)
 

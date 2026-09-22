@@ -1,6 +1,6 @@
 # 难度与单局长度测量（v0.8.1 基线 / v0.8.3 复核）
 
-> v0.8.3 / 2026-09-16。**纯测量**：两次都没有改动任何玩法文件。数字来自 `tools/reachability.mjs` 直接 import 规则层（board / shapes / scoring / honors）的对局模拟。
+> **历史基线（v0.8.1～v0.8.3，2026-09-16），不是现行玩法验证。** 数字来自 `tools/reachability.mjs` 的无道具机器人模拟；当时还是十种池，部分轮次从空棋盘开始，且旧工具的 601 步与删失口径后来已修正。v0.8.16 实际为 14 类加权池，并允许有剩余清理道具时暂缓结束。本文保留旧矩阵供对账，所有“现行”“近似真人”“最优玩家”“真机上限”字样均按下方阅读修正降级，不能当真人或线上结论。
 > 原始结果：[tools/reachability-pool-matrix.json](../../tools/reachability-pool-matrix.json)（v0.8.2，用旧 LCG）、[tools/reachability-lattice-matrix.json](../../tools/reachability-lattice-matrix.json)（v0.8.3 复核，mulberry32）。
 
 ## 阅读修正（A/B/C/D 测量工具升级）

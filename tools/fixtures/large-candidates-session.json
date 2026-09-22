@@ -1,0 +1,51 @@
+{
+  "snapshot": {
+    "v": 1,
+    "board": {
+      "cells": [
+        [
+          2,
+          2,
+          4,
+          9131977
+        ]
+      ],
+      "score": 2400,
+      "totalLines": 3
+    },
+    "pieces": [
+      {
+        "name": "Block 9",
+        "used": false
+      },
+      {
+        "name": "Rect 6",
+        "used": false
+      },
+      {
+        "name": "L 5",
+        "used": false
+      }
+    ],
+    "items": {
+      "refresh": 2,
+      "hammer": 2,
+      "rocket": 1,
+      "bomb": 1
+    },
+    "run": {},
+    "pose": {}
+  },
+  "expectedBoard": {
+    "cells": [
+      [
+        2,
+        2,
+        4,
+        9131977
+      ]
+    ],
+    "score": 2400,
+    "totalLines": 3
+  }
+}

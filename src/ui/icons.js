@@ -19,9 +19,19 @@ export function installToyIcons() {
     '#home-leaderboard span': 'trophy',
     '#controls-button span': 'keyboard',
   }
+  let iconIndex = 0
   for (const [selector, name] of Object.entries(targets)) {
     document.querySelectorAll(selector).forEach((el) => {
-      el.innerHTML = `<svg class="toy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`
+      const id = `toy-carving-${name}-${iconIndex++}`
+      const drawing = paths[name]
+        .replaceAll('fill="#a26b39"', `fill="url(#${id}-wood)"`)
+        .replaceAll('fill="#75451f"', `fill="url(#${id}-ink)"`)
+        .replaceAll('fill="currentColor"', `fill="url(#${id}-ink)"`)
+      el.innerHTML = `<svg class="toy-icon" viewBox="0 0 24 24" fill="none" stroke="#52270f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <defs>
+          <linearGradient id="${id}-wood" x2=".35" y2="1"><stop stop-color="#c08b53"/><stop offset=".45" stop-color="#925529"/><stop offset="1" stop-color="#60300f"/></linearGradient>
+          <linearGradient id="${id}-ink" x2=".3" y2="1"><stop stop-color="#8c542c"/><stop offset=".5" stop-color="#5c2e14"/><stop offset="1" stop-color="#351a0b"/></linearGradient>
+        </defs>${drawing}</svg>`
     })
   }
 }

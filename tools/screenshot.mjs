@@ -42,8 +42,12 @@ const outDir = resolve(ROOT, process.argv[3] || 'artifacts/visual')
 
 const SHOTS = [
   { name: 'desktop-home', width: 1440, height: 900, mode: 'home' },
+  { name: 'mobile-home', width: 390, height: 844, mode: 'home' },
+  { name: 'desktop-home-return', width: 1440, height: 900, mode: 'home-return' },
   { name: 'desktop-board', width: 1440, height: 900, mode: 'board' },
   { name: 'mobile-board', width: 390, height: 844, mode: 'board' },
+  { name: 'small-mobile-board', width: 320, height: 740, mode: 'board' },
+  { name: 'landscape-board', width: 844, height: 390, mode: 'board' },
   { name: 'widescreen-board', width: 2048, height: 900, mode: 'board' },
   // v0.8.15: the Game Over card is now a first-class capture. It was reachable only
   // on a shell jam (rare before the pool expansion), which is exactly why a CSS rule
@@ -62,6 +66,11 @@ const SHOTS = [
 // paint reads against the timber, which is exactly what a colour change has to prove.
 // Three or four seeds cover the 14-shape pool; each run is still fully deterministic.
 const CAPTURE_SEED = Number(process.env.SHOT_SEED || 20260916)
+const SURFACE_FALLBACK = process.env.SHOT_SURFACE === 'fallback'
+// Inject only into this driver's disposable browser profile, never the player's
+// browser. Used to verify a continued game, not just a freshly dealt palette.
+const sessionFixture = process.env.SHOT_SESSION
+  ? JSON.parse(readFileSync(resolve(ROOT, process.env.SHOT_SESSION), 'utf8')) : null
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -192,6 +201,7 @@ async function capture(browser, shot) {
           }
         } else if (method === 'Log.entryAdded') {
           const { level, text, source, url: sourceUrl } = params.entry
+          if (SURFACE_FALLBACK && source === 'network' && sourceUrl?.endsWith('/art/block-pigment.webp')) return
           if (level === 'error' || (level === 'warning' && graphicsFailure.test(text))) {
             browserErrors.push(`${source}.${level}: ${text}${sourceUrl ? ` @ ${sourceUrl}` : ''}`)
           }
@@ -201,8 +211,12 @@ async function capture(browser, shot) {
       await send(ws, 1, 'Page.enable')
       await send(ws, 2, 'Runtime.enable')
       await send(ws, 20, 'Log.enable')
+      if (SURFACE_FALLBACK) {
+        await send(ws, 23, 'Network.enable')
+        await send(ws, 24, 'Network.setBlockedURLs', { urls: ['*/art/block-pigment.webp'] })
+      }
       await send(ws, 3, 'Page.addScriptToEvaluateOnNewDocument', {
-        source: `(() => { let seed = ${CAPTURE_SEED}; Math.random = () => {
+        source: (sessionFixture ? `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(sessionFixture.snapshot))});` : '') + `(() => { let seed = ${CAPTURE_SEED}; Math.random = () => {
           seed = (seed + 0x6d2b79f5) >>> 0;
           let value = Math.imul(seed ^ (seed >>> 15), seed | 1);
           value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
@@ -215,13 +229,17 @@ async function capture(browser, shot) {
       await send(ws, 5, 'Page.navigate', { url })
       await sleep(3200)
 
-      if (mode === 'board' || mode === 'gameover') {
+      if (mode === 'board' || mode === 'gameover' || mode === 'home-return') {
         const click = await send(ws, 6, 'Runtime.evaluate', {
           expression: '(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()',
           returnByValue: true,
         })
         if (click.result?.value !== 'clicked') throw new Error(`home cover not dismissed: ${click.result?.value}`)
         await sleep(2600)
+      }
+      if (mode === 'home-return') {
+        await send(ws, 25, 'Runtime.evaluate', { expression: `document.querySelector('#settings-button').click(); document.querySelector('#home-setting').click();` })
+        await sleep(500)
       }
 
       // The Game Over card cannot be reached by playing (endGame() fires only on a
@@ -257,6 +275,13 @@ async function capture(browser, shot) {
             backdropImage: image ? { loaded: image.complete && image.naturalWidth > 0, width: image.naturalWidth, height: image.naturalHeight } : null,
             viewport: { width: innerWidth, height: innerHeight },
             rendering: globalThis.__voxalblast?.rendering?.() ?? null,
+            resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
+            gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
+            candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
+            candidateCanvasesContained: [...document.querySelectorAll('.piece-preview-canvas')].every(canvas => {
+              const c = canvas.getBoundingClientRect(), s = canvas.closest('.piece-slot').getBoundingClientRect()
+              return c.left >= s.left && c.right <= s.right && c.top >= s.top && c.bottom <= s.bottom
+            }),
             backdropZ: layer ? getComputedStyle(layer).zIndex : null,
             woodGrain: getComputedStyle(document.documentElement).getPropertyValue('--wood-grain').slice(0, 26),
             version: ${JSON.stringify(version)},
@@ -309,6 +334,20 @@ async function capture(browser, shot) {
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')
       if (parsed.rendering?.meshes !== 98 || parsed.rendering?.uniqueCells !== 98) failures.push('board must contain exactly 98 unique meshes')
+      if (parsed.rendering?.surfaceArt !== (SURFACE_FALLBACK ? 'fallback' : 'ready')) failures.push('block surface asset / fallback not ready')
+      const onHome = mode === 'home' || mode === 'home-return'
+      if (parsed.gameLayers.some(layer => layer.visibility !== (onHome ? 'hidden' : 'visible') || layer.inert !== onHome || !layer.width || !layer.height)) failures.push('game layer visibility, input isolation or preserved layout incorrect')
+      if (!onHome) {
+        if (parsed.candidateFrames.length !== 3 || parsed.candidateFrames.some(frame => ![frame.minX, frame.maxX, frame.minY, frame.maxY].every(Number.isFinite) || frame.minX < -0.99 || frame.maxX > 0.99 || frame.minY < -0.99 || frame.maxY > 0.99)) failures.push('candidate volume clipped by camera')
+        if (!parsed.candidateCanvasesContained) failures.push('candidate canvas clipped by slot')
+        if (sessionFixture && mode === 'board' && JSON.stringify(parsed.candidateFrames.map(frame => frame.name)) !== JSON.stringify(sessionFixture.snapshot.pieces.map(piece => piece.name))) failures.push('candidate fixture not restored')
+      }
+      if (sessionFixture && mode === 'board') {
+        const actual = parsed.resumedBoard
+        const expected = sessionFixture.expectedBoard
+        if (JSON.stringify(actual?.cells) !== JSON.stringify(expected.cells)) failures.push('resumed board colours or coordinates differ')
+        if (actual?.score !== expected.score || actual?.totalLines !== expected.totalLines) failures.push('resume changed score or line count')
+      }
       if (mode === 'gameover') {
         // v0.8.15 gate: the panel's only restart affordance must be rendered, sized and
         // hittable at EVERY width. A `display: none` from a media query is invisible to
@@ -344,4 +383,7 @@ async function capture(browser, shot) {
 
 const browser = findBrowser()
 console.log(`browser ${browser}\ntarget  ${url}\nversion v${version}\n`)
-for (const shot of SHOTS) await capture(browser, shot)
+const requestedShots = process.env.SHOT_ONLY?.split(',')
+const selectedShots = requestedShots ? SHOTS.filter(shot => requestedShots.includes(shot.name)) : SHOTS
+if (!selectedShots.length || requestedShots?.some(name => !SHOTS.some(shot => shot.name === name))) throw new Error('unknown SHOT_ONLY name')
+for (const shot of selectedShots) await capture(browser, shot)
