@@ -375,20 +375,47 @@ function renderBoard() {
   updateHud()
 }
 
-// The candidate previews (refactor P4a) own their renderers; this file owns the slot DOM.
+// The piece view (refactor P4a/P4b) owns the candidate renderers, the landing marker and the
+// drag ghost; this file owns the slot DOM and still decides where a piece may go.
 const pieceView = createPieceView({
   blocks,
+  // The landing marker is cube-local (it must turn with the cube) and the ghost is camera-local
+  // (it must not), so each group attaches to its own parent inside the module. The camera itself
+  // joins the scene below, where it always did — main assembles the graph, once.
+  cubeGroup,
+  camera,
+  // The lattice -> world conversion and the face normal stay boardView's (P3a): plan §6 P4.4
+  // forbids a second copy of the face basis.
+  cellToWorld,
+  cubeVector,
+  // BLOCK_HALF + style.previewLift — still this file's constant while the item overlay, its
+  // only other consumer, lives here (P4c).
+  previewLift: PREVIEW_LIFT,
+  // The renderer's CSS box: the ghost measures itself against the canvas the renderer actually
+  // draws into, and that canvas belongs to gameScene (P2b).
+  getCanvasRect: () => renderer.domElement.getBoundingClientRect(),
   // A new deal replaces the piece objects and every click reassigns the selection, so both are
   // read through getters rather than captured.
   getCells: currentCells,
   getSelectedPiece: () => selectedPiece,
 })
 const {
-  flatPreviewPositions,
   disposePiecePreviews,
   createPiecePreview,
   updatePieceSlotSelection,
   updatePiecePreviews,
+  // Landing marker (P4b): main still solves for the origin and the legality and hands the result
+  // over; the module owns the group, the meshes and the two read-only counts.
+  clearLanding,
+  showLanding,
+  landingCount,
+  landingCells,
+  // Drag ghost (P4b): built at drag start, placed on every pointermove, tinted by the drop
+  // state, dropped when the gesture ends.
+  buildDragGhost,
+  clearDragGhost,
+  syncDragGhost,
+  ghostReport,
 } = pieceView
 
 // ============================================================
@@ -406,28 +433,19 @@ const {
 
 addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
 
-const previewGroup = new THREE.Group()
 const candidateGroup = new THREE.Group()
 const fxGroup = new THREE.Group()
-// The drag preview and the item-target overlay sit in the cube's local frame so
-// they rotate with the cube (cells are positioned in cube-local coordinates).
-cubeGroup.add(previewGroup)
+// The landing marker and the item-target overlay both sit in the cube's local frame so they
+// rotate with the cube. The marker's group is created and attached inside pieceView (P4b); the
+// overlay is still built here (P4c).
 scene.add(candidateGroup, fxGroup)
 
 // ---- Drag ghost (v0.4.4) ----------------------------------------------------
-// The piece the finger is carrying (see DRAG_GHOST in rendering/config.js). It
-// hangs off the CAMERA rather than the cube: it must always face the player and
-// never inherit the cube's rotation, and camera space turns "put it at this
-// pixel, this big" into plain arithmetic (syncDragGhost). depthTest is off on
-// every ghost material because the ghost is the one thing a drag may never hide:
-// whatever it overlaps, the player has to be able to see the shape in hand.
-const dragGhost = new THREE.Group()
-dragGhost.visible = false
-camera.add(dragGhost)
+// The ghost itself now lives in rendering/pieceView.js (refactor P4b) and hangs off the CAMERA
+// rather than the cube. The camera therefore has to be part of the graph, and that stays this
+// file's call: main assembles the scene graph, and a second scene.add(camera) from the module
+// would add the same camera twice.
 scene.add(camera) // the ghost rides the camera, so the camera joins the graph
-// Reused per drag so tinting an invalid drop never reallocates a Color.
-const dragGhostInvalid = new THREE.Color(palette.invalid)
-const dragGhostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
 
 // ============================================================
 // Materials / helpers
@@ -581,7 +599,7 @@ function cancelActiveDrag(showFeedback = true) {
   const currentDrag = drag
   drag = null
   releaseDragPointer(currentDrag.source, currentDrag.pointerId)
-  clearGroup(previewGroup)
+  clearLanding()
   clearDragGhost()
   selectedPiece = null
   suppressPieceClickUntil = performance.now() + 260
@@ -624,7 +642,7 @@ function openSettings() {
   settingsUi.setSettingsOpen(true)
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
-  clearGroup(previewGroup)
+  clearLanding()
   clearDragGhost()
   settingsUi.showSettings()
   platform.gameplayStop()
@@ -1244,6 +1262,22 @@ function isPointerOnCube(ndc) {
     && clientY >= bounds.minY - margin && clientY <= bounds.maxY + margin
 }
 
+// Hand the drag ghost its three rulers. All three are this file's to measure: the pointer's NDC,
+// the canvas it is over (the renderer's CSS box) and one cell of the cube as it is drawn right
+// now (gameScene's screen bounds, exactly the ruler the ghost has always used). What is left —
+// the two corner rays, the world-per-pixel scale and the tint — is the view's own arithmetic and
+// lives in pieceView.syncDragGhost() (plan §6 P4.3).
+function syncGhostFor(event, ndc, mode) {
+  const bounds = cubeScreenBounds()
+  syncDragGhost({
+    ndc,
+    canvasHeight: Math.max(renderer.domElement.getBoundingClientRect().height, 1),
+    cellPx: Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio,
+    pointerType: event.pointerType,
+    mode,
+  })
+}
+
 // One lattice step of a face, in client pixels. A finger delta is converted into
 // (du, dv) on THIS basis, which is what makes the piece follow the finger's own
 // direction on the face — including when the cube has been rotated to another face.
@@ -1283,7 +1317,7 @@ function clampOrigin(cells, u, v) {
 // occupied cells in the way it could jump a long way, because the nearest LEGAL
 // origin was no longer the nearest origin.
 function updatePreview(event, ndc) {
-  clearGroup(previewGroup)
+  clearLanding()
   const previous = drag?.origin ?? null
   drag.face = null
   drag.origin = null
@@ -1321,159 +1355,17 @@ function updatePreview(event, ndc) {
   const valid = board.canPlace(face, cells, origin)
   drag.valid = valid
   drag.origin = origin
-  const faceNormal = cubeVector(face, 'n')
-  // The marker is a translucent ghost OF THE PIECE IN HAND, so it takes the piece's
-  // OWN paint, not a fixed green: a green marker next to a purple piece in the tray
-  // reads as two different objects, and it throws away the one colour that says which
-  // of the three candidates is being placed. 05 §… "候选预览与棋盘同源" — the same
-  // reasoning that makes the board, the tray and the drag ghost share one material.
-  // Only the INVALID state keeps a colour of its own (`palette.invalid`, terracotta),
-  // because there the colour is carrying a different message: "no room here".
-  const markerColor = valid ? selectedPiece.shape.color : palette.invalid
-  const markerEdge = valid
-    ? new THREE.Color(selectedPiece.shape.color).multiplyScalar(0.58)
-    : new THREE.Color(0x7a2a17)
-  cells.forEach(([u, v]) => {
-    const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
-    // The landing marker IS a ghost of the block: same cube, same cell, same gap to
-    // its neighbours. The player therefore sees the board it is about to get, not a
-    // highlight floating over it (05 §6「落点预览」).
-    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(markerColor, 0.72))
-    mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, PREVIEW_LIFT)
-    mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
-      color: markerEdge,
-      transparent: true,
-      opacity: 0.92,
-      depthWrite: false,
-    })))
-    previewGroup.add(mesh)
-  })
+  // The marker itself is pieceView's (P4b): it draws the cells it is handed, in the piece's own
+  // colour while this drop is legal and in terracotta when it is not.
+  showLanding({ face, cells, origin, valid, color: selectedPiece.shape.color })
   return true
 }
 
 // ---- Drag ghost (v0.4.4) ----------------------------------------------------
-// 03 §4 has always asked for「鼠标按下方块后进入拖拽态，方块跟随光标移动」; until
-// v0.4.4 the drag drew the landing cells on the board and nothing else, so the
-// piece the player was holding had no on-screen existence at all. These four
-// helpers are the whole feature: build it once when the gesture starts, place it
-// on every pointermove, tint it by the drop state, drop it when the gesture ends.
-function clearDragGhost() {
-  dragGhost.visible = false
-  clearGroup(dragGhost)
-}
-
-// One rounded voxel per cell, in the piece's own colour, with the slot preview's
-// darkened outline — the ghost must read as the SAME object the player picked up
-// (05「候选预览与棋盘同源」), not as a second visual language for dragging.
-function buildDragGhost(piece) {
-  clearGroup(dragGhost)
-  const fill = new THREE.Color(piece.shape.color)
-  const outline = fill.clone().multiplyScalar(0.58)
-  const cells = currentCells(piece)
-  // Rows the shape spans on screen: what the fingertip clearance is measured from.
-  dragGhost.userData.rows = cells.reduce((max, [, v]) => Math.max(max, v), 0) + 1
-  for (const position of flatPreviewPositions(cells, 1)) {
-      const material = blocks.makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
-    // Fog is a depth cue for the board; at the ghost plane it would only wash the
-    // piece out as the camera zooms.
-    material.fog = false
-    // Always on top: the ghost may never be swallowed by the cube it is about to
-    // land on. Kept transparent from the start so tinting never has to rebuild
-    // the material.
-    material.depthTest = false
-    material.depthWrite = false
-    material.transparent = true
-    const mesh = new THREE.Mesh(blocks.blockGeometry, material)
-    mesh.position.copy(position)
-    mesh.renderOrder = 12
-    mesh.userData.fillColor = fill.clone()
-    mesh.userData.edgeColor = outline.clone()
-    const edges = new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
-      color: outline,
-      transparent: true,
-      opacity: 0.7,
-      depthTest: false,
-      depthWrite: false,
-    }))
-    edges.renderOrder = 13
-    mesh.add(edges)
-    dragGhost.add(mesh)
-  }
-  dragGhost.visible = false
-}
-
-// `mode` is the state the drag is in: 'carry' (in hand, off the cube), 'snap' (the
-// piece is on the board now — the ghost goes away, the landing preview is the
-// piece), 'invalid' (on the cube but this face has no room) or 'cancel' (dragged
-// back over the candidate/item strip).
-function tintDragGhost(mode) {
-  const invalid = mode === 'invalid'
-  const opacity = mode === 'cancel' ? DRAG_GHOST.cancelOpacity
-    : invalid ? DRAG_GHOST.invalidOpacity : DRAG_GHOST.opacity
-  dragGhost.userData.mode = mode
-  for (const mesh of dragGhost.children) {
-    mesh.material.color.copy(invalid ? dragGhostInvalid : mesh.userData.fillColor)
-    mesh.material.opacity = opacity
-    const edges = mesh.children[0]
-    if (edges) edges.material.color.copy(invalid ? dragGhostInvalidEdge : mesh.userData.edgeColor)
-  }
-}
-
-// Put the ghost where the finger is. It lives in the camera's frame, so "at this
-// pixel, this big" is linear algebra rather than a raycast — but the two corner
-// rays are taken from the REAL projection matrices (unproject + worldToLocal)
-// instead of a hand-rolled tan(fov/2). The camera's aspect belongs to the canvas
-// the renderer actually draws into; whenever that disagreed with the CSS box, a
-// hand-rolled formula sized and placed the ghost by the wrong factor with no
-// error anywhere (v0.4.5: it was 16% off on desktop, which is part of what made
-// the first version feel like it was not following the drag). unproject() cannot
-// disagree with the renderer, because it is the renderer's own matrices.
-const ghostPlaneMin = new THREE.Vector3()
-const ghostPlaneMax = new THREE.Vector3()
-
-function syncDragGhost(event, mode) {
-  if (!drag || !dragGhost.children.length) return
-  // v0.4.5: ONE piece per turn. The moment the piece attaches to a face the board
-  // draws it, and the one in hand must not be there as well — the player read the
-  // pair as "two blocks", which is exactly what it was.
-  if (mode === 'snap') {
-    dragGhost.visible = false
-    dragGhost.userData.mode = mode
-    return
-  }
-  const rect = renderer.domElement.getBoundingClientRect()
-  const canvasHeight = Math.max(rect.height, 1)
-  const distance = DRAG_GHOST.planeDistance
-  camera.updateMatrixWorld(true)
-  ghostPlaneMin.set(-1, -1, 0.5).unproject(camera)
-  camera.worldToLocal(ghostPlaneMin)
-  ghostPlaneMax.set(1, 1, 0.5).unproject(camera)
-  camera.worldToLocal(ghostPlaneMax)
-  const toPlane = distance / Math.max(-ghostPlaneMin.z, 1e-6)
-  const halfWidth = (ghostPlaneMax.x - ghostPlaneMin.x) * 0.5 * toPlane
-  const halfHeight = (ghostPlaneMax.y - ghostPlaneMin.y) * 0.5 * toPlane
-  const worldPerPx = (2 * halfHeight) / canvasHeight
-
-  const bounds = cubeScreenBounds()
-  const cellPx = Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio
-  const ndc = eventNdc(event)
-  // Touch carries the piece just above the fingertip: half its own height plus a
-  // small clearance, so the whole shape clears the thumb instead of losing its
-  // bottom row under it. The mouse gets a small fixed lift only — a shape-scaled
-  // offset under a mouse reads as "not following the drag" (see DRAG_GHOST).
-  const rows = dragGhost.userData.rows || 1
-  const liftPx = event.pointerType === 'mouse'
-    ? DRAG_GHOST.liftMousePx
-    : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
-
-  dragGhost.visible = true
-  dragGhost.scale.setScalar(cellPx * worldPerPx)
-  // Camera space: +X is screen-right and +Y is screen-up, exactly as NDC. (The X
-  // term used to be negated — invisible in every check because they all aimed at
-  // the canvas centre, where ndc.x is 0.)
-  dragGhost.position.set(ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
-  tintDragGhost(mode)
-}
+// The ghost — its group (camera-local), its material rules, its placement and its tint — lives
+// in rendering/pieceView.js (refactor P4b). What stays here is everything the gesture decides:
+// when it exists (buildDragGhost at pointerdown), where it goes (syncGhostFor measures the three
+// rulers) and which mode it is in ('carry' | 'snap' | 'invalid' | 'cancel').
 
 class AxisEmitter {
   constructor(direction, spread = VFX_CONFIG.clear.spread) {
@@ -1707,7 +1599,7 @@ function finishDrag(event) {
   const currentDrag = drag
   drag = null
   releaseDragPointer(currentDrag.source, currentDrag.pointerId)
-  clearGroup(previewGroup)
+  clearLanding()
   clearDragGhost()
   setCancelZone(false)
   if (!currentDrag.active) {
@@ -1874,7 +1766,7 @@ function openHome() {
   settleIntro()
   if (drag) cancelActiveDrag(false)
   cancelItemSelection(true)
-  clearGroup(previewGroup)
+  clearLanding()
   clearDragGhost()
   // The panel is closed rather than kept behind the cover: it would otherwise still
   // be open (and still holding the socket) the next time the player opens it.
@@ -2212,8 +2104,8 @@ window.addEventListener('pointermove', (event) => {
     // Back in the strip the piece is being put down, not held over a face: the next
     // arrival on the cube re-grabs wherever the finger is (v0.4.6).
     drag.anchor = null
-    clearGroup(previewGroup)
-    syncDragGhost(event, 'cancel')
+    clearLanding()
+    syncGhostFor(event, eventNdc(event), 'cancel')
     setStatus('Release to cancel')
     return
   }
@@ -2224,7 +2116,7 @@ window.addEventListener('pointermove', (event) => {
   // carried. Once it is attached to a face the board draws it and the carried copy
   // disappears; if the pointer is on the cube but this face has no room, the piece
   // stays in hand and turns red instead of silently vanishing.
-  syncDragGhost(event, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
+  syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
   if (attached) setStatus(drag.valid ? 'Release to place' : 'No room here')
   else setStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
 }, { passive: false })
@@ -2637,10 +2529,7 @@ globalThis.__voxalblast = Object.freeze({
       piece: piece ? piece.shape.name : null,
       pieceColor: piece ? hex(piece.shape.color) : null,
       valid: drag?.valid === true,
-      cells: previewGroup.children.map((mesh) => ({
-        color: hex(mesh.material.color),
-        opacity: Number(mesh.material.opacity.toFixed(3)),
-      })),
+      cells: landingCells(),
     }
   },
   // Candidate orientation on the current front face. `raw` is the top-left
@@ -2677,54 +2566,25 @@ globalThis.__voxalblast = Object.freeze({
   // the client-pixel centres of the ghost's voxels (so a check can assert that the
   // ghost tracks the pointer within the lift offset and that a 3-cell piece really
   // drew three voxels), `cellPx` is the on-screen cell edge, and `mode` is the
-  // state the drop is in. Read-only; no gameplay path reads it.
-  ghost: () => {
-    if (!dragGhost.parent) return { visible: false, count: 0, cells: [] }
-    camera.updateMatrixWorld()
-    dragGhost.updateWorldMatrix(true, true)
-    const rect = renderer.domElement.getBoundingClientRect()
-    const toScreen = (v) => {
-      const p = v.clone().project(camera)
-      return {
-        x: rect.left + (p.x * 0.5 + 0.5) * rect.width,
-        y: rect.top + (-p.y * 0.5 + 0.5) * rect.height,
-      }
-    }
-    const cells = dragGhost.children.map((mesh) => toScreen(mesh.getWorldPosition(new THREE.Vector3())))
-    const fill = dragGhost.children[0]?.material
-    // MEASURED cell pitch, not the number the placement code intended: project the
-    // ghost's own +X axis (its layout pitch is exactly 1.0 local unit) and read the
-    // pixels back off the screen. This is what catches a projection that disagrees
-    // with the canvas the renderer is drawing into.
-    const pitchFrom = toScreen(dragGhost.localToWorld(new THREE.Vector3(0, 0, 0)))
-    const pitchTo = toScreen(dragGhost.localToWorld(new THREE.Vector3(1, 0, 0)))
-    return {
-      visible: dragGhost.visible,
-      count: dragGhost.children.length,
-      cells,
-      // The ghost's own origin: what the lift is measured against (the cells'
-      // centroid is not the group centre — an L or T piece is lopsided).
-      center: toScreen(dragGhost.getWorldPosition(new THREE.Vector3())),
-      cellPx: pitchTo.x - pitchFrom.x,
-      opacity: fill ? fill.opacity : 0,
-      color: fill ? `#${fill.color.getHexString()}` : null,
-      // 'carry' | 'snap' | 'invalid' | 'cancel' — the state the drag is in. 'snap'
-      // is the handoff: the ghost is hidden because the board is drawing the piece.
-      mode: dragGhost.userData.mode ?? null,
-      attached: Boolean(drag),
-      // How many landing cells the board is drawing right now. The whole point of
-      // the v0.4.5 revision is that this and `visible` are never both non-zero.
-      previewCells: previewGroup.children.length,
-      // Where the snapped piece is anchored on the face, and the grab point the
-      // relative movement is measured from (v0.4.6).
-      previewOrigin: drag?.origin ?? null,
-      anchor: drag?.anchor ?? null,
-      // The face's own lattice basis in client pixels — the basis the relative
-      // movement is solved in. Exposed so a check can reproduce the mapping
-      // exactly instead of assuming it.
-      stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
-    }
-  },
+  // state the drop is in. Read-only; no gameplay path reads it. The fields arrive in
+  // two halves (refactor P4b): pieceView measures the view, this file adds the gesture.
+  ghost: () => ({
+    // The view half — where the ghost's voxels actually are on screen, the measured cell pitch
+    // and the tint it is wearing — is pieceView's projection (refactor P4b).
+    ...ghostReport(),
+    attached: Boolean(drag),
+    // How many landing cells the board is drawing right now. The whole point of
+    // the v0.4.5 revision is that this and `visible` are never both non-zero.
+    previewCells: landingCount(),
+    // Where the snapped piece is anchored on the face, and the grab point the
+    // relative movement is measured from (v0.4.6).
+    previewOrigin: drag?.origin ?? null,
+    anchor: drag?.anchor ?? null,
+    // The face's own lattice basis in client pixels — the basis the relative
+    // movement is solved in. Exposed so a check can reproduce the mapping
+    // exactly instead of assuming it.
+    stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
+  }),
   framing: () => {
     const rect = renderer.domElement.getBoundingClientRect()
     const solid = cubeScreenBounds()
