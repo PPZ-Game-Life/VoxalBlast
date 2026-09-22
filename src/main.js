@@ -1,22 +1,13 @@
 import packageInfo from '../package.json'
 import * as THREE from 'three'
-// Must come before the three.quarks import below: it bridges the r159 `updateRange`
-// removal that otherwise throws inside animate() and freezes the canvas. Its
-// `skipComposerDepthBlit` is used further down, at the composer.
-import { skipComposerDepthBlit } from './rendering/threeCompat.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import {
-  BloomEffect,
-  EffectComposer,
-  EffectPass,
-  RenderPass,
-  NormalPass,
-  SSAOEffect,
-  SMAAEffect,
-  SMAAPreset,
-  ToneMappingEffect,
-  ToneMappingMode,
-} from 'postprocessing'
+// MUST come before the three.quarks import below: it bridges the r159 `updateRange` removal
+// that otherwise throws inside animate() and freezes the canvas. rendering/gameScene.js owns
+// the composer and imports this bridge for `skipComposerDepthBlit`, but gameScene itself is
+// imported further down (after quarks), so relying on that would be relying on accident.
+// Modules evaluate once, so this side-effect import and gameScene's named import are the
+// same instance — it only pins the ORDER.
+import './rendering/threeCompat.js'
 import {
   BatchedRenderer,
   Bezier,
@@ -44,6 +35,7 @@ import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
 import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } from './rendering/woodTexture.js'
 import { createBlockResources } from './rendering/blockResources.js'
+import { createGameScene } from './rendering/gameScene.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -220,20 +212,43 @@ const quality = getRenderQuality()
 installWoodSkin()
 installPastoralBackdrop(document.querySelector('#app'))
 
-const scene = new THREE.Scene()
-scene.background = null
-// The opaque wooden shell supplies depth; the landscape behind the canvas is DOM,
-// not a skybox, and is independent of the scene's reflection environment.
-// v0.8.10: `far` had to grow with the weak-perspective camera. The distance solver
-// now puts the eye ~65 world units out (FOV 6° instead of 30°), and the wheel can
-// push `cameraZoom` to 1.7 — 110 units, past the old 100 plane, which would have
-// clipped the cube away as the player zoomed out. `near` moves with it so the depth
-// range stays sane for the contact-shadow pass.
-const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 1, 500)
-const cameraTarget = new THREE.Vector3(0, 0, 0)
-let cameraZoom = 1
-const minCameraZoom = 0.7
-const maxCameraZoom = 1.7
+// The main scene — scene graph root, camera, renderer, the post chain, the framing solver
+// and the resize path — now lives in rendering/gameScene.js (refactor P2b). Its objects are
+// bound back to the names this file has always used, so every `camera.*` / `renderer.*` /
+// `composer.*` use site below is unchanged: a change of owner, not of call sites.
+// `getCubeGroup` and `metrics` are LAZY so the factory can run here, before `cubeGroup` and
+// the lattice constants exist, while those values still come from ONE source — main's board
+// constants (the plan forbids gameScene holding a second copy of the lattice arithmetic).
+// It must run before `scene.add(cubeGroup)` below, which is why it sits here and not at the
+// old renderer block.
+const scene3d = createGameScene({
+  sceneWrap,
+  quality,
+  getCubeGroup: () => cubeGroup,
+  metrics: () => ({ half, cs, blockHalf: BLOCK_HALF }),
+})
+const {
+  scene,
+  camera,
+  cameraTarget,
+  renderer,
+  composer,
+  normalPass,
+  contactDepth,
+  occlusionEffect,
+  toneMappingEffect,
+  projectCubeBounds,
+  cubeScreenBounds,
+  gestureSpan,
+  cubeExtent,
+  resize,
+  fitCameraToPlaySpace,
+  zoomBy,
+  getCameraZoom,
+  getOrbitDistance,
+  getCameraDir,
+  getAppliedCanvasSize,
+} = scene3d
 
 // ============================================================
 // Cube-face geometry
@@ -361,201 +376,15 @@ buildFaceTiles()
 // ============================================================
 // Camera fit (cube rotates; camera stays put)
 // ============================================================
-const CAMERA_DIR = new THREE.Vector3(...style.cameraDirection).normalize()
-// Fit bound covers the shell plus the one tile inset that stands proud of it.
-const CUBE_EXTENT = half + 0.55
-const frameCorner = new THREE.Vector3()
-const frameRight = new THREE.Vector3()
-const frameUp = new THREE.Vector3()
-let orbitDistance = 12
-
-function distanceForViewDirection(direction) {
-  camera.position.copy(direction)
-  camera.lookAt(cameraTarget)
-  camera.updateMatrixWorld(true)
-  const right = frameRight.setFromMatrixColumn(camera.matrixWorld, 0)
-  const up = frameUp.setFromMatrixColumn(camera.matrixWorld, 1)
-  const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
-  const horizontalTan = verticalTan * camera.aspect
-  const isMobile = sceneWrap.clientWidth < 700
-  const safeFactor = isMobile ? style.safeFactorMobile : style.safeFactorDesktop
-  const min = -CUBE_EXTENT
-  const max = CUBE_EXTENT
-  let distance = 0
-  for (const x of [min, max]) for (const y of [min, max]) for (const z of [min, max]) {
-    const corner = frameCorner.set(x, y, z)
-    const depthOffset = corner.dot(direction)
-    distance = Math.max(
-      distance,
-      depthOffset + Math.abs(corner.dot(right)) / (horizontalTan * safeFactor),
-      depthOffset + Math.abs(corner.dot(up)) / (verticalTan * safeFactor),
-    )
-  }
-  return distance
-}
-
-function refreshCameraProjection() {
-  const isMobile = sceneWrap.clientWidth < 700
-  camera.fov = isMobile ? style.cameraFovMobile : style.cameraFov
-  camera.aspect = Math.max(sceneWrap.clientWidth / Math.max(sceneWrap.clientHeight, 1), 0.5)
-  camera.updateProjectionMatrix()
-  // Re-centre the cube inside the tall central canvas per platform.
-  cameraTarget.y = isMobile ? style.targetYMobile : style.targetYDesktop
-  cameraTarget.x = 0
-  orbitDistance = distanceForViewDirection(CAMERA_DIR)
-  keepCubeInsideCanvas()
-  centreCubeHorizontally()
-}
-
-function fitCameraToPlaySpace() {
-  camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
-  camera.lookAt(cameraTarget)
-}
-
-// The tuned framing sits close to the edge (the cube IS the operation area), and
-// how much of the canvas a given `safeFactor` buys depends on the viewport
-// aspect. This guard keeps that promise device-independent: if the visible cube
-// would leave the canvas, the camera is nudged back until `inset` px of slack
-// remain on every side.
-function keepCubeInsideCanvas(inset = 6) {
-  // `refreshCameraProjection()` runs before the camera is placed, so put it at
-  // the freshly solved distance first — measuring from a stale/inside-the-cube
-  // camera would project nonsense and run the correction away.
-  fitCameraToPlaySpace()
-  for (let i = 0; i < 6; i += 1) {
-    const bounds = cubeScreenBounds()
-    const rect = renderer.domElement.getBoundingClientRect()
-    const overflow = Math.max(
-      rect.left + inset - bounds.minX,
-      bounds.maxX - (rect.right - inset),
-      rect.top + inset - bounds.minY,
-      bounds.maxY - (rect.bottom - inset),
-    )
-    if (overflow <= 0) return
-    orbitDistance *= 1 + overflow / Math.max(rect.height, 1)
-    fitCameraToPlaySpace()
-  }
-}
-
-// The 3/4 view puts the cube's silhouette a few percent off the canvas centre
-// (further off on narrow canvases), which made the two "swipe outside the cube"
-// roll bands lopsided (28px vs 50px on mobile). Aim the camera so both bands end
-// up equal: measure the silhouette's horizontal offset and shift the look-at
-// point by the equivalent world distance, then re-measure.
-function centreCubeHorizontally() {
-  const rect = renderer.domElement.getBoundingClientRect()
-  const centreX = rect.left + rect.width * 0.5
-  const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
-  for (let i = 0; i < 3; i += 1) {
-    const bounds = cubeScreenBounds()
-    const offset = (bounds.minX + bounds.maxX) * 0.5 - centreX
-    if (Math.abs(offset) < 1) return
-    cameraTarget.x += offset * worldPerPx
-    fitCameraToPlaySpace()
-  }
-}
-
-// Screen-space box of the cube (client pixels). v0.2.25 uses it to split the
-// vertical swipe by region: a finger that lands inside the cube's horizontal
-// span pitches it (screen X), one that lands outside it rolls it (screen Z).
-// CUBE_SOLID_EXTENT is the visible body: the outermost blocks' faces. Nothing can
-// stick out further, because nothing does.
-const CUBE_SOLID_EXTENT = half - cs / 2 + BLOCK_HALF + style.previewLift
-const cubeBoundsProbe = new THREE.Vector3()
-function projectCubeBounds(extent) {
-  camera.updateMatrixWorld()
-  const rect = renderer.domElement.getBoundingClientRect()
-  let minX = Infinity
-  let maxX = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
-  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-    cubeBoundsProbe.set(sx * extent, sy * extent, sz * extent)
-      .applyMatrix4(cubeGroup.matrixWorld)
-      .project(camera)
-    const x = rect.left + (cubeBoundsProbe.x + 1) * 0.5 * rect.width
-    const y = rect.top + (1 - cubeBoundsProbe.y) * 0.5 * rect.height
-    minX = Math.min(minX, x)
-    maxX = Math.max(maxX, x)
-    minY = Math.min(minY, y)
-    maxY = Math.max(maxY, y)
-  }
-  return { minX, maxX, minY, maxY }
-}
-function cubeScreenBounds() {
-  return projectCubeBounds(CUBE_SOLID_EXTENT)
-}
-
-// Gesture partition: vertical swipes inside the cube's x-span turn it about the
-// screen X axis, vertical swipes outside that span spin it about the screen Z axis
-// (an in-plane roll). Which band the finger landed in is sampled once, where it goes
-// down (screenBand, rendering/swipe.js), and it decides the roll's sign as well as
-// its axis: the edge under the finger is the edge that travels with it, so the two
-// bands take opposite signs for the same swipe direction (v0.8.1 — they shared one
-// sign before, which left the left band turning against the finger).
-
-// Drag -> angle ruler: the cube's own silhouette on screen, sampled once where the
-// gesture claims its axis (the axis rules themselves live in rendering/swipe.js).
-// A canvas-relative ruler made the same face step cost 185px of horizontal drag on
-// a 1120px-wide desktop canvas but 65px on a phone, which is why "sometimes it
-// won't turn" showed up on PC and not on mobile. The floor only guards a
-// degenerate projection.
-function gestureSpan() {
-  const bounds = cubeScreenBounds()
-  return {
-    x: Math.max(bounds.maxX - bounds.minX, 120),
-    y: Math.max(bounds.maxY - bounds.minY, 120),
-  }
-}
+// The camera-fit solver, the screen-space bounds queries and the gesture ruler all live in
+// rendering/gameScene.js (refactor P2b) — reached through the destructured names above.
 
 // ============================================================
 // Renderer / post / lights
 // ============================================================
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
-renderer.outputColorSpace = THREE.SRGBColorSpace
-// Composer renders linear HDR offscreen; tone-map exactly once in the final pass.
-renderer.toneMapping = THREE.NoToneMapping
-renderer.toneMappingExposure = style.exposure
-renderer.setClearColor(0x000000, 0)
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
-sceneWrap.appendChild(renderer.domElement)
-
-const composer = new EffectComposer(renderer, { multisampling: quality.multisampling, frameBufferType: THREE.HalfFloatType })
-const renderPass = new RenderPass(scene, camera)
-const bloomEffect = new BloomEffect({
-  intensity: quality.bloomIntensity,
-  luminanceThreshold: VFX_CONFIG.bloom.luminanceThreshold,
-  luminanceSmoothing: VFX_CONFIG.bloom.luminanceSmoothing,
-  mipmapBlur: true,
-  radius: VFX_CONFIG.bloom.radius,
-  levels: quality.lowPower ? VFX_CONFIG.bloom.lowPowerLevels : VFX_CONFIG.bloom.levels,
-})
-const smaaEffect = new SMAAEffect({ preset: quality.lowPower ? SMAAPreset.LOW : SMAAPreset.HIGH })
-const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC })
-const effectPass = new EffectPass(camera, bloomEffect, toneMappingEffect, smaaEffect)
-// SMAA carries EffectAttribute.DEPTH, so this pass would otherwise ask the composer for
-// a depth texture it never reads. Cancel that request before addPass() sees it — the
-// reason, and the removal condition, are in threeCompat.js.
-skipComposerDepthBlit(effectPass)
-composer.addPass(renderPass)
-// Contact shadows follow the geometry as the player rotates. A dedicated normal
-// target owns real depth, avoiding the composer's aliased depth-texture blit.
-const normalPass = new NormalPass(scene, camera)
-const contactDepth = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType)
-normalPass.renderTarget.depthTexture = contactDepth
-const occlusionEffect = new SSAOEffect(camera, normalPass.texture, {
-  ...VFX_CONFIG.occlusion,
-  color: new THREE.Color(VFX_CONFIG.occlusion.color),
-  samples: quality.lowPower ? 11 : VFX_CONFIG.occlusion.samples,
-  resolutionScale: quality.lowPower ? 0.5 : VFX_CONFIG.occlusion.resolutionScale,
-})
-const occlusionPass = new EffectPass(camera, occlusionEffect)
-occlusionPass.setDepthTexture(contactDepth)
-composer.addPass(normalPass)
-composer.addPass(occlusionPass)
-composer.addPass(effectPass)
+// The renderer, the composer and the whole post chain are built in rendering/gameScene.js
+// (refactor P2b); `renderer` / `composer` / `toneMappingEffect` / `normalPass` /
+// `contactDepth` / `occlusionEffect` above are that module's instances.
 
 addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
 
@@ -1126,7 +955,7 @@ function scheduleIntroWave() {
   intro.total = intro.paintStart + (bands - 1) * paint.bandStagger + paint.duration
     + paint.occupiedDelay
   intro.scheduled = true
-  intro.scheduledSize = { width: appliedCanvasSize.width, height: appliedCanvasSize.height }
+  intro.scheduledSize = getAppliedCanvasSize()
   intro.bandCount = bands
 }
 
@@ -1176,7 +1005,8 @@ function updateIntro(delta) {
   // shrinks, the camera is re-fitted). Re-sorting once, before anything has been built,
   // keeps the diagonal honest; after that the order is fixed and never recomputed.
   else if (intro.elapsed < 0.08 && intro.scheduledSize
-    && (appliedCanvasSize.width !== intro.scheduledSize.width || appliedCanvasSize.height !== intro.scheduledSize.height)) {
+    && (getAppliedCanvasSize().width !== intro.scheduledSize.width
+      || getAppliedCanvasSize().height !== intro.scheduledSize.height)) {
     scheduleIntroWave()
   }
   intro.elapsed += delta
@@ -2502,7 +2332,7 @@ function clearTransientEffects() {
 function triggerShake(amount) { cameraShake = Math.max(cameraShake, amount) }
 function updateCameraShake(delta) {
   cameraShake = Math.max(0, cameraShake - delta * FEEDBACK_STYLE.shakeDecay)
-  camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
+  camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())
   if (cameraShake > 0) {
     const time = performance.now() * 0.045
     camera.position.x += Math.sin(time) * cameraShake
@@ -3096,7 +2926,7 @@ window.addEventListener('pointercancel', (event) => {
 })
 renderer.domElement.addEventListener('wheel', (event) => {
   event.preventDefault()
-  cameraZoom = THREE.MathUtils.clamp(cameraZoom * (event.deltaY > 0 ? 0.92 : 1.08), minCameraZoom, maxCameraZoom)
+  zoomBy(event.deltaY > 0 ? 0.92 : 1.08)
   fitCameraToPlaySpace()
 }, { passive: false })
 document.addEventListener('keydown', (event) => {
@@ -3212,23 +3042,11 @@ settingsUi.updateSettingsUi()
 // calculation (camera aspect, gesture ruler, drag ghost) was off by the same 16%.
 // A ResizeObserver on the wrap is what actually tracks the layout. `setSize` runs
 // with updateStyle=false, so re-running it cannot feed back into the observer.
-let appliedCanvasSize = { width: 0, height: 0 }
-function resize() {
-  const width = sceneWrap.clientWidth
-  const height = sceneWrap.clientHeight
-  // A container that is momentarily 0 (display:none, a detaching layout) must not
-  // push a degenerate projection into the camera; the next observation fixes it.
-  if (width < 1 || height < 1) return
-  if (width === appliedCanvasSize.width && height === appliedCanvasSize.height) return
-  appliedCanvasSize = { width, height }
-  renderer.setSize(width, height, false)
-  refreshCameraProjection()
-  fitCameraToPlaySpace()
-  // SSAO copies the projection on resize, so the new aspect/FOV must be ready.
-  composer.setSize(width, height)
-}
-window.addEventListener('resize', resize)
-if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(sceneWrap)
+// The canvas, the composer sizing and the observer all live in rendering/gameScene.js
+// (refactor P2b). `resize` above is that module's function, called at the same two points
+// in the boot sequence as before; the observer is registered here, once, where two lines
+// used to register it.
+scene3d.observeResize()
 resize()
 // v0.8.22 (03 §1): the game opens INSIDE a run. A refresh resumes the unfinished run if
 // there is one and deals a new one if there is not — it never lands on the home cover,
@@ -3585,7 +3403,7 @@ globalThis.__voxalblast = Object.freeze({
   framing: () => {
     const rect = renderer.domElement.getBoundingClientRect()
     const solid = cubeScreenBounds()
-    const fitBox = projectCubeBounds(CUBE_EXTENT)
+    const fitBox = projectCubeBounds(cubeExtent())
     return {
       canvas: { left: rect.left, top: rect.top, width: rect.width, height: rect.height, right: rect.left + rect.width, bottom: rect.top + rect.height },
       solid,
@@ -3595,8 +3413,8 @@ globalThis.__voxalblast = Object.freeze({
       bandLeft: solid.minX - rect.left,
       bandRight: rect.left + rect.width - solid.maxX,
       clipped: solid.minX < rect.left || solid.maxX > rect.left + rect.width || solid.minY < rect.top || solid.maxY > rect.top + rect.height,
-      orbitDistance,
-      zoom: cameraZoom,
+      orbitDistance: getOrbitDistance(),
+      zoom: getCameraZoom(),
       fov: camera.fov,
       aspect: camera.aspect,
     }
