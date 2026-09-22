@@ -418,41 +418,77 @@ export const HUD_STYLE = Object.freeze({
 })
 
 // ============================================================
-// Opening creation wave (v0.8.21, 03 §「进入单局」)
+// Opening creation wave (v0.8.22, 03 §6)
 // ============================================================
-// A run does not open on a finished cube: one diagonal wavefront crosses it from
-// screen bottom-left to top-right and the 98 surface blocks are built into place as
-// it passes. Presentation only — the wave reads the board the rules already made and
-// never writes to it (see the intro block in main.js).
+// A run does not open on a finished cube. It is BUILT, then PAINTED, in two passes:
 //
-// The one number that had to be reconciled is the stagger. 98 blocks 25–40ms apart
-// need 2.4–3.9s and cannot fit the 0.8–1.2s the art direction also asks for, so the
-// diagonal order is cut into `bandCount` bands: adjacent BANDS are 32ms apart (the
-// 25–40ms figure), and the ~4 blocks sharing a band start together. A band is ~27px
-// wide along the screen diagonal while a block is ~55px, so the front still reads as
-// continuous rather than as a staircase of fours.
+//   stage 1「上底漆」 98 blocks fly in from inside their cells along the screen
+//                    diagonal (bottom-left → top-right) and take a primer coat — a
+//                    single family of cool stone tones, banded by the cube's own
+//                    height, so the coat reads as designed and not as noise. No
+//                    timber, no crayon paint: nothing on screen is a game colour yet.
+//   hold             a short beat with the primed cube standing complete.
+//   stage 2「上色」   the same diagonal sweeps again and each block repaints ITSELF
+//                    into the colour the board actually has (timber for a bare cell,
+//                    its own paint for an occupied one). A block only ever lerps
+//                    between its primer colour and its real colour — the final frame
+//                    lands exactly on the board's colour because it IS the board's
+//                    colour.
 //
-// Total = (bandCount−1)·bandStagger + duration + occupiedDelay + jitter ≈ 1.05s.
+// Presentation only: the wave reads the board the rules already made and never writes
+// to it (see the intro block in main.js). `npm run probe:intro` grades both stages,
+// including that all 98 blocks end on the authored transform wearing the shared
+// material, and that the board is byte-identical before and after.
+//
+// Timing was lengthened and split in v0.8.22 on the producer's report that the v0.8.21
+// single pass "太快，看不清": one block now takes 0.30s (was 0.19s) to build and 0.26s
+// to repaint, with a 0.22s beat between the passes. Total ≈ 2.85s.
+//
+// The stagger is still quoted per WAVE BAND, not per block: 98 blocks 25–40ms apart
+// would need 2.4–3.9s per stage on its own. The diagonal order is cut into `bandCount`
+// bands, adjacent bands are `bandStagger` apart, and the ~4 blocks sharing a band start
+// together. A band is ~27px wide along the screen diagonal while a block is ~55px, so
+// the front reads as continuous rather than as a staircase of fours.
 export const INTRO_STYLE = Object.freeze({
   enabled: true,
-  duration: 0.19, // one block: fade + scale + travel. 160–220ms
-  bandCount: 26, // wavefront bands across the screen diagonal
-  bandStagger: 0.032, // delay between adjacent bands. 25–40ms
-  jitter: 0.012, // ≤12ms of per-block scatter inside a band, hashed from the cell
-  occupiedDelay: 0.05, // painted blocks join a beat after the bare timber. 40–60ms
-  // Scale: 0.72 → 1.04 → exactly 1. The 1.04 is ONE planned step, not a spring that
-  // rings: `rise` reaches it at overshootAt, `settle` takes it back, and nothing
-  // crosses 1 twice.
-  scaleFrom: 0.72,
-  scaleOvershoot: 1.04,
-  overshootAt: 0.62,
-  fadeAt: 0.55, // opacity reaches 1 here, i.e. before the block lands
-  inset: 0.42, // how far inside its cell a block starts, along its own face normal
-  // How far the far side of the cube trails the near side in the same wavefront.
-  // 0 would interleave the back faces with the front ones and read as noise.
-  depthBias: 0.16,
-  shine: 0.22, // emissive lift a painted block gets at its own peak
-  shineColor: 0xffe6bd,
+  // ---- Stage 1: build the cube and give it its primer coat ----------------------
+  build: Object.freeze({
+    duration: 0.3, // one block: fade + scale + travel. 160–220ms was v0.8.21; dilated here
+    bandCount: 26, // wavefront bands across the screen diagonal, shared by both stages
+    bandStagger: 0.042, // delay between adjacent bands in stage 1
+    jitter: 0.014, // ≤14ms of per-block scatter inside a band, hashed from the cell
+    // Scale: 0.72 → 1.04 → exactly 1. The 1.04 is ONE planned step, not a spring that
+    // rings: `rise` reaches it at overshootAt, `settle` takes it back, and nothing
+    // crosses 1 twice.
+    scaleFrom: 0.72,
+    scaleOvershoot: 1.04,
+    overshootAt: 0.62,
+    fadeAt: 0.55, // opacity reaches 1 here, i.e. before the block lands
+    inset: 0.42, // how far inside its cell a block starts, along its own face normal
+    // How far the far side of the cube trails the near side in the same wavefront.
+    // 0 would interleave the back faces with the front ones and read as noise.
+    depthBias: 0.16,
+  }),
+  // The primer coat. One family, three values, banded by the block's height on the
+  // cube (bottom band first) — deliberately NOT any colour in the shape pool, and
+  // deliberately not timber, so stage 1 can never be mistaken for the finished board.
+  // A single-element array gives a flat one-colour coat instead of a banded one.
+  primer: Object.freeze({
+    colors: Object.freeze([0x7d8b9c, 0x93a1b2, 0xa9b6c5]),
+    roughness: 0.62,
+    clearcoat: 0.18,
+    bumpScale: 0.003,
+  }),
+  hold: 0.22, // the primed cube stands still for this long before stage 2
+  // ---- Stage 2: every block repaints itself into the board's own colour ---------
+  paint: Object.freeze({
+    duration: 0.26, // one block's repaint: colour + surface lerp and a small tap
+    bandStagger: 0.038, // delay between adjacent bands in stage 2
+    occupiedDelay: 0.05, // painted blocks repaint one beat after the bare timber (40–60ms)
+    scalePulse: 1.05, // the "stamp" of the repaint; 1 disables it
+    shine: 0.22, // emissive lift a painted block gets at its own peak
+    shineColor: 0xffe6bd,
+  }),
   reducedMotionDuration: 0.18, // prefers-reduced-motion: one whole-board fade, 150–200ms
 })
 

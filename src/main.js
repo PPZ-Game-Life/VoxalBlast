@@ -998,6 +998,11 @@ function renderBoard() {
 // syncPause() reads introPlaying(), so every existing gate (drag, view drag, items,
 // keyboard, candidate selection) is closed by the one flag and released by it too.
 let intro = null
+// How many waves have been armed since the page loaded. Read-only bookkeeping for the
+// checks: "a refresh plays exactly one wave" cannot be asserted from the wave's own
+// state once it has finished (which, on a boot-time wave, it usually has by the time a
+// probe can look).
+let introPlays = 0
 
 function introPlaying() { return intro !== null }
 
@@ -1031,9 +1036,18 @@ function buildIntroEntries(reduced) {
   gridGroup.children.flatMap((group) => group.children).forEach((tile) => {
     const material = introMaterialFor(tile)
     material.copy(tile.material)
+    // Stage 1 wears the primer: the block's own surface maps stay (they are neutral
+    // pen-stroke luminance/bump maps, so the colour is what reads), but colour and the
+    // physical response are pulled to one coat so the primed cube looks like ONE object
+    // rather than like the finished board with the colours switched off.
+    const primerColor = INTRO_STYLE.primer.colors[primerBandFor(tile.userData.cell)]
+    material.color.set(primerColor)
+    material.roughness = INTRO_STYLE.primer.roughness
+    material.clearcoat = INTRO_STYLE.primer.clearcoat
+    material.bumpScale = INTRO_STYLE.primer.bumpScale
     material.transparent = true
     material.opacity = 0
-    material.emissive.set(INTRO_STYLE.shineColor)
+    material.emissive.set(INTRO_STYLE.paint.shineColor)
     material.emissiveIntensity = 0
     const home = tile.position.clone()
     // A block starts inside its own cell and travels out along the direction its face
@@ -1046,10 +1060,17 @@ function buildIntroEntries(reduced) {
       material,
       home,
       inward,
-      start: home.clone().addScaledVector(inward, INTRO_STYLE.inset),
+      start: home.clone().addScaledVector(inward, INTRO_STYLE.build.inset),
       base: tile.material,
+      primerColor: new THREE.Color(primerColor),
+      // Where stage 2 has to land: the colour the board itself is wearing. Read off the
+      // material the tile came in with, so the last frame of the wave IS the board —
+      // nothing is recomputed from the shape pool, and a resumed run's colours are
+      // whatever the save says they are.
+      finalColor: tile.material.color.clone(),
       painted: occupiedColors.has(tile.userData.cell.join(',')),
-      delay: 0,
+      buildDelay: 0,
+      paintDelay: 0,
       key: 0,
     }
     entries.push(entry)
@@ -1058,11 +1079,21 @@ function buildIntroEntries(reduced) {
     // they are and only their opacity moves, so there is no per-block motion to
     // reduce and nothing for a shadow to slide under.
     if (!reduced) {
-      tile.scale.setScalar(INTRO_STYLE.scaleFrom)
+      tile.scale.setScalar(INTRO_STYLE.build.scaleFrom)
       tile.position.copy(entry.start)
     }
   })
   return entries
+}
+
+// Which primer value a block wears: its height on the cube. The shell's own top and
+// bottom rows are the ends of the family, the middle row is the middle value — a
+// stratified coat that reads the same from every camera angle, which a screen-space
+// pattern would not (the cube can be turned before the wave runs).
+function primerBandFor([, y]) {
+  const colors = INTRO_STYLE.primer.colors.length
+  if (colors < 2) return 0
+  return Math.round((y / Math.max(1, SH - 1)) * (colors - 1))
 }
 
 // Delays are fixed once, on the first frame the board is actually on screen — that
@@ -1080,21 +1111,30 @@ function scheduleIntroWave() {
     // fraction of a beat behind the near side instead of interleaving with it, which
     // is what makes the front travel across the VISIBLE faces in one pass.
     probe.copy(entry.home).applyMatrix4(cubeGroup.matrixWorld).project(camera)
-    entry.key = probe.x + probe.y + INTRO_STYLE.depthBias * probe.z
+    entry.key = probe.x + probe.y + INTRO_STYLE.build.depthBias * probe.z
     min = Math.min(min, entry.key)
     max = Math.max(max, entry.key)
   })
   const span = Math.max(max - min, 1e-6)
-  const bands = Math.max(1, INTRO_STYLE.bandCount)
+  const build = INTRO_STYLE.build
+  const paint = INTRO_STYLE.paint
+  const bands = Math.max(1, build.bandCount)
   intro.entries.forEach((entry) => {
     const band = Math.round(((entry.key - min) / span) * (bands - 1))
-    entry.delay = band * INTRO_STYLE.bandStagger
-      + (cellScatter(entry.tile.userData.cell) - 0.5) * INTRO_STYLE.jitter
-      + (entry.painted ? INTRO_STYLE.occupiedDelay : 0)
+    const scatter = (cellScatter(entry.tile.userData.cell) - 0.5) * build.jitter
+    entry.buildDelay = band * build.bandStagger + scatter
+    // Stage 2 runs the SAME order, one lap later, so the second pass reads as the same
+    // wave coming round again rather than as a second, unrelated animation.
+    entry.paintDelay = band * paint.bandStagger + scatter
+      + (entry.painted ? paint.occupiedDelay : 0)
   })
+  intro.buildWindow = (bands - 1) * build.bandStagger + build.duration
+  intro.paintStart = intro.buildWindow + INTRO_STYLE.hold
+  intro.total = intro.paintStart + (bands - 1) * paint.bandStagger + paint.duration
+    + paint.occupiedDelay
   intro.scheduled = true
-  intro.total = (bands - 1) * INTRO_STYLE.bandStagger + INTRO_STYLE.duration
-    + INTRO_STYLE.occupiedDelay + INTRO_STYLE.jitter
+  intro.scheduledSize = { width: appliedCanvasSize.width, height: appliedCanvasSize.height }
+  intro.bandCount = bands
 }
 
 // Arm a wave. Called from every entry point that puts a live run in front of the
@@ -1111,51 +1151,96 @@ function armIntro() {
     entries: buildIntroEntries(reduced),
     elapsed: 0,
     total: reduced ? INTRO_STYLE.reducedMotionDuration : 0,
+    buildWindow: 0,
+    paintStart: 0,
+    bandCount: INTRO_STYLE.build.bandCount,
     reduced,
     scheduled: reduced,
+    scheduledSize: null,
   }
+  introPlays += 1
   syncPause()
   return true
+}
+
+// How much of stage 1 a block has finished, 0..1 (1 = it has landed on the cube).
+function introBuildProgress(entry, elapsed) {
+  return THREE.MathUtils.clamp((elapsed - entry.buildDelay) / INTRO_STYLE.build.duration, 0, 1)
+}
+
+// How far a block is through its repaint, 0..1.
+function introPaintProgress(entry, elapsed) {
+  if (elapsed <= intro.paintStart) return 0
+  return THREE.MathUtils.clamp(
+    (elapsed - intro.paintStart - entry.paintDelay) / INTRO_STYLE.paint.duration, 0, 1,
+  )
 }
 
 function updateIntro(delta) {
   if (!intro) return
   if (!intro.scheduled) scheduleIntroWave()
+  // The layout settles a frame or two after a boot-time arm (the trays fill, the canvas
+  // shrinks, the camera is re-fitted). Re-sorting once, before anything has been built,
+  // keeps the diagonal honest; after that the order is fixed and never recomputed.
+  else if (intro.elapsed < 0.08 && intro.scheduledSize
+    && (appliedCanvasSize.width !== intro.scheduledSize.width || appliedCanvasSize.height !== intro.scheduledSize.height)) {
+    scheduleIntroWave()
+  }
   intro.elapsed += delta
   const S = INTRO_STYLE
   if (intro.reduced) {
     const a = easeOutCubic(THREE.MathUtils.clamp(intro.elapsed / S.reducedMotionDuration, 0, 1))
-    intro.entries.forEach((entry) => { entry.material.opacity = a })
+    intro.entries.forEach((entry) => {
+      // Reduced motion skips the primer entirely: it fades straight into the board.
+      entry.material.color.copy(entry.finalColor)
+      entry.material.opacity = a
+    })
   } else {
     intro.entries.forEach((entry) => {
-      const p = (intro.elapsed - entry.delay) / S.duration
+      // ---- stage 1: build the block and put it in its primer coat ----------------
+      const p = introBuildProgress(entry, intro.elapsed)
       if (p <= 0) {
         entry.material.opacity = 0
         entry.material.depthWrite = false
         entry.material.emissiveIntensity = 0
         entry.tile.castShadow = false
-        entry.tile.scale.setScalar(S.scaleFrom)
+        entry.tile.scale.setScalar(S.build.scaleFrom)
         entry.tile.position.copy(entry.start)
         return
       }
-      const q = Math.min(p, 1)
       // Arrive early, peak once, settle: `rise` is the build itself, `settle` is what
-      // takes the 1.04 peak back to exactly 1. At q = 1 both are 1 and the scale is
+      // takes the 1.04 peak back to exactly 1. At p = 1 both are 1 and the scale is
       // exactly scaleFrom + (overshoot − scaleFrom) − (overshoot − 1) = 1.
-      const rise = easeOutCubic(Math.min(1, q / S.overshootAt))
-      const settle = q <= S.overshootAt ? 0 : easeOutCubic((q - S.overshootAt) / (1 - S.overshootAt))
-      const opacity = easeOutCubic(Math.min(1, q / S.fadeAt))
+      const rise = easeOutCubic(Math.min(1, p / S.build.overshootAt))
+      const fall = p <= S.build.overshootAt ? 0 : easeOutCubic((p - S.build.overshootAt) / (1 - S.build.overshootAt))
+      const opacity = easeOutCubic(Math.min(1, p / S.build.fadeAt))
       entry.material.opacity = opacity
       // A block that is still fading must not write depth: an invisible block that
       // does would cut a hole in the hull behind it. Same for its shadow — a shadow
       // of a block that does not exist yet is a bug you can see.
       entry.material.depthWrite = opacity > 0.99
       entry.tile.castShadow = opacity > 0.99
-      entry.tile.scale.setScalar(S.scaleFrom + (S.scaleOvershoot - S.scaleFrom) * rise - (S.scaleOvershoot - 1) * settle)
-      entry.tile.position.copy(entry.home).addScaledVector(entry.inward, S.inset * (1 - rise))
-      // Painted blocks get one soft lift of brightness, and it is back to zero by the
-      // time the block is finished — a residual emissive would be a permanent edit.
-      entry.material.emissiveIntensity = entry.painted ? S.shine * Math.sin(Math.PI * q) : 0
+      entry.tile.scale.setScalar(S.build.scaleFrom + (S.build.scaleOvershoot - S.build.scaleFrom) * rise - (S.build.scaleOvershoot - 1) * fall)
+      entry.tile.position.copy(entry.home).addScaledVector(entry.inward, S.build.inset * (1 - rise))
+
+      // ---- stage 2: repaint it into the colour the board actually has ------------
+      // The repaint runs after the hold, on the same wavefront. Nothing is allocated
+      // and no material is swapped: the block lerps from its primer colour to its own
+      // final colour, and the surface response follows it back to the board's values.
+      const k = introPaintProgress(entry, intro.elapsed)
+      if (k <= 0) {
+        entry.material.emissiveIntensity = 0
+        return
+      }
+      const step = easeOutCubic(k)
+      entry.material.color.lerpColors(entry.primerColor, entry.finalColor, step)
+      entry.material.roughness = THREE.MathUtils.lerp(S.primer.roughness, entry.base.roughness, step)
+      entry.material.clearcoat = THREE.MathUtils.lerp(S.primer.clearcoat, entry.base.clearcoat, step)
+      entry.material.bumpScale = THREE.MathUtils.lerp(S.primer.bumpScale, entry.base.bumpScale, step)
+      // The repaint lands with a small tap, and the painted blocks — the ones that tell
+      // the player what is already built — get the only brightness lift in the wave.
+      entry.tile.scale.setScalar(1 + (S.paint.scalePulse - 1) * Math.sin(Math.PI * k))
+      entry.material.emissiveIntensity = entry.painted ? S.paint.shine * Math.sin(Math.PI * k) : 0
     })
   }
   if (intro.elapsed >= intro.total) settleIntro()
@@ -1396,7 +1481,14 @@ function cancelActiveDrag(showFeedback = true) {
 // moment a screen is added — and the home screen is that screen. Returns the new
 // value so a caller can branch on it in the same statement.
 function syncPause() {
+  const previous = isPaused
   isPaused = homeOpen || document.hidden || gameEnded || settingsOpen || controlsOpen || introPlaying()
+  // The item strip's only "not yet" affordance is a class derived from isPaused
+  // (canUseItemsNow), so whoever changes the pause state has to restore it: the opening
+  // wave and the settings panel both grey the buttons on the way in, and without this the
+  // greying would outlive its reason. Caught by the v0.8.22 board shot — the four item
+  // buttons were still grey after the wave had settled.
+  if (isPaused !== previous) renderItemBar()
   return isPaused
 }
 
@@ -3423,12 +3515,21 @@ function resize() {
 window.addEventListener('resize', resize)
 if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(sceneWrap)
 resize()
-// v0.4: the game opens on the home screen. resetGame() still runs first so the scene
-// under the cover is a real, fitted board (opening layout and all) instead of an empty
-// shell — leaving home then costs no work. It deliberately does NOT open a resume slot:
-// a board nobody has touched is not 未完成的一局 (that is what beginRun() is for).
-resetGame()
-openHome()
+// v0.8.22 (03 §1): the game opens INSIDE a run. A refresh resumes the unfinished run if
+// there is one and deals a new one if there is not — it never lands on the home cover,
+// which used to cost a click before anything could be played. 主页 is now reachable only
+// from the in-game settings (回到主页), which is also the only place that snapshots the
+// run on the way out.
+if (sessionStore.read()) {
+  continueRun()
+} else {
+  beginRun()
+  leaveHome()
+}
+// The trays were just filled, so the board's wrapper is shorter than it was when resize()
+// measured it a moment ago; the ResizeObserver catches that, and the wave re-sorts itself
+// once if it armed before the new size landed (see updateIntro()).
+resize()
 platform.initialize().catch(() => showToast('Offline mode'))
 
 const clock = new THREE.Clock()
@@ -3846,45 +3947,59 @@ globalThis.__voxalblast = Object.freeze({
       integrity.maxPositionErr = Math.max(integrity.maxPositionErr, positionErr)
     })
     if (!intro) {
-      return { active: false, locked: isPaused, integrity, blocks: tiles.length, progress: [] }
+      return { active: false, plays: introPlays, locked: isPaused, integrity, blocks: tiles.length, progress: [] }
     }
     camera.updateMatrixWorld()
     cubeGroup.updateMatrixWorld(true)
     const probe = new THREE.Vector3()
+    const primerHex = INTRO_STYLE.primer.colors.map((color) => `#${new THREE.Color(color).getHexString()}`)
     const progress = intro.entries.map((entry) => {
       probe.copy(entry.home).applyMatrix4(cubeGroup.matrixWorld).project(camera)
+      const color = `#${entry.material.color.getHexString()}`
       return {
         cell: entry.tile.userData.cell.join(','),
         faces: entry.tile.userData.faces,
         painted: entry.painted,
-        delay: Number(entry.delay.toFixed(4)),
+        buildDelay: Number(entry.buildDelay.toFixed(4)),
+        paintDelay: Number(entry.paintDelay.toFixed(4)),
         opacity: Number(entry.material.opacity.toFixed(4)),
         scale: Number(entry.tile.scale.x.toFixed(4)),
         emissive: Number(entry.material.emissiveIntensity.toFixed(4)),
+        color,
+        // Stage 1 must never show a game colour, and stage 2 must end on one: these two
+        // flags are what the checks grade the two passes on.
+        primer: primerHex.includes(color),
+        final: color === `#${entry.finalColor.getHexString()}`,
         // Where the block's own place on the cube lands on screen, in NDC: the
         // diagonal (x·0.5 + y·0.5 + 0.5) is the wave's own coordinate.
         x: Number(probe.x.toFixed(4)),
         y: Number(probe.y.toFixed(4)),
       }
     })
+    const stage = intro.elapsed < intro.buildWindow ? 'build'
+      : intro.elapsed < intro.paintStart ? 'hold' : 'paint'
     return {
       active: true,
+      plays: introPlays,
       reduced: intro.reduced,
       scheduled: intro.scheduled,
+      stage,
       elapsed: Number(intro.elapsed.toFixed(4)),
+      buildWindow: Number(intro.buildWindow.toFixed(4)),
+      paintStart: Number(intro.paintStart.toFixed(4)),
       total: Number(intro.total.toFixed(4)),
       locked: isPaused,
       blocks: tiles.length,
       built: progress.filter((entry) => entry.opacity > 0.99).length,
       pending: progress.filter((entry) => entry.opacity <= 0).length,
+      primed: progress.filter((entry) => entry.primer).length,
+      repainted: progress.filter((entry) => entry.final && !entry.primer).length,
+      primerHex,
       config: {
-        duration: INTRO_STYLE.duration,
-        bandCount: INTRO_STYLE.bandCount,
-        bandStagger: INTRO_STYLE.bandStagger,
-        occupiedDelay: INTRO_STYLE.occupiedDelay,
-        scaleFrom: INTRO_STYLE.scaleFrom,
-        scaleOvershoot: INTRO_STYLE.scaleOvershoot,
-        inset: INTRO_STYLE.inset,
+        build: { ...INTRO_STYLE.build },
+        primer: { ...INTRO_STYLE.primer, colors: [...INTRO_STYLE.primer.colors] },
+        hold: INTRO_STYLE.hold,
+        paint: { ...INTRO_STYLE.paint },
         reducedMotionDuration: INTRO_STYLE.reducedMotionDuration,
       },
       integrity,

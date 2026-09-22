@@ -147,9 +147,16 @@ try {
   const hasHandle = await evalJs('typeof globalThis.__voxalblastDev?.stuckCheck === "function"')
   if (!hasHandle) throw new Error('dev handles missing: point this probe at `npm run dev`')
 
-  await clickSel('#home-primary')
-  await sleep(1800)
-  check('run started (home cover dismissed)', (await state()).gameOverLive === false)
+  // v0.8.22: there is no home cover to dismiss any more — the game boots into a run. Wait
+  // for the opening creation wave instead, which holds the input lock and would swallow
+  // every click below.
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (JSON.parse(await evalJs('JSON.stringify(globalThis.__voxalblast.intro().active)')) === false) break
+    await sleep(200)
+  }
+  const booted = JSON.parse(await evalJs('JSON.stringify(globalThis.__voxalblast.home())'))
+  check('run started on load, no home cover', booted.open === false)
+  check('the opening wave is over before the first click', JSON.parse(await evalJs('JSON.stringify(globalThis.__voxalblast.intro().active)')) === false)
 
   // Branch 1 — refresh charged (the pre-existing rule, unchanged).
   const items1 = await evalJs('JSON.stringify(globalThis.__voxalblastDev.setItems({ refresh: 2, hammer: 1, rocket: 1, bomb: 1 }))')

@@ -3,7 +3,9 @@
 // Why this exists instead of `msedge --screenshot=...`: `--screenshot` can only
 // capture the FIRST frame, and VoxalBlast opens on the home cover, so the raw flag
 // gives you the home screen and nothing else — the board is never in the picture.
-// This driver clicks through `#home-primary` first, and it also collects
+// This driver navigates and waits for the opening creation wave to settle — the game
+// boots straight into a run (v0.8.22), so the home shots are taken by going through
+// settings → 回到主页, the way a player gets there. It also collects
 // window.onerror / unhandledrejection, which is how a rename slip that blanked the
 // whole board was caught in one run instead of by eye.
 //
@@ -227,19 +229,32 @@ async function capture(browser, shot) {
       })
       await send(ws, 4, 'Emulation.setDeviceMetricsOverride', { width, height, screenWidth: width, screenHeight: height, deviceScaleFactor: 1, mobile: width < 600 })
       await send(ws, 5, 'Page.navigate', { url })
-      await sleep(3200)
+      await sleep(3600)
 
-      if (mode === 'board' || mode === 'gameover' || mode === 'home-return') {
-        const click = await send(ws, 6, 'Runtime.evaluate', {
-          expression: '(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()',
+      // v0.8.22 (03 §1): the game now OPENS inside a run, so there is no home cover to
+      // dismiss and no click needed for the board shots. 主页 is reached the way a player
+      // reaches it — settings → 回到主页 — which is also what the two home shots grade.
+      // Every mode waits for the opening creation wave to finish first: it holds the input
+      // lock, so a shot (or a dev-handle click) taken mid-wave would grade a half-built
+      // cube and a locked board.
+      let nextId = 200
+      let wave = null
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const read = await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: 'JSON.stringify((() => { const i = globalThis.__voxalblast?.intro?.(); return i ? { active: i.active, plays: i.plays, total: i.total } : null })())',
           returnByValue: true,
         })
-        if (click.result?.value !== 'clicked') throw new Error(`home cover not dismissed: ${click.result?.value}`)
-        await sleep(2600)
+        const raw = read.result?.value
+        wave = raw && raw !== 'null' ? JSON.parse(raw) : null
+        if (wave && !wave.active) break
+        await sleep(150)
       }
-      if (mode === 'home-return') {
-        await send(ws, 25, 'Runtime.evaluate', { expression: `document.querySelector('#settings-button').click(); document.querySelector('#home-setting').click();` })
-        await sleep(500)
+      if (mode === 'home' || mode === 'home-return') {
+        await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: '(() => { document.querySelector("#settings-button").click(); document.querySelector("#home-setting").click(); return "home"; })()',
+          returnByValue: true,
+        })
+        await sleep(700)
       }
 
       // The Game Over card cannot be reached by playing (endGame() fires only on a
@@ -308,8 +323,25 @@ async function capture(browser, shot) {
             // eye would only catch on the frame it happened.
             introWave: (() => {
               const i = globalThis.__voxalblast?.intro?.()
-              return i ? { active: i.active, locked: i.locked, total: i.total, integrity: i.integrity } : null
+              return i ? { active: i.active, plays: i.plays, total: i.total, integrity: i.integrity } : null
             })(),
+            // v0.8.22: the game must boot INSIDE a run — a refresh that lands on the home
+            // cover was the producer's first v0.8.22 report.
+            // v0.8.22: the item strip's disabled state is derived from isPaused, so any
+            // transient pause (the opening wave, the settings panel) that forgets to
+            // restore it leaves four usable tools looking dead. Graded on every board shot.
+            items: [...document.querySelectorAll('.item-button')].map((el) => ({
+              id: el.dataset.item,
+              disabled: el.classList.contains('disabled'),
+              count: Number(el.querySelector('.item-count')?.textContent ?? '0'),
+              opacity: getComputedStyle(el).opacity,
+            })),
+            boot: {
+              homeOpen: globalThis.__voxalblast?.home?.().open ?? null,
+              homeVisible: (() => { const el = document.querySelector('#home'); return !el || getComputedStyle(el).display !== 'none' })(),
+              appHomeOpen: document.querySelector('#app').classList.contains('home-open'),
+              status: document.querySelector('#status').textContent,
+            },
             home: document.querySelector('#home').className,
             canvases: document.querySelectorAll('canvas').length,
             gameOver: (() => {
@@ -368,10 +400,22 @@ async function capture(browser, shot) {
       else if (!onHome && (parsed.versionBadge.hidden || parsed.versionBadge.visibility !== 'visible')) failures.push('version badge is hidden in a live run')
       if (parsed.introWave) {
         if (parsed.introWave.active) failures.push('opening wave still running when the shot was taken')
+        if (!(parsed.introWave.plays >= 1)) failures.push('no opening wave was armed on this load')
         const integrity = parsed.introWave.integrity
         if (integrity && Object.entries(integrity).some(([key, value]) => key.endsWith('Off') && value > 0)) {
           failures.push(`opening wave left blocks off their authored state (${JSON.stringify(integrity)})`)
         }
+      }
+      // v0.8.22: a run must be on screen at boot. The two home shots get there through
+      // settings → 回到主页, so only the board/gameover modes are graded on it.
+      if (!onHome) {
+        if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
+          failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)
+        }
+        // Game Over greys the strip on purpose (the run is over), so the gate is about
+        // the states a player is meant to be able to play from.
+        const stuckItems = mode === 'gameover' ? [] : (parsed.items || []).filter((item) => item.count > 0 && item.disabled)
+        if (stuckItems.length) failures.push(`item buttons are left disabled although they have charges (${JSON.stringify(stuckItems)})`)
       }
       if (parsed.gameLayers.some(layer => layer.visibility !== (onHome ? 'hidden' : 'visible') || layer.inert !== onHome || !layer.width || !layer.height)) failures.push('game layer visibility, input isolation or preserved layout incorrect')
       if (!onHome) {

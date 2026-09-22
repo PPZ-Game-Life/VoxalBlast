@@ -288,9 +288,14 @@ async function reloadAndSettle(client) {
   await client.send('Page.reload', { ignoreCache: false })
   await sleep(1200)
   await waitForCube(client)
-  const click = await client.evaluate('(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()')
-  if (click !== 'clicked') throw new Error(`home cover not dismissed: ${click}`)
-  await sleep(2600)
+  // v0.8.22: the game boots straight into a run — no #home-primary click. Wait for the
+  // opening creation wave instead, which holds the input lock and would ignore the drags
+  // this probe is about to make.
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (await client.evaluate('JSON.stringify(globalThis.__voxalblast.intro?.().active ?? false)') === 'false') break
+    await sleep(200)
+  }
+  await sleep(600)
   await client.frames()
   await waitSettled(client)
 }

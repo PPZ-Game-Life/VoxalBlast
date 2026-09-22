@@ -414,9 +414,13 @@ try {
   await waitForCube(client)
   await sleep(2600)
   await client.frames()
-  const click = await client.evaluate('(() => { const b = document.querySelector("#home-primary"); if (!b) return "no-button"; b.click(); return "clicked"; })()')
-  if (click !== 'clicked') throw new Error(`home cover not dismissed: ${click}`)
-  await sleep(2600)
+  // v0.8.22: the game boots straight into a run, so there is no #home-primary to click —
+  // just wait for the opening creation wave, which holds the input lock while it plays.
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (await client.evaluate('JSON.stringify(globalThis.__voxalblast.intro?.().active ?? false)') === 'false') break
+    await sleep(200)
+  }
+  await sleep(600)
   await client.frames()
 
   // ---------------------------------------------------------------- 1. framing
