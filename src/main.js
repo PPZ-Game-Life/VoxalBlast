@@ -48,6 +48,7 @@ import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
 import { createGameOver } from './ui/gameOver.js'
+import { createHud } from './ui/hud.js'
 
 installToyIcons()
 
@@ -140,7 +141,6 @@ const controlSpin = { pitch: 0, yaw: 0, roll: 0 }
 let soundOn = localStorage.getItem(soundKey) !== 'off'
 let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
 let audioContext
-let toastTimer
 let axisHintTimer
 let cameraShake = 0
 let transientEffects = []
@@ -172,6 +172,37 @@ const gameOverUi = createGameOver({
   els: { gameOverBestEl, gameOverFacesEl, gameOverHonorsEl, gameOverStatsEl },
   getRun: () => run,
 })
+
+// HUD presentation (see ui/hud.js). The factory only stores closures, so it can be built
+// here: every getter is lazy and the item state it reads is declared further down.
+const hud = createHud({
+  els: {
+    statusEl, toastEl, scoreEl, bestEl, chainEl, chainValueEl, chainBarEl,
+    sceneWrap, honorLayerEl, itemBarEl, axisPickEl,
+  },
+  getScore: () => board.score,
+  getBest: () => bestScore,
+  getChain: () => run.chain,
+  getItemCounts: () => itemCounts,
+  getItemActive: () => itemActive,
+  canUseItems: () => canUseItemsNow(),
+  onChainBreak: (chain) => playChainBreakSound(chain),
+})
+
+// Bound to the module's own names so every existing call site below reads exactly as it
+// always did — the bodies moved, the call sites did not.
+const {
+  setStatus,
+  showToast,
+  updateHud,
+  showScorePop,
+  updateChainHud,
+  breakChainFeedback,
+  showHonorBanner,
+  clearHonorLayer,
+  renderItemBar,
+  renderAxisPick,
+} = hud
 
 function resetRun() {
   run.chain = 0
@@ -1293,12 +1324,6 @@ function armIntroIfVisible() {
 // ============================================================
 // HUD / pieces / previews
 // ============================================================
-function updateHud() {
-  scoreEl.textContent = String(board.score).padStart(4, '0')
-  // BEST is a secondary pill: same chip language, smaller type (04「UI 与发布」修订条款).
-  bestEl.textContent = bestScore.toLocaleString('en-US')
-}
-
 function makePiece(shape) {
   return { shape, cells: normalizeCells(shape.cells), used: false }
 }
@@ -1439,14 +1464,6 @@ function renderPieceSlots() {
     slotsEl.appendChild(slot)
     createPiecePreview(piece, canvas, slot)
   })
-}
-
-function setStatus(text) { statusEl.textContent = text }
-function showToast(text, duration = 1500) {
-  toastEl.textContent = text
-  toastEl.classList.add('visible')
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => toastEl.classList.remove('visible'), duration)
 }
 
 function setCancelZone(active, highlighted = false) {
@@ -1709,74 +1726,6 @@ function playHaptic(pattern = 15) {
 }
 
 // 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
-// 荣誉名号. A placement that clears nothing still pops its placement score, which
-// is the entire purpose of the 放置分 layer (§4.1): "this turn built instead of
-// clearing" must not read as nothing happened.
-function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = false } = {}) {
-  const pop = document.createElement('div')
-  pop.className = quiet ? 'score-pop quiet' : 'score-pop'
-  const rows = [`<strong>+${points}</strong>`]
-  if (lines > 0) rows.push(`<span>${lines} LINE${lines === 1 ? '' : 'S'}</span>`)
-  if (faces > 1) rows.push(`<span class="score-pop-faces">${faces} FACES</span>`)
-  if (honor) rows.push(`<span class="score-pop-honor">${honor.title}</span>`)
-  pop.innerHTML = rows.join('')
-  sceneWrap.appendChild(pop)
-  requestAnimationFrame(() => pop.classList.add('visible'))
-  setTimeout(() => pop.remove(), quiet ? 640 : 920)
-}
-
-// Chain indicator (08 §7.5): absent below HUD_STYLE.chainMinVisible and brighter as
-// it grows. A chain that is always on screen costs nothing to break, and the whole
-// mechanism is the stake (08 §4.4).
-function updateChainHud() {
-  const visible = run.chain >= HUD_STYLE.chainMinVisible
-  chainEl.classList.toggle('visible', visible)
-  chainEl.classList.toggle('hot', run.chain >= HUD_STYLE.chainMinVisible)
-  chainEl.setAttribute('aria-hidden', String(!visible))
-  chainValueEl.textContent = String(run.chain)
-  chainBarEl.style.transform = `scaleX(${Math.min(1, run.chain / HUD_STYLE.chainBarCap)})`
-}
-
-function breakChainFeedback(chain) {
-  chainEl.classList.add('broken')
-  setTimeout(() => chainEl.classList.remove('broken'), 620)
-  playChainBreakSound(chain)
-}
-
-// §5.3: ONE primary banner (the rarest honor wins), the rest float in as a single
-// row of small badges. Both are overlay-only — the design forbids a reward moment
-// that blocks input, so nothing here is modal and nothing here can eat a gesture.
-function showHonorBanner(honors, level) {
-  const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[0]
-  if (honors.primary) {
-    const banner = document.createElement('div')
-    banner.className = `honor-banner honor-banner-${feedback.banner}`
-    banner.innerHTML = `<strong>${honors.primary.title}</strong><small>${honors.primary.label} · +${honors.primary.bonus}</small>`
-    honorLayerEl.appendChild(banner)
-    requestAnimationFrame(() => banner.classList.add('visible'))
-    const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
-    setTimeout(() => {
-      banner.classList.remove('visible')
-      setTimeout(() => banner.remove(), 320)
-    }, ms)
-  }
-  const extras = honors.secondary.concat(honors.records)
-  if (!extras.length || !feedback.badges) return
-  const row = document.createElement('div')
-  row.className = 'honor-badges'
-  row.innerHTML = extras.map((honor) => `<span class="honor-badge">${honor.title}</span>`).join('')
-  honorLayerEl.appendChild(row)
-  requestAnimationFrame(() => row.classList.add('visible'))
-  setTimeout(() => {
-    row.classList.remove('visible')
-    setTimeout(() => row.remove(), 320)
-  }, 1400)
-}
-
-function clearHonorLayer() {
-  honorLayerEl.replaceChildren()
-}
-
 // ============================================================
 // Items (front-face based)
 // ============================================================
@@ -1813,30 +1762,6 @@ function clampCellIndex(value) {
 
 function canUseItemsNow() {
   return !gameEnded && !isPaused && !drag && !settingsOpen && performance.now() >= itemBusyUntil
-}
-
-function renderItemBar() {
-  itemBarEl.querySelectorAll('.item-button').forEach((button) => {
-    const id = button.dataset.item
-    const count = itemCounts[id]
-    const ready = canUseItemsNow() && count > 0
-    button.classList.toggle('disabled', !ready)
-    button.classList.toggle('active', itemActive?.id === id)
-    button.setAttribute('aria-pressed', String(itemActive?.id === id))
-    const countEl = button.querySelector('.item-count')
-    if (countEl) countEl.textContent = String(count)
-  })
-}
-
-// The Row/Col panel doubles as the readout for the line the pointer auto-picked
-// (07 §3.1 A5), so it is re-rendered whenever the orientation changes.
-function renderAxisPick() {
-  axisPickEl.querySelectorAll('button[data-axis]').forEach((button) => {
-    const axis = button.dataset.axis === 'col' ? 'col' : 'row'
-    const on = itemActive?.id === 'rocket' && itemActive.orientation === axis
-    button.classList.toggle('active', on)
-    button.setAttribute('aria-pressed', String(on))
-  })
 }
 
 function setRocketOrientation(axis) {
