@@ -1,0 +1,51 @@
+{
+  "snapshot": {
+    "v": 1,
+    "board": {
+      "cells": [
+        [2, 2, 4, 9131977],
+        [2, 2, 0, 9131977],
+        [2, 4, 2, 9131977],
+        [2, 0, 2, 9131977],
+        [4, 2, 2, 9131977],
+        [0, 2, 2, 9131977]
+      ],
+      "score": 0,
+      "totalLines": 0
+    },
+    "pieces": [
+      { "name": "Square", "used": false },
+      { "name": "Line 3", "used": false },
+      { "name": "Dot", "used": false }
+    ],
+    "items": {
+      "refresh": 2,
+      "hammer": 1,
+      "rocket": 1,
+      "bomb": 1
+    },
+    "run": {
+      "chain": 0,
+      "bestChain": 0,
+      "maxLinesOneMove": 0,
+      "maxFacesOneMove": 0,
+      "facesLit": [],
+      "faceWipes": 0,
+      "honors": [],
+      "honorCounts": {}
+    },
+    "pose": {}
+  },
+  "expectedBoard": {
+    "cells": [
+      [2, 2, 4, 9131977],
+      [2, 2, 0, 9131977],
+      [2, 4, 2, 9131977],
+      [2, 0, 2, 9131977],
+      [4, 2, 2, 9131977],
+      [0, 2, 2, 9131977]
+    ],
+    "score": 0,
+    "totalLines": 0
+  }
+}
