@@ -409,6 +409,32 @@ export function createPieceView({
     }
   }
 
+  // ---- Item target overlay (refactor P4c) -------------------------------------
+  // Cube-local, like the landing marker and for the same reason: these cells are positioned in
+  // cube-local coordinates, so the highlight a tool paints has to turn with the cube it is
+  // pointing at. Which cells a tool covers is the tool's RULE and whether a cell is already
+  // taken is the board's (gameSession, P6) — both arrive here as data (plan §6 P4.3).
+  const itemOverlay = new THREE.Group()
+  cubeGroup.add(itemOverlay)
+
+  function clearItemOverlay() {
+    clearGroup(itemOverlay)
+  }
+
+  // One marker per targeted cell: an occupied cell gets the full-size, more opaque ghost of the
+  // block already sitting there, an empty one a smaller, fainter marker.
+  function showItemOverlay({ face, cells }) {
+    const normal = cubeVector(face, 'n')
+    cells.forEach(({ cell: [x, y, z], occupied }) => {
+      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
+      mesh.scale.setScalar(occupied ? 1 : 0.72)
+      // The marker is a ghost of the BLOCK that would sit in this cell, lifted just
+      // clear of the one already there so the two cannot z-fight.
+      mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, previewLift)
+      itemOverlay.add(mesh)
+    })
+  }
+
   return {
     disposePiecePreviews,
     createPiecePreview,
@@ -423,5 +449,7 @@ export function createPieceView({
     clearDragGhost,
     syncDragGhost,
     ghostReport,
+    clearItemOverlay,
+    showItemOverlay,
   }
 }

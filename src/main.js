@@ -355,7 +355,9 @@ cubeGroup.add(cubeBody)
 
 // Every block on the board is centred in its lattice cell, exactly like the piece
 // in the player's hand: half a block + the nudge the shell gives back is all the
-// arithmetic there is, and it is written once.
+// arithmetic there is, and it is written once. The block metrics stay this file's
+// (gameScene is handed `blockHalf`); the marked-up cells the piece view draws — the landing
+// marker and the item overlay — are handed the resulting lift.
 const BLOCK_HALF = style.blockSize / 2
 const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // THE block. ONE geometry instance is shared by the board's 98 blocks, the three
@@ -388,8 +390,8 @@ const pieceView = createPieceView({
   // forbids a second copy of the face basis.
   cellToWorld,
   cubeVector,
-  // BLOCK_HALF + style.previewLift — still this file's constant while the item overlay, its
-  // only other consumer, lives here (P4c).
+  // BLOCK_HALF + style.previewLift — the metrics stay this file's; the view is handed the lift
+  // for both the landing marker and the item overlay (P4b/P4c).
   previewLift: PREVIEW_LIFT,
   // The renderer's CSS box: the ghost measures itself against the canvas the renderer actually
   // draws into, and that canvas belongs to gameScene (P2b).
@@ -416,6 +418,10 @@ const {
   clearDragGhost,
   syncDragGhost,
   ghostReport,
+  // Item target overlay (P4c): main still decides which cells a tool covers and which of them are
+  // already taken; the module draws the markers for the list it is handed.
+  clearItemOverlay,
+  showItemOverlay,
 } = pieceView
 
 // ============================================================
@@ -803,8 +809,8 @@ const ITEM_TOOLS = Object.freeze([
   { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
   { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
 ])
-const itemPreviewGroup = new THREE.Group()
-cubeGroup.add(itemPreviewGroup)
+// The item-target overlay's group is built and attached by rendering/pieceView.js (refactor
+// P4c), in the cube's local frame, right after the landing marker's.
 let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
 let itemActive = null // { id, face, u, v, orientation }
 let itemBusyUntil = 0
@@ -878,12 +884,12 @@ function cancelItemSelection(silent = false) {
   itemTap = null
   if (!itemActive) {
     axisPickEl.classList.add('hidden')
-    clearGroup(itemPreviewGroup)
+    clearItemOverlay()
     return
   }
   itemActive = null
   lastItemHoverKey = null
-  clearGroup(itemPreviewGroup)
+  clearItemOverlay()
   axisPickEl.classList.add('hidden')
   if (!silent) setStatus('Pick a shape')
   renderItemBar()
@@ -895,7 +901,7 @@ function resetItems() {
   itemTap = null
   itemBusyUntil = 0
   lastItemHoverKey = null
-  clearGroup(itemPreviewGroup)
+  clearItemOverlay()
   axisPickEl.classList.add('hidden')
   clearItemUndo()
   renderItemBar()
@@ -965,18 +971,15 @@ function toolScopeCells(id, face, u, v) {
 }
 
 function rebuildItemOverlay() {
-  clearGroup(itemPreviewGroup)
+  clearItemOverlay()
   if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
   const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v)
-  const normal = cubeVector(itemActive.face, 'n')
-  scope.forEach(([x, y, z]) => {
-    const occupied = board.has(x, y, z)
-    const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
-    mesh.scale.setScalar(occupied ? 1 : 0.72)
-    // The marker is a ghost of the BLOCK that would sit in this cell, lifted just
-    // clear of the one already there so the two cannot z-fight.
-    mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, PREVIEW_LIFT)
-    itemPreviewGroup.add(mesh)
+  // The overlay itself is pieceView's (P4c): which cells a tool covers is the tool's rule, and
+  // whether a cell already holds a block is the board's — both are this file's to answer, so the
+  // module is handed the finished list.
+  showItemOverlay({
+    face: itemActive.face,
+    cells: scope.map((cell) => ({ cell, occupied: board.has(cell[0], cell[1], cell[2]) })),
   })
 }
 
@@ -1868,7 +1871,7 @@ function applySession(saved) {
   itemActive = null
   itemBusyUntil = 0
   lastItemHoverKey = null
-  clearGroup(itemPreviewGroup)
+  clearItemOverlay()
   axisPickEl.classList.add('hidden')
   // Pose is restored from the LOGICAL base quaternion, so the cube comes back on
   // exactly the face it was left on (a face-aligned pose matters: the candidate's
