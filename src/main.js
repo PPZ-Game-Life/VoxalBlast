@@ -36,6 +36,7 @@ import { addToyLights } from './rendering/toyLights.js'
 import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } from './rendering/woodTexture.js'
 import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
+import { createBoardView } from './rendering/boardView.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -256,19 +257,27 @@ const {
 const cs = 1.0 // cell pitch (lattice unit)
 const half = (SH * cs) / 2 // 2.5 — cube half side
 const cubeSide = SH * cs // 5
-// Per-face placement plane in cube-local space. n = outward face normal,
-// u/v = the in-plane axes matching the board's face->lattice mapping.
-const FACE_PLANE = {
-  '+x': { n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-  '-x': { n: [-1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
-  '+y': { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-  '-y': { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
-  '+z': { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
-  '-z': { n: [0, 0, -1], u: [1, 0, 0], v: [0, 1, 0] },
-}
 
 const cubeGroup = new THREE.Group()
 scene.add(cubeGroup)
+
+// The cube's coordinate system — per-face normals/in-plane axes, lattice cell -> local ->
+// world — lives in rendering/boardView.js (refactor P3a). Bound back to the names this file
+// has always used, so every conversion below is unchanged. The pitch and half-side stay
+// main's own constants via `metrics()`: the plan forbids boardView holding a second copy of
+// the lattice mapping. The group is read through a getter because it rotates.
+const boardView = createBoardView({
+  metrics: () => ({ cs, half }),
+  getCubeGroup: () => cubeGroup,
+})
+const {
+  FACE_PLANE,
+  cubeVector,
+  cellToWorld,
+  cellLocal,
+  cellWorld,
+  facePlaneLocalCenter,
+} = boardView
 
 // Opaque timber body. The shell is only a BACKING: it occludes the far faces and
 // fills the narrow notches between blocks (which is why it is darker than they are).
@@ -294,32 +303,8 @@ cubeBody.castShadow = false
 cubeBody.receiveShadow = true
 cubeGroup.add(cubeBody)
 
-function cubeVector(face, axis) {
-  const b = FACE_PLANE[face]
-  if (axis === 'n') return new THREE.Vector3(...b.n)
-  if (axis === 'u') return new THREE.Vector3(...b.u)
-  return new THREE.Vector3(...b.v)
-}
-
-// World-space lattice cell -> 3D position (cells are flush on the shell).
-function cellToWorld(x, y, z) {
-  return new THREE.Vector3(
-    x * cs - half + cs / 2,
-    y * cs - half + cs / 2,
-    z * cs - half + cs / 2,
-  )
-}
-
-// Cube-local position of a face cell (from its lattice coordinate).
-function cellLocal(face, u, v) {
-  const [x, y, z] = faceLattice(face, u, v)
-  return cellToWorld(x, y, z)
-}
-
-// Center of a face's placement plane (the outer shell surface), cube-local.
-function facePlaneLocalCenter(face) {
-  return cubeVector(face, 'n').multiplyScalar(half)
-}
+// The lattice <-> local <-> world conversions now live in rendering/boardView.js (P3a); the
+// destructured names above are that module's functions.
 
 // Every block on the board is centred in its lattice cell, exactly like the piece
 // in the player's hand: half a block + the nudge the shell gives back is all the
@@ -764,9 +749,7 @@ function clearGroup(group) {
 // ============================================================
 // Board rendering
 // ============================================================
-function cellWorld(face, u, v) {
-  return cellLocal(face, u, v).applyMatrix4(cubeGroup.matrixWorld)
-}
+// cellWorld (same cell in world space) is boardView's, destructured above.
 
 // Occupancy is paint, not geometry. Each unique lattice cell keeps one mesh and
 // one material; its adjacent faces share that same solid corner block.
