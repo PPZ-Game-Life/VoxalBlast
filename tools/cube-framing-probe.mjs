@@ -8,9 +8,20 @@
 //   2. 旋转轨迹 — where the rotation axis points ON SCREEN while a gesture is in
 //      flight. A turn that "looks crooked" is a turn whose pose increment is about
 //      a screen axis that is not level/plumb, so the probe samples the increment
-//      at several drag distances and reports its screen direction.
+//      at several drag distances and reports its screen direction. This is also what
+//      catches a rotation that STOPS answering the finger: a zero increment has no
+//      axis at all.
+//   3. 停靠 / 微调 / 换面 (v0.8.24) — the three rules of the fine-tune layer: the zone
+//      is symmetric about the dock in finger travel as well as in degrees, a release
+//      inside it keeps exactly the pose on screen, a drag past the edge converges onto
+//      it, and a face costs the same drag from every bearing. The numbers come from
+//      `rotation().zone` / `.resistance`, i.e. from the shipped model rather than from
+//      a second copy of the arithmetic.
 //
-//   node tools/cube-framing-probe.mjs [--json]
+//   node tools/cube-framing-probe.mjs [--json] [--quick] [--debug] [--viewport=WxH]
+//
+// `--debug` prints every drag the bearing section makes (from/to bearing, raw offset,
+// and the held sample), which is how a routing problem is told apart from a feel one.
 //
 // `npm run probe:framing`.
 //
@@ -48,6 +59,7 @@ const JSON_ONLY = process.argv.includes('--json')
 // can be swept in a few seconds instead of a full 24-orientation walk. It is a
 // tuning aid: the per-orientation consistency checks are skipped under it.
 const QUICK = process.argv.includes('--quick')
+const DEBUG = process.argv.includes('--debug')
 // The composition is NOT viewport-independent: `refreshCameraProjection()` solves the
 // camera distance from the canvas aspect, and the distance decides how much of a side
 // face the perspective leaves visible at a given camera angle. A desktop-correct
@@ -616,61 +628,256 @@ try {
   report.trajectory = trajectories
 
   // ------------------------------------------------------------- 3. the bearing
-  // "每次转完，都是到达同一个角度" (v0.8.7 and earlier). These are the four things
-  // that make the bearing the player's instead of a constant: a sub-threshold drag
-  // is KEPT, it is REMEMBERED across a face turn, a drag that would leave the band
-  // turns the next face instead, and a roll never leaves a bearing behind.
+  // v0.8.24 replaced the asymmetric fence with three rules, and each is asserted here
+  // against what the SHIPPED model reports (`rotation().zone` / `.resistance`) rather
+  // than against a copy of the arithmetic — a probe that re-derives the model it is
+  // checking can pass on a copy that has drifted:
+  //   1. the fine-tune zone is SYMMETRIC about the dock, in OPERATION (finger travel)
+  //      as well as in degrees, so the same drag either way buys the same offset;
+  //   2. inside the zone a release KEEPS the pose the player is looking at; the cube
+  //      resists as the edge arrives, and a drag that ends past the edge converges
+  //      onto it — never the one-frame truncation of v0.8.23 and earlier;
+  //   3. the FACE is the gesture's own call, so it costs the same drag from every
+  //      bearing, and the bearing the player dialled survives the turn.
   const tuning = []
+  const readRotation = () => readJson(client, 'globalThis.__voxalblast.rotation()')
   const readBearing = async () => {
-    const rotation = await readJson(client, 'globalThis.__voxalblast.rotation()')
-    return { yawDeg: rotation.bearingDeg.yaw, pitchDeg: rotation.bearingDeg.pitch, base: rotation.base }
+    const rotation = await readRotation()
+    return {
+      yawDeg: rotation.bearingDeg.yaw,
+      pitchDeg: rotation.bearingDeg.pitch,
+      rawYawDeg: rotation.bearingRawDeg.yaw,
+      settling: rotation.settling,
+      base: rotation.base,
+    }
   }
-  const dragBy = async (axis, px) => {
-    const from = axis === 'pitch' ? { x: centreX, y: centreY } : { x: centreX, y: centreY }
+  const dragBy = async (axis, px, steps = 12) => {
+    const from = { x: centreX, y: centreY }
     const to = axis === 'pitch' ? { x: from.x, y: from.y + px } : { x: from.x + px, y: from.y }
-    await drag(client, from, to, 10)
+    const before = await readBearing()
+    await drag(client, from, to, steps)
     await sleep(SETTLE_MS)
     await client.frames()
-    return readBearing()
+    const after = await readBearing()
+    if (DEBUG) console.log(`    [drag ${axis} ${px.toFixed(2)}px from ${before.yawDeg}/${before.pitchDeg} raw ${before.rawYawDeg}] -> ${after.yawDeg}/${after.pitchDeg}`)
+    return after
+  }
+  // The app's drag ruler is the CUBE'S OWN SILHOUETTE, sampled where the gesture
+  // commits — and that silhouette changes with the bearing (a more frontal cube is a
+  // narrower box: measured, 452.7px at the dock against ~420px at the 7° bearing, so a
+  // park aimed with the dock's ruler came out 8% short). Every drag converted from
+  // degrees therefore re-measures the ruler first, at the pose the gesture will claim
+  // its axis in.
+  let rulerYaw = spanX
+  let rulerPitch = spanY
+  const measureRuler = async () => {
+    const bounds = await readJson(client, 'globalThis.__voxalblast.bounds()')
+    rulerYaw = Math.max(bounds.maxX - bounds.minX, 120)
+    rulerPitch = Math.max(bounds.maxY - bounds.minY, 120)
+  }
+  const dragByDeg = async (axis, deg, steps = 12) => {
+    await measureRuler()
+    return dragBy(axis, (axis === 'pitch' ? rulerPitch : rulerYaw) * deg / 180, steps)
+  }
+  // A drag that is HELD: press, walk out to the far end, sample the pose while the
+  // finger is still down, then release. The resistance is a property of the DRAG, so
+  // this is the only way to see it — a release only shows its tail.
+  const dragHoldDeg = async (axis, deg, steps = 12) => {
+    await measureRuler()
+    const px = (axis === 'pitch' ? rulerPitch : rulerYaw) * deg / 180
+    const from = { x: centreX, y: centreY }
+    const to = axis === 'pitch' ? { x: from.x, y: from.y + px } : { x: from.x + px, y: from.y }
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1 })
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps
+      await client.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t, button: 'left', buttons: 1,
+      })
+      await sleep(16)
+    }
+    const held = await readRotation()
+    if (DEBUG) console.log(`    [hold ${axis} ${px.toFixed(2)}px] ruler ${rulerYaw.toFixed(1)} live ${JSON.stringify(held.live)}`)
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1 })
+    await sleep(SETTLE_MS)
+    await client.frames()
+    const settled = await readBearing()
+    if (DEBUG) console.log(`    [hold ${axis} settled] -> ${settled.yawDeg}/${settled.pitchDeg}`)
+    return { held, settled }
   }
   const band = ROTATE_STYLE.stepThreshold
   const pxPerRadYaw = spanX / Math.PI // swipeAngle: angle = dx / span.x * π
   const pxPerRadPitch = spanY / Math.PI
+  const deg = (rad) => rad * 180 / Math.PI
 
-  // (a) a sub-threshold drag is kept as the new bearing
-  await pressKeys(client, [])
-  const before1 = await readBearing()
-  const nudgeRad = band * 0.4
-  const after1 = await dragBy('yaw', -nudgeRad * pxPerRadYaw)
-  const keptDelta = after1.yawDeg - before1.yawDeg
-  const keptTarget = -nudgeRad * 180 / Math.PI
-  const nudgeKept = Math.abs(keptDelta - keptTarget) < 3 && qKey(after1.base) === qKey(before1.base)
-  tuning.push({ step: 'sub-threshold drag is kept', expectedDeg: Number(keptTarget.toFixed(2)), gotDeg: keptDelta, baseUnchanged: qKey(after1.base) === qKey(before1.base) })
-  if (!nudgeKept) failures.push(`bearing: a ${(keptTarget).toFixed(1)}° fine-tune settled at ${keptDelta.toFixed(2)}° instead`)
+  // Park the cube ON the dock before anything else: the zone is centred on it, so a
+  // test that claims "the same drag either way" has to start there. The travel that
+  // undoes a bearing is the RAW offset (`rotation().bearingRawDeg`), never the bearing
+  // itself — the bearing is the resisted value, so dragging out "the bearing in
+  // degrees" would leave a residue. The park is always a sub-threshold drag, because a
+  // bearing is at most one margin (10°) wide while the step threshold is 30°.
+  const zone = (await readRotation()).zone
+  const yawZone = zone.yaw
+  const resistance = ROTATE_STYLE.bearingResistance
+  const freeDeg = yawZone.marginDeg * resistance.free
+  const parkYaw = async () => {
+    const current = await readBearing()
+    return dragByDeg('yaw', -current.rawYawDeg)
+  }
+  const atDock = await parkYaw()
+  const parked = Math.abs(atDock.yawDeg) < 0.4
+  tuning.push({ step: 'the cube parks back on the dock', bearingDeg: atDock.yawDeg, dockDeg: yawZone.dockDeg })
+  if (!parked) failures.push(`bearing: parking the bearing on the dock landed at ${atDock.yawDeg}° (dock ${yawZone.dockDeg}°)`)
 
-  // (b) it survives a face turn: a committing drag keeps the bearing and steps base
-  const committed = await dragBy('yaw', -band * 1.5 * pxPerRadYaw)
-  const remembered = Math.abs(committed.yawDeg - after1.yawDeg) < 2
-  const stepped = qKey(committed.base) !== qKey(after1.base)
-  tuning.push({ step: 'bearing is remembered across a face turn', bearingDeg: committed.yawDeg, faceChanged: stepped })
-  if (!stepped) failures.push('bearing: a drag well past the band did not turn a face')
-  if (!remembered) failures.push(`bearing: the fine-tune was lost across a face turn (${after1.yawDeg}° -> ${committed.yawDeg}°)`)
-
-  // (c) past the band it turns a face instead of fine-tuning further. Push in the
-  // direction the bearing is already leaning, far enough that the total must leave
-  // ±band: `band − |bearing|` to reach the edge, plus a margin.
-  const after1Rad = committed.yawDeg * Math.PI / 180
-  const toEdgeRad = band - Math.abs(after1Rad) + band * 0.3
-  // Same direction the bearing is already leaning: swipeAngle's yaw term is
-  // `+dx / span * π`, so a negative bearing needs a negative drag to go further.
-  const overEdge = await dragBy('yaw', Math.sign(after1Rad || -1) * toEdgeRad * pxPerRadYaw)
-  const turnedInstead = qKey(overEdge.base) !== qKey(committed.base)
-  tuning.push({ step: 'past the band it turns the next face', faceChanged: turnedInstead, bearingDeg: overEdge.yawDeg })
-  if (!turnedInstead) {
-    failures.push(`bearing: a drag of ${(toEdgeRad * 180 / Math.PI).toFixed(1)}° from a ${committed.yawDeg}° bearing fine-tuned to ${overEdge.yawDeg} instead of turning a face`)
+  // (1) SYMMETRY (rule 1). The same finger travel either way, from the dock, and
+  // inside the zone but past the 1:1 region so the resistance is live on both sides.
+  const probeDeg = yawZone.marginDeg * 0.8
+  const toRight = await dragByDeg('yaw', probeDeg)
+  await parkYaw()
+  const toLeft = await dragByDeg('yaw', -probeDeg)
+  const symmetryGap = Math.abs(Math.abs(toRight.yawDeg) - Math.abs(toLeft.yawDeg))
+  const resisted = Math.abs(toRight.yawDeg) > freeDeg && Math.abs(toRight.yawDeg) < probeDeg
+  tuning.push({
+    step: 'the same drag either way yields the same offset',
+    dragDeg: Number(probeDeg.toFixed(2)),
+    rightDeg: toRight.yawDeg,
+    leftDeg: toLeft.yawDeg,
+    gapDeg: Number(symmetryGap.toFixed(2)),
+    resisted,
+  })
+  if (symmetryGap >= 0.5) {
+    failures.push(`bearing: the zone is not symmetric — ${probeDeg.toFixed(1)}° of drag right gave ${toRight.yawDeg}°, left gave ${toLeft.yawDeg}°`)
+  }
+  if (!resisted) {
+    failures.push(`bearing: ${probeDeg.toFixed(1)}° of drag produced ${toRight.yawDeg}° — outside the resisted band (${freeDeg.toFixed(1)}°..${probeDeg.toFixed(1)}°)`)
   }
 
-  // (d) roll leaves no bearing behind (Z is the straighten gesture)
+  // (2a) INSIDE the zone a release KEEPS exactly the pose on screen: no spring-back,
+  // no convergence, nothing left to animate. This is the one property the whole
+  // fine-tune layer exists for, and it is asserted on the angle the finger left AND on
+  // the settle flag — a run that landed 0.01° away would still be a second animation.
+  await parkYaw()
+  const keptDrag = await dragHoldDeg('yaw', probeDeg)
+  const keptShownDeg = keptDrag.held.live ? deg(keptDrag.held.live.shown) : 0
+  const keptExactly = Math.abs(keptDrag.settled.yawDeg - keptShownDeg) < 0.05
+  const noSettle = keptDrag.settled.settling === false
+  tuning.push({
+    step: 'inside the zone a release keeps what is on screen',
+    dragDeg: Number(probeDeg.toFixed(2)),
+    shownWhileHeldDeg: Number(keptShownDeg.toFixed(2)),
+    settledDeg: keptDrag.settled.yawDeg,
+    keptExactly,
+    noSettle,
+  })
+  if (!keptExactly) {
+    failures.push(`bearing: a release inside the zone moved the cube from ${keptShownDeg.toFixed(2)}° to ${keptDrag.settled.yawDeg}°`)
+  }
+  if (!noSettle) failures.push('bearing: a release inside the zone ran a convergence animation — it should have had nothing to settle')
+
+  // (2b) THE EDGE (rule 2). A drag well past the operation margin: the cube overshoots
+  // the zone WHILE the finger is down (that is the resistance, not a wall), and the
+  // release converges it exactly onto the edge instead of truncating the drag.
+  await parkYaw()
+  const pastEdgeDeg = yawZone.edgeDeg * 1.25
+  // The widest overshoot a player can ever release with is at the flip threshold —
+  // past that the drag turns a face instead of settling. That is the budget the
+  // overshoot is judged against, not an arbitrary tolerance.
+  const releaseBudgetDeg = yawZone.marginDeg + (deg(band) - yawZone.edgeDeg) * resistance.wall
+  const edge = await dragHoldDeg('yaw', pastEdgeDeg)
+  const heldShownDeg = edge.held.live ? deg(edge.held.live.shown) : 0
+  const overshot = heldShownDeg > yawZone.marginDeg && heldShownDeg <= releaseBudgetDeg + 0.2
+  const converged = Math.abs(Math.abs(edge.settled.yawDeg) - yawZone.marginDeg) < 0.6
+  const noTurn = qKey(edge.settled.base) === qKey(keptDrag.settled.base)
+  tuning.push({
+    step: 'past the edge it resists, then converges onto the edge',
+    dragDeg: Number(pastEdgeDeg.toFixed(2)),
+    operationMarginDeg: yawZone.edgeDeg,
+    shownWhileHeldDeg: Number(heldShownDeg.toFixed(2)),
+    marginDeg: yawZone.marginDeg,
+    settledDeg: edge.settled.yawDeg,
+    overshot,
+    converged,
+    faceUnchanged: noTurn,
+  })
+  if (!overshot) {
+    failures.push(`bearing: a ${pastEdgeDeg.toFixed(1)}° drag held the cube at ${heldShownDeg.toFixed(2)}° — outside (${yawZone.marginDeg}°, ${releaseBudgetDeg.toFixed(2)}°]`)
+  }
+  if (!converged) {
+    failures.push(`bearing: a drag past the edge settled at ${edge.settled.yawDeg}° instead of the ${yawZone.marginDeg}° edge`)
+  }
+  if (!noTurn) failures.push('bearing: a sub-threshold drag past the edge turned a face')
+
+  // (3) THE FACE IS THE DRAG'S CALL (rule 3). The bearing is sitting on the frontal
+  // edge now, and the drag that turns a face from there has to turn one from the
+  // three-quarter edge too. Through v0.8.23 the test was `|bearing + drag|`, so from
+  // the frontal edge this drag fine-tuned instead (|10° − 32.4°| = 22.4° < 30°) and
+  // the player needed 40° of drag for the very same face.
+  const flipDragDeg = deg(band) * 1.08
+  const fromFrontEdge = await dragByDeg('yaw', -flipDragDeg)
+  const frontTurned = qKey(fromFrontEdge.base) !== qKey(edge.settled.base)
+  const frontKept = Math.abs(Math.abs(fromFrontEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  // Dial to the three-quarter edge (park first, so the origin is the dock again).
+  await parkYaw()
+  const backEdge = await dragByDeg('yaw', -pastEdgeDeg)
+  const backDialled = Math.abs(Math.abs(backEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  const fromBackEdge = await dragByDeg('yaw', flipDragDeg)
+  const backTurned = qKey(fromBackEdge.base) !== qKey(backEdge.base)
+  const backKept = Math.abs(Math.abs(fromBackEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  tuning.push({
+    step: 'the same drag turns a face from either edge',
+    dragDeg: Number(flipDragDeg.toFixed(2)),
+    frontalEdgeTurned: frontTurned,
+    threeQuarterEdgeTurned: backTurned,
+    bearingKeptAfterFrontTurn: frontKept,
+    bearingKeptAfterBackTurn: backKept,
+  })
+  if (!frontTurned || !backTurned) {
+    failures.push(`bearing: a ${flipDragDeg.toFixed(1)}° drag turned a face from ${frontTurned ? '' : 'no '}frontal edge / ${backTurned ? '' : 'no '}three-quarter edge — the face cost still depends on the bearing`)
+  }
+  if (!frontKept || !backKept) {
+    failures.push(`bearing: the dialled bearing was lost across a face turn (${fromFrontEdge.yawDeg}° / ${fromBackEdge.yawDeg}°, edge ${yawZone.marginDeg}°)`)
+  }
+  if (!backDialled) failures.push(`bearing: dialling the three-quarter edge landed at ${backEdge.yawDeg}° instead of -${yawZone.marginDeg}°`)
+
+  // (4) THE SHAPE of the resistance, read straight off the shipped model: monotone,
+  // continuous at the edge (no cliff where the old clamp used to sit), creeping at
+  // `wall` past it (NEVER frozen — the saturating first cut of this feature stopped
+  // answering the finger from ~40° of drag on, which the trajectory section above
+  // caught as a zero pose increment), and bounded where it counts: the widest
+  // overshoot a player can release with is the one at the flip threshold.
+  const curve = (await readRotation()).resistance.curve
+  let monotone = true
+  let continuous = true
+  for (let i = 1; i < curve.length; i += 1) {
+    const step = curve[i][1] - curve[i - 1][1]
+    if (step < -0.005) monotone = false
+    if (step > 2.05) continuous = false
+  }
+  const atThreshold = curve.find(([raw]) => raw === Math.round(deg(band))) ?? curve[curve.length - 1]
+  const tailSlope = curve[curve.length - 1][1] - atThreshold[1]
+  const creep = Math.abs(tailSlope - (curve[curve.length - 1][0] - atThreshold[0]) * resistance.wall) < 0.15
+  const bounded = atThreshold[1] <= releaseBudgetDeg + 0.05
+  // The first `free` of the zone is the identity: the finger tracks 1:1 there and the
+  // resistance has not started. It cannot be reached through a gesture from the dock
+  // (a drag only claims its axis after 16px, which is already ~6° — past the free
+  // region), so it is asserted on the shipped curve instead of pretended away.
+  const identityInFree = curve.filter(([raw]) => raw <= freeDeg).every(([raw, shown]) => Math.abs(raw - shown) < 0.02)
+  tuning.push({
+    step: 'the resistance is monotone, continuous, creeping and bounded',
+    monotone,
+    continuous,
+    creep,
+    identityInFree,
+    atThresholdDeg: atThreshold[1],
+    budgetDeg: Number(releaseBudgetDeg.toFixed(2)),
+    bounded,
+  })
+  if (!monotone) failures.push('bearing: the resistance curve is not monotone — the cube would move backwards under a forward finger')
+  if (!continuous) failures.push('bearing: the resistance curve jumps — the edge is a cliff again')
+  if (!creep) failures.push(`bearing: past the edge the cube moves ${tailSlope.toFixed(2)}° per 2° of finger instead of ${(2 * resistance.wall).toFixed(2)}° — the wall is not a slope`)
+  if (!identityInFree) failures.push(`bearing: the first ${freeDeg.toFixed(1)}° of the zone is not 1:1 — the resistance starts too early`)
+  if (!bounded) failures.push(`bearing: at the ${deg(band).toFixed(1)}° flip threshold the cube is at ${atThreshold[1]}° (budget ${releaseBudgetDeg.toFixed(2)}°) — the overshoot is not bounded`)
+
+  // (5) roll leaves no bearing behind (Z is the straighten gesture)
   const beforeRoll = await readBearing()
   if (sideX !== null) {
     const to = { x: sideX, y: centreY + Math.round(band * 0.5 * pxPerRadPitch) }
@@ -685,46 +892,41 @@ try {
   tuning.push({ step: 'a sub-threshold roll leaves no bearing', baseUnchanged: qKey(afterRoll.base) === qKey(beforeRoll.base) })
   if (sideX !== null && !rollClean) failures.push('bearing: a sub-threshold side-band roll left a residual offset')
   report.tuning = tuning
-  // (e) THE FRONTAL FENCE. The "more frontal" direction is the one the fine-tune
-  // exists for, and it is also the direction with almost no headroom: dialling far
-  // enough used to leave the cube a flat plate with a face missing entirely
-  // (measured 100% main / 0% / 0% at yaw +25/pitch -25), and because a bearing is
-  // remembered across face turns and saved with the run, it STAYED that way - this is
-  // the state the producer's phone screenshot was showing. `bearingBand` must now
-  // stop the dial while all three faces are still there.
-  const beforeFence = await readBearing()
-  const yawBand = ROTATE_STYLE.bearingBand.yaw
-  // Aim deliberately PAST the fence so the clamp is what stops it, not the drag length.
-  const overshoot = 0.0873 // 5°
-  const toFenceRad = (yawBand.max + overshoot) - beforeFence.yawDeg * Math.PI / 180
-  const atFence = await dragBy('yaw', toFenceRad * pxPerRadYaw)
-  const fenceFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
-  const fenceOthers = fenceFaces.others.map((entry) => entry.share)
-  const fenceDeg = yawBand.max * 180 / Math.PI
-  const stoppedAtFence = Math.abs(atFence.yawDeg - fenceDeg) < 1.5
-  const fenceKeepsCube = fenceFaces.visible.length === 3 && fenceOthers.every((share) => share >= 0.04)
+  // (6) THE FRONTAL EDGE STILL LEAVES A CUBE. The margin was DERIVED from this
+  // measurement, so it is the one the probe has to keep honest: at the edge the front
+  // face is still the subject and the roof is still a band, not a line — the failure
+  // mode the old asymmetric fence existed to prevent (measured 100% main / 0% / 0% at
+  // yaw +25°, pitch −25°, which then STAYED, because a bearing is remembered across
+  // face turns and saved with the run).
+  await parkYaw() // back to the dock
+  const atFrontalEdge = await dragByDeg('yaw', pastEdgeDeg)
+  const edgeFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
+  const edgeOthers = edgeFaces.others.map((entry) => entry.share)
+  const edgeKeepsCube = edgeFaces.visible.length === 3 && edgeOthers.every((share) => share >= 0.04)
   tuning.push({
-    step: 'dialling fully frontal still leaves a cube',
-    fenceDeg: Number(fenceDeg.toFixed(2)),
-    bearingDeg: atFence.yawDeg,
-    stoppedAtFence,
-    mainShare: fenceFaces.mainShare,
-    others: fenceOthers.map((share) => Number(share.toFixed(3))),
-    facesVisible: fenceFaces.visible.length,
+    step: 'the frontal edge still leaves a cube',
+    bearingDeg: atFrontalEdge.yawDeg,
+    mainShare: edgeFaces.mainShare,
+    others: edgeOthers.map((share) => Number(share.toFixed(3))),
+    facesVisible: edgeFaces.visible.length,
   })
-  if (!stoppedAtFence) {
-    failures.push(`bearing: a frontal drag ${overshoot * 180 / Math.PI}° past the fence landed at ${atFence.yawDeg}° (fence ${fenceDeg}°) — the clamp is not holding`)
+  if (!edgeKeepsCube) {
+    failures.push(`bearing: at the frontal edge the cube has ${edgeFaces.visible.length} faces (main ${(edgeFaces.mainShare * 100).toFixed(1)}%, others ${edgeOthers.map((s) => (s * 100).toFixed(1)).join('/')}) — the margin is letting it flatten`)
   }
-  if (!fenceKeepsCube) {
-    failures.push(`bearing: at the frontal fence the cube has ${fenceFaces.visible.length} faces (main ${(fenceFaces.mainShare * 100).toFixed(1)}%, others ${fenceOthers.map((s) => (s * 100).toFixed(1)).join('/')}) — the band is letting it flatten`)
+  report.bearing = {
+    dockDeg: yawZone.dockDeg,
+    marginDeg: yawZone.marginDeg,
+    operationMarginDeg: yawZone.edgeDeg,
+    symmetricDragDeg: Number(probeDeg.toFixed(2)),
+    rightDeg: toRight.yawDeg,
+    leftDeg: toLeft.yawDeg,
+    atEdgeHeldDeg: Number(heldShownDeg.toFixed(2)),
+    atEdgeSettledDeg: edge.settled.yawDeg,
+    flipDragDeg: Number(flipDragDeg.toFixed(2)),
+    afterFrontTurnDeg: fromFrontEdge.yawDeg,
+    afterBackTurnDeg: fromBackEdge.yawDeg,
+    afterRollDeg: afterRoll.yawDeg,
   }
-  // (f) ...and the player is never stuck at the fence: a drag long enough to leave
-  // the ≈30° band still turns a face.
-  const fromFence = await dragBy('yaw', (ROTATE_STYLE.stepThreshold + band * 0.2) * pxPerRadYaw)
-  const escaped = qKey(fromFence.base) !== qKey(atFence.base)
-  tuning.push({ step: 'a long frontal drag still turns a face', faceChanged: escaped, bearingDeg: fromFence.yawDeg })
-  if (!escaped) failures.push('bearing: a drag past the band from the frontal fence did not turn a face - the player would be stuck')
-  report.bearing = { afterYawNudgeDeg: after1.yawDeg, afterFaceTurnDeg: committed.yawDeg, afterRollDeg: afterRoll.yawDeg, atFenceDeg: atFence.yawDeg }
 
   const errs = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__errs || [])'))
   if (errs.length) failures.push(`page errors: ${errs.join(' | ')}`)
@@ -768,9 +970,12 @@ else {
     }
   }
   if (report.tuning) {
-    console.log('\nbearing (微调方位)')
-    for (const row of report.tuning) console.log(`  ${row.step.padEnd(44)} ${JSON.stringify(row)}`)
-    console.log(`  bearing after the yaw nudge ${report.bearing.afterYawNudgeDeg}°  after a face turn ${report.bearing.afterFaceTurnDeg}°  after a roll ${report.bearing.afterRollDeg}°`)
+    console.log('\nbearing (停靠 / 微调 / 换面)')
+    for (const row of report.tuning) console.log(`  ${row.step.padEnd(48)} ${JSON.stringify(row)}`)
+    const b = report.bearing
+    console.log(`  dock ${b.dockDeg}°  margin ±${b.marginDeg}°  operation margin ±${b.operationMarginDeg}°  face at ${b.flipDragDeg}° of drag`)
+    console.log(`  ${b.symmetricDragDeg}° of drag: right ${b.rightDeg}° / left ${b.leftDeg}°   at the edge: held ${b.atEdgeHeldDeg}° → settled ${b.atEdgeSettledDeg}°`)
+    console.log(`  bearing kept across a face turn: ${b.afterFrontTurnDeg}° / ${b.afterBackTurnDeg}°   after a roll ${b.afterRollDeg}°`)
   }
   if (failures.length) console.log(`\nFAIL:\n  ${failures.join('\n  ')}`)
   else console.log('\nframing and rotation trajectories are within target')

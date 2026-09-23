@@ -1035,21 +1035,27 @@ function applySession(saved) {
   // Pose is restored from the LOGICAL base quaternion, so the cube comes back on
   // exactly the face it was left on (a face-aligned pose matters: the candidate's
   // drop orientation is derived from it), with the bearing the player had dialled —
-  // clamped to the band, so a hand-edited or stale save cannot produce a bearing the
-  // game would never have allowed. An unreadable pose starts face-aligned.
+  // clamped to the fine-tune zone, so a hand-edited or stale save cannot produce a
+  // bearing the game would never have allowed. An unreadable pose starts face-aligned.
   if (saved.pose?.base) {
     cubeSnapAnim.active = false
     boardView.setLive(null)
     input.resetRotation()
     cubeBase.fromArray(saved.pose.base).normalize()
-    const bandYaw = rotateStyle.bearingBand.yaw
-    const bandPitch = rotateStyle.bearingBand.pitch
-    // Resolve both bearing components first, then hand them to the module in one call. The
-    // clamp, the defaults and the write-then-applyCubeRotation() order are exactly as before.
+    // v0.8.24: the zone is SYMMETRIC about the dock (`bearingMargin`, ±10° of yaw and
+    // ±3° of pitch), so the clamp is dock ± margin on each axis. Resolve both bearing
+    // components first, then hand them to the module in one call. The defaults and the
+    // write-then-applyCubeRotation() order are exactly as before.
     const restoredYaw = Number.isFinite(saved.pose.bearingYaw)
-      ? THREE.MathUtils.clamp(saved.pose.bearingYaw, bandYaw.min, bandYaw.max) : rotateStyle.bearingYaw
+      ? THREE.MathUtils.clamp(saved.pose.bearingYaw,
+        rotateStyle.bearingYaw - rotateStyle.bearingMargin.yaw,
+        rotateStyle.bearingYaw + rotateStyle.bearingMargin.yaw)
+      : rotateStyle.bearingYaw
     const restoredPitch = Number.isFinite(saved.pose.bearingPitch)
-      ? THREE.MathUtils.clamp(saved.pose.bearingPitch, bandPitch.min, bandPitch.max) : rotateStyle.bearingPitch
+      ? THREE.MathUtils.clamp(saved.pose.bearingPitch,
+        rotateStyle.bearingPitch - rotateStyle.bearingMargin.pitch,
+        rotateStyle.bearingPitch + rotateStyle.bearingMargin.pitch)
+      : rotateStyle.bearingPitch
     boardView.setBearing(restoredYaw, restoredPitch)
     cubeQuat.copy(bearingQuat(restoredYaw, restoredPitch)).multiply(cubeBase).normalize()
     applyCubeRotation()

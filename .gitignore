@@ -20,3 +20,10 @@ Thumbs.db
 # Measurement runs: the full per-game JSON stays local, the aggregates are committed
 /tools/results/*.json
 !/tools/results/*.summary.json
+
+# Local scratch: the offline models the notes call "measured offline first" (e.g.
+# tools/.tmp-bearing-model.mjs, the projection-area sweep the v0.8.24 bearing margin was
+# derived from) and the skill-bridge request/response bodies. Nothing here is imported by
+# the game or by a probe — the conclusions live in docs/Technical/KNOWN_GAPS.md.
+/.tmp-*
+/tools/.tmp-*

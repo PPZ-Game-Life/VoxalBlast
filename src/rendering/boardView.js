@@ -146,8 +146,13 @@ export function createBoardView({
   // the same angle no matter how the player had dragged — reported as "每次转完，
   // 都是到达同一个角度". Now a release that does NOT commit a face keeps whatever
   // offset the drag left behind, and that offset is remembered across face turns:
-  // the cube returns to the bearing the player dialled, on the new face. See
-  // planAxisRelease() for the band that separates "fine-tune" from "next face".
+  // the cube returns to the bearing the player dialled, on the new face.
+  //
+  // v0.8.24 rebuilt the three numbers around that offset: the zone is SYMMETRIC about
+  // the dock (`bearingMargin`), the finger reaches the zone edge through a resistance
+  // curve rather than at the moment of release (`resistedOffset`), and the FACE is
+  // decided by the gesture's own drag alone (`planAxisRelease`) instead of by the
+  // bearing plus the drag. Each of the three has its own comment below.
   const ROT_STEP = Math.PI / 2
   const AXIS_OF = {
     yaw: new THREE.Vector3(0, 1, 0),
@@ -207,12 +212,144 @@ export function createBoardView({
     cubeGroup.updateMatrixWorld(true)
   }
 
+  // ---- The fine-tune zone and its resistance (v0.8.24, rules 1 and 2) -----------
+  //
+  // The zone is SYMMETRIC about the dock on both axes (`ROTATE_STYLE.bearingMargin`), so
+  // the finger travel it is worth is the same to the left and to the right of the angle
+  // the cube rests at. That symmetry is in OPERATION, not just in degrees: the finger
+  // does not move the cube 1:1 all the way to the edge. It tracks it inside `free` of
+  // the zone, eases off from there, and past the edge keeps following at `wall` of its
+  // speed — so the boundary is something the player feels ARRIVING while the finger is
+  // still down, instead of something they discover when the release truncates the drag
+  // in one frame.
+  //
+  //   raw       the offset the finger has dragged out, measured from the dock
+  //   rendered  the offset the cube actually rests at (monotone, sign-preserving)
+  //
+  // ONE function for both the live pose and the value a release keeps, which is what
+  // makes the release continuous: what the player is looking at when the finger comes
+  // up is what is kept — or, if the drag was still pushing past the edge, what a short
+  // convergence animates back onto the edge (startCubeSnap()).
+  //
+  // `free` and `wall` are the two knobs; the length of the eased middle segment is
+  // DERIVED (`bearingEdge`) so that the segment lands exactly on `margin` at the
+  // operation margin — 1.69 × the margin with the shipped set, i.e. ±16.9° of yaw drag
+  // for the ±10° zone. The inverse (`rawForOffset`) exists because a gesture starts from
+  // a bearing that is not a fixed point of this map.
+  function resistedOffset(raw, margin) {
+    const magnitude = Math.abs(raw)
+    if (!(magnitude > 0)) return 0
+    const { free, wall } = rotateStyle.bearingResistance
+    const start = free * margin // the 1:1 region ends here
+    const edge = bearingEdge(margin) // the OPERATION margin: the drag the zone is worth
+    const span = edge - start
+    let rendered
+    if (magnitude <= start) {
+      rendered = magnitude
+    } else if (magnitude <= edge) {
+      const s = (magnitude - start) / span
+      rendered = start + span * (wall * s + (1 - wall) * (s - s * s + s * s * s / 3))
+    } else {
+      // A SLOPE, not a saturation: the cube must never stop answering the finger
+      // (see ROTATE_STYLE.bearingResistance — the saturating first cut froze the pose
+      // outright, which the trajectory section of `probe:framing` caught).
+      rendered = margin + (magnitude - edge) * wall
+    }
+    return Math.sign(raw) * rendered
+  }
+
+  // The drag that reaches the zone edge — the margin expressed in finger travel, which
+  // is the number the player actually feels. Derived from the resistance shape (the
+  // eased middle segment integrates a slope falling from 1 to `wall` as (1 − s)², and
+  // its length is fixed by having to land exactly on `margin`), never a second
+  // constant to keep in sync.
+  function bearingEdge(margin) {
+    const { free, wall } = rotateStyle.bearingResistance
+    const start = free * margin
+    return start + (margin - start) / (wall + (1 - wall) / 3)
+  }
+
+  // The INVERSE of resistedOffset on the zone: which finger offset would have dialled
+  // this bearing. A gesture starts from the bearing the player left the cube at, and
+  // that bearing is NOT a fixed point of the resistance (it is the resisted value, and
+  // the map is not idempotent). Feeding it back through the map would twitch the cube
+  // the moment the finger went down, and — worse — every gesture would re-map the
+  // resting bearing again, so the cube would creep toward the dock on its own. The
+  // gesture therefore carries the RAW offset it started from, and this is how it is
+  // recovered.
+  function rawForOffset(offset, margin) {
+    const magnitude = Math.min(Math.abs(offset), margin)
+    if (!(magnitude > 0)) return 0
+    const { free, wall } = rotateStyle.bearingResistance
+    const start = free * margin
+    const edge = bearingEdge(margin)
+    const span = edge - start
+    let raw
+    if (magnitude <= start) {
+      raw = magnitude
+    } else {
+      // Bisection on the eased segment, which is strictly increasing on [0, 1] — 40
+      // halvings put the answer far inside float precision, and this runs once per
+      // gesture (plus once per release), never per frame.
+      const target = (magnitude - start) / span
+      let lo = 0
+      let hi = 1
+      for (let i = 0; i < 40; i += 1) {
+        const mid = (lo + hi) / 2
+        const q = wall * mid + (1 - wall) * (mid - mid * mid + mid * mid * mid / 3)
+        if (q < target) lo = mid
+        else hi = mid
+      }
+      raw = start + ((lo + hi) / 2) * span
+    }
+    return Math.sign(offset) * raw
+  }
+
+  // The dock the zone is centred on, and the zone itself, per axis. The dock is 0° on
+  // both axes (the whole three-quarter read lives in the camera), but the resistance
+  // and the release both measure the offset FROM it, so a future dock change is one
+  // number in config and nothing else.
+  function bearingDock(axis) {
+    return axis === 'pitch' ? rotateStyle.bearingPitch : rotateStyle.bearingYaw
+  }
+  function bearingZone(axis) {
+    const margin = rotateStyle.bearingMargin[axis]
+    const dock = bearingDock(axis)
+    return { dock, margin, min: dock - margin, max: dock + margin }
+  }
+  // The zone in degrees for the read-outs and the probe, so neither has to re-derive
+  // the shipped numbers (a probe that recomputes the model it is checking can pass on
+  // a copy that has drifted).
+  function bearingZoneReport(axis) {
+    const zone = bearingZone(axis)
+    const deg = (rad) => Number(THREE.MathUtils.radToDeg(rad).toFixed(2))
+    return {
+      dockDeg: deg(zone.dock),
+      marginDeg: deg(zone.margin),
+      minDeg: deg(zone.min),
+      maxDeg: deg(zone.max),
+      edgeDeg: deg(bearingEdge(zone.margin)),
+    }
+  }
+
   // Start a gesture on one axis. The live rotation starts at 0, so the pose at
   // pointerdown is exactly the resting pose and the first moved pixel is already
   // part of the gesture's own delta — the bearing never becomes the next gesture's
-  // starting angle.
+  // starting angle. `raw` is the finger offset that bearing corresponds to (see
+  // rawForOffset), which is what the gesture adds its travel to.
   function beginAxisGesture(axis) {
-    cubeLive = { axis, angle: 0, rendered: 0, base: cubeBase.clone(), yaw: bearingYaw, pitch: bearingPitch }
+    const bearing = axis === 'pitch' ? bearingPitch : bearingYaw
+    const zone = axis === 'roll' ? null : bearingZone(axis)
+    cubeLive = {
+      axis,
+      angle: 0,
+      rendered: 0,
+      shown: 0,
+      raw: zone ? rawForOffset(bearing - zone.dock, zone.margin) : 0,
+      base: cubeBase.clone(),
+      yaw: bearingYaw,
+      pitch: bearingPitch,
+    }
     setLiveAngle(0)
   }
 
@@ -221,14 +358,29 @@ export function createBoardView({
   // release continuous: the pose at the moment of release is already the pose the
   // fine-tune keeps, so a nudge that does not commit a face simply stays where the
   // finger left it (no spring-back, no second animation).
+  //
+  // The driven axis goes through `resistedOffset`; the other one is left exactly
+  // where the player dialled it, so a roll or a yaw never re-writes the pitch the
+  // player chose. `cubeLive.angle` / `.rendered` stay the FINGER's numbers — the face
+  // decision is the drag's own (rule 3) — and `.shown` is how far the cube has moved
+  // during this gesture.
   function setLiveAngle(angle) {
     const clamped = THREE.MathUtils.clamp(angle, -ROT_STEP, ROT_STEP)
     cubeLive.angle = clamped
     cubeLive.rendered = clamped
     let yaw = cubeLive.yaw
     let pitch = cubeLive.pitch
-    if (cubeLive.axis === 'yaw') yaw += clamped
-    else if (cubeLive.axis === 'pitch') pitch += clamped
+    let shown = clamped
+    if (cubeLive.axis === 'yaw') {
+      const zone = bearingZone('yaw')
+      shown = resistedOffset(cubeLive.raw + clamped, zone.margin)
+      yaw = zone.dock + shown
+    } else if (cubeLive.axis === 'pitch') {
+      const zone = bearingZone('pitch')
+      shown = resistedOffset(cubeLive.raw + clamped, zone.margin)
+      pitch = zone.dock + shown
+    }
+    cubeLive.shown = shown
     bearingQuat(yaw, pitch)
     if (cubeLive.axis === 'roll') {
       // The spin is the one gesture that is NOT a bearing: it turns the cube on the
@@ -242,34 +394,46 @@ export function createBoardView({
     applyCubeRotation()
   }
 
-  // What a release commits. `bearing` is where the gesture's axis would end up if the
-  // offset were kept; a fine-tune is kept only while it stays inside the band, so
-  // "more than about a third of a face off the face" is the same decision for a drag
-  // and for a bearing the player has already dialled. Past it the gesture turns exactly
-  // ONE face in the drag direction (never "the nearest face"), the offset is dropped,
-  // and the bearing the player dialled is restored — i.e. the cube turns to the tuned
-  // bearing on the next face.
+  // What a release commits (v0.8.24, rules 2 and 3).
   //
-  // The kept value is then clamped into `ROTATE_STYLE.bearingBand[axis]`, which is
-  // ASYMMETRIC and much tighter on the frontal side. That clamp is what stops a player
-  // from dialling the cube into a flat plate — measured 100% main / 0% / 0% at
-  // yaw +25°/pitch −25° — and, worse, having it STICK there, because a bearing is
-  // remembered across face turns and saved with the run. Hitting the clamp just means
-  // the cube stops turning further in that direction; there is nothing else it may
-  // safely do (§KNOWN_GAPS).
+  //   - The FACE is the gesture's own call: `|angle|` past `stepThreshold` turns
+  //     exactly ONE face in the drag direction (never "the nearest face"). The
+  //     dialled bearing is NOT part of that test any more, so a face costs the same
+  //     drag from every bearing and in every direction — through v0.8.23 the test was
+  //     `|bearing + angle|`, which made a face 24.8° of drag from the frontal fence
+  //     and 44.8° from the three-quarter one, and left the frontal fence a stretch
+  //     where dragging did nothing at all (§KNOWN_GAPS v0.8.9).
+  //   - Otherwise the release KEEPS the angle the player is looking at. That angle is
+  //     the RESISTED one, i.e. exactly the pose already on screen, so an ordinary
+  //     fine-tune has nothing left to animate. `settle` is the only exception: a drag
+  //     still pushing past the zone edge left the rendered offset above `margin` (the
+  //     resistance lets the finger overshoot a little, deliberately), and that
+  //     residual converges onto the edge over `bearingSettleDuration` — short, eased,
+  //     no overshoot. It is never the one-frame truncation of v0.8.23 and earlier,
+  //     which is what "松手才突然截断" was about.
+  //   - A face turn KEEPS the bearing the player dialled: the next face arrives at the
+  //     angle they chose, not at the factory dock.
+  //
+  // The zone clamp is still what stops a player from parking the cube as a flat plate
+  // — measured 100% main / 0% / 0% at yaw +25°/pitch −25° — and, worse, having it
+  // STICK there, because a bearing is remembered across face turns and saved with the
+  // run. It is now symmetric (`bearingMargin`) instead of ring-fencing the frontal
+  // side, and it is reached through the resistance rather than at the release.
   //
   // `roll` never keeps an offset at all, so it always steps or springs back on the grid.
   function planAxisRelease(axis, startBearing, angle) {
     if (axis === 'roll') {
       const stepped = Math.abs(angle) >= rotateStyle.stepThreshold ? Math.sign(angle) : 0
-      return { fineTune: false, stepped, bearing: startBearing }
+      return { fineTune: false, stepped, bearing: startBearing, settle: 0 }
     }
-    const live = startBearing + angle
-    if (Math.abs(live) <= rotateStyle.stepThreshold) {
-      const band = rotateStyle.bearingBand[axis]
-      return { fineTune: true, stepped: 0, bearing: THREE.MathUtils.clamp(live, band.min, band.max) }
+    if (Math.abs(angle) >= rotateStyle.stepThreshold) {
+      return { fineTune: false, stepped: Math.sign(angle), bearing: startBearing, settle: 0 }
     }
-    return { fineTune: false, stepped: Math.sign(angle), bearing: startBearing }
+    const zone = bearingZone(axis)
+    const rawStart = rawForOffset(startBearing - zone.dock, zone.margin)
+    const shown = zone.dock + resistedOffset(rawStart + angle, zone.margin)
+    const kept = THREE.MathUtils.clamp(shown, zone.min, zone.max)
+    return { fineTune: true, stepped: 0, bearing: kept, settle: Math.abs(shown - kept) }
   }
 
   function easeOutCubic(p) {
@@ -289,7 +453,7 @@ export function createBoardView({
     cubeSnapAnim.t = 0
     cubeSnapAnim.duration = rotateStyle.snapDuration
     cubeLive = null
-    if (plan.fineTune) {
+    if (plan.fineTune && plan.settle <= 1e-6) {
       // Nothing to animate: the pose the finger left is the pose that is kept. Land
       // it bit-exactly rather than running a zero-distance settle.
       cubeQuat.copy(cubeSnapAnim.to)
@@ -297,6 +461,9 @@ export function createBoardView({
       applyCubeRotation()
       return
     }
+    // A drag that ended past the zone edge: converge onto the edge, short and with no
+    // overshoot, from the resisted pose the player is already looking at (v0.8.24).
+    if (plan.fineTune) cubeSnapAnim.duration = rotateStyle.bearingSettleDuration
     updateCubeSnap(0) // render frame 0 now, so the first frame after release does not jump
   }
 
@@ -906,11 +1073,34 @@ export function createBoardView({
         yaw: Number(THREE.MathUtils.radToDeg(bearing.yaw).toFixed(2)),
         pitch: Number(THREE.MathUtils.radToDeg(bearing.pitch).toFixed(2)),
       },
+      // The FINGER offset each bearing corresponds to (the inverse of the resistance,
+      // see rawForOffset). The probe needs it to park the cube exactly on the dock:
+      // the bearing is the resisted value, so dragging out "the bearing in degrees"
+      // does not undo it.
+      bearingRawDeg: {
+        yaw: Number(THREE.MathUtils.radToDeg(rawForOffset(bearing.yaw - bearingDock('yaw'), rotateStyle.bearingMargin.yaw)).toFixed(2)),
+        pitch: Number(THREE.MathUtils.radToDeg(rawForOffset(bearing.pitch - bearingDock('pitch'), rotateStyle.bearingMargin.pitch)).toFixed(2)),
+      },
       pose: cubeQuat.toArray(),
       base: cubeBase.toArray(),
       front: findFrontFace(),
       settling: cubeSnapAnim.active,
-      live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered } : null,
+      live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered, shown: live.shown, raw: live.raw } : null,
+      // The fine-tune zone as the model actually uses it (v0.8.24), in degrees: the
+      // dock, the symmetric margin, and the finger travel that reaches the edge.
+      zone: { yaw: bearingZoneReport('yaw'), pitch: bearingZoneReport('pitch') },
+      // The resistance curve itself, sampled. Read-only, and the same function the
+      // pose goes through — the probe asserts the shape rather than a copy of it.
+      resistance: (() => {
+        const { free, wall } = rotateStyle.bearingResistance
+        const margin = rotateStyle.bearingMargin.yaw
+        const samples = []
+        for (let deg = 0; deg <= 32; deg += 2) {
+          const raw = THREE.MathUtils.degToRad(deg)
+          samples.push([deg, Number(THREE.MathUtils.radToDeg(resistedOffset(raw, margin)).toFixed(2))])
+        }
+        return { free, wall, curve: samples }
+      })(),
     }
   }
 

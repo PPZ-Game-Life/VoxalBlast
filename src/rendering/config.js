@@ -226,13 +226,18 @@ export const ROTATE_STYLE = Object.freeze({
   pitchDirection: 1,
   rollDirection: -1,
   stepThreshold: 0.52, // ≈30° of drag (≈1/6 of the cube's silhouette) before the gesture turns to the next face
-  // ...and the same knob is the band the bearing is dialled inside: once "the bearing
-  // the player has dialled plus this drag" leaves ±stepThreshold, the gesture turns a
-  // FACE instead of fine-tuning further. One number on purpose — "the cube is more
-  // than about a third of a face off the face" has to mean the same thing whether the
-  // player just dragged there or had already dialled it there. Note this is the OUTER
-  // bound; `bearingBand` below is the tighter, per-direction one that keeps the cube
-  // from flattening. Do not raise this without re-running `npm run probe:framing`.
+  // ...and it is measured against THIS GESTURE'S OWN DRAG, never against the bearing
+  // (v0.8.24, rule 3). Through v0.8.23 the test was `|dialled bearing + this drag|`,
+  // which made the face-change cost depend on where the player had already left the
+  // cube: parked at the +5° frontal fence, a further 24.8° of drag turned a face,
+  // while from the −14° three-quarter fence the same face cost 44.8°. The threshold
+  // and the fine-tune offset are now two separate things — the drag decides whether
+  // a face turns, the offset decides only what angle the cube rests at — so the
+  // gesture costs the same in every direction and from every bearing. That also
+  // retires the old dead zone at the frontal fence ("docked at the fence and does
+  // nothing more", KNOWN_GAPS v0.8.9): a frontal drag now always turns a face once
+  // it is long enough, whatever the bearing was. Do not raise this without re-running
+  // `npm run probe:framing`.
   // Axis claim (v0.2.29). `axisLockPx` is the travel a drag must reach before any
   // axis may claim it; `axisDominance` is how far the leading direction must lead
   // the other one to claim it; a drag that is still ambiguous after
@@ -243,14 +248,14 @@ export const ROTATE_STYLE = Object.freeze({
   axisLockPx: 16, // travel before the dominant direction may claim the gesture
   axisDominance: 1.2, // lead / trail ratio that makes the dominant direction decisive
   axisHardLockPx: 44, // still ambiguous this far in? the leader takes it
-  // ===== The bearing (v0.8.8): the angle the player leaves the cube resting at =====
+  // ===== The dock, the fine-tune zone and the resistance (v0.8.24) =====
   //
   // THE BEARING IS THE PLAYER'S, NOT A CONSTANT. v0.8.6/v0.8.7 kept a fixed tilt that
   // every gesture settled back onto, so every turn ended on exactly the same angle
   // however the player had dragged — "每次转完，都是到达同一个角度". A release that does
-  // not commit a face now KEEPS the offset the drag left behind, and that offset is
+  // not commit a face KEEPS the offset the drag left behind, and that offset is
   // remembered across face turns: the next face arrives at the bearing the player
-  // dialled. See main.js planAxisRelease().
+  // dialled. See boardView.js planAxisRelease().
   //
   //   rendered = Rx(bearingPitch) ∘ Ry(bearingYaw) ∘ (liveRotation ∘ gridPose)
   //
@@ -265,36 +270,87 @@ export const ROTATE_STYLE = Object.freeze({
   //   - negative yaw turns the cube further toward the right-hand face (more side
   //     face in view, main face smaller);
   //   - positive yaw turns the front face back toward the screen (main face larger).
-  bearingYaw: 0, // ≈0° — the whole three-quarter read lives in the camera
+  //
+  // ---------------------------------------------------------------------------
+  // THE DOCK IS THE CENTRE OF THE ZONE (v0.8.24). Through v0.8.23 the dock was 0°
+  // while the zone was ASYMMETRIC (yaw −14°..+5°, pitch −2°..+8°), so the player's
+  // margin from the dock was 14° one way and 5° the other — a left/right asymmetry
+  // that had nothing to do with the gesture and everything to do with which side of
+  // the cube the fence happened to be on. The zone is now SYMMETRIC about the dock
+  // on both axes, which is the only shape in which "the player can dial the same
+  // amount either way" is true rather than approximately true.
+  //
+  // The dock itself is NOT moved to buy that symmetry. Symmetry has to be paid for
+  // out of the composition, and the two ends cost wildly different amounts: measured
+  // with the shipped weak-perspective camera (offline model, PC 1440×900, re-run
+  // through `npm run probe:framing`),
+  //
+  //   bearing yaw   -10° → main 63.8%, side 28.7%, top 7.5%   still the subject
+  //                   0° → main 73.8%, side 18.2%, top 8.0%   ← the dock
+  //                 +10° → main 85.2%, side  8.9%, top 5.9%   roof still a band
+  //                 +12° → main 87.7%, side  9.1%, top 3.2%   roof is a line
+  //                 +16° → main 90.6%, TWO faces — the roof is gone
+  //   bearing pitch  -3° → main ~76%, top ~4.4%   roof still a band
+  //                  -4° → main 77.8%, top 3.2%   roof is a line
+  //                  -6° → main 80.0%, top 0.6%
+  //                  +3° → main ~71%, top ~11.4%
+  //
+  // So the margin is the LARGEST symmetric half-width that keeps every visible face
+  // at half its dock share or better at BOTH ends — ±10° of yaw and ±3° of pitch.
+  // Note what this rules out, because it is the naive answer: "make the old
+  // asymmetric band symmetric" is ±14°, and ±14° frontal drives the cube to main
+  // 90.4% with a 0.3% roof — a flat plate with a face about to disappear. Note also
+  // that pushing the DOCK frontal instead (the other way to read "更正视的默认停靠")
+  // collapses the margin to ±2°, because the roof is already nearly spent at the
+  // dock: a near-frontal dock and a usable symmetric margin cannot both be had.
+  // The dock stays on the composition the producer approved (main ~74%, three faces,
+  // vertical edges exactly plumb) and the margin is spent symmetrically around it.
+  bearingYaw: 0, // the dock — ≈0°; the whole three-quarter read lives in the camera
   bearingPitch: 0,
-  // How far the bearing may be dialled, PER AXIS AND PER DIRECTION. The gate is "all
-  // three faces stay visible and the front face stays the subject".
-  //
-  // v0.8.10 re-derived these for the weak-perspective camera (the old fence numbers
-  // were measured against a near camera with a visibility cliff, where a face could
-  // vanish outright; a weak projection has no cliff, so the limits are now gradual):
-  //
-  //   bearing yaw  -24° → main 51%, side 42%   the front face stops being the subject
-  //                -14° → main 60%, side 30%
-  //                  0° → main 75%, side 18%, top 8%   ← the shipped default
-  //                 +5° → main ~80%
-  //                +10° → main 86%, side 8%, top 5%   flat enough to read as a grid
-  //   bearing pitch +8° → main 67%, top 16%
-  //                  0° → the default
-  //                 -4° → main 79%, top 3%   the roof is down to a line
-  //
-  // The band keeps the main face between roughly 60% and 80% and every face at ~5%
-  // or more — i.e. inside the composition the producer has approved, at both ends.
-  bearingBand: Object.freeze({
-    yaw: Object.freeze({ min: -0.2443, max: 0.0873 }), // -14° (more three-quarter) .. +5° (more frontal)
-    pitch: Object.freeze({ min: -0.0349, max: 0.1396 }), // -2° (more frontal) .. +8° (more three-quarter)
+  bearingMargin: Object.freeze({
+    yaw: 0.1745, // ±10°
+    pitch: 0.0524, // ±3°
   }),
-  // NOTE on the two directions: the band's ring-fenced side is the one with almost no
-  // headroom left. Between the fence and the ≈30° step threshold a frontal drag docks
-  // at the fence and does nothing more until it is long enough to turn a face instead.
-  // That is deliberate — the alternative is letting the cube flatten — but it is a
-  // feel decision, flagged in docs/Technical/KNOWN_GAPS.md.
-  snapDuration: 0.22, // s — settle animation onto the resting pose
+  // THE RESISTANCE (v0.8.24, rule 2). The zone above is where a release KEEPS the
+  // angle; it is not a wall the drag slams into at the moment of release. Inside
+  // `free` of the zone the cube tracks the finger 1:1; from there to the zone edge
+  // the response eases off, so the player feels the boundary ARRIVING while the
+  // finger is still down; past the edge the cube keeps following the finger at
+  // `wall` of its speed.
+  //
+  //   raw offset (the finger)          rendered offset (the cube)
+  //   0 .. 0.4·margin                  1:1
+  //   0.4·margin .. 1.0·margin         eased, slope 1 → wall
+  //   1.0·margin ..                    margin + (raw − edge)·wall
+  //
+  // The eased middle segment is the integral of a slope that falls from 1 to `wall`
+  // as (1 − s)², and its length follows from having to land exactly on `margin`:
+  //
+  //   operation = free + (1 − free) / (wall + (1 − wall)/3) = 0.4 + 0.6/0.4667 = 1.686
+  //
+  // i.e. ±16.9° of yaw drag to dial the ±10° zone, and ±5.1° of pitch drag for ±3°.
+  // That 1.69 is the number the player actually feels — the finger travel the margin
+  // is worth — and it is the SAME in both directions, which is what makes the margin
+  // symmetric in operation and not merely in degrees.
+  //
+  // PAST THE EDGE THE CUBE MUST KEEP MOVING, and that is why the wall is a slope and
+  // not a saturation. A saturating curve (the first cut of this) froze the cube from
+  // ~40° of yaw drag on — measured, `probe:framing`'s trajectory section read a zero
+  // pose increment and could not name the rotation axis at all — and it turned every
+  // flip gesture into "the cube stops, then jumps". With a slope the cube is never
+  // frozen, and the flattening is bounded where it matters: the widest overshoot a
+  // player can release with is the one at the ≈30° flip threshold, margin + (30° −
+  // 16.9°)·wall ≈ margin + 26% (measured at the edge: 12.63° for a 10° margin, 3 faces
+  // still visible), which the 0.16 s convergence takes back.
+  //
+  // (0.4 / 0.2 are a feel tuning set: raise `free` for a later, sharper edge, raise
+  // `wall` to make the far side less sticky.)
+  bearingResistance: Object.freeze({
+    free: 0.4, // fraction of the zone that tracks the finger 1:1
+    wall: 0.2, // slope past the zone edge, as a fraction of the finger's speed
+  }),
+  snapDuration: 0.22, // s — settle animation onto a turned face
+  bearingSettleDuration: 0.16, // s — the short, overshoot-free convergence onto the zone edge
 })
 
 export const VFX_CONFIG = Object.freeze({
