@@ -85,11 +85,21 @@ const VIEWPORT = (() => {
 // share leaned the board −4.8° on screen. The targets now encode the corrected
 // intent: three faces visible and upright, front face clearly the subject.
 const TARGET = {
-  mainShareMin: 0.66,
-  mainShareMax: 0.78,
-  // No non-main face may collapse into a sliver. This is the one that catches the
-  // flat-plate failure mode directly: with a close camera, a small tilt can leave a
-  // side face invisible entirely (measured 100% / 0 / 0 for a 6.6° cube tilt).
+  // v0.8.25: the dock is 8° off the camera axis instead of 16°, so the resting
+  // composition moved with it — main 82.8% / side 8.6% / top 8.5%, measured at the
+  // dock. The window follows the producer's own composition target for this feature
+  // ([03 §2.1] "主面明显朝向玩家，只露少量侧面和顶面", temp doc 82–88%), and it is NOT
+  // free to grow: head-on (main 90.6%, no side face) is the pose v0.8.6 was rejected
+  // for, which is exactly why the dock stops 8° short of it and the centred pose is
+  // put at the FRONTAL END of the fine-tune zone instead.
+  mainShareMin: 0.78,
+  mainShareMax: 0.88,
+  // No non-main face may collapse into a sliver AT THE DOCK. This is the one that
+  // catches the flat-plate failure mode directly: with a close camera, a small tilt can
+  // leave a side face invisible entirely (measured 100% / 0 / 0 for a 6.6° cube tilt).
+  // v0.8.25 keeps this for the dock and for the three-quarter end of the zone; the
+  // frontal end is checked separately (the roof band must survive there — the side face
+  // legitimately runs out at head-on).
   minOtherShare: 0.06,
   maxUprightDeg: 0.5, // the cube's vertical edges stay plumb — "视觉上还比较歪" is this number
   maxOffAxisSpreadDeg: 0.05, // the presented face sits the same amount off the camera axis on all 24
@@ -724,7 +734,7 @@ try {
     return dragByDeg('yaw', -current.rawYawDeg)
   }
   const atDock = await parkYaw()
-  const parked = Math.abs(atDock.yawDeg) < 0.4
+  const parked = Math.abs(atDock.yawDeg - yawZone.dockDeg) < 0.4
   tuning.push({ step: 'the cube parks back on the dock', bearingDeg: atDock.yawDeg, dockDeg: yawZone.dockDeg })
   if (!parked) failures.push(`bearing: parking the bearing on the dock landed at ${atDock.yawDeg}° (dock ${yawZone.dockDeg}°)`)
 
@@ -734,21 +744,23 @@ try {
   const toRight = await dragByDeg('yaw', probeDeg)
   await parkYaw()
   const toLeft = await dragByDeg('yaw', -probeDeg)
-  const symmetryGap = Math.abs(Math.abs(toRight.yawDeg) - Math.abs(toLeft.yawDeg))
-  const resisted = Math.abs(toRight.yawDeg) > freeDeg && Math.abs(toRight.yawDeg) < probeDeg
+  const symmetryGap = Math.abs(Math.abs(toRight.yawDeg - yawZone.dockDeg) - Math.abs(toLeft.yawDeg - yawZone.dockDeg))
+  const rightOffset = toRight.yawDeg - yawZone.dockDeg
+  const resisted = Math.abs(rightOffset) > freeDeg && Math.abs(rightOffset) < probeDeg
   tuning.push({
     step: 'the same drag either way yields the same offset',
     dragDeg: Number(probeDeg.toFixed(2)),
-    rightDeg: toRight.yawDeg,
-    leftDeg: toLeft.yawDeg,
+    dockDeg: yawZone.dockDeg,
+    rightOffsetDeg: Number(rightOffset.toFixed(2)),
+    leftOffsetDeg: Number((toLeft.yawDeg - yawZone.dockDeg).toFixed(2)),
     gapDeg: Number(symmetryGap.toFixed(2)),
     resisted,
   })
   if (symmetryGap >= 0.5) {
-    failures.push(`bearing: the zone is not symmetric — ${probeDeg.toFixed(1)}° of drag right gave ${toRight.yawDeg}°, left gave ${toLeft.yawDeg}°`)
+    failures.push(`bearing: the zone is not symmetric — ${probeDeg.toFixed(1)}° of drag right gave ${rightOffset.toFixed(2)}° off the dock, left gave ${(toLeft.yawDeg - yawZone.dockDeg).toFixed(2)}°`)
   }
   if (!resisted) {
-    failures.push(`bearing: ${probeDeg.toFixed(1)}° of drag produced ${toRight.yawDeg}° — outside the resisted band (${freeDeg.toFixed(1)}°..${probeDeg.toFixed(1)}°)`)
+    failures.push(`bearing: ${probeDeg.toFixed(1)}° of drag produced ${rightOffset.toFixed(2)}° off the dock — outside the resisted band (${freeDeg.toFixed(1)}°..${probeDeg.toFixed(1)}°)`)
   }
 
   // (2a) INSIDE the zone a release KEEPS exactly the pose on screen: no spring-back,
@@ -758,18 +770,19 @@ try {
   await parkYaw()
   const keptDrag = await dragHoldDeg('yaw', probeDeg)
   const keptShownDeg = keptDrag.held.live ? deg(keptDrag.held.live.shown) : 0
-  const keptExactly = Math.abs(keptDrag.settled.yawDeg - keptShownDeg) < 0.05
+  const keptExactly = Math.abs(keptDrag.settled.yawDeg - yawZone.dockDeg - keptShownDeg) < 0.05
   const noSettle = keptDrag.settled.settling === false
   tuning.push({
     step: 'inside the zone a release keeps what is on screen',
     dragDeg: Number(probeDeg.toFixed(2)),
     shownWhileHeldDeg: Number(keptShownDeg.toFixed(2)),
     settledDeg: keptDrag.settled.yawDeg,
+    dockDeg: yawZone.dockDeg,
     keptExactly,
     noSettle,
   })
   if (!keptExactly) {
-    failures.push(`bearing: a release inside the zone moved the cube from ${keptShownDeg.toFixed(2)}° to ${keptDrag.settled.yawDeg}°`)
+    failures.push(`bearing: a release inside the zone moved the cube from ${keptShownDeg.toFixed(2)}° off the dock to ${(keptDrag.settled.yawDeg - yawZone.dockDeg).toFixed(2)}°`)
   }
   if (!noSettle) failures.push('bearing: a release inside the zone ran a convergence animation — it should have had nothing to settle')
 
@@ -785,7 +798,7 @@ try {
   const edge = await dragHoldDeg('yaw', pastEdgeDeg)
   const heldShownDeg = edge.held.live ? deg(edge.held.live.shown) : 0
   const overshot = heldShownDeg > yawZone.marginDeg && heldShownDeg <= releaseBudgetDeg + 0.2
-  const converged = Math.abs(Math.abs(edge.settled.yawDeg) - yawZone.marginDeg) < 0.6
+  const converged = Math.abs(edge.settled.yawDeg - yawZone.maxDeg) < 0.6
   const noTurn = qKey(edge.settled.base) === qKey(keptDrag.settled.base)
   tuning.push({
     step: 'past the edge it resists, then converges onto the edge',
@@ -814,14 +827,19 @@ try {
   const flipDragDeg = deg(band) * 1.08
   const fromFrontEdge = await dragByDeg('yaw', -flipDragDeg)
   const frontTurned = qKey(fromFrontEdge.base) !== qKey(edge.settled.base)
-  const frontKept = Math.abs(Math.abs(fromFrontEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  const frontKept = Math.abs(fromFrontEdge.yawDeg - yawZone.maxDeg) < 0.6
   // Dial to the three-quarter edge (park first, so the origin is the dock again).
   await parkYaw()
   const backEdge = await dragByDeg('yaw', -pastEdgeDeg)
-  const backDialled = Math.abs(Math.abs(backEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  const backDialled = Math.abs(backEdge.yawDeg - yawZone.minDeg) < 0.6
+  // The three-quarter end is the one the v0.8.9 fence existed for: it must still be a
+  // cube with all three faces readable, not a pair of faces at a slant.
+  const backFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
+  const backShares = backFaces.others.map((entry) => entry.share)
+  const backIsACube = backFaces.visible.length === 3 && backShares.every((share) => share >= 0.04)
   const fromBackEdge = await dragByDeg('yaw', flipDragDeg)
   const backTurned = qKey(fromBackEdge.base) !== qKey(backEdge.base)
-  const backKept = Math.abs(Math.abs(fromBackEdge.yawDeg) - yawZone.marginDeg) < 0.6
+  const backKept = Math.abs(fromBackEdge.yawDeg - yawZone.minDeg) < 0.6
   tuning.push({
     step: 'the same drag turns a face from either edge',
     dragDeg: Number(flipDragDeg.toFixed(2)),
@@ -829,14 +847,20 @@ try {
     threeQuarterEdgeTurned: backTurned,
     bearingKeptAfterFrontTurn: frontKept,
     bearingKeptAfterBackTurn: backKept,
+    threeQuarterEdgeMainShare: Number(backFaces.mainShare.toFixed(3)),
+    threeQuarterEdgeOthers: backShares.map((share) => Number(share.toFixed(3))),
+    backIsACube,
   })
+  if (!backIsACube) {
+    failures.push(`bearing: the three-quarter edge leaves ${backFaces.visible.length} faces (main ${(backFaces.mainShare * 100).toFixed(1)}%, others ${backShares.map((s) => (s * 100).toFixed(1)).join('/')}) — the zone is letting it flatten`)
+  }
   if (!frontTurned || !backTurned) {
     failures.push(`bearing: a ${flipDragDeg.toFixed(1)}° drag turned a face from ${frontTurned ? '' : 'no '}frontal edge / ${backTurned ? '' : 'no '}three-quarter edge — the face cost still depends on the bearing`)
   }
   if (!frontKept || !backKept) {
-    failures.push(`bearing: the dialled bearing was lost across a face turn (${fromFrontEdge.yawDeg}° / ${fromBackEdge.yawDeg}°, edge ${yawZone.marginDeg}°)`)
+    failures.push(`bearing: the dialled bearing was lost across a face turn (${fromFrontEdge.yawDeg}° / ${fromBackEdge.yawDeg}°, zone ${yawZone.minDeg}°..${yawZone.maxDeg}°)`)
   }
-  if (!backDialled) failures.push(`bearing: dialling the three-quarter edge landed at ${backEdge.yawDeg}° instead of -${yawZone.marginDeg}°`)
+  if (!backDialled) failures.push(`bearing: dialling the three-quarter edge landed at ${backEdge.yawDeg}° instead of ${yawZone.minDeg}°`)
 
   // (4) THE SHAPE of the resistance, read straight off the shipped model: monotone,
   // continuous at the edge (no cliff where the old clamp used to sit), creeping at
@@ -892,20 +916,23 @@ try {
   tuning.push({ step: 'a sub-threshold roll leaves no bearing', baseUnchanged: qKey(afterRoll.base) === qKey(beforeRoll.base) })
   if (sideX !== null && !rollClean) failures.push('bearing: a sub-threshold side-band roll left a residual offset')
   report.tuning = tuning
-  // (6) THE FRONTAL EDGE STILL LEAVES A CUBE. The margin was DERIVED from this
-  // measurement, so it is the one the probe has to keep honest: at the edge the front
-  // face is still the subject and the roof is still a band, not a line — the failure
-  // mode the old asymmetric fence existed to prevent (measured 100% main / 0% / 0% at
-  // yaw +25°, pitch −25°, which then STAYED, because a bearing is remembered across
-  // face turns and saved with the run).
+  // (6) THE FRONTAL EDGE STILL LEAVES A CUBE. The end the zone stops at has to stay a
+  // cube: v0.8.24 read this as "three faces, every non-main ≥4%", but v0.8.25 puts the
+  // CENTRED pose at this end on purpose — and at the centred pose the side faces are
+  // edge-on and legitimately vanish. What must not vanish is the depth cue, so the gate
+  // is now "the front face is still the subject (≥85%) and the roof band is still there
+  // (≥4%)"; the three-quarter end keeps the old three-face gate, which is where that
+  // failure mode (a pair of faces at a slant) actually lives.
   await parkYaw() // back to the dock
   const atFrontalEdge = await dragByDeg('yaw', pastEdgeDeg)
   const edgeFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
   const edgeOthers = edgeFaces.others.map((entry) => entry.share)
-  const edgeKeepsCube = edgeFaces.visible.length === 3 && edgeOthers.every((share) => share >= 0.04)
+  const edgeRoof = edgeOthers.filter((share) => share >= 0.04).length
+  const edgeKeepsCube = edgeFaces.mainShare >= 0.85 && edgeRoof >= 1 && edgeOthers[0] >= 0.04
   tuning.push({
     step: 'the frontal edge still leaves a cube',
     bearingDeg: atFrontalEdge.yawDeg,
+    zoneMaxDeg: yawZone.maxDeg,
     mainShare: edgeFaces.mainShare,
     others: edgeOthers.map((share) => Number(share.toFixed(3))),
     facesVisible: edgeFaces.visible.length,
