@@ -8,18 +8,6 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // Modules evaluate once, so this side-effect import and gameScene's named import are the
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
-import {
-  BatchedRenderer,
-  Bezier,
-  ColorOverLife,
-  ConstantColor,
-  ConstantValue,
-  Gradient,
-  ParticleSystem,
-  PiecewiseBezier,
-  RenderMode,
-  SizeOverLife,
-} from 'three.quarks'
 import { Board, SH, FACES, faceLattice, isShell } from './game/board.js'
 import { SHAPES, pickShape, normalizeCells, maxOrigin } from './game/shapes.js'
 import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
@@ -27,7 +15,7 @@ import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { DRAG_GHOST, FEEDBACK_STYLE, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, RENDER_PALETTE as palette, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle, VFX_CONFIG } from './rendering/config.js'
+import { DRAG_GHOST, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from './rendering/swipe.js'
 import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
 import './styles.css'
@@ -38,6 +26,7 @@ import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
 import { createPieceView } from './rendering/pieceView.js'
+import { createEffects } from './rendering/effects.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -132,11 +121,7 @@ let gameEnded = false
 // the game boots on the home screen with no run open, and writing a slot there would offer
 // 继续游戏 on a board nobody has touched.
 let runLive = false
-let audioContext
-let cameraShake = 0
-let transientEffects = []
 let suppressPieceClickUntil = 0
-const particleSystems = new Set()
 
 // ============================================================
 // Run state (v0.3 honors / records)
@@ -440,12 +425,38 @@ const {
 addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
 
 const candidateGroup = new THREE.Group()
-const fxGroup = new THREE.Group()
-// The landing marker and the item-target overlay both sit in the cube's local frame so they
-// rotate with the cube. The marker's group is created and attached inside pieceView (P4b); the
-// overlay is still built here (P4c).
-scene.add(candidateGroup, fxGroup)
+scene.add(candidateGroup)
 
+// Effects (refactor P5) own the batched particle renderer, the line beams and stars, the shake,
+// the slow-motion dip and the audio. The factory is called here, where its scene attachments
+// used to be made, and it is handed the things this file used to close over.
+const effects = createEffects({
+  scene,
+  camera,
+  cubeGroup,
+  cubeSide,
+  cellToWorld,
+  cubeVector,
+  findFrontFace,
+  quality,
+  // Live getters, never captured booleans: the switches are read at the moment of the sound.
+  getSoundOn: () => settingsUi.getSoundOn(),
+  getHapticsOn: () => settingsUi.getHapticsOn(),
+})
+const {
+  playTone,
+  playHaptic,
+  playPlaceSound,
+  playHonorSound,
+  playChainSound,
+  playChainBreakSound,
+  emitItemBurst,
+  spawnClearEffects,
+  triggerSlowMo,
+  clearTransientEffects,
+  resetShake,
+  clearSlowMo,
+} = effects
 // ---- Drag ghost (v0.4.4) ----------------------------------------------------
 // The ghost itself now lives in rendering/pieceView.js (refactor P4b) and hangs off the CAMERA
 // rather than the cube. The camera therefore has to be part of the graph, and that stays this
@@ -456,10 +467,6 @@ scene.add(camera) // the ghost rides the camera, so the camera joins the graph
 // ============================================================
 // Materials / helpers
 // ============================================================
-function colorToVector4(color, alpha = 1) {
-  const normalized = new THREE.Color(color)
-  return new THREE.Vector4(normalized.r, normalized.g, normalized.b, alpha)
-}
 
 // A piece in the hand is PAINTED WOOD: opaque colour over the same grain the shell
 // uses, with a real varnish layer on top. The shared grain map is what ties the
@@ -468,47 +475,9 @@ function colorToVector4(color, alpha = 1) {
 // drag, onto the board.
 // `makeMaterial`, the shared edge outline and the list of geometries a node may NOT
 // dispose all live in rendering/blockResources.js (reached through `blocks`).
-const particleGeometry = new RoundedBoxGeometry(0.18, 0.18, 0.18, 2, 0.04)
-const beamGeometry = new THREE.BoxGeometry(cubeSide + 0.06, 0.07, 0.07)
-function buildStarShape(outer = 0.5, inner = 0.2, points = 5) {
-  const shape = new THREE.Shape()
-  for (let i = 0; i < points * 2; i += 1) {
-    const radius = i % 2 === 0 ? outer : inner
-    const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
-    if (i === 0) shape.moveTo(x, y)
-    else shape.lineTo(x, y)
-  }
-  shape.closePath()
-  return new THREE.ShapeGeometry(shape)
-}
-const starGeometry = buildStarShape(0.5, 0.22, 5)
-const particleMaterial = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
-  transparent: true,
-  opacity: 0.8,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  toneMapped: false,
-})
-const particleRenderer = new BatchedRenderer()
-scene.add(particleRenderer)
+// The particle geometry, the line/star geometries and the batched particle renderer live in
+// rendering/effects.js (refactor P5). `blocks` is still this file's, and it is NOT one of them.
 
-function disposeNode(node) {
-  node.traverse((child) => {
-    if (child.geometry && !blocks.sharedGeometries.includes(child.geometry)) child.geometry.dispose()
-    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose())
-    else if (child.material) child.material.dispose()
-  })
-}
-
-function clearGroup(group) {
-  while (group.children.length) {
-    const child = group.children.pop()
-    if (child) disposeNode(child)
-  }
-}
 
 // The opening creation wave lives in rendering/boardView.js (refactor P3d): the 98 tiles it
 // builds, the per-block material clone it reuses, the schedule it sorts and the pause lock it
@@ -741,64 +710,8 @@ function closeControls() {
   settingsUi.restoreControlsFocus()
 }
 
-function playTone(frequency, duration = 0.08, volume = 0.045, delay = 0) {
-  if (!settingsUi.getSoundOn()) return
-  const AudioContext = window.AudioContext || window.webkitAudioContext
-  if (!AudioContext) return
-  audioContext ||= new AudioContext()
-  if (audioContext.state === 'suspended') audioContext.resume()
-  const start = audioContext.currentTime + delay
-  const oscillator = audioContext.createOscillator()
-  const gain = audioContext.createGain()
-  oscillator.type = 'sine'
-  oscillator.frequency.setValueAtTime(frequency, start)
-  oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.08, start + duration)
-  gain.gain.setValueAtTime(0.0001, start)
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.012)
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
-  oscillator.connect(gain).connect(audioContext.destination)
-  oscillator.start(start)
-  oscillator.stop(start + duration + 0.02)
-}
-
-function playPlaceSound(lineCount) {
-  if (lineCount > 0) {
-    playTone(520, 0.12, 0.055)
-    playTone(lineCount > 1 ? 880 : 720, 0.16, 0.05, 0.055)
-  } else playTone(330, 0.075, 0.036)
-}
-
-// Feedback ladder (08 §6 / 03 §7): the level comes from honors.js, these are the
-// noises that go with it. L1/L2 are still just chords — the banner is earned at L3.
-function playHonorSound(level) {
-  if (level >= 5) [660, 830, 990, 1320].forEach((tone, index) => playTone(tone, 0.22, 0.05, index * 0.11))
-  else if (level === 4) {
-    playTone(680, 0.16, 0.05)
-    playTone(1020, 0.22, 0.045, 0.07)
-    playTone(1360, 0.3, 0.04, 0.15)
-  } else if (level === 3) [620, 780, 930].forEach((tone, index) => playTone(tone, 0.2, 0.045, index * 0.05))
-  else if (level === 2) {
-    playTone(700, 0.14, 0.042)
-    playTone(940, 0.18, 0.038, 0.06)
-  }
-}
-
-function playChainSound(chain) {
-  if (chain >= 2) playTone(560 + Math.min(chain, 12) * 45, 0.13, 0.04)
-}
-
-// 断链 must be FELT (08 §4.4): a chain nobody can see is not a stake. Grey flash on
-// the pill plus a descending tone, on the way down only.
-function playChainBreakSound(chain) {
-  const base = 420 + Math.min(chain, 8) * 20
-  playTone(base, 0.2, 0.045)
-  playTone(base * 0.74, 0.24, 0.04, 0.08)
-  playTone(base * 0.52, 0.3, 0.034, 0.17)
-}
-
-function playHaptic(pattern = 15) {
-  if (settingsUi.getHapticsOn() && navigator.vibrate) navigator.vibrate(pattern)
-}
+// The tone synthesis, the event-to-chord ladders and the haptic buzz live in
+// rendering/effects.js (refactor P5); the sound/haptics switches reach it as live getters.
 
 // ============================================================
 // Items (front-face based)
@@ -1156,50 +1069,8 @@ function checkStuckAndPrompt() {
   endGame()
 }
 
-function emitItemBurst(cells, axisHint) {
-  if (!cells.length) return
-  const frontFace = findFrontFace()
-  const uDir = cubeVector(frontFace, 'u').applyQuaternion(cubeGroup.quaternion)
-  const vDir = cubeVector(frontFace, 'v').applyQuaternion(cubeGroup.quaternion)
-  const worldCenter = new THREE.Vector3()
-  cells.forEach(([x, y, z]) => worldCenter.add(cellToWorld(x, y, z).applyMatrix4(cubeGroup.matrixWorld)))
-  worldCenter.multiplyScalar(1 / cells.length)
-  worldCenter.addScaledVector(cubeVector(frontFace, 'n').applyQuaternion(cubeGroup.quaternion), style.feedbackSurfaceOffset)
-  const count = THREE.MathUtils.clamp(cells.length * 6, 6, 48)
-  const direction = uDir.clone().add(vDir).normalize()
-  const warm = new THREE.Vector3(1, 0.83, 0.16)
-  const bright = new THREE.Vector3(1, 0.96, 0.45)
-  const system = new ParticleSystem({
-    autoDestroy: true,
-    looping: false,
-    duration: 0.55,
-    startLife: new ConstantValue(0.45),
-    startSpeed: new ConstantValue(1.15),
-    startSize: new ConstantValue(0.1),
-    startColor: new ConstantColor(colorToVector4(0xffd32a)),
-    emissionOverTime: new ConstantValue(0),
-    // three.quarks types `emissionBursts[].count` as a ValueGenerator and calls
-    // count.genValue() when the burst fires — a raw number throws there and takes
-    // the whole frame down with it (animate() aborts before composer.render, so the
-    // canvas freezes while the game keeps running). Wrap it.
-    emissionBursts: [{ time: 0, count: new ConstantValue(count), cycle: 1, interval: 0.01, probability: 1 }],
-    shape: new AxisEmitter(direction, 0.5),
-    material: particleMaterial,
-    instancingGeometry: particleGeometry,
-    renderMode: RenderMode.Mesh,
-    renderOrder: 4,
-    worldSpace: true,
-    behaviors: [
-      new ColorOverLife(new Gradient([[warm, 0], [bright, 1]], [[1, 0.95], [0, 0.02]])),
-      new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.1, 0.3, 0), 0]])),
-    ],
-  })
-  system.emitter.position.copy(worldCenter)
-  scene.add(system.emitter)
-  system.emitter.updateMatrixWorld(true)
-  particleRenderer.addSystem(system)
-  particleSystems.add(system)
-}
+// emitItemBurst() lives in rendering/effects.js (refactor P5): it is a particle system, and the
+// module is handed the cells and asks boardView for the front face itself.
 
 for (const button of itemBarEl.querySelectorAll('.item-button')) {
   button.addEventListener('click', () => activateItem(button.dataset.item))
@@ -1370,187 +1241,8 @@ function updatePreview(event, ndc) {
 // when it exists (buildDragGhost at pointerdown), where it goes (syncGhostFor measures the three
 // rulers) and which mode it is in ('carry' | 'snap' | 'invalid' | 'cancel').
 
-class AxisEmitter {
-  constructor(direction, spread = VFX_CONFIG.clear.spread) {
-    this.type = 'axis'
-    this.direction = direction.clone().normalize()
-    this.spread = spread
-    this.sequence = 0
-  }
-
-  initialize(particle) {
-    const helper = Math.abs(this.direction.y) < 0.8 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
-    const side = new THREE.Vector3().crossVectors(helper, this.direction).normalize()
-    const other = new THREE.Vector3().crossVectors(this.direction, side).normalize()
-    const phase = this.sequence++ * 2.399963
-    particle.position.set(0, 0, 0)
-    particle.velocity.copy(this.direction)
-      .addScaledVector(side, Math.cos(phase) * this.spread)
-      .addScaledVector(other, Math.sin(phase) * this.spread * 0.7)
-      .normalize()
-      .multiplyScalar(particle.startSpeed)
-  }
-
-  toJSON() { return { type: this.type, direction: this.direction.toArray(), spread: this.spread } }
-  clone() { return new AxisEmitter(this.direction, this.spread) }
-}
-
-function spawnLineParticles(line, scale = 1) {
-  const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
-  const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
-  const direction = line.axis === 'row' ? worldU : worldV
-  const color = palette.line[line.axis === 'row' ? 'x' : 'y']
-  const brightEnd = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.42)
-  const center = lineCenterWorld(line)
-  // The feedback ladder raises the particle count and size with the level (08 §6):
-  // L1 runs the baseline burst, L5 lands at 5×.
-  const burst = Math.max(3, Math.round(quality.particlesPerLine * scale))
-  const system = new ParticleSystem({
-    autoDestroy: true,
-    looping: false,
-    duration: 0.72,
-    startLife: new ConstantValue(0.62),
-    startSpeed: new ConstantValue(1.45),
-    startSize: new ConstantValue(0.09 * (1 + (scale - 1) * 0.12)),
-    startColor: new ConstantColor(colorToVector4(color)),
-    emissionOverTime: new ConstantValue(0),
-    emissionBursts: [{ time: 0, count: new ConstantValue(burst), cycle: 1, interval: 0.01, probability: 1 }],
-    shape: new AxisEmitter(direction),
-    material: particleMaterial,
-    instancingGeometry: particleGeometry,
-    renderMode: RenderMode.Mesh,
-    renderOrder: 4,
-    worldSpace: true,
-    behaviors: [
-      new ColorOverLife(new Gradient([
-        [new THREE.Vector3(new THREE.Color(color).r, new THREE.Color(color).g, new THREE.Color(color).b), 0],
-        [new THREE.Vector3(brightEnd.r, brightEnd.g, brightEnd.b), 1],
-      ], [[1, 0.95], [0, 0.02]])),
-      new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1.15, 0.4, 0), 0]])),
-    ],
-  })
-  system.emitter.position.copy(center)
-  scene.add(system.emitter)
-  system.emitter.updateMatrixWorld(true)
-  particleRenderer.addSystem(system)
-  particleSystems.add(system)
-}
-
-function lineCenterWorld(line) {
-  const cell = line.cells[Math.floor(line.cells.length / 2)]
-  return cellToWorld(cell[0], cell[1], cell[2])
-    .addScaledVector(cubeVector(line.face, 'n'), style.feedbackSurfaceOffset)
-    .applyMatrix4(cubeGroup.matrixWorld)
-}
-
-function spawnLineBeam(line, index, scale = 1) {
-  const center = lineCenterWorld(line)
-  const worldU = cubeVector(line.face, 'u').applyQuaternion(cubeGroup.quaternion)
-  const worldV = cubeVector(line.face, 'v').applyQuaternion(cubeGroup.quaternion)
-  const dir = line.axis === 'row' ? worldU : worldV
-  const beam = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({
-    color: palette.line[line.axis === 'row' ? 'x' : 'y'],
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    toneMapped: false,
-  }))
-  beam.position.copy(center)
-  beam.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir)
-  fxGroup.add(beam)
-  transientEffects.push({
-    object: beam,
-    elapsed: -index * 0.035,
-    duration: 0.56,
-    update: (effect, delta) => {
-      effect.elapsed += delta
-      const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
-      const pulse = progress < 0.25 ? progress / 0.25 : 1 - (progress - 0.25) / 0.75
-      effect.object.material.opacity = Math.max(0, pulse) * VFX_CONFIG.clear.beamOpacity
-      const scale = progress < 0.25 ? 0.72 + progress * 1.12 : 1.0
-      effect.object.scale.setScalar(scale)
-    },
-  })
-  spawnLineParticles(line, scale)
-}
-
-function spawnClearStars(line, index, starScale = 1) {
-  const center = lineCenterWorld(line)
-  ;[0xffd32a, 0xff9c3d].forEach((color, starIndex) => {
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      toneMapped: false,
-    })
-    const star = new THREE.Mesh(starGeometry, material)
-    star.position.copy(center)
-    fxGroup.add(star)
-    transientEffects.push({
-      object: star,
-      elapsed: -index * 0.02,
-      duration: VFX_CONFIG.clear.starDuration,
-      update: (effect, delta) => {
-        effect.elapsed += delta
-        const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
-        const pop = progress < 0.22 ? 0.1 + (progress / 0.22) * 1.0 : 1.1 - ((progress - 0.22) / 0.78) * 0.18
-        const base = starIndex === 0 ? 1 : 0.6
-        effect.object.quaternion.copy(camera.quaternion)
-        effect.object.scale.setScalar(base * pop * VFX_CONFIG.clear.starMaxScale * starScale)
-        const fade = progress < 0.12 ? progress / 0.12 : progress > 0.55 ? 1 - (progress - 0.55) / 0.45 : 1
-        effect.object.material.opacity = Math.max(0, fade) * 0.85
-      },
-    })
-  })
-}
-
-function spawnClearEffects(lines, level = 1) {
-  // One place that turns a feedback LEVEL (honors.js) into strength (08 §6): the
-  // ladder is what makes a 4-line clear visibly heavier than a single line.
-  const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[1]
-  const scale = feedback.particleScale || 1
-  lines.forEach((line, index) => {
-    spawnLineBeam(line, index, scale)
-    spawnClearStars(line, index, Math.min(2, 1 + (scale - 1) * 0.25))
-  })
-  triggerShake(feedback.shake)
-}
-
-function updateTransientEffects(delta) {
-  transientEffects = transientEffects.filter((effect) => {
-    effect.update(effect, delta)
-    if (effect.elapsed < effect.duration) return true
-    fxGroup.remove(effect.object)
-    if (effect.object.material) effect.object.material.dispose()
-    return false
-  })
-}
-
-function clearTransientEffects() {
-  transientEffects.forEach((effect) => {
-    fxGroup.remove(effect.object)
-    if (effect.object.material) effect.object.material.dispose()
-  })
-  transientEffects = []
-  particleSystems.forEach((system) => system.dispose())
-  particleSystems.clear()
-}
-
-function triggerShake(amount) { cameraShake = Math.max(cameraShake, amount) }
-function updateCameraShake(delta) {
-  cameraShake = Math.max(0, cameraShake - delta * FEEDBACK_STYLE.shakeDecay)
-  camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())
-  if (cameraShake > 0) {
-    const time = performance.now() * 0.045
-    camera.position.x += Math.sin(time) * cameraShake
-    camera.position.y += Math.cos(time * 1.17) * cameraShake * 0.7
-    camera.position.z += Math.sin(time * 0.83) * cameraShake * 0.5
-  }
-  camera.lookAt(cameraTarget)
-}
+// The clear feedback - AxisEmitter, the line particles, the beam, the stars, the transient
+// list and the camera shake - lives in rendering/effects.js (refactor P5).
 
 function releaseDragPointer(source, pointerId) {
   try {
@@ -1836,8 +1528,8 @@ function startFromHome() {
 function applySession(saved) {
   clearTransientEffects()
   clearHonorLayer()
-  cameraShake = 0
-  slowMo = null
+  resetShake()
+  clearSlowMo()
   drag = null
   clearDragGhost()
   selectedPiece = null
@@ -1905,15 +1597,8 @@ function applySession(saved) {
   setStatus('Pick a shape')
 }
 
-// L5 ceremony (08 §6): the only time-dilation in the game, ≤400ms at 0.6×, and it
-// only scales the animation clock. Input never reads it, so a gesture during the
-// dip is handled exactly as usual — the rule is "不得阻断输入".
-let slowMo = null
-
-function triggerSlowMo(level) {
-  const config = FEEDBACK_STYLE.levels[level]?.slowMo
-  if (config) slowMo = { scale: config.scale, until: performance.now() + config.ms }
-}
+// slowMo and triggerSlowMo() live in rendering/effects.js (refactor P5); the frame loop reads
+// the scaled delta back through effects.timestep().
 
 function endGame() {
   if (gameEnded) return
@@ -1966,8 +1651,8 @@ function resetGame() {
   resetRun()
   gameEnded = false
   settingsUi.setSettingsOpen(false)
-  cameraShake = 0
-  slowMo = null
+  resetShake()
+  clearSlowMo()
   settingsUi.hideSettingsSilently()
   gameOverEl.classList.add('hidden')
   selectedPiece = null
@@ -2285,9 +1970,8 @@ function animate() {
   requestAnimationFrame(animate)
   const measure = clock.getDelta()
   const raw = Math.min(measure, 0.05)
-  if (slowMo && performance.now() > slowMo.until) slowMo = null
   // The L5 dip scales the animation clock only — never input, never the board state.
-  const delta = slowMo ? raw * slowMo.scale : raw
+  const delta = effects.timestep(raw)
   // The home cover hides the canvas: nothing behind it is on screen, and the board
   // under it must not drift (the pose snap is part of the paused branch anyway).
   if (homeUi.isOpen()) return
@@ -2300,8 +1984,7 @@ function animate() {
   // 60fps. If the frames are that slow, the wave should simply be over.
   updateIntro(measure)
   if (!isPaused) {
-    particleRenderer.update(delta)
-    updateTransientEffects(delta)
+    effects.update(delta)
     updateCubeSnap(delta)
   }
   // Bare tiles wear the lighter timber on the face the player is working on
@@ -2311,7 +1994,11 @@ function animate() {
   // repainted under it.
   if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
   updatePiecePreviews()
-  updateCameraShake(delta)
+  // The camera's resting position, restored every frame by its owner (gameScene owns the orbit
+  // distance, the zoom and the direction); effects returns only the shake offset added on top.
+  camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())
+  camera.position.add(effects.updateShake(delta))
+  camera.lookAt(cameraTarget)
   composer.render(delta)
 }
 // Read-only introspection hook for the headless verification runs (the CDP
