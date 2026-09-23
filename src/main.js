@@ -54,6 +54,19 @@ const {
   getPieces,
   setPieces,
   getRunId,
+  ITEM_TOOLS,
+  getItemCounts,
+  setItemCounts,
+  setItemCharge,
+  itemTool,
+  resetItemCounts,
+  spendItem,
+  toolScopeCells,
+  applyItem,
+  openUndo,
+  clearUndo,
+  hasUndo,
+  undoLast,
 } = session
 const platform = createCrazyGamesAdapter()
 // Static DOM handles (refactor P1). The names are kept EXACTLY as they were when this file
@@ -162,7 +175,7 @@ const hud = createHud({
   getScore: () => board.score,
   getBest: () => bestScore,
   getChain: () => run.chain,
-  getItemCounts: () => itemCounts,
+  getItemCounts: () => getItemCounts(),
   getItemActive: () => itemActive,
   canUseItems: () => canUseItemsNow(),
   onChainBreak: (chain) => playChainBreakSound(chain),
@@ -705,32 +718,19 @@ function closeControls() {
 // ============================================================
 // Items (front-face based)
 // ============================================================
-const ITEM_TOOLS = Object.freeze([
-  { id: 'refresh', name: 'Refresh', icon: '↻', start: 2, cap: 3 },
-  { id: 'hammer', name: 'Hammer', icon: '🔨', start: 1, cap: 2 },
-  { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
-  { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
-])
-// The item-target overlay's group is built and attached by rendering/pieceView.js (refactor
-// P4c), in the cube's local frame, right after the landing marker's.
-let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
+// The tool definitions and the charges live in game/gameSession.js (refactor P6b-1): they are
+// game data, read back through getItemCounts() and spent through spendItem().
 let itemActive = null // { id, face, u, v, orientation }
 let itemBusyUntil = 0
 let lastItemHoverKey = null
 // A press that has not moved far enough to become a cube turn (07 §3.1 A1/A2). An
 // armed tool fires on RELEASE, not on press, so a mis-touch can still be turned into
-// a rotation by moving the finger instead of spending the item; `itemUndo` below is
-// the second safety net for everything the slop cannot catch.
+// a rotation by moving the finger instead of spending the item; the undo window in
+// gameSession is the second safety net for everything the slop cannot catch.
 let itemTap = null
-// { id, records } while the 3s undo window is open (07 §3.1 A9).
-let itemUndo = null
-let itemUndoTimer = 0
 // Same 6px slop the candidate drag uses to tell a tap from a gesture.
 const ITEM_TAP_SLOP = 6
 
-function itemTool(id) {
-  return ITEM_TOOLS.find((tool) => tool.id === id)
-}
 
 function clampCellIndex(value) {
   return THREE.MathUtils.clamp(value, 0, SH - 1)
@@ -751,10 +751,10 @@ function setRocketOrientation(axis) {
 
 // Closing the undo window also un-arms the toast, so a stale window can never keep a
 // clickable "Undo" on screen after a placement or a new clear.
+// The session owns the window (data + timer); this file owns the toast that shows it. Clearing
+// always goes through here, so the UI can never look undoable while the session cannot undo.
 function clearItemUndo() {
-  itemUndo = null
-  if (itemUndoTimer) clearTimeout(itemUndoTimer)
-  itemUndoTimer = 0
+  clearUndo()
   toastEl.classList.remove('undoable')
 }
 
@@ -762,20 +762,17 @@ function clearItemUndo() {
 // cubes come back with their original colours, the charge comes back, and the save
 // slot is rewritten, so the undo is exact rather than cosmetic.
 function undoItem() {
-  if (!itemUndo) return
-  const { id, records } = itemUndo
+  const undone = undoLast()
+  if (!undone) return
   clearItemUndo()
   toastEl.classList.remove('visible')
-  const restored = board.addCells(records)
-  const tool = itemTool(id)
-  itemCounts[id] = Math.min(tool ? tool.cap : itemCounts[id] + 1, itemCounts[id] + 1)
   itemBusyUntil = 0
   renderBoard()
   renderItemBar()
   saveSession()
   playHaptic(8)
   setStatus('Pick a shape')
-  showToast(restored ? `${restored} restored` : 'Nothing to restore')
+  showToast(undone.restored ? `${undone.restored} restored` : 'Nothing to restore')
   // Undoing back into the stuck board the clear had rescued is a real state, and the
   // only honest answer is the same check a placement runs: the run is over unless
   // something can still be played (07 §1.3).
@@ -798,7 +795,7 @@ function cancelItemSelection(silent = false) {
 }
 
 function resetItems() {
-  itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
+  resetItemCounts()
   itemActive = null
   itemTap = null
   itemBusyUntil = 0
@@ -854,28 +851,11 @@ function nearestOriginOnFace(face, ndc, cells) {
   return null
 }
 
-function toolScopeCells(id, face, u, v) {
-  if (id === 'hammer') return [faceLattice(face, u, v)]
-  if (id === 'rocket') {
-    const cells = []
-    if (itemActive?.orientation === 'col') for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, u, i))
-    else for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, i, v))
-    return cells
-  }
-  // bomb: 2×2 square on the face, growing toward +u/+v, trimmed to bounds
-  const cells = []
-  for (let du = 0; du <= 1; du += 1) for (let dv = 0; dv <= 1; dv += 1) {
-    const cu = u + du
-    const cv = v + dv
-    if (cu < SH && cv < SH) cells.push(faceLattice(face, cu, cv))
-  }
-  return cells
-}
 
 function rebuildItemOverlay() {
   clearItemOverlay()
   if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
-  const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v)
+  const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v, itemActive.orientation)
   // The overlay itself is pieceView's (P4c): which cells a tool covers is the tool's rule, and
   // whether a cell already holds a block is the board's — both are this file's to answer, so the
   // module is handed the finished list.
@@ -934,11 +914,7 @@ function selectItemAt(event) {
 function confirmItem() {
   const { id, face, u, v } = itemActive
   if (u === undefined || v === undefined) return
-  const scope = toolScopeCells(id, face, u, v)
-  // Read the records before the removal: undo needs the colours, and `removeCells`
-  // only hands back coordinates (07 §3.1 A9).
-  const records = board.peekCells(scope)
-  const removed = board.removeCells(scope)
+  const { records, removed } = applyItem(id, face, u, v, itemActive.orientation)
   if (!removed.length) {
     // A silent miss read as "the button is broken" (07 §3.1 A6), so the failure now
     // says so on the toast and buzzes as well as setting the status line.
@@ -947,7 +923,7 @@ function confirmItem() {
     playHaptic(24)
     return
   }
-  consumeItem(id)
+  spendItem(id)
   itemBusyUntil = performance.now() + 420
   setTimeout(renderItemBar, 450)
   emitItemBurst(removed, id)
@@ -957,19 +933,17 @@ function confirmItem() {
   renderItemBar()
   saveSession()
   clearItemUndo()
-  itemUndo = { id, records }
-  showToast(`Cleared ${removed.length} - Undo`, 3000)
-  toastEl.classList.add('undoable')
-  itemUndoTimer = setTimeout(() => {
+  // The window arms a couple of statements earlier than it used to (before the toast, not
+  // after): at a 3000ms window that is not observable, and it keeps the data and the timer
+  // in one place (plan section 2).
+  openUndo({ id, records }, 3000, () => {
     clearItemUndo()
     toastEl.classList.remove('visible')
-  }, 3000)
+  })
+  showToast(`Cleared ${removed.length} - Undo`, 3000)
+  toastEl.classList.add('undoable')
   playHaptic(12)
   checkStuckAndPrompt()
-}
-
-function consumeItem(id) {
-  itemCounts[id] = Math.max(0, itemCounts[id] - 1)
 }
 
 function activateItem(id) {
@@ -985,7 +959,7 @@ function activateItem(id) {
     renderItemBar()
     return
   }
-  if (itemCounts[id] <= 0) {
+  if (getItemCounts()[id] <= 0) {
     // Silence here is what made an empty slot feel broken (07 §3.1 A4).
     showToast(`No ${itemTool(id)?.name ?? id} left`)
     playHaptic(20)
@@ -993,7 +967,7 @@ function activateItem(id) {
     return
   }
   if (id === 'refresh') {
-    consumeItem('refresh')
+    spendItem('refresh')
     rerollPieces()
     return
   }
@@ -1039,13 +1013,14 @@ function hasPlaceablePiece() {
 // are what keep this from looping: every prompt names a tool the player can spend, and
 // the run ends when the last one is gone.
 function hasBlockingClearTool() {
-  return itemCounts.hammer > 0 || itemCounts.rocket > 0 || itemCounts.bomb > 0
+  const counts = getItemCounts()
+  return counts.hammer > 0 || counts.rocket > 0 || counts.bomb > 0
 }
 
 function checkStuckAndPrompt() {
   if (gameEnded || isPaused || !getPieces().length) return
   if (hasPlaceablePiece()) return
-  if (itemCounts.refresh > 0) {
+  if (getItemCounts().refresh > 0) {
     setStatus('No spot - use Refresh')
     showToast('No spot - try Refresh')
     return
@@ -1068,7 +1043,7 @@ for (const button of axisPickEl.querySelectorAll('button[data-axis]')) {
   button.addEventListener('click', () => setRocketOrientation(button.dataset.axis))
 }
 axisCancelEl.addEventListener('click', () => cancelItemSelection())
-toastEl.addEventListener('click', () => { if (itemUndo) undoItem() })
+toastEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 
 // ============================================================
 // Piece placement drag
@@ -1339,7 +1314,7 @@ function sessionSnapshot() {
     // candidate's colour and cells, so a snapshot can never resurrect a shape that
     // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
     pieces: getPieces().map((piece) => ({ name: piece.shape.name, used: piece.used })),
-    items: { ...itemCounts },
+    items: { ...getItemCounts() },
     run: {
       chain: run.chain,
       bestChain: run.bestChain,
@@ -1518,10 +1493,10 @@ function applySession(saved) {
   // instead of resuming with a short strip (the layout is a fixed row of three).
   while (restoredPieces.length < 3) restoredPieces.push(makePiece(pickShape()))
   setPieces(restoredPieces)
-  itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
+  setItemCounts(Object.fromEntries(ITEM_TOOLS.map((tool) => [
     tool.id,
     THREE.MathUtils.clamp(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),
-  ]))
+  ])))
   itemActive = null
   itemBusyUntil = 0
   lastItemHoverKey = null
@@ -2343,12 +2318,12 @@ if (import.meta.env.DEV) {
     // judgement the gameplay path runs — no mock of it.
     setItems: (counts) => {
       for (const [id, count] of Object.entries(counts || {})) {
-        if (id in itemCounts) itemCounts[id] = Math.max(0, Math.trunc(Number(count) || 0))
+        setItemCharge(id, count)
       }
       renderItemBar()
-      return { ...itemCounts }
+      return getItemCounts()
     },
-    items: () => ({ ...itemCounts }),
+    items: () => ({ ...getItemCounts() }),
     jam: () => {
       const records = []
       for (let x = 0; x < SH; x += 1) for (let y = 0; y < SH; y += 1) for (let z = 0; z < SH; z += 1) {

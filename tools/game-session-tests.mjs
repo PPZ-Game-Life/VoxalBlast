@@ -174,6 +174,122 @@ function fillRowExceptOne(s, face, v, exceptU) {
   check('the lattice constants are the board\'s', SH === 5 && FACES.length === 6)
 }
 
+// ---- 9. what each tool reaches (P6b-1) ------------------------------------------
+{
+  const s = fresh()
+  const hammer = s.toolScopeCells('hammer', '+z', 2, 2, 'row')
+  check('the hammer reaches exactly one cell', hammer.length === 1
+    && hammer[0].join(',') === faceLattice('+z', 2, 2).join(','), JSON.stringify(hammer))
+  const row = s.toolScopeCells('rocket', '+z', 2, 2, 'row')
+  const col = s.toolScopeCells('rocket', '+z', 2, 2, 'col')
+  check('the rocket clears a whole row', row.length === SH, `${row.length}`)
+  check('the rocket clears a whole column', col.length === SH, `${col.length}`)
+  check('the row and the column are different cells',
+    row.map((c) => c.join(',')).join('|') !== col.map((c) => c.join(',')).join('|'))
+  check('the row follows v, the column follows u',
+    row.every((c, i) => c.join(',') === faceLattice('+z', i, 2).join(','))
+    && col.every((c, i) => c.join(',') === faceLattice('+z', 2, i).join(',')))
+  check('the bomb covers 2x2', s.toolScopeCells('bomb', '+z', 2, 2, '2x2').length === 4)
+  check('the bomb is trimmed at the face edge', s.toolScopeCells('bomb', '+z', 4, 4, '2x2').length === 1)
+}
+
+// ---- 10. a tool clears without scoring (P6b-1) ----------------------------------
+{
+  const s = fresh()
+  fillRowExceptOne(s, '+z', 2, 4)
+  const before = { score: s.board.score, lines: s.board.totalLines, chain: s.run.chain, hammer: s.getItemCounts().hammer }
+  const applied = s.applyItem('hammer', '+z', 0, 2, 'row')
+  check('the hammer found the cell it was aimed at', applied.scope.length === 1 && applied.removed.length === 1)
+  check('the record keeps the colour the cell had', applied.records[0]?.color === 0, JSON.stringify(applied.records[0]))
+  check('a tool does not score', s.board.score === before.score && s.board.totalLines === before.lines,
+    `${s.board.score}/${s.board.totalLines}`)
+  check('a tool does not move the chain', s.run.chain === before.chain)
+  check('a tool does not touch the charges by itself', s.getItemCounts().hammer === before.hammer)
+  check('the cell is really gone', s.board.occupied().length === 3, `${s.board.occupied().length}`)
+  const miss = s.applyItem('hammer', '+z', 4, 2, 'row')
+  check('a tool aimed at nothing removes nothing', miss.removed.length === 0 && miss.records.length === 0)
+  const rocket = s.applyItem('rocket', '+z', 2, 2, 'row')
+  // Four cells were filled, the hammer took one, so three are left on that row.
+  check('the rocket removes the occupied cells of its line', rocket.removed.length === 3, `${rocket.removed.length}`)
+  check('the rocket reports the whole line it covered', rocket.scope.length === SH)
+}
+
+// ---- 11. undo restores colours and the charge (P6b-1) ---------------------------
+{
+  const s = fresh()
+  fillRowExceptOne(s, '+z', 2, 4)
+  const coloursBefore = s.board.occupied().map((cell) => `${cell.x},${cell.y},${cell.z}:${cell.color}`).sort().join('|')
+  const applied = s.applyItem('hammer', '+z', 0, 2, 'row')
+  s.spendItem('hammer')
+  check('the charge was spent', s.getItemCounts().hammer === 0, `${s.getItemCounts().hammer}`)
+  s.openUndo({ id: 'hammer', records: applied.records }, 5000)
+  check('the window is open', s.hasUndo() === true && s.getUndo().records === applied.records)
+  const undone = s.undoLast()
+  check('undo reports how much came back', undone.restored === applied.removed.length, `${undone.restored}`)
+  check('undo refunded the charge', s.getItemCounts().hammer === 1, `${s.getItemCounts().hammer}`)
+  check('undo closed the window', s.hasUndo() === false)
+  const coloursAfter = s.board.occupied().map((cell) => `${cell.x},${cell.y},${cell.z}:${cell.color}`).sort().join('|')
+  check('undo restored every cell with its own colour', coloursAfter === coloursBefore, coloursAfter)
+  check('undo with nothing to undo is a no-op', s.undoLast() === null)
+}
+
+// ---- 12. charges: floors, caps and reset (P6b-1) --------------------------------
+{
+  const s = fresh()
+  const start = s.getItemCounts()
+  check('a fresh session has the starting charges',
+    start.refresh === 2 && start.hammer === 1 && start.rocket === 1 && start.bomb === 1, JSON.stringify(start))
+  s.spendItem('hammer')
+  s.spendItem('hammer')
+  check('a charge never goes below zero', s.getItemCounts().hammer === 0)
+  s.refundItem('hammer')
+  s.refundItem('hammer')
+  s.refundItem('hammer')
+  check('a refund stops at the tool cap', s.getItemCounts().hammer === s.itemTool('hammer').cap, `${s.getItemCounts().hammer}`)
+  s.setItemCharge('bomb', -5)
+  check('setItemCharge floors at zero', s.getItemCounts().bomb === 0)
+  s.setItemCharge('bomb', 99)
+  check('setItemCharge does not clamp to the cap (the save path is what clamps)', s.getItemCounts().bomb === 99)
+  s.setItemCharge('nope', 3)
+  check('setItemCharge ignores unknown tools', s.getItemCounts().nope === undefined)
+  s.setItemCounts({ refresh: 0, hammer: 0, rocket: 0, bomb: 0 })
+  check('setItemCounts replaces the whole table', s.getItemCounts().refresh === 0 && s.getItemCounts().bomb === 0)
+  s.resetItemCounts()
+  check('resetItemCounts restores the starting charges',
+    s.getItemCounts().rocket === 1 && s.getItemCounts().bomb === 1 && s.getItemCounts().refresh === 2)
+  check('the tool table is frozen', Object.isFrozen(s.ITEM_TOOLS) === true)
+  check('the tool table is the four real tools', s.ITEM_TOOLS.map((tool) => tool.id).join(',') === 'refresh,hammer,rocket,bomb')
+}
+
+// ---- 13. the undo window expires on its own (P6b-1) -----------------------------
+{
+  const s = fresh()
+  let expired = 0
+  s.openUndo({ id: 'bomb', records: [] }, 30, () => { expired += 1 })
+  check('a fresh window is open', s.hasUndo() === true)
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  check('the window expired on its own and told main', s.hasUndo() === false && expired === 1, `expired=${expired}`)
+  s.openUndo({ id: 'bomb', records: [] }, 5000, () => { expired += 1 })
+  s.clearUndo()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  check('clearing kills the timer too', expired === 1 && s.hasUndo() === false, `expired=${expired}`)
+  s.openUndo({ id: 'bomb', records: [] }, 5000, () => { expired += 1 })
+  s.openUndo({ id: 'hammer', records: [] }, 5000, () => { expired += 1 })
+  check('opening again replaces the entry, not the timer', s.getUndo().id === 'hammer')
+  s.clearUndo()
+}
+
+// ---- 14. a spent hand is replaced by a fresh one (P6a) --------------------------
+{
+  const s = fresh()
+  s.deal()
+  s.getPieces().forEach((piece) => { piece.used = true })
+  check('every piece can be marked used', s.getPieces().every((piece) => piece.used))
+  const next = s.deal()
+  check('a new deal is a full, unused hand', next.length === 3 && next.every((piece) => !piece.used))
+  check('and it replaced the old one', s.getPieces() === next)
+}
+
 console.log(`game-session-tests: ${passed}/${total} checks passed`)
 if (failures.length) {
   console.log('failures:')
