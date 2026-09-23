@@ -30,9 +30,12 @@ export function createGameInput({
   isHomeOpen,
   isSettingsOpen,
   isControlsOpen,
-  // gameScene: the cube's screen box and the angle ruler a claimed axis is measured on.
+  // gameScene: the cube's screen box, the angle ruler a claimed axis is measured on, and the two
+  // camera commands the wheel drives (P7d).
   cubeScreenBounds,
   gestureSpan,
+  zoomBy,
+  fitCameraToPlaySpace,
   // boardView: the pose commands and the live gesture record. `cubeSnapAnim` is a const object
   // mutated in place, so it can be handed over as-is.
   cubeSnapAnim,
@@ -69,6 +72,11 @@ export function createGameInput({
   // overlay and the axis panel's visibility are pieceView's and the DOM's.
   onControlsSpin,
   onAxisHint,
+  // main's callbacks -- the Escape chain's two panel halves (see bind() below) and the modal
+  // guard that follows the rotation keys.
+  onEscapeBeforeGestures,
+  onEscapeAfterGestures,
+  isModalOpen,
   // main's callbacks -- everything a gesture makes the player see, and the one action a settled
   // drop performs (plan section 6 P7 item 2: the DOM updates, the placement, the save and the
   // restart are main's; the gesture only says what happened).
@@ -808,7 +816,148 @@ export function createGameInput({
     onConfirmItem()
   }
 
+  // ---- Listener wiring (P7d) ------------------------------------------------------
+  // Plan section 6 P7 item 4: the listeners are registered ONCE, from here, and the returned
+  // disposer unbinds them. Nothing above this line registers anything, so a second bind() is
+  // refused rather than doubling every handler -- a doubled pointerdown would start two gestures
+  // on one press.
+  //
+  // The two Escape callbacks exist because main's panel chain and the gesture chain INTERLEAVE:
+  // the leaderboard and the controls card outrank a live gesture (they are asked first), the
+  // settings panel does not (it is asked after). Splitting the chain in two keeps the order the
+  // single keydown listener always had, instead of inventing a priority scheme.
+  let unbind = null
+
+  function bind({ itemBar, axisPick, axisCancel, onActivateItem }) {
+    if (unbind) return unbind
+
+    function onPointerDown(event) {
+      if (itemActive) {
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        // Armed tool (v0.6, 07 §3.1 A1/A2). The press now does two things at once: it
+        // aims (so a touch player, who has no hover, sees the highlight under their
+        // finger before committing) and it hands the gesture to the view drag, so the
+        // cube can still be turned to reach the face they want. Nothing fires here — the
+        // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
+        beginItemPress(event)
+        // beginViewGesture() prevents the default itself, but it bails out early while paused
+        // or mid-drag — the item branch used to prevent unconditionally, so keep that.
+        event.preventDefault()
+        beginViewGesture(event)
+        return
+      }
+      beginViewGesture(event)
+    }
+
+    function onPointerMove(event) {
+      // The view gesture owns the pointer while it is live, and it says so -- the same early
+      // return the inline branch used to do, including the one that waits for a decisive
+      // direction before the pose may move at all.
+      if (updateViewGesture(event)) return
+      if (itemActive) {
+        updateItemHover(eventNdc(event))
+        return
+      }
+      updateDrag(event)
+    }
+
+    function onPointerUp(event) {
+      // The pending item press is taken out of the way first, then the two gestures are ended, and
+      // only then is the tap judged -- the order this listener always ran in.
+      beginItemRelease()
+      finishViewGesture(event)
+      finishDrag(event)
+      endItemRelease(event)
+    }
+
+    function onPointerCancel(event) {
+      clearItemPress()
+      finishViewGesture(event)
+      if (!drag) return
+      cancelActiveDrag(false)
+    }
+
+    function onWheel(event) {
+      event.preventDefault()
+      zoomBy(event.deltaY > 0 ? 0.92 : 1.08)
+      fitCameraToPlaySpace()
+    }
+
+    function onKeyDown(event) {
+      if (event.key === 'Escape' && onEscapeBeforeGestures(event)) return
+      if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
+      if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
+      if (event.key === 'Escape' && onEscapeAfterGestures(event)) return
+      // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
+      // can be learned while it is open, and before the rocket keys so nothing steals them.
+      if (handleRotateKey(event)) { event.preventDefault(); return }
+      if (isModalOpen()) return
+      if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
+        setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
+      }
+    }
+
+    function onContextMenu(event) {
+      if (itemActive) { event.preventDefault(); cancelItemSelection(); return }
+      if (!drag) return
+      event.preventDefault()
+      cancelActiveDrag()
+    }
+
+    function onBlur() {
+      cancelViewGesture()
+    }
+
+    // The strip's buttons are static (renderItemBar only toggles their classes), so they are
+    // bound once here -- and kept in a list so dispose() can really unbind them.
+    const itemButtons = []
+    for (const button of itemBar.querySelectorAll('.item-button')) {
+      const handler = () => onActivateItem(button.dataset.item)
+      itemButtons.push([button, handler])
+      button.addEventListener('click', handler)
+    }
+    const axisButtons = []
+    for (const button of axisPick.querySelectorAll('button[data-axis]')) {
+      const handler = () => setRocketOrientation(button.dataset.axis)
+      axisButtons.push([button, handler])
+      button.addEventListener('click', handler)
+    }
+    function onAxisCancelClick() {
+      cancelItemSelection()
+    }
+
+    canvas.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointermove', onPointerMove, { passive: false })
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancel)
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('contextmenu', onContextMenu)
+    window.addEventListener('blur', onBlur)
+    axisCancel.addEventListener('click', onAxisCancelClick)
+
+    function dispose() {
+      canvas.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancel)
+      canvas.removeEventListener('wheel', onWheel)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('contextmenu', onContextMenu)
+      window.removeEventListener('blur', onBlur)
+      axisCancel.removeEventListener('click', onAxisCancelClick)
+      itemButtons.forEach(([button, handler]) => button.removeEventListener('click', handler))
+      axisButtons.forEach(([button, handler]) => button.removeEventListener('click', handler))
+      // A stale disposer must not affect a later, explicitly rebound instance.
+      if (unbind === dispose) unbind = null
+    }
+    unbind = dispose
+    return unbind
+  }
+
   return {
+    // Wiring: once, from main's boot sequence, with the elements and the one handler it routes.
+    bind,
     // Pointer coordinates and the pointer-level read-outs (plan section 2.1: this module owns
     // them).
     eventNdc,

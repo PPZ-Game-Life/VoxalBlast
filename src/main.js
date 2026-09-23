@@ -325,6 +325,8 @@ const input = createGameInput({
   isControlsOpen: () => settingsUi.isControlsOpen(),
   cubeScreenBounds,
   gestureSpan,
+  zoomBy,
+  fitCameraToPlaySpace,
   cubeSnapAnim,
   ROT_STEP,
   settleCubeSnap,
@@ -347,6 +349,18 @@ const input = createGameInput({
   cancelZones: () => [piecesPanelEl, itemBarEl],
   onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
   onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
+  // The Escape chain, split where the gesture branches sit inside it: the two panels that
+  // outrank a live gesture, then the one that does not. Both do their own preventDefault.
+  onEscapeBeforeGestures: (event) => {
+    if (!leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return true }
+    if (settingsUi.isControlsOpen()) { event.preventDefault(); closeControls(); return true }
+    return false
+  },
+  onEscapeAfterGestures: () => {
+    if (settingsUi.isOpen()) { closeSettings(); return true }
+    return false
+  },
+  isModalOpen: () => settingsUi.isOpen() || settingsUi.isControlsOpen(),
   onItemBar: () => renderItemBar(),
   onAxisPick: () => renderAxisPick(),
   onAxisPickVisibility: (hidden) => axisPickEl.classList.toggle('hidden', hidden),
@@ -837,13 +851,6 @@ function checkStuckAndPrompt() {
 // emitItemBurst() lives in rendering/effects.js (refactor P5): it is a particle system, and the
 // module is handed the cells and asks boardView for the front face itself.
 
-for (const button of itemBarEl.querySelectorAll('.item-button')) {
-  button.addEventListener('click', () => activateItem(button.dataset.item))
-}
-for (const button of axisPickEl.querySelectorAll('button[data-axis]')) {
-  button.addEventListener('click', () => input.setRocketOrientation(button.dataset.axis))
-}
-axisCancelEl.addEventListener('click', () => input.cancelItemSelection())
 toastEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 
 // The piece placement drag (beginDrag / updatePreview / updateDrag / finishDrag /
@@ -1166,77 +1173,23 @@ function resetGame() {
   if (!isPaused) platform.gameplayStart()
 }
 
-// The view gesture (beginViewDrag / finishViewDrag / cancelViewDrag) moved to
-// input/gameInput.js (refactor P7a). main's listeners below delegate to it.
-
-renderer.domElement.addEventListener('pointerdown', (event) => {
-  if (input.hasItemActive()) {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    // Armed tool (v0.6, 07 §3.1 A1/A2). The press now does two things at once: it
-    // aims (so a touch player, who has no hover, sees the highlight under their
-    // finger before committing) and it hands the gesture to the view drag, so the
-    // cube can still be turned to reach the face they want. Nothing fires here — the
-    // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
-    input.beginItemPress(event)
-    // beginViewGesture() prevents the default itself, but it bails out early while paused
-    // or mid-drag — the item branch used to prevent unconditionally, so keep that.
-    event.preventDefault()
-    input.beginViewGesture(event)
-    return
-  }
-  input.beginViewGesture(event)
-})
-window.addEventListener('pointermove', (event) => {
-  // The view gesture owns the pointer while it is live, and it says so -- the same early
-  // return the inline branch used to do, including the one that waits for a decisive
-  // direction before the pose may move at all (refactor P7a).
-  if (input.updateViewGesture(event)) return
-  if (input.hasItemActive()) {
-    input.updateItemHover(input.eventNdc(event))
-    return
-  }
-  input.updateDrag(event)
-}, { passive: false })
-window.addEventListener('pointerup', (event) => {
-  // The pending item press is taken out of the way first, then the two gestures are ended, and
-  // only then is the tap judged -- the order this listener always ran in (refactor P7c).
-  input.beginItemRelease()
-  input.finishViewGesture(event)
-  input.finishDrag(event)
-  input.endItemRelease(event)
+// Every listener the input layer owns -- the canvas pointerdown/wheel, the window
+// pointermove/pointerup/pointercancel/contextmenu/blur, the document keydown and the item
+// strip's buttons -- is registered by input/gameInput.js from its own bind() (refactor P7d),
+// once, with a disposer. It is called here, where the listeners used to be, so the boot order
+// of registrations is unchanged.
+//
+// `document.visibilitychange` deliberately does NOT move (plan §6 P7 item 6): it is a lifecycle
+// orchestration -- cancel the item, the drag and the rotation gesture at their own granularity,
+// clear the undo window, write the slot, settle the wave, then recompute the pause lock -- and
+// it stays below, calling the module's separate methods rather than one blanket cancelAll().
+input.bind({
+  itemBar: itemBarEl,
+  axisPick: axisPickEl,
+  axisCancel: axisCancelEl,
+  onActivateItem: (id) => activateItem(id),
 })
 
-window.addEventListener('pointercancel', (event) => {
-  input.clearItemPress()
-  input.finishViewGesture(event)
-  if (!input.hasDrag()) return
-  input.cancelActiveDrag(false)
-})
-renderer.domElement.addEventListener('wheel', (event) => {
-  event.preventDefault()
-  zoomBy(event.deltaY > 0 ? 0.92 : 1.08)
-  fitCameraToPlaySpace()
-}, { passive: false })
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
-  if (event.key === 'Escape' && settingsUi.isControlsOpen()) { event.preventDefault(); closeControls(); return }
-  if (event.key === 'Escape' && input.hasItemActive()) { event.preventDefault(); input.cancelItemSelection(); return }
-  if (event.key === 'Escape' && input.hasDrag()) { event.preventDefault(); input.cancelActiveDrag(); return }
-  if (event.key === 'Escape' && settingsUi.isOpen()) { closeSettings(); return }
-  // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
-  // can be learned while it is open, and before the rocket keys so nothing steals them.
-  if (input.handleRotateKey(event)) { event.preventDefault(); return }
-  if (settingsUi.isOpen() || settingsUi.isControlsOpen()) return
-  if (input.getItemActive()?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
-    input.setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
-  }
-})
-window.addEventListener('contextmenu', (event) => {
-  if (input.hasItemActive()) { event.preventDefault(); input.cancelItemSelection(); return }
-  if (!input.hasDrag()) return
-  event.preventDefault()
-  input.cancelActiveDrag()
-})
 leaderboardButtonEl.addEventListener('click', () => {
   if (session.isEnded()) openLeaderboard()
 })
@@ -1285,9 +1238,6 @@ document.addEventListener('visibilitychange', () => {
   else if (session.isEnded() || settingsUi.isOpen() || homeUi.isOpen()) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
-// Losing the window ends a mouse gesture the same way (button released outside).
-window.addEventListener('blur', () => input.cancelViewGesture())
-
 // Settings panel, controls card and their entries (see ui/settings.js). Built and bound
 // once, here, after every orchestration function it calls exists. `bind()` returns a
 // disposer and refuses to bind twice, so a future re-entry cannot double-register.
