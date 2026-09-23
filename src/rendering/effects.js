@@ -409,11 +409,31 @@ export function createEffects({
     return slowMo ? rawDelta * slowMo.scale : rawDelta
   }
 
+  // Read-only projection for the headless checks. The plan's P5 acceptance asks for two things
+  // that cannot be asserted from outside without one — "no stale particles after a restart" and
+  // "the sound switch really silences it" — and the particle systems are otherwise invisible:
+  // they are not board meshes, so no mesh count can prove they were released. Nothing in the game
+  // reads this.
+  //
+  // `trackedSystems` is the DISPOSE list, not a live count: three.quarks destroys a finished
+  // system itself (autoDestroy), but main keeps the reference until the next restart disposes it
+  // in bulk. That is the pre-existing behaviour and it is why this field does NOT fall back to
+  // zero on its own, while `transients` — the beams and stars main steps by hand — does.
+  function report() {
+    return {
+      trackedSystems: particleSystems.size,
+      transients: transientEffects.length,
+      shake: Number(cameraShake.toFixed(4)),
+      slowMo: slowMo !== null,
+    }
+  }
+
   return {
     // per-frame
     update,
     timestep,
     updateShake,
+    report,
     // game events
     emitItemBurst,
     spawnClearEffects,

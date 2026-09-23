@@ -2335,6 +2335,10 @@ globalThis.__voxalblast = Object.freeze({
   }),
   intro: () => boardView.introReport(),
   candidateFrames: () => pieceView.candidateFrames(),
+  // v0.8.23 (P5): what the effects layer is holding right now. Particle systems are not board
+  // meshes, so no other read-out can prove they were released on a restart; the shake and the
+  // slow-motion dip are otherwise invisible too. Read-only; no gameplay path reads it.
+  effects: () => effects.report(),
   session: () => sessionStore.read(),
   // v0.4.1: the keyboard bindings the game actually honours. The headless check reads
   // this and compares it against the keycaps printed in the controls card, so a legend
@@ -2365,6 +2369,10 @@ if (import.meta.env.DEV) {
     // function every real entry point calls.
     replayIntro: () => armIntro(),
     settleIntro: () => { settleIntro(); return introPlaying() },
+    // v0.8.23 (P5): the L5 dip normally needs a 4-line clear to happen, which cannot be arranged
+    // on demand. This calls the very same triggerSlowMo() the clear path calls, so "does the dip
+    // block input" can be asserted instead of assumed.
+    triggerSlowMo: (level) => triggerSlowMo(level),
     // v0.8.16 rescue probe (07 §3.1 B1). A shell jam is common in real play but cannot
     // be produced on demand, so the three judgement branches could not be asserted
     // without a way to build one: `jam()` fills every free shell cell (nothing fits
