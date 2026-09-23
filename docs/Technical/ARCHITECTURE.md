@@ -123,7 +123,7 @@ records/session 有数据校验及存储失败后的内存降级；两个偏好�
 
 ## 开发和检查
 
-npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 216/216，v0.8.1 起 236/236，新增 swipe 组）与 tools/game-session-tests.mjs（v0.8.23 起串跑两套，单跑入口 `npm run test:rules` / `npm run test:session`）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run probe:swipe 在无头 Edge 里走完三个手势并断言其世界轴方向；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）；v0.8.2 起它还能在不改任何玩法代码的前提下试参数——`--pool=` 取形状子集（重名＝加权）、`--batch=` 改手牌大小、`--faces=` 换晶格尺寸（按 board.js 同一批公式重建，并在 5×5 时逐格比对，防止模拟一个游戏里没有的棋盘）、`--rng=` / `--seed=` 换随机源，输出里带本次实际使用的 lattice / pool / batch / rng / seed 与 `endedNaturallyPct`、`stepsWhenEnded`（撞 600 手上限＝没结束）。结果样本存 tools/reachability-pool-matrix.json 与 tools/reachability-lattice-matrix.json，结论与判读边界见 [难度与单局长度测量](DIFFICULTY_BASELINE.md)。注意默认随机源仍是老的 31 位 LCG：它会把整局按种子聚簇（同一配置不同种子可差 20pp），**结论性数字要用 `--rng=mulberry32` 加多种子**。
+npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 216/216，v0.8.1 起 236/236，新增 swipe 组；v0.8.23 起 300/300，新增 storage 组）与 tools/game-session-tests.mjs（v0.8.23 起串跑两套，单跑入口 `npm run test:rules` / `npm run test:session`，另一步到位跑完全部回归的是 `npm run gates`）；npm run build 生成 dist；npm run preview 检查正式产物；npm run shot 走无头 Edge 抓桌面+移动端实机截图；npm run probe:swipe 在无头 Edge 里走完三个手势并断言其世界轴方向；三个重构回归探针入口是 `npm run probe:interaction` / `probe:ui` / `probe:churn`；npm run reachability 运行较长的可达性分析，默认写出 tools/reachability-baseline.json（v0.3 样本保存在 tools/reachability-v0.3.json）；v0.8.2 起它还能在不改任何玩法代码的前提下试参数——`--pool=` 取形状子集（重名＝加权）、`--batch=` 改手牌大小、`--faces=` 换晶格尺寸（按 board.js 同一批公式重建，并在 5×5 时逐格比对，防止模拟一个游戏里没有的棋盘）、`--rng=` / `--seed=` 换随机源，输出里带本次实际使用的 lattice / pool / batch / rng / seed 与 `endedNaturallyPct`、`stepsWhenEnded`（撞 600 手上限＝没结束）。结果样本存 tools/reachability-pool-matrix.json 与 tools/reachability-lattice-matrix.json，结论与判读边界见 [难度与单局长度测量](DIFFICULTY_BASELINE.md)。注意默认随机源仍是老的 31 位 LCG：它会把整局按种子聚簇（同一配置不同种子可差 20pp），**结论性数字要用 `--rng=mulberry32` 加多种子**。
 
 测量专用的 A/B/C/D 实验使用 `node tools/difficulty-abcd.mjs --games=200 --seeds=1,2,3 --strategies=noise --out=tools/results/difficulty-abcd.json`，独立于旧 reachability 命令。`tools/difficulty-model.mjs` 调用正式 `Board.seedOpening` 生成对照开局，在 Node 内使用四字位集加速结算；结构化开局与阶段发牌只存在于 tools，正式游戏不导入。`node tools/difficulty-tests.mjs` 验证与真实 Board 的差分一致性、随机流隔离、开局验证路径、阶段边界及右删失统计。JSON保存逐局记录、配对比较、源码SHA256和生存曲线，同时输出无需服务器即可打开的HTML图表。具体算法、样本量、局长判读和局限见 [A/B/C/D实验报告](DIFFICULTY_ABCD.md)。
 
@@ -156,15 +156,15 @@ npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 
 
 `__voxalblastDev` 只在 `import.meta.env.DEV` 为真时挂载（vite 在生产包里把该标志替换成 `false`，因此生产产物既没有这个对象也没有它背后的闭包）：`endGame` / `openLeaderboard` / `records` / `replayIntro` / `settleIntro` / `triggerSlowMo` / `setItems` / `items` / `jam` / `stuckCheck` / `showChain` / `showHonor` / `showScorePop`。回调本身在 `src/main.js` 里构建——`jam()` 会写满自由格、`showChain()` 会改 run 账本，它们是玩法动作而不是读出口，diagnostics 只负责把名字挂上去。
 
-探针脚本与它们钉住的契约（`npm test` 现在串跑规则与会话两套）：
+探针脚本与它们钉住的契约（`npm test` 现在串跑规则与会话两套；`npm run gates` 再串上三个重构回归探针，一次跑完下面这张表里的 1、2、4、5、6 行）：
 
 | 脚本 | npm 入口 | 断言什么 |
 | --- | --- | --- |
 | `tools/rule-tests.mjs` | `npm test` / `npm run test:rules` | 规则层十组：六面共享格与跨面消除、计分、荣誉、已结束局纪录、阶位、存档、存储降级、键盘映射、手势定轴、发牌权重 |
 | `tools/game-session-tests.mjs` | `npm test` / `npm run test:session` | 纯 Node 跑 `game/gameSession.js`（无 DOM / 无 Three）：发牌与 run token、落子与计分、道具作用范围且不计分、撤销还色还次数、三类救场、局终幂等、存档往返 |
-| `tools/refactor-interaction-probe.mjs` | 无（直接 node 运行） | 落子端到端：合法落点=预览格、非法落点不改棋盘不留幽灵、短按选择、Esc/右键取消、设置打断、第二指不提交第一指来的一块、真实 reload 续玩、10 次拖拽无残留 |
-| `tools/refactor-ui-probe.mjs` | 无 | 面板与焦点：声音开关一次点击只翻一次（双绑定探测器）、两个入口的焦点回位、主页 `inert`、排行榜 per-opener 焦点、Escape 优先级、PLAY AGAIN 真起新局、10 次开关 churn 后仍只翻一次 |
-| `tools/refactor-churn-probe.mjs` | 无 | 反复新局/返家/设置/换批后的**稳态**：活跃监听器、canvas 数、`rendering()` 的 meshes/uniqueCells/programs 与候选槽数不单调增长，且 churn 之后真实拖拽仍能附着 |
+| `tools/refactor-interaction-probe.mjs` | `npm run probe:interaction` | 落子端到端：合法落点=预览格、非法落点不改棋盘不留幽灵、短按选择、Esc/右键取消、设置打断、第二指不提交第一指来的一块、真实 reload 续玩、10 次拖拽无残留 |
+| `tools/refactor-ui-probe.mjs` | `npm run probe:ui` | 面板与焦点：声音开关一次点击只翻一次（双绑定探测器）、两个入口的焦点回位、主页 `inert`、排行榜 per-opener 焦点、Escape 优先级、PLAY AGAIN 真起新局、10 次开关 churn 后仍只翻一次、偏好与本地纪录跨真 reload 不变 |
+| `tools/refactor-churn-probe.mjs` | `npm run probe:churn` | 反复新局/返家/设置/换批后的**稳态**：活跃监听器、canvas 数、`rendering()` 的 meshes/uniqueCells/programs 与候选槽数不单调增长，且 churn 之后真实拖拽仍能附着 |
 | `tools/swipe-probe.mjs` | `npm run probe:swipe` | 三个手势的世界轴方向（左带 +Z、右带 −Z、立方体上 +X），用网格姿态差而非姿态差解轴 |
 | `tools/cube-framing-probe.mjs` | `npm run probe:framing` | 24 种标准朝向的停稳构图、面内偏斜与手势旋转轴在屏幕上的方向；正式验收不能加 `--quick` |
 | `tools/intro-probe.mjs` | `npm run probe:intro` | 开局波次：入口、两阶段、波向、跨面、节奏与结束后的位姿/颜色/材质/缩放零误差（另存 CDP screencast 帧序） |

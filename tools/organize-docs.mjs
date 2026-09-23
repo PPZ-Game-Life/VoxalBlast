@@ -1,3 +1,14 @@
+// ⚠️ ONE-SHOT SCRIPT — DO NOT RE-RUN. 一次性脚本，已执行过，勿再运行。
+//
+// It ran once on 2026-09-14 to restructure `docs/`: it archived the then-current Planning
+// originals, and it WROTE the README / ARCHITECTURE / KNOWN_GAPS / Archive index from the
+// templates held in THIS FILE. Those templates are frozen at that date, so running it again
+// would overwrite every doc that has been maintained since (the module table, the state
+// ownership section, the storage boundary, the v0.8.2x records…) with stale text, and would
+// re-archive the Planning files. `docs/Technical/ARCHITECTURE.md` §开发和检查 already states
+// this; the warning is here too because this is the file someone would actually run.
+//
+// Kept only as a record of how the docs were organised. To change a doc, edit the doc.
 import fs from 'node:fs'
 import path from 'node:path'
 

@@ -10,6 +10,13 @@ Thumbs.db
 # Temporary planning and handoff documents
 /docs/Temporary/
 
+# Local scratch: the staged-refactor handoff, per-stage surgery/fidelity scripts and probe
+# logs, and the image-generation runs under output/. Same intent as /docs/Temporary/ above —
+# the evidence is summarised in the commit messages and in docs/Planning/04, the working
+# files stay on the machine.
+/temp/
+/output/
+
 # Measurement runs: the full per-game JSON stays local, the aggregates are committed
 /tools/results/*.json
 !/tools/results/*.summary.json
