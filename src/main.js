@@ -16,8 +16,7 @@ import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { DRAG_GHOST, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
-import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from './rendering/swipe.js'
-import { KEY_BINDINGS, axisForKey } from './rendering/keyboard.js'
+import { KEY_BINDINGS } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
@@ -25,6 +24,7 @@ import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } fro
 import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
+import { createGameInput } from './input/gameInput.js'
 import { createGameSession } from './game/gameSession.js'
 import { createPieceView } from './rendering/pieceView.js'
 import { createEffects } from './rendering/effects.js'
@@ -136,7 +136,6 @@ const {
 versionEl.textContent = `v${packageInfo.version}`
 let selectedPiece = null
 let drag = null
-let viewDrag = null
 let isPaused = false
 // The settings / controls open flags, the sound+haptics preferences and the legend's
 // per-axis spin counters now live in ui/settings.js (plan §3 state table). Read back
@@ -266,10 +265,10 @@ const boardView = createBoardView({
   onIntroLock: () => syncPause(),
   isPaused: () => isPaused,
   camera,
-  // A reset can land in the middle of a pointer gesture. The gesture record is main's
-  // pointer state (gameInput, P7), so boardView asks for the drop through this callback
+  // A reset can land in the middle of a pointer gesture. The gesture record now lives in
+  // input/gameInput.js (refactor P7a), so boardView asks for the drop through this callback
   // rather than reaching into it.
-  onRotationReset: () => { viewDrag = null },
+  onRotationReset: () => input.resetRotation(),
 })
 const {
   FACE_PLANE,
@@ -310,6 +309,36 @@ const {
   findFrontFace,
   faceOrientedCells,
 } = boardView
+
+// The input layer -- the pointer coordinates, the gestures and the interaction gates -- lives in
+// input/gameInput.js (refactor P7a). It owns no game state: every gate below is a read-only query
+// and every effect is a named callback, so nothing in the module can reach the board, the score or
+// the records (plan §2.1). This slice takes the view rotation and the keyboard; the piece drag
+// (P7b), the item targeting (P7c) and the listeners themselves (P7d) follow.
+//
+// It is created here, before the boot-time resetGame() at the bottom of this file, because
+// boardView's onRotationReset callback above reaches it.
+const input = createGameInput({
+  canvas: renderer.domElement,
+  isPaused: () => isPaused,
+  hasDrag: () => Boolean(drag),
+  hasItemActive: () => Boolean(itemActive),
+  isHomeOpen: () => homeUi.isOpen(),
+  isSettingsOpen: () => settingsUi.isOpen(),
+  isControlsOpen: () => settingsUi.isControlsOpen(),
+  cubeScreenBounds,
+  gestureSpan,
+  cubeSnapAnim,
+  ROT_STEP,
+  settleCubeSnap,
+  beginAxisGesture,
+  setLiveAngle,
+  startCubeSnap,
+  getLive: () => boardView.getLive(),
+  onItemHover: (ndc, allowOrientation) => updateItemHover(ndc, allowOrientation),
+  onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
+  onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
+})
 
 // Opaque timber body. The shell is only a BACKING: it occludes the far faces and
 // fills the narrow notches between blocks (which is why it is darker than they are).
@@ -634,61 +663,9 @@ function closeSettings() {
 }
 
 // ============================================================
-// PC keyboard rotation + its legend (v0.4.1, 03 §13)
-// ============================================================
-// A key press is not a second rotation model: it builds the very steps a committed
-// one-face swipe builds — beginAxisGesture() snapshots the pose to turn from and the
-// per-axis direction knob swipeAngle() multiplies, and startCubeSnap() planes it onto
-// the 90° grid with the same spring. Turn the cube with W and with an upward swipe and
-// it lands on the same pose, to the bit (asserted in the headless run: the pose delta
-// is exactly a 90° rotation about the world axis).
-//
-// The one thing a key must NOT copy from a release is where the pose already is. A
-// release hands over an angle the finger has spent 220ms pulling, so there is nothing
-// left to animate; a key has no finger, and writing the angle through setLiveAngle()
-// would put the cube straight onto the target pose — the settle would then animate
-// pose-to-pose over zero distance and the cube would TELEPORT (v0.4.1 first pass, seen
-// in the shot run). So the angle is written onto the gesture without rendering it, and
-// the settle animates from the logical pose the cube is actually in (the gesture's
-// `rendered` angle stays 0) — same duration, same easeOutCubic, same presentation
-// fade-out-and-back as a drag that ends mid-flight.
-function rotateCubeByKey(axis, direction) {
-  // A turn still in flight is settled instantly rather than queued: fast repeated
-  // presses stay with the fingers instead of lagging behind a backlog.
-  if (cubeSnapAnim.active) settleCubeSnap()
-  if (boardView.getLive()) return false // a drag owns the pose right now
-  beginAxisGesture(axis)
-  const knob = axis === 'yaw' ? rotateStyle.yawDirection
-    : axis === 'pitch' ? rotateStyle.pitchDirection : rotateStyle.rollDirection
-  // The live gesture is handed back as the module's OWN record on purpose: this path writes
-  // `angle` onto it WITHOUT rendering it, then passes that same object to startCubeSnap().
-  const gesture = boardView.getLive()
-  gesture.angle = direction * knob * ROT_STEP
-  startCubeSnap(gesture)
-  return true
-}
-
-// The legend's own feedback lives in ui/settings.js (`spinControlCube` / `showAxisHint`);
-// this is the only remaining caller and it just routes the key.
-//
-// Returns true when the event was a rotation binding and has been consumed.
-function handleRotateKey(event) {
-  if (event.metaKey || event.ctrlKey || event.altKey) return false
-  const binding = axisForKey(event.key)
-  if (!binding) return false
-  if (settingsUi.isControlsOpen()) {
-    settingsUi.spinControlCube(binding.axis, binding.direction, event.key)
-    return true
-  }
-  // Hold-to-repeat is off: one press = one face, exactly like one gesture = one face
-  // (§3). A held key that spun the cube would be the only input in the game that can
-  // outrun what the player sees.
-  if (event.repeat) return true
-  if (isPaused || drag || itemActive || homeUi.isOpen() || settingsUi.isOpen()) return false
-  if (!rotateCubeByKey(binding.axis, binding.direction)) return true
-  settingsUi.showAxisHint(event.key, binding.axis)
-  return true
-}
+// The keyboard rotation (rotateCubeByKey / handleRotateKey) moved to input/gameInput.js
+// (refactor P7a). main still owns the Escape chain and the rocket keys below, and it is the
+// one that tells the legend what to spin (settingsUi.spinControlCube / showAxisHint).
 
 function openControls() {
   if (!settingsUi.openControls()) return
@@ -800,13 +777,10 @@ function resetItems() {
   renderItemBar()
 }
 
-function eventNdc(event) {
-  const rect = renderer.domElement.getBoundingClientRect()
-  return new THREE.Vector2(
-    ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
-    -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
-  )
-}
+// Pointer coordinates are the input layer's now (refactor P7a). Bound to the module's own
+// function so the call sites still in this file (the item targeting and the piece drag, until
+// P7b/P7c move them) read exactly as they always did.
+const eventNdc = input.eventNdc
 
 // Convert an NDC into the front face's (u, v) grid cell nearest to the pointer.
 function ndcToCell(face, ndc) {
@@ -1190,13 +1164,9 @@ function updatePreview(event, ndc) {
 // The clear feedback - AxisEmitter, the line particles, the beam, the stars, the transient
 // list and the camera shake - lives in rendering/effects.js (refactor P5).
 
-function releaseDragPointer(source, pointerId) {
-  try {
-    source?.releasePointerCapture?.(pointerId)
-  } catch {
-    // The browser may have already cancelled the pointer capture.
-  }
-}
+// Pointer capture is the input layer's bookkeeping (refactor P7a); the piece drag below is the
+// last caller in this file and moves with it in P7b.
+const releaseDragPointer = input.releasePointerCapture
 
 // One settled placement, in the order the design fixes it: settle every face
 // (board.js) → chain → honors → score (§4.5) → present (§6). Keeping the whole
@@ -1452,7 +1422,7 @@ function applySession(saved) {
   if (saved.pose?.base) {
     cubeSnapAnim.active = false
     boardView.setLive(null)
-    viewDrag = null
+    input.resetRotation()
     cubeBase.fromArray(saved.pose.base).normalize()
     const bandYaw = rotateStyle.bearingBand.yaw
     const bandPitch = rotateStyle.bearingBand.pitch
@@ -1547,63 +1517,8 @@ function resetGame() {
   if (!isPaused) platform.gameplayStart()
 }
 
-function beginViewDrag(event) {
-  if (isPaused || drag || event.pointerType === 'mouse' && event.button !== 0) return
-  // A gesture whose pointerup never arrived must not block this one: if we held
-  // the pointer capture for it and the capture is gone, that pointer is gone too.
-  if (viewDrag && viewDrag.pointerId !== event.pointerId && viewDrag.captured
-    && viewDrag.source?.hasPointerCapture?.(viewDrag.pointerId) === false) cancelViewDrag()
-  if (viewDrag) return
-  event.preventDefault()
-  // Start from a stable pose so the gesture's own delta is the only thing the
-  // settle logic sees.
-  settleCubeSnap()
-  viewDrag = {
-    pointerId: event.pointerId,
-    source: event.currentTarget,
-    startX: event.clientX,
-    startY: event.clientY,
-    // The band is sampled once, where the finger goes down: a gesture never
-    // switches meaning halfway through — neither its axis (cube span vs side band)
-    // nor, in a side band, the direction the roll turns. Sampled after
-    // settleCubeSnap() above, so it sees the pose the gesture will actually start
-    // from.
-    band: screenBand(event.clientX, cubeScreenBounds()),
-    axis: null,
-    span: null, // drag -> angle ruler, sampled where the axis is claimed
-    captured: false,
-  }
-  try {
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-    viewDrag.captured = event.currentTarget.hasPointerCapture?.(event.pointerId) ?? false
-  } catch {
-    // Some embedded browsers can reject capture after an interrupted gesture.
-  }
-}
-
-function finishViewDrag(event) {
-  if (!viewDrag || (event?.pointerId !== undefined && event.pointerId !== viewDrag.pointerId)) return
-  const currentViewDrag = viewDrag
-  viewDrag = null
-  releaseDragPointer(currentViewDrag.source, currentViewDrag.pointerId)
-  // No axis was claimed (a tap, or a drag that never committed): the pose never moved.
-  const live = boardView.getLive()
-  if (live) startCubeSnap(live)
-}
-
-// A view gesture can outlive its pointer: the page goes hidden, a native gesture
-// hijacks the touch, the window loses focus with the button still down. The
-// pointerup then never arrives, and because beginViewDrag() refuses to start a new
-// gesture while `viewDrag` is set, rotation would stay dead for the rest of the
-// session (placement keeps working, which is exactly how this shows up: "it won't
-// turn, it feels locked"). Every path that can lose a pointer ends the gesture
-// here and settles the halfway pose it left behind.
-function cancelViewDrag() {
-  const live = boardView.getLive()
-  if (!viewDrag && !live) return
-  viewDrag = null
-  if (live) startCubeSnap(live)
-}
+// The view gesture (beginViewDrag / finishViewDrag / cancelViewDrag) moved to
+// input/gameInput.js (refactor P7a). main's listeners below delegate to it.
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
   if (itemActive) {
@@ -1615,42 +1530,19 @@ renderer.domElement.addEventListener('pointerdown', (event) => {
     // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
     itemTap = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
     updateItemHover(eventNdc(event))
-    // beginViewDrag() prevents the default itself, but it bails out early while paused
+    // beginViewGesture() prevents the default itself, but it bails out early while paused
     // or mid-drag — the item branch used to prevent unconditionally, so keep that.
     event.preventDefault()
-    beginViewDrag(event)
+    input.beginViewGesture(event)
     return
   }
-  beginViewDrag(event)
+  input.beginViewGesture(event)
 })
 window.addEventListener('pointermove', (event) => {
-  if (viewDrag && event.pointerId === viewDrag.pointerId) {
-    event.preventDefault()
-    // Keep the armed target under the pointer, including while the cube turns to
-    // bring another face round (07 §3.1 A1). The rocket only re-reads its Row/Col
-    // from the cell offset while the gesture is still a tap: during a committed turn
-    // the offsets change for reasons that have nothing to do with what was aimed at.
-    if (itemActive) updateItemHover(eventNdc(event), !viewDrag.axis)
-    const dx = event.clientX - viewDrag.startX
-    const dy = event.clientY - viewDrag.startY
-    if (!viewDrag.axis) {
-      // Until a decisive dominant direction claims the gesture the pose does not
-      // move at all: a few px of sideways drift must never be able to swallow a
-      // vertical swipe (rendering/swipe.js).
-      if (!gestureAxisReady(dx, dy)) return
-      viewDrag.axis = pickGestureAxis(dx, dy, viewDrag.band)
-      viewDrag.span = gestureSpan()
-      // Claimed: snapshot the pose the gesture starts from (tilt + grid pose).
-      beginAxisGesture(viewDrag.axis)
-    }
-    // Drag rotates the cube (not the camera). The claimed axis is the only one
-    // that moves, and it is a FIXED world axis: the angle is applied to the pose
-    // the cube happens to have, so it never turns with the cube. Each axis
-    // carries its own direction sign and its own ruler (ROTATE_STYLE, swipe.js);
-    // the roll is additionally signed by the band the gesture started in.
-    setLiveAngle(swipeAngle(viewDrag.axis, dx, dy, viewDrag.span, viewDrag.band))
-    return
-  }
+  // The view gesture owns the pointer while it is live, and it says so -- the same early
+  // return the inline branch used to do, including the one that waits for a decisive
+  // direction before the pose may move at all (refactor P7a).
+  if (input.updateViewGesture(event)) return
   if (itemActive) {
     updateItemHover(eventNdc(event))
     return
@@ -1690,7 +1582,7 @@ window.addEventListener('pointermove', (event) => {
 window.addEventListener('pointerup', (event) => {
   const tap = itemTap
   itemTap = null
-  finishViewDrag(event)
+  input.finishViewGesture(event)
   finishDrag(event)
   if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
   // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
@@ -1699,7 +1591,7 @@ window.addEventListener('pointerup', (event) => {
 })
 window.addEventListener('pointercancel', (event) => {
   itemTap = null
-  finishViewDrag(event)
+  input.finishViewGesture(event)
   if (!drag || event.pointerId !== drag.pointerId) return
   cancelActiveDrag(false)
 })
@@ -1716,7 +1608,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && settingsUi.isOpen()) { closeSettings(); return }
   // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
   // can be learned while it is open, and before the rocket keys so nothing steals them.
-  if (handleRotateKey(event)) { event.preventDefault(); return }
+  if (input.handleRotateKey(event)) { event.preventDefault(); return }
   if (settingsUi.isOpen() || settingsUi.isControlsOpen()) return
   if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
     setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
@@ -1762,8 +1654,8 @@ document.addEventListener('visibilitychange', () => {
   // one behind for a click that will never come (07 §3.1 A9).
   if (document.hidden) clearItemUndo()
   // A page that goes hidden never delivers the pointerup of a finger that was
-  // down, so the rotation gesture has to be ended here (see cancelViewDrag()).
-  if (document.hidden) cancelViewDrag()
+  // down, so the rotation gesture has to be ended here (see input.cancelViewGesture()).
+  if (document.hidden) input.cancelViewGesture()
   // A run that is simply closed (tab, phone, browser) has to be resumable without
   // having visited the home screen first.
   if (document.hidden) saveSession()
@@ -1777,7 +1669,7 @@ document.addEventListener('visibilitychange', () => {
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 // Losing the window ends a mouse gesture the same way (button released outside).
-window.addEventListener('blur', cancelViewDrag)
+window.addEventListener('blur', () => input.cancelViewGesture())
 
 // Settings panel, controls card and their entries (see ui/settings.js). Built and bound
 // once, here, after every orchestration function it calls exists. `bind()` returns a
