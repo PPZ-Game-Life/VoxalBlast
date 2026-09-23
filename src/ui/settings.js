@@ -181,12 +181,24 @@ export function createSettings({
     return unbind
   }
 
+  // The controls card's read-out (refactor P9): whether it is open, which rows it actually
+  // printed (so a check can compare them against the bindings the game honours) and the
+  // legend's own spin counters. Read-only.
+  function report() {
+    return {
+      open: controlsOpen,
+      axes: [...controlRows.keys()],
+      spin: { ...controlSpin },
+    }
+  }
+
   return {
     isOpen: () => settingsOpen,
     isControlsOpen: () => controlsOpen,
     getSoundOn: () => soundOn,
     getHapticsOn: () => hapticsOn,
     getControlSpin: () => ({ ...controlSpin }),
+    report,
     setSettingsOpen,
     showSettings,
     hideSettings,

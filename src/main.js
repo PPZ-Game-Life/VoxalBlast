@@ -1,6 +1,5 @@
 import packageInfo from '../package.json'
 import * as THREE from 'three'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 // MUST come before the three.quarks import below: it bridges the r159 `updateRange` removal
 // that otherwise throws inside animate() and freezes the canvas. rendering/gameScene.js owns
 // the composer and imports this bridge for `skipComposerDepthBlit`, but gameScene itself is
@@ -8,19 +7,18 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // Modules evaluate once, so this side-effect import and gameScene's named import are the
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
-import { SH, FACES, faceLattice, isShell } from './game/board.js'
+import { SH, FACES, isShell } from './game/board.js'
 import { SHAPES, pickShape } from './game/shapes.js'
 import { lineMultiplier } from './game/scoring.js'
-import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
+import { resolveHonors, feedbackLevel } from './game/honors.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
 import { getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
-import { KEY_BINDINGS } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
 import { addToyLights } from './rendering/toyLights.js'
-import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } from './rendering/woodTexture.js'
+import { installWoodSkin } from './rendering/woodTexture.js'
 import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
@@ -35,6 +33,7 @@ import { createGameOver } from './ui/gameOver.js'
 import { createHud } from './ui/hud.js'
 import { createHome } from './ui/home.js'
 import { createSettings } from './ui/settings.js'
+import { createDiagnostics } from './diagnostics.js'
 
 installToyIcons()
 
@@ -69,10 +68,9 @@ const {
 const platform = createCrazyGamesAdapter()
 // Static DOM handles (refactor P1). The names are kept EXACTLY as they were when this file
 // queried the document itself, so every use site below still reads the identifier it
-// always did — this is a change of owner, not a change of behaviour. The scattered
-// `#settings-close` / `#home-hero` / `#app` / `.topbar, .game-layout` queries further down
-// stay where they are for now: each belongs to the panel that will own it (P1b-2), and
-// moving them here would only move the scattering, not remove it.
+// always did — this is a change of owner, not a change of behaviour. The panel-scoped
+// `#settings-close` / `#home-hero` / `#app` / `.topbar, .game-layout` queries this file used to
+// scatter further down are collected by ui/dom.js too (P1b-2), next to the handles above.
 const {
   sceneWrap,
   app: appEl,
@@ -160,7 +158,7 @@ const gameOverUi = createGameOver({
 const hud = createHud({
   els: {
     statusEl, toastEl, scoreEl, bestEl, chainEl, chainValueEl, chainBarEl,
-    sceneWrap, honorLayerEl, itemBarEl, axisPickEl,
+    sceneWrap, honorLayerEl, itemBarEl, axisPickEl, slotsEl,
   },
   getScore: () => board.score,
   getBest: () => bestScore,
@@ -168,6 +166,14 @@ const hud = createHud({
   getItemCounts: () => getItemCounts(),
   getItemActive: () => input.getItemActive(),
   canUseItems: () => input.canUseItemsNow(),
+  // The candidate strip's DOM half (P9). `input` and `pieceView` are both built further down
+  // (the input layer at its own block, pieceView below the block resources), so the four that
+  // belong to them arrive as lazy callbacks rather than captured bindings.
+  getPieces: () => getPieces(),
+  getSelectedPiece: () => input.getSelectedPiece(),
+  bindSlot: (slot, piece) => input.bindSlot(slot, piece),
+  disposePiecePreviews: () => pieceView.disposePiecePreviews(),
+  createPiecePreview: (piece, canvas, slot) => pieceView.createPiecePreview(piece, canvas, slot),
   onChainBreak: (chain) => playChainBreakSound(chain),
 })
 
@@ -184,6 +190,7 @@ const {
   clearHonorLayer,
   renderItemBar,
   renderAxisPick,
+  renderPieceSlots,
 } = hud
 
 
@@ -192,7 +199,7 @@ const quality = getRenderQuality()
 // Wood grain is a canvas texture, and the signboards are DOM: paint them before
 // the first frame so nothing pops in a frame late.
 installWoodSkin()
-installPastoralBackdrop(document.querySelector('#app'))
+installPastoralBackdrop(appEl)
 
 // The main scene — scene graph root, camera, renderer, the post chain, the framing solver
 // and the resize path — now lives in rendering/gameScene.js (refactor P2b). Its objects are
@@ -251,9 +258,12 @@ scene.add(cubeGroup)
 const boardView = createBoardView({
   metrics: () => ({ cs, half }),
   getCubeGroup: () => cubeGroup,
-  // blockResources is built after this factory (it needs cubeBody), so it arrives as a getter
+  // blockResources is built after this factory, so it arrives as a getter
   // rather than being captured -- the same lazy-binding rule as gameScene's metrics.
   getBlocks: () => blocks,
+  // The moved `faces` read-out reports the camera target next to the camera itself,
+  // so boardView needs it too. It is a const Vector3 gameScene mutates in place.
+  getCameraTarget: () => cameraTarget,
   // P3d: the wave re-sorts itself once when the wrapper resizes (the trays fill a frame or two
   // after a boot-time arm), and it is the thing that raises the pause lock. The applied canvas
   // size comes from gameScene; the lock goes back through the one pause setter; isPaused is a
@@ -268,16 +278,13 @@ const boardView = createBoardView({
   onRotationReset: () => input.resetRotation(),
 })
 const {
-  FACE_PLANE,
   cubeVector,
   cellToWorld,
-  cellLocal,
   cellWorld,
   facePlaneLocalCenter,
   // The 98 tiles and the material they wear (P3c). `gridGroup` is a const Group mutated in
   // place, so it binds back to the name this file has always used; the rest are commands.
   gridGroup,
-  attachTiles,
   sync: syncBoard,
   applyTileMaterials,
   // Opening creation wave (P3d). The names are the ones this file has always used, so every
@@ -380,29 +387,11 @@ const input = createGameInput({
   onDrop: (drop) => onDrop(drop),
 })
 
-// Opaque timber body. The shell is only a BACKING: it occludes the far faces and
-// fills the narrow notches between blocks (which is why it is darker than they are).
-// It is inset behind them so that the blocks — not the shell — make up the surface
-// of the big cube.
-const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
-  color: style.hullColor,
-  map: woodGrainTextureRepeating(style.hullGrainRepeat),
-  roughness: style.hullRoughness,
-  clearcoat: style.hullClearcoat,
-  clearcoatRoughness: 0.42,
-  metalness: 0,
-  transparent: false,
-  opacity: style.hullOpacity,
-  depthWrite: true,
-})
-const cubeBody = new THREE.Mesh(
-  new RoundedBoxGeometry(cubeSide - style.hullInset, cubeSide - style.hullInset, cubeSide - style.hullInset, 3, style.hullRadius),
-  cubeBodyMaterial,
-)
-cubeBody.renderOrder = -2
-cubeBody.castShadow = false
-cubeBody.receiveShadow = true
-cubeGroup.add(cubeBody)
+// The opaque timber body of the cube — its material and its inset RoundedBoxGeometry — is
+// created by rendering/blockResources.js since refactor P9: that module already owns the block
+// geometry the shell is measured against, and main must not create geometry or materials
+// (plan §8). What stays here is the scene graph: the shell is added to cubeGroup BEFORE the 98
+// tiles, and that child order is load-bearing (the shell carries renderOrder -2).
 
 // The lattice <-> local <-> world conversions now live in rendering/boardView.js (P3a); the
 // destructured names above are that module's functions.
@@ -417,7 +406,10 @@ const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // THE block. ONE geometry instance is shared by the board's 98 blocks, the three
 // candidate slots and the drag ghost, so a piece in the hand and a piece on the
 // board are literally the same object — same size, same six flat faces, same bevel.
-const blocks = createBlockResources({ cubeBody })
+// The shell's half-side is handed in lazily for the same reason gameScene gets `metrics`:
+// the lattice arithmetic stays this file's, and the factory runs before nothing else needs it.
+const blocks = createBlockResources({ metrics: () => ({ cubeSide }) })
+cubeGroup.add(blocks.cubeBody)
 
 // The 98 blocks live in rendering/boardView.js (refactor P3c). attachTiles() runs here, where
 // the group used to be attached and built: cubeGroup's child order is load-bearing (cubeBody
@@ -575,39 +567,10 @@ function nextPieces() {
   renderPieceSlots()
 }
 
-function colorHex(color) {
-  return `#${new THREE.Color(color).getHexString()}`
-}
-
 // The three candidate previews (refactor P4a) live in rendering/pieceView.js: each slot owns
-// its own renderer, scene and camera, and the module owns the map holding them. renderPieceSlots
-// below still builds the slot DOM and its pointer wiring -- that half moves to ui/hud only after
-// the input state it reads has moved too (P7).
-
-function renderPieceSlots() {
-  disposePiecePreviews()
-  slotsEl.innerHTML = ''
-  getPieces().forEach((piece, index) => {
-    const slot = document.createElement('button')
-    slot.className = `piece-slot${piece.used ? ' used' : ''}${input.getSelectedPiece() === piece ? ' selected' : ''}`
-    slot.type = 'button'
-    slot.dataset.index = index
-    slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
-    slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} blocks`)
-
-    const thumb = document.createElement('span')
-    thumb.className = 'piece-thumb'
-    const canvas = document.createElement('canvas')
-    canvas.className = 'piece-preview-canvas'
-    canvas.setAttribute('aria-hidden', 'true')
-    thumb.appendChild(canvas)
-
-    slot.append(thumb)
-    input.bindSlot(slot, piece)
-    slotsEl.appendChild(slot)
-    createPiecePreview(piece, canvas, slot)
-  })
-}
+// its own renderer, scene and camera, and the module owns the map holding them. The slot DOM
+// itself -- the buttons, the chip colour, the thumbnail canvases and the pointer wiring --
+// moved to ui/hud.js in P9; the previews themselves stay in pieceView.
 
 function setCancelZone(active, highlighted = false) {
   piecesPanelEl.classList.toggle('cancel-mode', active)
@@ -668,9 +631,9 @@ function closeSettings() {
 }
 
 // ============================================================
-// The keyboard rotation (rotateCubeByKey / handleRotateKey) moved to input/gameInput.js
-// (refactor P7a). main still owns the Escape chain and the rocket keys below, and it is the
-// one that tells the legend what to spin (settingsUi.spinControlCube / showAxisHint).
+// The keyboard rotation (handleRotateKey) moved to input/gameInput.js (refactor P7a). main
+// still owns the Escape chain and the rocket keys below, and it is the one that tells the
+// legend what to spin (settingsUi.spinControlCube / showAxisHint).
 
 function openControls() {
   if (!settingsUi.openControls()) return
@@ -970,7 +933,7 @@ const homeUi = createHome({
   getBest: () => bestScore,
   getRecords: () => recordStore.all(),
   platform,
-  cloneSources: { cubeBody, gridGroup },
+  cloneSources: { cubeBody: blocks.cubeBody, gridGroup },
   // Whoever changes the open state recomputes the pause lock — one place decides.
   onOpen: () => syncPause(),
   onClose: () => syncPause(),
@@ -979,7 +942,6 @@ const homeUi = createHome({
 // Bound to the module's own names so the existing call sites below read as they always did.
 const {
   refreshHome,
-  renderHomeBoard,
   openLeaderboard,
   closeLeaderboard,
 } = homeUi
@@ -1339,388 +1301,33 @@ function animate() {
   camera.lookAt(cameraTarget)
   composer.render(delta)
 }
-// Read-only introspection hook for the headless verification runs (the CDP
-// checks assert that a swipe settles on a face-aligned pose). It exposes no
-// mutable game state and is not used by any gameplay code path.
-globalThis.__voxalblast = Object.freeze({
-  version: packageInfo.version,
-  rendering: () => {
-    const tiles = gridGroup.children.flatMap((group) => group.children)
-    return {
-      meshes: tiles.length,
-      uniqueCells: new Set(tiles.map((tile) => tile.userData.cell.join(','))).size,
-      trianglesPerBlock: blocks.blockGeometry.attributes.position.count / 3,
-      surfaceArt: blockSurfaceArtStatus(),
-      environment: Boolean(scene.environment),
-      hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
-      contactShadows: {
-        independentDepth: normalPass.renderTarget.depthTexture === contactDepth && composer.stableDepthTexture === null,
-        width: contactDepth.image.width,
-        height: contactDepth.image.height,
-        projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(camera.projectionMatrix),
-      },
-      toneMapping: toneMappingEffect.mode,
-      programs: renderer.info.programs?.length,
-      lowPower: quality.lowPower,
-    }
-  },
-  // `pose` is the rendered orientation; `base` is the logical grid pose it settles
-  // around (a product of whole 90° steps about world axes, so it can never drift off
-  // the grid); `bearing` is how far the player has dialled the view off the face, in
-  // screen space, and `bearingDeg` the same in degrees. The Euler triples are
-  // readability helpers for the checks (a pure yaw/pitch/roll pose decomposes exactly
-  // in ZYX order).
-  rotation: () => {
-    const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
-    const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
-    // Read the two module-owned `let`s once, through their accessors. getBearing() hands
-    // back a copy, so the read-out can never alias the module's own state.
-    const bearing = boardView.getBearing()
-    const live = boardView.getLive()
-    const bearingEuler = new THREE.Euler().setFromQuaternion(bearingQuat(bearing.yaw, bearing.pitch), 'ZYX')
-    return {
-      yaw: poseEuler.y,
-      pitch: poseEuler.x,
-      roll: poseEuler.z,
-      baseYaw: baseEuler.y,
-      basePitch: baseEuler.x,
-      baseRoll: baseEuler.z,
-      tiltYaw: bearingEuler.y,
-      tiltPitch: bearingEuler.x,
-      bearing: { yaw: bearing.yaw, pitch: bearing.pitch },
-      bearingDeg: {
-        yaw: Number(THREE.MathUtils.radToDeg(bearing.yaw).toFixed(2)),
-        pitch: Number(THREE.MathUtils.radToDeg(bearing.pitch).toFixed(2)),
-      },
-      pose: cubeQuat.toArray(),
-      base: cubeBase.toArray(),
-      front: findFrontFace(),
-      settling: cubeSnapAnim.active,
-      live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered } : null,
-    }
-  },
-  // v0.8.6 framing read-out: how the cube's screen silhouette is divided between
-  // the faces that are actually visible, plus how far each of them is off the
-  // camera axis and how far the main face's own lattice axes are from screen
-  // right/down. This is the measurement the "停稳后主面 82–88%" acceptance is
-  // graded on, and `skew` is the same number for the rotation: a face whose u axis
-  // is not level on screen is a face the player sees tilted. Areas are exact
-  // projected polygons (the three visible faces of a convex body tile the
-  // silhouette), not a cosα·cosβ approximation. Read-only.
-  faces: () => {
-    camera.updateMatrixWorld()
-    cubeGroup.updateMatrixWorld(true)
-    const rect = renderer.domElement.getBoundingClientRect()
-    const project = (v) => {
-      const p = v.clone().project(camera)
-      return { x: (p.x * 0.5 + 0.5) * rect.width, y: (0.5 - p.y * 0.5) * rect.height }
-    }
-    const quadArea = (pts) => {
-      let sum = 0
-      for (let i = 0; i < pts.length; i += 1) {
-        const a = pts[i]
-        const b = pts[(i + 1) % pts.length]
-        sum += a.x * b.y - b.x * a.y
-      }
-      return Math.abs(sum) / 2
-    }
-    const toCamera = camera.position.clone().sub(cubeGroup.position).normalize()
-    const entries = FACES.map((face) => {
-      const n = cubeVector(face, 'n').applyQuaternion(cubeGroup.quaternion).normalize()
-      const u = cubeVector(face, 'u').applyQuaternion(cubeGroup.quaternion).normalize()
-      const v = cubeVector(face, 'v').applyQuaternion(cubeGroup.quaternion).normalize()
-      const corner = (su, sv) => cubeGroup.position.clone()
-        .addScaledVector(n, half).addScaledVector(u, su * half).addScaledVector(v, sv * half)
-      const quad = project(corner(-1, -1))
-      const across = project(corner(1, -1))
-      const opposite = project(corner(1, 1))
-      const along = project(corner(-1, 1))
-      // VISIBILITY IS NOT `n · viewDirection > 0`. That is the orthographic test,
-      // and it is wrong whenever the projection is not weak: the face plane sits
-      // `half` off the cube's centre, so what decides is whether the CAMERA is on
-      // the outer side of that face's own plane. With a close camera the
-      // orthographic test calls a hidden side face "visible" and counts a quad that
-      // is really tucked behind the front face — which is how a 5°/4° tilt measured
-      // as "87% main face" while the cube on screen was a flat square with no side
-      // face showing at all.
-      const cameraSide = camera.position.clone()
-        .sub(cubeGroup.position.clone().addScaledVector(n, half))
-        .dot(n)
-      const facing = n.dot(toCamera)
-      // In-plane skew: how far the face's own +u edge runs from screen-right.
-      // This INCLUDES perspective convergence (a receding edge is not parallel to
-      // itself on screen, and should not be), so it is informational only —
-      // `twistDeg` below is the number that answers "did this face arrive crooked".
-      const skewDeg = THREE.MathUtils.radToDeg(Math.atan2(across.y - quad.y, across.x - quad.x))
-      // How far the face is rotated about its own normal, measured in DIRECTION
-      // space so perspective cannot contaminate it: project the face's +u direction
-      // into the screen plane, take its angle from screen-right, and fold a quarter
-      // turn (a face is legitimately presented in any of four rotations). This has
-      // to come out the same on all 24 orientations — it is the check that the
-      // presentation tilt lives in SCREEN space, because a cube-space tilt twists
-      // each face by a different amount depending on which way it happens to face.
-      const viewAxis = camera.getWorldDirection(new THREE.Vector3())
-      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
-      const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
-      const flat = u.clone().addScaledVector(viewAxis, -u.dot(viewAxis)).normalize()
-      const twistRaw = THREE.MathUtils.radToDeg(Math.atan2(flat.dot(camUp), flat.dot(camRight)))
-      return {
-        face,
-        facing: Number(facing.toFixed(4)),
-        cameraSide: Number(cameraSide.toFixed(4)),
-        offAxisDeg: Number(THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(facing, -1, 1))).toFixed(2)),
-        areaPx: Number(quadArea([quad, across, opposite, along]).toFixed(1)),
-        skewDeg: Number((((skewDeg + 180) % 180) - 90).toFixed(2)),
-        twistDeg: Number((((twistRaw % 90) + 135) % 90 - 45).toFixed(3)),
-        visible: cameraSide > 0,
-      }
-    })
-    // How far the BEARING leans the world vertical. 0 = the bearing is a pure
-    // screen-space yaw, which cannot tip the cube at all. This is the "视觉上还比较歪"
-    // number, and it has to stay ~0 for every bearing the player can dial.
-    //
-    // It is measured on the BEARING and not on the rendered pose on purpose: every
-    // grid pose maps world axes to world axes (they are signed permutations), so a
-    // grid-aligned cube can only ever be as plumb as the projection of the world axes
-    // themselves — measuring the pose would report 180° for a legitimately
-    // upside-down face and 90° for one that arrived by a roll, neither of which is a
-    // lean. The only thing that can make the board LOOK tilted is a bearing
-    // component that moves world Y sideways, and a yaw-last composition cannot.
-    const tiltBearing = boardView.getBearing()
-    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(bearingQuat(tiltBearing.yaw, tiltBearing.pitch))
-    const uprightDeg = Number(THREE.MathUtils.radToDeg(Math.atan2(-tiltUp.x, Math.abs(tiltUp.y))).toFixed(3))
-    const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
-    const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)
-    const front = visible[0]
-    return {
-      front: findFrontFace(),
-      mainFaceMatches: front ? front.face === findFrontFace() : false,
-      totalPx: Number(total.toFixed(1)),
-      mainShare: total > 0 ? Number((front.areaPx / total).toFixed(4)) : 0,
-      others: visible.slice(1).map((entry) => ({ face: entry.face, share: Number((entry.areaPx / total).toFixed(4)) })),
-      visible,
-      faces: entries,
-      uprightDeg,
-      camera: {
-        position: camera.position.toArray().map((value) => Number(value.toFixed(3))),
-        target: [cameraTarget.x, cameraTarget.y, cameraTarget.z].map((value) => Number(value.toFixed(3))),
-        distance: Number(camera.position.distanceTo(cubeGroup.position).toFixed(3)),
-        fovDeg: camera.fov,
-        aspect: Number(camera.aspect.toFixed(4)),
-        facePlaneHalf: half,
-      },
-    }
-  },
-  // v0.8.6 rotation read-out: the world-space increment between two rendered
-  // poses, expressed in the camera's own frame. `screenDeg` is where the rotation
-  // axis points on screen, measured from screen-right and folded to (-90°, 90°]:
-  // 0° means the axis lies horizontally (a pitch — the front face slides up/down),
-  // ±90° means the axis is vertical (a yaw — the cube turns left/right). A roll's
-  // axis points at the camera, so it has no screen direction at all and shows up
-  // as `alongView ≈ ±1` instead. This is the number behind "旋转中段发歪": while a
-  // gesture's increment is a clean turn about one screen axis, this angle is flat
-  // at 0 or 90 for the whole gesture. Read-only; the probe calls it with two
-  // quaternions it just read from rotation().
-  poseAxisScreen: (from, to) => {
-    const a = new THREE.Quaternion().fromArray(from).normalize()
-    const b = new THREE.Quaternion().fromArray(to).normalize()
-    const delta = b.multiply(a.invert()).normalize()
-    if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w)
-    const angle = 2 * Math.acos(THREE.MathUtils.clamp(delta.w, -1, 1))
-    const magnitude = Math.hypot(delta.x, delta.y, delta.z)
-    const axis = magnitude > 1e-9
-      ? new THREE.Vector3(delta.x / magnitude, delta.y / magnitude, delta.z / magnitude)
-      : new THREE.Vector3()
-    camera.updateMatrixWorld()
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
-    const view = camera.getWorldDirection(new THREE.Vector3())
-    return {
-      angleDeg: Number(THREE.MathUtils.radToDeg(angle).toFixed(3)),
-      axis: axis.toArray().map((value) => Number(value.toFixed(4))),
-      screenDeg: Number(THREE.MathUtils.radToDeg(Math.atan2(axis.dot(up), axis.dot(right))).toFixed(3)),
-      alongView: Number(axis.dot(view).toFixed(4)),
-    }
-  },
-  // Screen-space cube box + framing numbers, used to check the "inside vs
-  // outside the cube" gesture split and how much of the canvas the cube fills.
-  bounds: () => cubeScreenBounds(),
-  // The landing marker, next to the piece in hand. `cells[].color` is the material the
-  // marker is actually wearing, so a check can assert it matches `pieceColor` while the
-  // drop is legal and only turns into `palette.invalid` when it is not (v0.8.11 fixed
-  // this: the marker used to be a fixed green whatever the candidate's colour was).
-  // Read-only; no gameplay path reads it.
-  preview: () => {
-    const piece = input.getSelectedPiece()
-    const hex = (color) => `#${new THREE.Color(color).getHexString()}`
-    return {
-      piece: piece ? piece.shape.name : null,
-      pieceColor: piece ? hex(piece.shape.color) : null,
-      valid: input.dragReport().valid,
-      cells: landingCells(),
-    }
-  },
-  // Candidate orientation on the current front face. `raw` is the top-left
-  // layout the slot draws, `oriented` is what would actually be dropped, and
-  // `uAxis` / `vAxis` project the lattice step the piece's +u / +v take, in
-  // client pixels with dx > 0 = rightward and dy > 0 = upward (NDC convention).
-  // A matching placement therefore has +u rightward and +v downward.
-  placement: () => {
-    const face = findFrontFace()
-    const candidatePieces = getPieces()
-    const piece = candidatePieces.find((candidate) => !candidate.used) || candidatePieces[0]
-    const rect = renderer.domElement.getBoundingClientRect()
-    const stepScreen = (probeCells) => {
-      const [from, to] = faceOrientedCells(face, probeCells)
-      const du = to[0] - from[0]
-      const dv = to[1] - from[1]
-      const start = cellWorld(face, 0, 0).project(camera)
-      const end = cellWorld(face, du, dv).project(camera)
-      return {
-        step: [du, dv],
-        dx: (end.x - start.x) * 0.5 * rect.width,
-        dy: (end.y - start.y) * 0.5 * rect.height, // NDC y is already up-positive
-      }
-    }
-    return {
-      face,
-      piece: piece ? piece.shape.name : null,
-      raw: piece ? currentCells(piece) : [],
-      oriented: piece ? faceOrientedCells(face, currentCells(piece)) : [],
-      uAxis: stepScreen([[0, 0], [1, 0]]),
-      vAxis: stepScreen([[0, 0], [0, 1]]),
-    }
-  },
-  // v0.4.4 drag ghost: where the piece in hand actually is on screen. `cells` are
-  // the client-pixel centres of the ghost's voxels (so a check can assert that the
-  // ghost tracks the pointer within the lift offset and that a 3-cell piece really
-  // drew three voxels), `cellPx` is the on-screen cell edge, and `mode` is the
-  // state the drop is in. Read-only; no gameplay path reads it. The fields arrive in
-  // two halves (refactor P4b): pieceView measures the view, this file adds the gesture.
-  ghost: () => {
-    const d = input.dragReport()
-    return {
-      // The view half — where the ghost's voxels actually are on screen, the measured cell pitch
-      // and the tint it is wearing — is pieceView's projection (refactor P4b).
-      ...ghostReport(),
-      attached: d.attached,
-      // How many landing cells the board is drawing right now. The whole point of
-      // the v0.4.5 revision is that this and `visible` are never both non-zero.
-      previewCells: landingCount(),
-      // Where the snapped piece is anchored on the face, and the grab point the
-      // relative movement is measured from (v0.4.6).
-      previewOrigin: d.origin,
-      anchor: d.anchor,
-      // The face's own lattice basis in client pixels — the basis the relative
-      // movement is solved in. Exposed so a check can reproduce the mapping
-      // exactly instead of assuming it.
-      stepScreen: d.stepScreen,
-    }
-  },
-
-  framing: () => {
-    const rect = renderer.domElement.getBoundingClientRect()
-    const solid = cubeScreenBounds()
-    const fitBox = projectCubeBounds(cubeExtent())
-    return {
-      canvas: { left: rect.left, top: rect.top, width: rect.width, height: rect.height, right: rect.left + rect.width, bottom: rect.top + rect.height },
-      solid,
-      fitBox,
-      fillX: (solid.maxX - solid.minX) / Math.max(rect.width, 1),
-      fillY: (solid.maxY - solid.minY) / Math.max(rect.height, 1),
-      bandLeft: solid.minX - rect.left,
-      bandRight: rect.left + rect.width - solid.maxX,
-      clipped: solid.minX < rect.left || solid.maxX > rect.left + rect.width || solid.minY < rect.top || solid.maxY > rect.top + rect.height,
-      orbitDistance: getOrbitDistance(),
-      zoom: getCameraZoom(),
-      fov: camera.fov,
-      aspect: camera.aspect,
-    }
-  },
-  // Board read-out for the headless checks (v0.2.31): the occupied shell cells as
-  // [x, y, z, color] — the color is the shape type, so a check can prove the
-  // opening layout draws from the candidate pool — plus the score and any face
-  // line that is already full. Read-only, like the rest of this hook.
-  board: () => ({
-    cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
-    score: board.score,
-    totalLines: board.totalLines,
-    // The v0.3 regression assertion reads this: after ANY settled placement it must
-    // be empty on all six faces (04「玩法与规则」残留满线条款) — place() settles
-    // every face, so nothing can be left standing full.
-    fullLines: board.findAllFullLines().map((line) => `${line.face}:${line.axis}:${line.axis === 'row' ? line.v : line.u}`),
-    faceOccupancy: Object.fromEntries(FACES.map((face) => [face, board.faceOccupancy(face)])),
-  }),
-  // The run in progress: chain, per-run bests, which faces have been cleared and
-  // the honors earned — what the Game Over panel and the records layer are fed from.
-  run: () => ({
-    chain: run.chain,
-    bestChain: run.bestChain,
-    maxLinesOneMove: run.maxLinesOneMove,
-    maxFacesOneMove: run.maxFacesOneMove,
-    facesLit: [...run.facesLit],
-    faceWipes: run.faceWipes,
-    honors: [...run.honors],
-    honorCounts: { ...run.honorCounts },
-  }),
-  // The persisted Layer-1 snapshot (read-only: it is the same object the store hands
-  // the UI, so the checks can prove a run round-tripped through storage).
-  records: () => recordStore.all(),
-  // v0.4 home + resume slot, read-only: what the cover is showing and whether a run
-  // is waiting behind it (the checks assert the slot survives a page load, which is
-  // the whole point of storing it).
-  home: () => ({
-    open: homeUi.isOpen(),
-    label: homePrimaryLabelEl.textContent,
-    note: homeResumeNoteEl.textContent,
-    hasSavedRun: Boolean(sessionStore.read()),
-    persistent: sessionStore.persistent,
-  }),
-  intro: () => boardView.introReport(),
-  candidateFrames: () => pieceView.candidateFrames(),
-  // v0.8.23 (P5): what the effects layer is holding right now. Particle systems are not board
-  // meshes, so no other read-out can prove they were released on a restart; the shake and the
-  // slow-motion dip are otherwise invisible too. Read-only; no gameplay path reads it.
-  effects: () => effects.report(),
-  session: () => sessionStore.read(),
-  // v0.4.1: the keyboard bindings the game actually honours. The headless check reads
-  // this and compares it against the keycaps printed in the controls card, so a legend
-  // can never advertise a key that does nothing (and vice versa).
-  keys: () => KEY_BINDINGS.map((binding) => ({ axis: binding.axis, keys: [...binding.keys] })),
-  controls: () => ({
-    open: settingsUi.isControlsOpen(),
-    axes: [...controlRows.keys()],
-    spin: settingsUi.getControlSpin(),
-  }),
-  // The candidate pool itself: name, color and cell count per type.
-  shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
-})
-
-// DEV-ONLY handles for the headless verification run. The two modal panels cannot be
-// reached by playing: the model says a shell "jam" takes more than 600 placements
-// (09 §3), so a screenshot run would never get there. These live behind
-// import.meta.env.DEV, which vite replaces with `false` in the production build, so
-// the shipped bundle does not contain them — and unlike the read-only hook above,
-// they are never used by any gameplay path.
-if (import.meta.env.DEV) {
-  globalThis.__voxalblastDev = Object.freeze({
+// Diagnostics (refactor P9): the `__voxalblast` read-only hook and the DEV-only write
+// handles moved to diagnostics.js, which only ASSEMBLES what each owner module reports
+// (boardView's pose and framing, gameScene's post chain, pieceView's previews, the stores'
+// snapshots). This file hands it the modules and the DEV callbacks; the module mounts the two
+// globals under the names the headless checks have always used.
+//
+// The callbacks stay HERE on purpose: a `jam()` that writes 60 cells or a `showChain()` that
+// moves the run record is a gameplay action, not a read-out, and the plan forbids diagnostics
+// from becoming the entry point for one (plan §2.1). They are built only under
+// import.meta.env.DEV, so the production bundle carries neither the bag nor the closures.
+const devHandles = import.meta.env.DEV
+  ? {
     endGame: () => endGame(),
     openLeaderboard: () => openLeaderboard(),
-    records: () => recordStore.all(),
-    // v0.8.21: replay the opening wave on demand, so the probe can drive it without
-    // depending on where a click landed. It calls armIntro() itself — the same
-    // function every real entry point calls.
+    // v0.8.21: replay the opening wave on demand, so the probe can drive it without depending
+    // on where a click landed. It calls armIntro() itself — the same function every real entry
+    // point calls.
     replayIntro: () => armIntro(),
     settleIntro: () => { settleIntro(); return introPlaying() },
-    // v0.8.23 (P5): the L5 dip normally needs a 4-line clear to happen, which cannot be arranged
-    // on demand. This calls the very same triggerSlowMo() the clear path calls, so "does the dip
-    // block input" can be asserted instead of assumed.
+    // v0.8.23 (P5): the L5 dip normally needs a 4-line clear to happen, which cannot be
+    // arranged on demand. This calls the very same triggerSlowMo() the clear path calls.
     triggerSlowMo: (level) => triggerSlowMo(level),
-    // v0.8.16 rescue probe (07 §3.1 B1). A shell jam is common in real play but cannot
-    // be produced on demand, so the three judgement branches could not be asserted
-    // without a way to build one: `jam()` fills every free shell cell (nothing fits
-    // anywhere), `setItems()` sets the charges, and `stuckCheck()` runs the very same
-    // judgement the gameplay path runs — no mock of it.
+    // v0.8.16 rescue probe (07 §3.1 B1). A shell jam is common in real play but cannot be
+    // produced on demand, so the three judgement branches could not be asserted without a way
+    // to build one: `jam()` fills every free shell cell (nothing fits anywhere), `setItems()`
+    // sets the charges, and `stuckCheck()` runs the very same judgement the gameplay path runs
+    // — no mock of it.
     setItems: (counts) => {
       for (const [id, count] of Object.entries(counts || {})) {
         setItemCharge(id, count)
@@ -1739,9 +1346,9 @@ if (import.meta.env.DEV) {
       return { filled: records.length, occupied: board.occupied().length }
     },
     stuckCheck: () => checkStuckAndPrompt(),
-    // Visual triggers for the headless UI checks: they call the very same functions
-    // the gameplay path calls, so a screenshot of them is a screenshot of the real
-    // rendering, not a hand-built mock of it.
+    // Visual triggers for the headless UI checks: they call the very same functions the
+    // gameplay path calls, so a screenshot of them is a screenshot of the real rendering, not
+    // a hand-built mock of it.
     showChain: (chain) => {
       run.chain = Math.max(0, Math.trunc(chain) || 0)
       updateChainHud()
@@ -1752,8 +1359,25 @@ if (import.meta.env.DEV) {
       return honors
     },
     showScorePop: (points, options) => showScorePop(points, options),
-  })
-}
+  }
+  : null
+
+createDiagnostics({
+  version: packageInfo.version,
+  canvas: renderer.domElement,
+  scene3d,
+  boardView,
+  blocks,
+  pieceView,
+  effects,
+  input,
+  session,
+  recordStore,
+  sessionStore,
+  homeUi,
+  settingsUi,
+  dev: devHandles,
+}).install()
 
 applyCubeRotation()
 animate()

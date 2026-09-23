@@ -19,22 +19,51 @@
 //   * `paintMaterial(color, variant)`: a cache of the paint per colour+variant, so two
 //     cells of the same colour are the same material instance.
 //
-// `createBlockResources({ cubeBody })` is a factory rather than module-level singletons for
+// `createBlockResources({ metrics })` is a factory rather than module-level singletons for
 // one concrete reason: `blockSurfaceMaps()` builds CanvasTextures, so constructing these
 // touches the document. Doing it at ESM evaluation time would make the module's import
 // order load-bearing; doing it inside main's explicit setup keeps the timing visible.
+//
+// Since refactor P9 it also creates the cube's opaque timber BODY (the shell behind the 98
+// blocks), because that is a geometry + material pair and main must create neither (plan §8).
+// `metrics()` hands it the lattice half-side lazily, the same way gameScene gets its own.
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { BOARD_STYLE as style } from './config.js'
-import { blockSurfaceMaps } from './woodTexture.js'
+import { blockSurfaceMaps, woodGrainTextureRepeating } from './woodTexture.js'
 
-export function createBlockResources({ cubeBody }) {
+export function createBlockResources({ metrics }) {
   // THE block. ONE geometry instance shared by the board's 98 blocks, the three candidate
   // slots and the drag ghost, so a piece in the hand and a piece on the board are literally
   // the same object — same size, same six flat faces, same bevel.
   const blockGeometry = new RoundedBoxGeometry(
     style.blockSize, style.blockSize, style.blockSize, style.blockSegments, style.blockRadius,
   )
+
+  // Opaque timber body. The shell is only a BACKING: it occludes the far faces and fills the
+  // narrow notches between blocks (which is why it is darker than they are). It is inset
+  // behind them so that the blocks — not the shell — make up the surface of the big cube.
+  // It is NOT one of the shared block geometries: it is one mesh for the whole cube, and main
+  // adds it to the cube group (the child order there is load-bearing).
+  const cubeSide = metrics().cubeSide
+  const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
+    color: style.hullColor,
+    map: woodGrainTextureRepeating(style.hullGrainRepeat),
+    roughness: style.hullRoughness,
+    clearcoat: style.hullClearcoat,
+    clearcoatRoughness: 0.42,
+    metalness: 0,
+    transparent: false,
+    opacity: style.hullOpacity,
+    depthWrite: true,
+  })
+  const cubeBody = new THREE.Mesh(
+    new RoundedBoxGeometry(cubeSide - style.hullInset, cubeSide - style.hullInset, cubeSide - style.hullInset, 3, style.hullRadius),
+    cubeBodyMaterial,
+  )
+  cubeBody.renderOrder = -2
+  cubeBody.castShadow = false
+  cubeBody.receiveShadow = true
 
   // One material per (state × tone step): the idle timber and the lighter timber of the
   // face under the camera. A small cache shares the three surface variants.
@@ -100,9 +129,19 @@ export function createBlockResources({ cubeBody }) {
   // own hull and belongs to its creator, so it is listed here too.
   const sharedGeometries = [blockGeometry, cubeBody.geometry]
 
+  // Read-out for the moved introspection block (diagnostics only assembles): the triangle
+  // count of THE shared block geometry, so a check can prove the block is still the same
+  // bevelled box it always was.
+  function report() {
+    return { trianglesPerBlock: blockGeometry.attributes.position.count / 3 }
+  }
+
   return {
     blockGeometry,
     edgeGeometry,
+    // The shell mesh itself, for main to add to the cube group (see the note above).
+    cubeBody,
+    report,
     blockWoodMaterials,
     paintMaterial,
     makeMaterial,

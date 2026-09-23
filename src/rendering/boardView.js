@@ -38,7 +38,9 @@
 // pitch and half-side are the BOARD's arithmetic and stay in main's constants (the plan
 // forbids a second copy of the lattice mapping here), while the group is assembled — and owns
 // its own pose — in main. `getBlocks` is lazy for the same reason again: the resource factory
-// is built after this one. `camera`, `getAppliedCanvasSize`, `isPaused` and `onIntroLock` are
+// is built after this one, and `getCameraTarget` joins them because the target is gameScene's
+// const Vector3 that its framing solver mutates in place — read at call time, never cached into
+// a copy. `camera`, `getAppliedCanvasSize`, `isPaused` and `onIntroLock` are
 // plain parameters -- the front face is read against the real camera, the wave re-sorts itself
 // once against the applied canvas size, and the pause lock goes OUT through the injected
 // callback instead of this module reaching into main's pause calculation. Dropping a
@@ -52,6 +54,8 @@ import { INTRO_STYLE, ROTATE_STYLE as rotateStyle } from './config.js'
 export function createBoardView({
   metrics,
   getCubeGroup,
+  // `cameraTarget` is gameScene's (the camera's look-at), so it arrives the same lazy way.
+  getCameraTarget,
   camera,
   getBlocks,
   // The wave re-sorts itself once against the applied canvas size (P3d), the lock it raises
@@ -874,6 +878,195 @@ export function createBoardView({
     }
   }
 
+  // `pose` is the rendered orientation; `base` is the logical grid pose it settles
+  // around (a product of whole 90° steps about world axes, so it can never drift off
+  // the grid); `bearing` is how far the player has dialled the view off the face, in
+  // screen space, and `bearingDeg` the same in degrees. The Euler triples are
+  // readability helpers for the checks (a pure yaw/pitch/roll pose decomposes exactly
+  // in ZYX order).
+  function rotationReport() {
+    const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
+    const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
+    // Read the two module-owned `let`s once, through their accessors. getBearing() hands
+    // back a copy, so the read-out can never alias the module's own state.
+    const bearing = getBearing()
+    const live = getLive()
+    const bearingEuler = new THREE.Euler().setFromQuaternion(bearingQuat(bearing.yaw, bearing.pitch), 'ZYX')
+    return {
+      yaw: poseEuler.y,
+      pitch: poseEuler.x,
+      roll: poseEuler.z,
+      baseYaw: baseEuler.y,
+      basePitch: baseEuler.x,
+      baseRoll: baseEuler.z,
+      tiltYaw: bearingEuler.y,
+      tiltPitch: bearingEuler.x,
+      bearing: { yaw: bearing.yaw, pitch: bearing.pitch },
+      bearingDeg: {
+        yaw: Number(THREE.MathUtils.radToDeg(bearing.yaw).toFixed(2)),
+        pitch: Number(THREE.MathUtils.radToDeg(bearing.pitch).toFixed(2)),
+      },
+      pose: cubeQuat.toArray(),
+      base: cubeBase.toArray(),
+      front: findFrontFace(),
+      settling: cubeSnapAnim.active,
+      live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered } : null,
+    }
+  }
+
+  // v0.8.6 framing read-out: how the cube's screen silhouette is divided between
+  // the faces that are actually visible, plus how far each of them is off the
+  // camera axis and how far the main face's own lattice axes are from screen
+  // right/down. This is the measurement the "停稳后主面 82–88%" acceptance is
+  // graded on, and `skew` is the same number for the rotation: a face whose u axis
+  // is not level on screen is a face the player sees tilted. Areas are exact
+  // projected polygons (the three visible faces of a convex body tile the
+  // silhouette), not a cosα·cosβ approximation. Read-only.
+  function facesReport(canvasRect) {
+    camera.updateMatrixWorld()
+    getCubeGroup().updateMatrixWorld(true)
+    const rect = canvasRect
+    const project = (v) => {
+      const p = v.clone().project(camera)
+      return { x: (p.x * 0.5 + 0.5) * rect.width, y: (0.5 - p.y * 0.5) * rect.height }
+    }
+    const quadArea = (pts) => {
+      let sum = 0
+      for (let i = 0; i < pts.length; i += 1) {
+        const a = pts[i]
+        const b = pts[(i + 1) % pts.length]
+        sum += a.x * b.y - b.x * a.y
+      }
+      return Math.abs(sum) / 2
+    }
+    const toCamera = camera.position.clone().sub(getCubeGroup().position).normalize()
+    const entries = FACES.map((face) => {
+      const n = cubeVector(face, 'n').applyQuaternion(getCubeGroup().quaternion).normalize()
+      const u = cubeVector(face, 'u').applyQuaternion(getCubeGroup().quaternion).normalize()
+      const v = cubeVector(face, 'v').applyQuaternion(getCubeGroup().quaternion).normalize()
+      const corner = (su, sv) => getCubeGroup().position.clone()
+        .addScaledVector(n, metrics().half).addScaledVector(u, su * metrics().half).addScaledVector(v, sv * metrics().half)
+      const quad = project(corner(-1, -1))
+      const across = project(corner(1, -1))
+      const opposite = project(corner(1, 1))
+      const along = project(corner(-1, 1))
+      // VISIBILITY IS NOT `n · viewDirection > 0`. That is the orthographic test,
+      // and it is wrong whenever the projection is not weak: the face plane sits
+      // `half` off the cube's centre, so what decides is whether the CAMERA is on
+      // the outer side of that face's own plane. With a close camera the
+      // orthographic test calls a hidden side face "visible" and counts a quad that
+      // is really tucked behind the front face — which is how a 5°/4° tilt measured
+      // as "87% main face" while the cube on screen was a flat square with no side
+      // face showing at all.
+      const cameraSide = camera.position.clone()
+        .sub(getCubeGroup().position.clone().addScaledVector(n, metrics().half))
+        .dot(n)
+      const facing = n.dot(toCamera)
+      // In-plane skew: how far the face's own +u edge runs from screen-right.
+      // This INCLUDES perspective convergence (a receding edge is not parallel to
+      // itself on screen, and should not be), so it is informational only —
+      // `twistDeg` below is the number that answers "did this face arrive crooked".
+      const skewDeg = THREE.MathUtils.radToDeg(Math.atan2(across.y - quad.y, across.x - quad.x))
+      // How far the face is rotated about its own normal, measured in DIRECTION
+      // space so perspective cannot contaminate it: project the face's +u direction
+      // into the screen plane, take its angle from screen-right, and fold a quarter
+      // turn (a face is legitimately presented in any of four rotations). This has
+      // to come out the same on all 24 orientations — it is the check that the
+      // presentation tilt lives in SCREEN space, because a cube-space tilt twists
+      // each face by a different amount depending on which way it happens to face.
+      const viewAxis = camera.getWorldDirection(new THREE.Vector3())
+      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+      const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+      const flat = u.clone().addScaledVector(viewAxis, -u.dot(viewAxis)).normalize()
+      const twistRaw = THREE.MathUtils.radToDeg(Math.atan2(flat.dot(camUp), flat.dot(camRight)))
+      return {
+        face,
+        facing: Number(facing.toFixed(4)),
+        cameraSide: Number(cameraSide.toFixed(4)),
+        offAxisDeg: Number(THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(facing, -1, 1))).toFixed(2)),
+        areaPx: Number(quadArea([quad, across, opposite, along]).toFixed(1)),
+        skewDeg: Number((((skewDeg + 180) % 180) - 90).toFixed(2)),
+        twistDeg: Number((((twistRaw % 90) + 135) % 90 - 45).toFixed(3)),
+        visible: cameraSide > 0,
+      }
+    })
+    // How far the BEARING leans the world vertical. 0 = the bearing is a pure
+    // screen-space yaw, which cannot tip the cube at all. This is the "视觉上还比较歪"
+    // number, and it has to stay ~0 for every bearing the player can dial.
+    //
+    // It is measured on the BEARING and not on the rendered pose on purpose: every
+    // grid pose maps world axes to world axes (they are signed permutations), so a
+    // grid-aligned cube can only ever be as plumb as the projection of the world axes
+    // themselves — measuring the pose would report 180° for a legitimately
+    // upside-down face and 90° for one that arrived by a roll, neither of which is a
+    // lean. The only thing that can make the board LOOK tilted is a bearing
+    // component that moves world Y sideways, and a yaw-last composition cannot.
+    const tiltBearing = getBearing()
+    const tiltUp = new THREE.Vector3(0, 1, 0).applyQuaternion(bearingQuat(tiltBearing.yaw, tiltBearing.pitch))
+    const uprightDeg = Number(THREE.MathUtils.radToDeg(Math.atan2(-tiltUp.x, Math.abs(tiltUp.y))).toFixed(3))
+    const visible = entries.filter((entry) => entry.visible).sort((a, b) => b.areaPx - a.areaPx)
+    const total = visible.reduce((sum, entry) => sum + entry.areaPx, 0)
+    const front = visible[0]
+    return {
+      front: findFrontFace(),
+      mainFaceMatches: front ? front.face === findFrontFace() : false,
+      totalPx: Number(total.toFixed(1)),
+      mainShare: total > 0 ? Number((front.areaPx / total).toFixed(4)) : 0,
+      others: visible.slice(1).map((entry) => ({ face: entry.face, share: Number((entry.areaPx / total).toFixed(4)) })),
+      visible,
+      faces: entries,
+      uprightDeg,
+      camera: {
+        position: camera.position.toArray().map((value) => Number(value.toFixed(3))),
+        target: [getCameraTarget().x, getCameraTarget().y, getCameraTarget().z].map((value) => Number(value.toFixed(3))),
+        distance: Number(camera.position.distanceTo(getCubeGroup().position).toFixed(3)),
+        fovDeg: camera.fov,
+        aspect: Number(camera.aspect.toFixed(4)),
+        facePlaneHalf: metrics().half,
+      },
+    }
+  }
+
+  // v0.8.6 rotation read-out: the world-space increment between two rendered
+  // poses, expressed in the camera's own frame. `screenDeg` is where the rotation
+  // axis points on screen, measured from screen-right and folded to (-90°, 90°]:
+  // 0° means the axis lies horizontally (a pitch — the front face slides up/down),
+  // ±90° means the axis is vertical (a yaw — the cube turns left/right). A roll's
+  // axis points at the camera, so it has no screen direction at all and shows up
+  // as `alongView ≈ ±1` instead. This is the number behind "旋转中段发歪": while a
+  // gesture's increment is a clean turn about one screen axis, this angle is flat
+  // at 0 or 90 for the whole gesture. Read-only; the probe calls it with two
+  // quaternions it just read from rotation().
+  function poseAxisScreen(from, to) {
+    const a = new THREE.Quaternion().fromArray(from).normalize()
+    const b = new THREE.Quaternion().fromArray(to).normalize()
+    const delta = b.multiply(a.invert()).normalize()
+    if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w)
+    const angle = 2 * Math.acos(THREE.MathUtils.clamp(delta.w, -1, 1))
+    const magnitude = Math.hypot(delta.x, delta.y, delta.z)
+    const axis = magnitude > 1e-9
+      ? new THREE.Vector3(delta.x / magnitude, delta.y / magnitude, delta.z / magnitude)
+      : new THREE.Vector3()
+    camera.updateMatrixWorld()
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+    const view = camera.getWorldDirection(new THREE.Vector3())
+    return {
+      angleDeg: Number(THREE.MathUtils.radToDeg(angle).toFixed(3)),
+      axis: axis.toArray().map((value) => Number(value.toFixed(4))),
+      screenDeg: Number(THREE.MathUtils.radToDeg(Math.atan2(axis.dot(up), axis.dot(right))).toFixed(3)),
+      alongView: Number(axis.dot(view).toFixed(4)),
+    }
+  }
+
+  function tileStats() {
+    const tiles = gridGroup.children.flatMap((group) => group.children)
+    return {
+      meshes: tiles.length,
+      uniqueCells: new Set(tiles.map((tile) => tile.userData.cell.join(','))).size,
+    }
+  }
+
   // ---- Accessors for the two `let`s -------------------------------------------
   // `bearingYaw` / `bearingPitch` and `cubeLive` are REASSIGNED, not mutated in place, so
   // destructuring them would hand main a stale snapshot. These four functions are the only
@@ -921,6 +1114,12 @@ export function createBoardView({
     settleIntro,
     updateIntro,
     introReport,
+    // Read-only introspection read-outs (moved out of main's `globalThis.__voxalblast` hook):
+    // boardView assembles them from its own state; diagnostics only collects them.
+    rotationReport,
+    facesReport,
+    poseAxisScreen,
+    tileStats,
     // Pose state. The three const objects are owned here and mutated in place; main binds
     // them back to the names it has always used. The two `let`s go through the accessors.
     ROT_STEP,

@@ -207,6 +207,18 @@ export function createHome({
     leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
   }
 
+  // The cover's read-out (refactor P9): what the headless checks compare against — the open
+  // flag, the two labels the player reads and whether a run is waiting behind the cover.
+  // `persistent` is NOT here: that is the save slot's own answer, and diagnostics adds it.
+  function report() {
+    return {
+      open: homeOpen,
+      label: homePrimaryLabelEl.textContent,
+      note: homeResumeNoteEl.textContent,
+      hasSavedRun: Boolean(getSavedRun()),
+    }
+  }
+
   return {
     isOpen,
     showCover,
@@ -217,5 +229,6 @@ export function createHome({
     openLeaderboard,
     closeLeaderboard,
     renderLeaderboard,
+    report,
   }
 }

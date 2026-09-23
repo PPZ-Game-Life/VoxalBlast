@@ -10,10 +10,20 @@
 // `run`, `itemCounts` and `itemActive` in place, so a copy taken once at construction would
 // silently go stale — the trap the plan's state table calls out.
 //
-// Deliberately NOT here yet: `renderPieceSlots` / `updatePieceSlotSelection`. They walk the
-// `piecePreviews` map, whose values are Three.js renderers, and the plan's contract forbids
-// a UI module from carrying Three objects. They move with `pieceView` in P4.
+// The candidate slots' DOM lives here since P9 (`renderPieceSlots`): the buttons, the chip
+// colour, the thumbnail canvases and the pointer wiring. The PREVIEWS those canvases are
+// drawn into stay pieceView's — this module only calls its `createPiecePreview` and never
+// holds a renderer, which is the part of the plan's contract that matters. The single
+// Three.js use below is a colour formatter, not a renderer.
+import * as THREE from 'three'
 import { FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
+
+// The one Three.js use in this module: a colour integer -> the CSS custom property a candidate
+// slot paints its chip with. It is a formatter, not a renderer — the candidate PREVIEWS are
+// rendering/pieceView.js's and never enter this module (P9).
+function colorHex(color) {
+  return `#${new THREE.Color(color).getHexString()}`
+}
 
 export function createHud({
   els,
@@ -23,6 +33,15 @@ export function createHud({
   getItemCounts,
   getItemActive,
   canUseItems,
+  // The candidate strip's content (P9). `slotsEl` is its container; the four callbacks belong
+  // to rendering/pieceView.js and input/gameInput.js, neither of which exists yet when this
+  // factory runs (main builds hud before both), so they arrive lazily and are read at call
+  // time — the same rule as `getCubeGroup` in boardView.
+  getPieces,
+  getSelectedPiece,
+  bindSlot,
+  disposePiecePreviews,
+  createPiecePreview,
   onChainBreak,
 }) {
   const {
@@ -37,6 +56,7 @@ export function createHud({
     honorLayerEl,
     itemBarEl,
     axisPickEl,
+    slotsEl,
   } = els
 
   // The toast's own timer, moved with the function that owns it.
@@ -158,6 +178,36 @@ export function createHud({
     })
   }
 
+  // The candidate strip's DOM half (refactor P9): one button per piece, its chip colour, the
+  // thumbnail canvas it draws into and the pointer wiring. Where the piece may go is not
+  // decided here; the previews that paint those canvases are pieceView's, reached through the
+  // injected dispose/create callbacks (plan §4: 把建 preview 的调用交给 pieceView，不把
+  // renderer 放进 UI 状态).
+  function renderPieceSlots() {
+    disposePiecePreviews()
+    slotsEl.innerHTML = ''
+    getPieces().forEach((piece, index) => {
+      const slot = document.createElement('button')
+      slot.className = `piece-slot${piece.used ? ' used' : ''}${getSelectedPiece() === piece ? ' selected' : ''}`
+      slot.type = 'button'
+      slot.dataset.index = index
+      slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
+      slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} blocks`)
+
+      const thumb = document.createElement('span')
+      thumb.className = 'piece-thumb'
+      const canvas = document.createElement('canvas')
+      canvas.className = 'piece-preview-canvas'
+      canvas.setAttribute('aria-hidden', 'true')
+      thumb.appendChild(canvas)
+
+      slot.append(thumb)
+      bindSlot(slot, piece)
+      slotsEl.appendChild(slot)
+      createPiecePreview(piece, canvas, slot)
+    })
+  }
+
   return {
     setStatus,
     showToast,
@@ -169,5 +219,6 @@ export function createHud({
     clearHonorLayer,
     renderItemBar,
     renderAxisPick,
+    renderPieceSlots,
   }
 }

@@ -286,6 +286,46 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     resizeObserver = null
   }
 
+  // ---- Read-outs ----------------------------------------------------------------
+  // Moved here from main's read-only introspection hook (refactor P2b follow-up): the
+  // post-chain and framing facts are assembled from THIS module's privates, so the module
+  // reports them itself and `diagnostics.js` only collects. Read-only, no game state.
+  function report() {
+    return {
+      environment: Boolean(scene.environment),
+      hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
+      contactShadows: {
+        independentDepth: normalPass.renderTarget.depthTexture === contactDepth && composer.stableDepthTexture === null,
+        width: contactDepth.image.width,
+        height: contactDepth.image.height,
+        projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(camera.projectionMatrix),
+      },
+      toneMapping: toneMappingEffect.mode,
+      programs: renderer.info.programs?.length,
+      lowPower: quality.lowPower,
+    }
+  }
+
+  function framingReport() {
+    const rect = renderer.domElement.getBoundingClientRect()
+    const solid = cubeScreenBounds()
+    const fitBox = projectCubeBounds(cubeExtent())
+    return {
+      canvas: { left: rect.left, top: rect.top, width: rect.width, height: rect.height, right: rect.left + rect.width, bottom: rect.top + rect.height },
+      solid,
+      fitBox,
+      fillX: (solid.maxX - solid.minX) / Math.max(rect.width, 1),
+      fillY: (solid.maxY - solid.minY) / Math.max(rect.height, 1),
+      bandLeft: solid.minX - rect.left,
+      bandRight: rect.left + rect.width - solid.maxX,
+      clipped: solid.minX < rect.left || solid.maxX > rect.left + rect.width || solid.minY < rect.top || solid.maxY > rect.top + rect.height,
+      orbitDistance: getOrbitDistance(),
+      zoom: getCameraZoom(),
+      fov: camera.fov,
+      aspect: camera.aspect,
+    }
+  }
+
   return {
     scene,
     camera,
@@ -311,6 +351,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     resize,
     observeResize,
     stopObservingResize,
+    report,
+    framingReport,
     getAppliedCanvasSize: () => ({ ...appliedCanvasSize }),
     getCameraZoom: () => cameraZoom,
     getOrbitDistance: () => orbitDistance,
