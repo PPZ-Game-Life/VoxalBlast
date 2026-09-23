@@ -17,9 +17,8 @@
 import * as THREE from 'three'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../rendering/swipe.js'
 import { axisForKey } from '../rendering/keyboard.js'
-import { DRAG_GHOST, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
+import { DRAG_GHOST, dragGhostLiftPx, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
 import { SH } from '../game/board.js'
-import { maxOrigin } from '../game/shapes.js'
 
 export function createGameInput({
   canvas,
@@ -302,27 +301,47 @@ export function createGameInput({
   // (plan item 5); what lives here is the gesture: where the finger grabbed the face, how far it
   // has travelled, and whether the drop is legal. Nothing below changes the board -- the settled
   // drop is handed to main as `onDrop`.
+  //
+  // v0.8.27 reworked the model behind this gesture (the producer's 「吸附后调不动 / 到边缘反向
+  // 拖动没反应」), and the shape of `drag` is that rework:
+  //   - `face` / `cells`: the target face and the piece's orientation ON it, latched at the
+  //     attach and kept until the pointer leaves the cube. Neither may be re-derived per frame.
+  //   - `ref`: the piece's origin as a CONTINUOUS face coordinate — the carried value. The
+  //     finger's own face travel is added to it and the result is truncated to the face every
+  //     frame, so hitting an edge discards the over-travel instead of banking it.
+  //   - `point`: the pointer's own face coordinate last frame, i.e. the ruler that travel is
+  //     measured against. Null = no valid reading, and the next one re-syncs rather than
+  //     applying a delta across the gap.
+  //   - `origin`: the quantised target cell the preview is drawn at. Legality never moves it.
   function beginDrag(event, piece) {
     if (piece.used || isPaused() || drag || hasItemActive()) return
     if (event.pointerType === 'mouse' && event.button !== 0) return
     event.preventDefault()
     selectedPiece = piece
+    // A turn still in flight is settled BEFORE the piece is picked up: the drag measures the
+    // face in the RENDERED pose, so a cube still slerping would move the ruler under the piece
+    // for the first ~0.2s and the piece would swim away from the finger that just grabbed it.
+    // The view gesture takes the same precaution, for the same reason.
+    settleCubeSnap()
     drag = {
       piece,
       pointerId: event.pointerId,
       source: event.currentTarget,
       ndc: eventNdc(event),
       face: null,
-      origin: null,
       cells: null,
+      origin: null,
+      ref: null,
+      point: null,
       valid: false,
+      attached: false,
       active: false,
       inCancelZone: false,
       startX: event.clientX,
       startY: event.clientY,
-      // Where the piece was grabbed on the face (pointer px + the origin it attached
-      // at). The piece then follows the finger RELATIVELY from here — see
-      // updatePreview(). Null means "not attached": set on attach, cleared on detach.
+      // The grab reference: the contact point in client px and the piece's continuous
+      // origin at the moment of the attach. Reported through dragReport() for the checks;
+      // it is NOT the movement basis (the piece follows frame-to-frame travel).
       anchor: null,
     }
     try {
@@ -359,19 +378,41 @@ export function createGameInput({
   // is left — the two corner rays, the world-per-pixel scale and the tint — is the view's own
   // arithmetic and lives in pieceView.syncDragGhost() (plan §6 P4.3).
   function syncGhostFor(event, ndc, mode) {
-    const bounds = cubeScreenBounds()
     onSyncGhost({
       ndc,
       canvasHeight: Math.max(canvas.getBoundingClientRect().height, 1),
-      cellPx: Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio,
+      cellPx: ghostCellPx(),
       pointerType: event.pointerType,
       mode,
     })
   }
 
-  // One lattice step of a face, in client pixels. A finger delta is converted into
-  // (du, dv) on THIS basis, which is what makes the piece follow the finger's own
-  // direction on the face — including when the cube has been rotated to another face.
+  // One carried cell edge in client pixels: DRAG_GHOST.cellRatio of the board's own on-screen
+  // cell pitch. The ghost is sized with it and the attach mapping below measures the lift in it,
+  // so the piece in hand and the piece on the face can never disagree about their own size.
+  function ghostCellPx() {
+    const bounds = cubeScreenBounds()
+    return Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio
+  }
+
+  // Where the piece in hand LOOKS like it is: its bounding-box centre, which the ghost draws on
+  // its group origin, lifted clear of the contact point by DRAG_GHOST. The attach has to map THIS
+  // point, not the raw pointer — mapping the pointer would slide the piece by its own half-height
+  // (a 3×3 piece by ~1.5 cells) the instant it left the hand, which is exactly the 「大方块进棋盘
+  // 突然跳位」 the producer reported. Same lift rule as pieceView's, from config (v0.8.27).
+  function grabPointNdc(event, ndc, piece) {
+    const rect = canvas.getBoundingClientRect()
+    const rows = currentCells(piece).reduce((max, [, v]) => Math.max(max, v), 0) + 1
+    const liftPx = dragGhostLiftPx(event.pointerType, rows, ghostCellPx())
+    // NDC y is up-positive. pieceView turns the same pixel lift into the same NDC offset through
+    // the ghost's own world-per-pixel scale, so the two agree by construction, not by tuning.
+    return new THREE.Vector2(ndc.x, ndc.y + (2 * liftPx) / Math.max(rect.height, 1))
+  }
+
+  // One lattice step of a face, in client pixels. The piece no longer solves its travel on this
+  // basis (v0.8.27 measures it in face coordinates instead), but the headless report still
+  // publishes it: it is the face's own orientation in screen terms, which is what a check reads
+  // to prove the drag runs along the face the player is looking at rather than the screen axes.
   function faceStepScreen(face) {
     const rect = canvas.getBoundingClientRect()
     const toClient = (v) => {
@@ -387,12 +428,18 @@ export function createGameInput({
     }
   }
 
-  // Keep an origin inside the face's own bounds before asking the board about it.
+  // Keep the piece's CONTINUOUS origin inside the face's own bounds, every frame. The clamp is
+  // applied to the carried coordinate itself rather than to the answer of a running pixel offset,
+  // and that difference IS the 「边缘反向拖动空行程」 fix (v0.8.27): once the piece is against an
+  // edge, further over-travel is discarded here, so the first pixel back moves it again. The old
+  // model kept accumulating a grab-relative offset and clamped only the result, so reversing had
+  // to pay the whole over-travel back before anything moved.
   function clampOrigin(cells, u, v) {
-    const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+    const spanU = Math.max(...cells.map(([cu]) => cu))
+    const spanV = Math.max(...cells.map(([, cv]) => cv))
     return {
-      u: THREE.MathUtils.clamp(u, 0, Math.max(uMax - 1, 0)),
-      v: THREE.MathUtils.clamp(v, 0, Math.max(vMax - 1, 0)),
+      u: THREE.MathUtils.clamp(u, 0, Math.max(SH - 1 - spanU, 0)),
+      v: THREE.MathUtils.clamp(v, 0, Math.max(SH - 1 - spanV, 0)),
     }
   }
 
@@ -411,81 +458,95 @@ export function createGameInput({
     const uF = rel.dot(cubeVector(face, 'u')) / cs + (SH - 1) / 2
     const vF = rel.dot(cubeVector(face, 'v')) / cs + (SH - 1) / 2
     // `fu`/`fv` are the unrounded lattice coordinates: where inside the cell the
-    // pointer landed, which is what the rocket reads to pick its line (07 §3.1 A5).
+    // pointer landed. The rocket reads them to pick its line (07 §3.1 A5) and the piece
+    // drag measures its whole travel on them (v0.8.27).
     return { u: Math.round(uF), v: Math.round(vF), fu: uF, fv: vF }
   }
 
-  // For a placed set of cells, enumerate legal origins on the front face and pick
-  // the one whose world projection is nearest the pointer (mirrors BlockBlast snap).
-  function nearestOriginOnFace(face, ndc, cells) {
-    const projected = new THREE.Vector3()
-    const { u: uMax, v: vMax } = maxOrigin(cells, SH)
-    let bestOrigin = { u: 0, v: 0 }
-    let bestDistance = Infinity
-    let found = false
-    for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
-      if (!canPlace(face, cells, { u, v })) continue
-      projected.copy(cellWorld(face, u, v)).project(camera)
-      const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
-      if (distance < bestDistance) { bestDistance = distance; bestOrigin = { u, v }; found = true }
-    }
-    if (found) return bestOrigin
-    return null
+  // Drop the attached half of the drag record: the piece is going back to being carried. The
+  // latched face and cells go with it, so the next arrival on the cube re-grabs wherever the
+  // pointer is — including its lift — instead of resuming from a stale origin.
+  function detachFace() {
+    if (!drag) return
+    drag.face = null
+    drag.cells = null
+    drag.ref = null
+    drag.point = null
   }
 
-  // Returns true when a landing preview was actually drawn (i.e. the piece is
-  // attached to a face). Every field it owns is reset first: `finishDrag()` reads
-  // them as the drop decision, so "not attached" has to be a real, empty state.
+  // One frame of the placement preview. Returns true when the piece is ON a face (a landing
+  // preview was drawn) and false while it is still being carried.
   //
-  // v0.4.6 — RELATIVE movement once attached. The piece is anchored where the finger
-  // first grabbed the face, and then follows the finger's own travel: one lattice
-  // step per cell of movement measured on the face's screen axes. Re-picking "the
-  // origin nearest the pointer" every frame (up to v0.4.5) meant the piece only moved
-  // once the finger had travelled all the way to the NEXT cell's centre — and with
-  // occupied cells in the way it could jump a long way, because the nearest LEGAL
-  // origin was no longer the nearest origin.
+  // v0.8.27 — THE TARGET AND THE LEGALITY ARE SEPARATE THINGS. The preview sits on the cell the
+  // finger is over, ALWAYS: it slides straight across an occupied region wearing the invalid
+  // paint, and returns to the piece's own colour the moment it clears. Until v0.8.26 an illegal
+  // target kept the LAST LEGAL origin instead ("sticky"), which is what the producer felt as
+  // 「吸附后继续调整很困难」: the pointer kept moving, the preview did not, and the release could
+  // still drop on the stale legal cell. Legality now decides only what the marker looks like and
+  // whether the release may commit.
+  //
+  // The position is a continuous face coordinate (`drag.ref`) advanced by the pointer's own
+  // travel ON THE FACE, read from `ndcToCell`'s unrounded fu/fv. That single raycast is what
+  // makes all six faces, their perspectives and the shape's orientation work without a second
+  // copy of the face basis anywhere (plan §6 P4.4); quantising to a cell is `Math.round`, the
+  // normal half-cell step — there is no easing, no dead zone and no nearby-legal search.
   function updatePreview(event, ndc) {
     onClearLanding()
-    const previous = drag?.origin ?? null
-    drag.face = null
+    drag.attached = false
     drag.origin = null
-    drag.cells = null
     drag.valid = false
-    if (!selectedPiece || !ndc || !drag?.active) { drag.anchor = null; return false }
-    // Off the cube the piece goes back to being carried, and the next grab re-anchors.
-    if (!isPointerOnCube(ndc)) { drag.anchor = null; return false }
-    const face = findFrontFace()
-    // Laid out on the front face the way the slot drew it — see
-    // faceOrientedCells(). The board gets these exact cells on release.
-    const cells = faceOrientedCells(face, currentCells(selectedPiece))
-    drag.face = face
-    drag.cells = cells
+    if (!selectedPiece || !ndc || !drag?.active) { detachFace(); return false }
+    // Off the cube the piece goes back to being carried, and the next arrival on the cube
+    // re-grabs it wherever it lands.
+    if (!isPointerOnCube(ndc)) { detachFace(); return false }
 
-    const step = faceStepScreen(face)
-    const det = step.u.x * step.v.y - step.u.y * step.v.x
-    let origin = null
-    if (drag.anchor && Math.abs(det) > 1e-3) {
-      const dx = event.clientX - drag.anchor.x
-      const dy = event.clientY - drag.anchor.y
-      const u = drag.anchor.u + Math.round((dx * step.v.y - dy * step.v.x) / det)
-      const v = drag.anchor.v + Math.round((step.u.x * dy - step.u.y * dx) / det)
-      const target = clampOrigin(cells, u, v)
-      // Sticky: an unreachable target leaves the piece where the player last had it.
-      // It never re-snaps somewhere else, so the piece cannot jump out from under the
-      // finger — and because the mapping stays anchored, it resumes exactly in step
-      // with the finger once the way is clear again.
-      origin = canPlace(face, cells, target) ? target : previous
+    if (!drag.face) {
+      // ---- the attach: the ONE moment the piece leaves the hand -----------------
+      // No search for a "nearest legal origin" (dropped in v0.8.27): attaching searches the
+      // whole face for the closest LEGAL cell, so a large piece could be thrown several cells
+      // away from the finger and then drag on with that offset baked in. Direct mapping is the
+      // first version, deliberately: the piece lands where it is held, legal or not.
+      const face = findFrontFace()
+      const cells = faceOrientedCells(face, currentCells(selectedPiece))
+      // Two readings of the same face: where the POINTER is (the ruler the travel is measured
+      // on from here on) and where the piece in hand looks like it is (its centre, lifted).
+      const pointerPoint = ndcToCell(face, ndc)
+      const grabPoint = ndcToCell(face, grabPointNdc(event, ndc, selectedPiece))
+      if (!pointerPoint || !grabPoint) return false
+      drag.face = face
+      drag.cells = cells
+      // The origin that puts the shape's bounding-box CENTRE where the ghost's centre was —
+      // the one grab reference the hand and the face have in common.
+      const centreU = Math.max(...cells.map(([cu]) => cu)) / 2
+      const centreV = Math.max(...cells.map(([, cv]) => cv)) / 2
+      drag.ref = clampOrigin(cells, grabPoint.fu - centreU, grabPoint.fv - centreV)
+      drag.point = { fu: pointerPoint.fu, fv: pointerPoint.fv }
+      drag.anchor = { x: event.clientX, y: event.clientY, u: drag.ref.u, v: drag.ref.v }
+    } else {
+      // ---- the follow: add this frame's travel, then truncate -------------------
+      const point = ndcToCell(drag.face, ndc)
+      if (point) {
+        // A missing previous reading (the first frame after the attach or a re-attach, or a
+        // frame whose ray missed the face plane) re-syncs instead of applying a stale delta.
+        if (drag.point) {
+          drag.ref = clampOrigin(drag.cells,
+            drag.ref.u + (point.fu - drag.point.fu),
+            drag.ref.v + (point.fv - drag.point.fv))
+        }
+        drag.point = { fu: point.fu, fv: point.fv }
+      } else {
+        drag.point = null
+      }
     }
-    if (!origin) origin = nearestOriginOnFace(face, ndc, cells)
-    if (!origin) return false
-    if (!drag.anchor) drag.anchor = { x: event.clientX, y: event.clientY, u: origin.u, v: origin.v }
 
-    const valid = canPlace(face, cells, origin)
-    drag.valid = valid
+    const origin = { u: Math.round(drag.ref.u), v: Math.round(drag.ref.v) }
+    const valid = canPlace(drag.face, drag.cells, origin)
     drag.origin = origin
+    drag.valid = valid
+    drag.attached = true
     // The marker itself is pieceView's (P4b): it draws the cells it is handed, in the piece's own
     // colour while this drop is legal and in terracotta when it is not.
-    onShowLanding({ face, cells, origin, valid, color: selectedPiece.shape.color })
+    onShowLanding({ face: drag.face, cells: drag.cells, origin, valid, color: selectedPiece.shape.color })
     return true
   }
 
@@ -516,10 +577,9 @@ export function createGameInput({
     if (drag.inCancelZone) {
       drag.valid = false
       drag.origin = null
-      drag.cells = null
       // Back in the strip the piece is being put down, not held over a face: the next
-      // arrival on the cube re-grabs wherever the finger is (v0.4.6).
-      drag.anchor = null
+      // arrival on the cube re-grabs wherever the finger is.
+      detachFace()
       onClearLanding()
       syncGhostFor(event, eventNdc(event), 'cancel')
       onStatus('Release to cancel')
@@ -567,6 +627,11 @@ export function createGameInput({
     drag = null
   }
 
+  // The release. The caller (onPointerUp) has already fed the FINAL pointer coordinates through
+  // updateDrag(), i.e. through the same rule that drew the last frame — so what is committed here
+  // is exactly the preview the player was looking at, and nothing is re-derived or searched for
+  // on the way out (v0.8.27). An illegal (or detached) target spends nothing and does NOT fall
+  // back to a position the piece used to be on: `origin` is the current target or null.
   function finishDrag(event) {
     if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return
     const currentDrag = drag
@@ -635,12 +700,22 @@ export function createGameInput({
   }
 
   // The read-only projection the headless checks read (`__voxalblast.preview()` / `.ghost()`).
-  // It hands back copies of the two points, so no probe can mutate the live gesture.
+  // It hands back copies of the two points, so no probe can mutate the live gesture. `ref` is the
+  // continuous origin the movement accumulates into and `face` the latched target face (v0.8.27):
+  // with `origin` + `valid` they are the whole target-vs-legality split, and a check can follow
+  // the piece across an occupied cell without any of it being re-derived from the DOM.
   function dragReport() {
     return {
       attached: Boolean(drag),
+      onFace: drag?.attached === true,
       valid: drag?.valid === true,
+      face: drag?.face ?? null,
       origin: drag?.origin ? { u: drag.origin.u, v: drag.origin.v } : null,
+      ref: drag?.ref ? { u: drag.ref.u, v: drag.ref.v } : null,
+      // The pointer's OWN face coordinate on the last frame — the ruler the travel is measured
+      // against, unrounded. A check compares it with `ref` + the shape's centre offset to prove
+      // the piece landed where it was held (the attach maps the ghost's centre, not the finger).
+      pointer: drag?.point ? { fu: drag.point.fu, fv: drag.point.fv } : null,
       anchor: drag?.anchor ? { x: drag.anchor.x, y: drag.anchor.y, u: drag.anchor.u, v: drag.anchor.v } : null,
       stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
     }
@@ -866,6 +941,12 @@ export function createGameInput({
       // only then is the tap judged -- the order this listener always ran in.
       beginItemRelease()
       finishViewGesture(event)
+      // The release is judged on the FINAL pointer coordinates, through the very same rule that
+      // drew the last frame of the preview (v0.8.27): browsers do not always deliver a
+      // pointermove at the release position, and "final judgement", "what the preview showed"
+      // and "what actually lands" must not be three different answers. updateDrag() is a no-op
+      // for a gesture that never left the slot, and it checks the pointer id itself.
+      updateDrag(event)
       finishDrag(event)
       endItemRelease(event)
     }

@@ -379,6 +379,11 @@ function note(label, detail) {
 // below pass for the wrong reason, which is how this probe's first draft fooled itself.
 const gestureLive = (state) => state.ghost.attached === true
 const onFace = (state) => state.ghost.attached === true && state.ghost.mode === 'snap' && state.ghost.previewCells > 0
+// v0.8.27: "attached" no longer implies "legal" — the preview now follows the finger ACROSS
+// occupied cells (red) instead of sticking to the last legal origin. Any sweep whose landing
+// spot is the subject of the check has to ask for the legal one explicitly, or it would settle
+// on a red preview and fail the check it was meant to set up.
+const onLegalFace = (state) => onFace(state) && state.preview.valid === true
 const inHand = (state) => state.ghost.attached === true && state.ghost.mode === 'carry'
   && state.ghost.count > 0 && state.ghost.previewCells === 0
 // clearDragGhost() leaves `userData.mode` stale on purpose (nothing reads it while idle),
@@ -405,7 +410,7 @@ async function holdDragOverCube(client, input, slot, bounds) {
     await input.pressAndHold({ x: slot.x, y: slot.y }, target)
     await client.frames()
     const state = await client.readJson(STATE)
-    if (onFace(state)) return { state, target }
+    if (onLegalFace(state)) return { state, target }
     await input.up(target.x, target.y)
     await sleep(120)
   }
@@ -655,7 +660,7 @@ async function caseSecondPointer(client, input, touchInput) {
     }
     await client.frames()
     const state = await client.readJson(STATE)
-    if (onFace(state)) { held = { state, target }; break }
+    if (onLegalFace(state)) { held = { state, target }; break }
     await touchInput.end([])
     await sleep(150)
   }

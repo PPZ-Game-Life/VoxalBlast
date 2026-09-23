@@ -25,7 +25,7 @@
 // and every consumer must be handed the SAME instances (plan §5.3).
 import * as THREE from 'three'
 import { addToyLights } from './toyLights.js'
-import { BOARD_STYLE as style, DRAG_GHOST, RENDER_PALETTE as palette, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, DRAG_GHOST, dragGhostLiftPx, RENDER_PALETTE as palette, VFX_CONFIG } from './config.js'
 import { faceLattice } from '../game/board.js'
 
 export function createPieceView({
@@ -352,10 +352,11 @@ export function createPieceView({
     // small clearance, so the whole shape clears the thumb instead of losing its
     // bottom row under it. The mouse gets a small fixed lift only — a shape-scaled
     // offset under a mouse reads as "not following the drag" (see DRAG_GHOST).
+    //
+    // The rule itself is config's (v0.8.27), because gameInput has to know the very same
+    // lift to land the piece's centre where the ghost was showing it.
     const rows = ghost.userData.rows || 1
-    const liftPx = pointerType === 'mouse'
-      ? DRAG_GHOST.liftMousePx
-      : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
+    const liftPx = dragGhostLiftPx(pointerType, rows, cellPx)
 
     ghost.visible = true
     ghost.scale.setScalar(cellPx * worldPerPx)

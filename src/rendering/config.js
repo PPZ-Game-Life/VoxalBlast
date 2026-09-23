@@ -453,6 +453,18 @@ export const DRAG_GHOST = Object.freeze({
   cancelOpacity: 0.34, // dragged back into the cancel strip: the UI there is the answer
 })
 
+// How far ABOVE the contact point the carried piece's own bounding-box CENTRE sits, in
+// client pixels. TWO modules need this exact number since v0.8.27 -- pieceView places the
+// carried ghost with it, and gameInput uses it to land that same centre on the face when the
+// piece attaches -- so it lives here instead of in either of them: if the two ever disagree,
+// the piece visibly jumps at the moment it leaves the hand (the producer's 大方块跳位).
+// `rows` is the shape's height in lattice cells and `cellPx` one carried cell edge on screen.
+export function dragGhostLiftPx(pointerType, rows, cellPx) {
+  return pointerType === 'mouse'
+    ? DRAG_GHOST.liftMousePx
+    : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
+}
+
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
 // honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
 // banner is owed); the seconds, shake and particle strength behind each level are

@@ -150,8 +150,16 @@ export function createDiagnostics({
         // v0.4.5 revision is that this and `visible` are never both non-zero.
         previewCells: pieceView.landingCount(),
         // Where the snapped piece is anchored on the face, and the grab point the relative
-        // movement is measured from (v0.4.6).
+        // movement is measured from. v0.8.27 split the two halves apart: `previewOrigin` is the
+        // quantised target CELL the marker is drawn at, `previewRef` the continuous face
+        // coordinate the finger's travel accumulates into, and `previewFace` the face those
+        // coordinates live on (latched at the attach — it does not follow the pointer). A check
+        // reads them to prove the target moves under an illegal cell rather than sticking.
         previewOrigin: d.origin,
+        previewRef: d.ref,
+        previewFace: d.face,
+        previewPointer: d.pointer,
+        onFace: d.onFace,
         anchor: d.anchor,
         // The face's own lattice basis in client pixels — the basis the relative movement is
         // solved in. Exposed so a check can reproduce the mapping exactly instead of
