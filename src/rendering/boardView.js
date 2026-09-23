@@ -1178,6 +1178,14 @@ export function createBoardView({
         skewDeg: Number((((skewDeg + 180) % 180) - 90).toFixed(2)),
         twistDeg: Number((((twistRaw % 90) + 135) % 90 - 45).toFixed(3)),
         visible: cameraSide > 0,
+        // v0.8.26: where the face's own centre lands on screen, as a signed fraction of
+        // the canvas width from its centre (-0.5 = the left edge, +0.5 = the right).
+        // The SHARES alone cannot tell a producer's left/right question apart — "the
+        // visible left face and right face must be equal" — because a face share is the
+        // same number whichever side of the cube it is on. Read-only, and only the probe
+        // uses it: it is how "the two ends of the fine-tune zone are mirror images" is
+        // asserted here instead of eyeballed.
+        centreX: Number((((quad.x + across.x + opposite.x + along.x) / 4 - rect.width / 2) / rect.width).toFixed(4)),
       }
     })
     // How far the BEARING leans the world vertical. 0 = the bearing is a pure

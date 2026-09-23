@@ -272,53 +272,52 @@ export const ROTATE_STYLE = Object.freeze({
   //   - positive yaw turns the front face back toward the screen (main face larger).
   //
   // ---------------------------------------------------------------------------
-  // THE DOCK IS THE CENTRE OF THE ZONE, AND THE ZONE IS CENTRED ON THE VIEW
-  // (v0.8.24, dock moved v0.8.25).
+  // THE DOCK IS THE CENTRE OF THE ZONE, AND THE DOCK IS THE HEAD-ON POSE
+  // (v0.8.24 rebuilt the zone, v0.8.25/26 moved the dock onto the camera axis).
   //
   // Through v0.8.23 the dock was 0° while the zone was ASYMMETRIC (yaw −14°..+5°,
   // pitch −2°..+8°), so the player's margin from the dock was 14° one way and 5° the
-  // other. v0.8.24 made the zone symmetric about the dock; the producer's phone check
-  // then caught what that alone does not fix — "左右数值一样，但我看到的是偏左了":
-  // at the v0.8.24 dock the play face sits visibly to the LEFT of the frame. Measured
-  // with the offline projection model (tools/.tmp-bearing-asymmetry.mjs, PC 1120×810
-  // and mobile 390×784), the play face's own centre is
+  // other. v0.8.24 made the zone symmetric about the dock; two rounds of producer
+  // feedback then pinned down what "symmetric" has to mean here:
   //
-  //   v0.8.24 dock (bearing 0°, 16° off the camera axis)   -58px = -11.1% of the cube width (PC)
-  //                                                        -34px = -11.1% (mobile)
-  //   head-on      (bearing +16°, ON the camera axis)         0px =  -0.0%   the centred pose
+  //   "停下来的时候，我可以看到右侧面一部分……我想在停止的时候，能够看到右侧面和左
+  //    侧面的面积应该一致。"
   //
-  // …and the two directions are equally far from the dock in travel (±36px), so the
-  // asymmetry the player feels is the DOCK's own offset, not the margin.
+  // That is a statement about the COMPOSITION, not about margins, and it has exactly one
+  // solution: the dock must be the pose whose front face points at the camera. At any
+  // other dock the two side faces are not interchangeable — measured at the v0.8.25 dock
+  // (bearing +8°), the zone could reach 20.4% of the right-hand face but only 0.3% of
+  // the left, because on one side the cube turns away from the camera and on the other it
+  // runs into the head-on pose and stops.
   //
-  // v0.8.25 therefore moves the dock to the most frontal pose a symmetric fine-tune can
-  // still be worked around — bearing +8°, i.e. 8.5° off the camera axis, "接近正面"
-  // with a genuine 3/4 read left in it. Measured at three points of the zone:
+  //   bearing   relative yaw   composition                          side faces
+  //     +6°        10°         main 85.2% side 8.9% top 5.9%         8.9% right / 0 left
+  //    +16°         0°         main 90.6%  —     top 9.4%  ← DOCK     0    / 0
+  //    +26°       -10°         main 85.2% side 8.9% top 5.9%         0    / 8.9% left
   //
-  //   bearing   composition                        play-face centre   relative yaw
-  //     -2°     main 71.7% side 20.4% top  7.9%      -65px  -12.2%        18°
-  //     +8°     main 82.8% side  8.6% top  8.5%      -29px   -6.1%  ← dock  8°
-  //    +18°     main 90.4% side  0.3% top  9.4%       +7px   +1.7%        -2°
+  // The two ends of the zone are now exact mirror images, so "drag either way and see the
+  // same amount of the side face" is true rather than approximately true, and the resting
+  // view has no left-right lean at all (the play face's centre lands on the frame centre:
+  // 0.0%, against -11.1% at the v0.8.23 dock and -6.1% at v0.8.25's).
   //
-  // Three things worth keeping straight about that table:
-  //  - The offset is HALVED, not removed. A dock that is exactly head-on has no side
-  //    face at all (main 90.6%, TWO faces, only the roof band for depth) — the frontal
-  //    rest pose rejected in v0.8.6 — and its ±10° zone only ever varies main between
-  //    85% and 91%, i.e. the fine-tune stops being visible. The centred pose is worth
-  //    having, so it is placed at the FRONTAL END of the zone instead of at its centre:
-  //    drag fully frontal and the play face lands on 0.0%.
-  //  - The v0.8.24 dock is still INSIDE the range (bearing 0° is between -2° and +18°),
-  //    so nothing that used to be diallable is lost — the deep three-quarter end
-  //    (main 60-64%) is, and that was the least used part of it.
-  //  - The margin stays ±10°. It is NOT slack: the drag only claims its axis after
-  //    `axisLockPx` (16px ≈ 6.4° of the cube's silhouette on PC, ≈9.4° on a 390px
-  //    phone), so a zone much tighter than this would be swallowed by the lock and the
-  //    fine-tune would arrive as a jump (v0.8.24 measured 16.9° of finger travel for
-  //    the ±10° zone — see `bearingResistance` below).
+  // What this costs, stated plainly because it is the reason the earlier rounds went the
+  // other way: at the dock the side faces are edge-on, so the rest pose shows the play
+  // face and the ROOF BAND only (9.4% — the depth cue that keeps it a body rather than a
+  // flat grid, which is what v0.8.6 was rejected for, and that camera had no pitch at
+  // all). The play face is also the largest it can be (90.6% of the silhouette, vs 74.3%
+  // at the old dock — 22% more touch surface), and the fine-tune now reveals a side face
+  // by the same amount in either direction, up to 8.9% at the zone ends.
   //
-  // The pitch dock stays 0°, and the pitch margin stays ±3°: the roof is the depth cue
-  // and it is already thin, so ±3° keeps it a band (4.4%) at the frontal end instead of
-  // a line (3.2% at ±4°, 0.6% at −6°).
-  bearingYaw: 0.1396, // the dock: 8° off the camera axis; ≈8.5° is the head-on one (bearing 0.2793)
+  // The margin stays ±10°. It is NOT slack: the drag only claims its axis after
+  // `axisLockPx` (16px ≈ 6.4° of the cube's silhouette on PC, ≈9.4° on a 390px phone),
+  // so a zone much tighter than this would be swallowed by the lock and the fine-tune
+  // would arrive as a jump (measured 16.9° of finger travel for the ±10° zone — see
+  // `bearingResistance` below).
+  //
+  // The pitch dock stays 0°, and the pitch margin stays ±3°: the roof is now the only
+  // depth cue the dock has, so ±3° keeps it a band (4.4%) at the frontal end instead of a
+  // line (3.2% at ±4°, 0.6% at −6°).
+  bearingYaw: 0.2793, // the dock: the head-on pose (the camera's own yaw, 16°); 0 is the old 3/4 dock
   bearingPitch: 0,
   bearingMargin: Object.freeze({
     yaw: 0.1745, // ±10°

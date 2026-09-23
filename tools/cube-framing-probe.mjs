@@ -85,21 +85,20 @@ const VIEWPORT = (() => {
 // share leaned the board −4.8° on screen. The targets now encode the corrected
 // intent: three faces visible and upright, front face clearly the subject.
 const TARGET = {
-  // v0.8.25: the dock is 8° off the camera axis instead of 16°, so the resting
-  // composition moved with it — main 82.8% / side 8.6% / top 8.5%, measured at the
-  // dock. The window follows the producer's own composition target for this feature
-  // ([03 §2.1] "主面明显朝向玩家，只露少量侧面和顶面", temp doc 82–88%), and it is NOT
-  // free to grow: head-on (main 90.6%, no side face) is the pose v0.8.6 was rejected
-  // for, which is exactly why the dock stops 8° short of it and the centred pose is
-  // put at the FRONTAL END of the fine-tune zone instead.
-  mainShareMin: 0.78,
-  mainShareMax: 0.88,
-  // No non-main face may collapse into a sliver AT THE DOCK. This is the one that
-  // catches the flat-plate failure mode directly: with a close camera, a small tilt can
-  // leave a side face invisible entirely (measured 100% / 0 / 0 for a 6.6° cube tilt).
-  // v0.8.25 keeps this for the dock and for the three-quarter end of the zone; the
-  // frontal end is checked separately (the roof band must survive there — the side face
-  // legitimately runs out at head-on).
+  // v0.8.26: the dock is the HEAD-ON pose (the front face points at the camera), so the
+  // resting composition is the play face plus the roof band — main 90.6% / top 9.4%, the
+  // two side faces edge-on and therefore invisible. That is the producer's own request
+  // in [03 §2.1] ("停下来的时候……右侧面和左侧面的面积应该一致"): a dock off the camera
+  // axis always shows one side face and never its mirror, and with a symmetric fine-tune
+  // margin the only pose whose two ends are mirror images is this one. The window is
+  // therefore "the play face is the subject, and the roof band is still there" — NOT the
+  // flat-plate failure mode v0.8.6 was rejected for (that camera had no pitch at all, so
+  // there was no roof either), and the lower bound keeps a sliver of doubt out.
+  mainShareMin: 0.88,
+  mainShareMax: 0.92,
+  // No non-main face may collapse into a sliver. At the dock the only non-main face is
+  // the roof, and it has to stay a band (9.4% measured); at the zone ENDS all three
+  // faces are visible and each is checked separately in the bearing section.
   minOtherShare: 0.06,
   maxUprightDeg: 0.5, // the cube's vertical edges stay plumb — "视觉上还比较歪" is this number
   maxOffAxisSpreadDeg: 0.05, // the presented face sits the same amount off the camera axis on all 24
@@ -485,7 +484,13 @@ try {
 
   const shares = samples.map((sample) => sample.mainShare)
   const skews = samples.map((sample) => sample.mainSkewDeg)
-  const minOtherMax = Math.min(...samples.map((sample) => sample.others.length === 2 ? Math.min(...sample.others.map((other) => other.share)) : 0))
+  // v0.8.26: at a HEAD-ON dock the two side faces are edge-on and legitimately project to
+  // nothing, so "no non-main face may be a sliver" cannot be read per face any more. What
+  // must hold at every one of the 24 orientations is that the cube still has a depth cue:
+  // the LARGEST non-main face (at a head-on dock that is the roof band) never collapses.
+  // The strict per-face version of this gate now lives where it is meaningful — at both
+  // ends of the fine-tune zone, in the bearing section below.
+  const minOtherMax = Math.min(...samples.map((sample) => Math.max(...sample.others.map((other) => other.share))))
   const otherMax = Math.max(...samples.flatMap((sample) => sample.others.map((other) => other.share)))
   const distinctPoses = new Set(samples.map((sample) => qKey(sample.base))).size
   report.framing = {
@@ -536,7 +541,7 @@ try {
   }
   if (otherMax > 1 - TARGET.mainShareMin) failures.push(`framing: a non-main face reaches ${(otherMax * 100).toFixed(1)}%`)
   if (minOtherMax < TARGET.minOtherShare) {
-    failures.push(`framing: a non-main face is down to ${(minOtherMax * 100).toFixed(1)}% — the cube is flattening into a plate (min ${TARGET.minOtherShare * 100}%)`)
+    failures.push(`framing: the largest non-main face is down to ${(minOtherMax * 100).toFixed(1)}% — the cube is flattening into a plate (min ${TARGET.minOtherShare * 100}%)`)
   }
   const uprightAbs = Math.max(...samples.map((sample) => Math.abs(sample.uprightDeg)))
   if (uprightAbs > TARGET.maxUprightDeg) {
@@ -916,29 +921,61 @@ try {
   tuning.push({ step: 'a sub-threshold roll leaves no bearing', baseUnchanged: qKey(afterRoll.base) === qKey(beforeRoll.base) })
   if (sideX !== null && !rollClean) failures.push('bearing: a sub-threshold side-band roll left a residual offset')
   report.tuning = tuning
-  // (6) THE FRONTAL EDGE STILL LEAVES A CUBE. The end the zone stops at has to stay a
-  // cube: v0.8.24 read this as "three faces, every non-main ≥4%", but v0.8.25 puts the
-  // CENTRED pose at this end on purpose — and at the centred pose the side faces are
-  // edge-on and legitimately vanish. What must not vanish is the depth cue, so the gate
-  // is now "the front face is still the subject (≥85%) and the roof band is still there
-  // (≥4%)"; the three-quarter end keeps the old three-face gate, which is where that
-  // failure mode (a pair of faces at a slant) actually lives.
+  // (6) THE DOCK AND ITS TWO ENDS ARE LEFT/RIGHT SYMMETRIC — the producer's own
+  // requirement, asserted directly: "我想在停止的时候，能够看到右侧面和左侧面的面积应该
+  // 一致". At the DOCK that means the two side faces are equally visible (at the head-on
+  // dock: both edge-on, both ~0 — any dock off the camera axis shows one and hides the
+  // other, which is exactly what this line catches). At the two ENDS it means the mirror
+  // pair: the same amount of the side face at one end as at the other, on OPPOSITE sides
+  // of the screen. The face NAMES cannot express that (a 90° face turn renames which
+  // local face is showing), so the check reads `centreX` — where each face's own centre
+  // lands in NDC — instead.
+  const sideEntry = (faces) => {
+    // `visible` is sorted by projected area, so the first entry after the main face is
+    // the side face the player can actually see; `centreX` says which side it is on.
+    const rest = faces.visible.slice(1).filter((entry) => entry.areaPx > 0)
+    if (!rest.length) return null
+    return { face: rest[0].face, share: rest[0].areaPx / faces.totalPx, centreX: rest[0].centreX }
+  }
+  const sideOf = (faces, name) => (faces.others.find((entry) => entry.face === name)?.share ?? 0)
   await parkYaw() // back to the dock
+  const dockFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
+  const dockSymmetry = Math.abs(sideOf(dockFaces, '+x') - sideOf(dockFaces, '-x'))
   const atFrontalEdge = await dragByDeg('yaw', pastEdgeDeg)
   const edgeFaces = await readJson(client, 'globalThis.__voxalblast.faces()')
   const edgeOthers = edgeFaces.others.map((entry) => entry.share)
-  const edgeRoof = edgeOthers.filter((share) => share >= 0.04).length
-  const edgeKeepsCube = edgeFaces.mainShare >= 0.85 && edgeRoof >= 1 && edgeOthers[0] >= 0.04
+  const edgeIsACube = edgeFaces.visible.length === 3 && edgeOthers.every((share) => share >= 0.04)
+  const frontSide = sideEntry(edgeFaces)
+  const backSide = sideEntry(backFaces)
+  const sideSharesMatch = frontSide && backSide
+    && Math.abs(frontSide.share - backSide.share) < 0.01
+  const sideSidesOpposed = frontSide && backSide && frontSide.centreX * backSide.centreX < 0
+    && Math.abs(frontSide.centreX) > 0.02 && Math.abs(backSide.centreX) > 0.02
+  const endsMirrored = sideSharesMatch && sideSidesOpposed
+    && Math.abs(edgeFaces.mainShare - backFaces.mainShare) < 0.01
+    && Math.abs(Math.abs(frontSide?.centreX ?? 0) - Math.abs(backSide?.centreX ?? 0)) < 0.02
   tuning.push({
-    step: 'the frontal edge still leaves a cube',
+    step: 'the dock and its two ends are left/right symmetric',
+    dockDeg: yawZone.dockDeg,
+    dockSideFaces: { '+x': Number(sideOf(dockFaces, '+x').toFixed(3)), '-x': Number(sideOf(dockFaces, '-x').toFixed(3)) },
+    dockSymmetry,
     bearingDeg: atFrontalEdge.yawDeg,
     zoneMaxDeg: yawZone.maxDeg,
     mainShare: edgeFaces.mainShare,
     others: edgeOthers.map((share) => Number(share.toFixed(3))),
     facesVisible: edgeFaces.visible.length,
+    frontalEndSide: frontSide ? { share: Number(frontSide.share.toFixed(3)), centreX: frontSide.centreX } : null,
+    threeQuarterEndSide: backSide ? { share: Number(backSide.share.toFixed(3)), centreX: backSide.centreX } : null,
+    endsMirrored,
   })
-  if (!edgeKeepsCube) {
+  if (dockSymmetry >= 0.01) {
+    failures.push(`bearing: at the dock the left and right side faces are not equally visible (${(sideOf(dockFaces, '+x') * 100).toFixed(1)}% vs ${(sideOf(dockFaces, '-x') * 100).toFixed(1)}%) — the dock is off the camera axis`)
+  }
+  if (!edgeIsACube) {
     failures.push(`bearing: at the frontal edge the cube has ${edgeFaces.visible.length} faces (main ${(edgeFaces.mainShare * 100).toFixed(1)}%, others ${edgeOthers.map((s) => (s * 100).toFixed(1)).join('/')}) — the margin is letting it flatten`)
+  }
+  if (!endsMirrored) {
+    failures.push(`bearing: the two ends of the zone are not mirror images — frontal edge main ${(edgeFaces.mainShare * 100).toFixed(1)}% / side ${frontSide ? `${(frontSide.share * 100).toFixed(1)}% at x=${frontSide.centreX}` : 'none'}, three-quarter edge main ${(backFaces.mainShare * 100).toFixed(1)}% / side ${backSide ? `${(backSide.share * 100).toFixed(1)}% at x=${backSide.centreX}` : 'none'}`)
   }
   report.bearing = {
     dockDeg: yawZone.dockDeg,
@@ -978,7 +1015,7 @@ else {
     console.log(`cube box ${report.ruler.cubeBox.width}x${report.ruler.cubeBox.height}px   one face ≈ ${report.ruler.pxPerFaceYaw}px drag (yaw) / ${report.ruler.pxPerFacePitch}px (pitch)`)
     console.log(`framing  ${framing.orientations} orientations (${framing.distinctPoses} distinct poses)`)
     console.log(`  main face share ${(framing.mainShare.min * 100).toFixed(1)}–${(framing.mainShare.max * 100).toFixed(1)}%   (target ${TARGET.mainShareMin * 100}–${TARGET.mainShareMax * 100}%)`)
-    console.log(`  non-main faces ${(framing.otherMin * 100).toFixed(1)}–${(framing.otherMax * 100).toFixed(1)}%   (floor ${TARGET.minOtherShare * 100}%)`)
+    console.log(`  largest non-main face ${(framing.otherMin * 100).toFixed(1)}–${(framing.otherMax * 100).toFixed(1)}%   (floor ${TARGET.minOtherShare * 100}%)`)
     console.log(`  cube upright ${framing.uprightDeg.min.toFixed(2)}…${framing.uprightDeg.max.toFixed(2)}° (0 = vertical edges plumb)`)
     console.log(`  presented face twist ${framing.twistDeg.min.toFixed(2)}…${framing.twistDeg.max.toFixed(2)}° (spread ${framing.twistDeg.spread.toFixed(2)}°)   off-axis ${framing.offAxisDeg.min.toFixed(2)}…${framing.offAxisDeg.max.toFixed(2)}°`)
     console.log(`  projected edge angle (informational, carries perspective convergence) ${framing.skewRange.min.toFixed(2)}…${framing.skewRange.max.toFixed(2)}°`)
