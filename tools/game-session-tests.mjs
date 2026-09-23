@@ -445,6 +445,20 @@ function jam(s) {
     missing.board.occupied().length === 0 && missing.board.score === 0)
 }
 
+// ---- 19. spending a candidate is a session action (P6a gap closed in P7b) --------
+// The hand is the session's, so the `used` flag is set through it rather than by whoever happens
+// to hold the piece (plan section 6 P6a). The call site and its timing are unchanged.
+{
+  const s = fresh()
+  s.deal()
+  const piece = s.getPieces()[0]
+  check('a dealt piece starts unspent', piece.used === false)
+  const returned = s.usePiece(piece)
+  check('usePiece spends the candidate it was handed', piece.used === true)
+  check('and hands the same piece back', returned === piece)
+  check('the other candidates are untouched', s.getPieces()[1].used === false && s.getPieces()[2].used === false)
+}
+
 console.log(`game-session-tests: ${passed}/${total} checks passed`)
 if (failures.length) {
   console.log('failures:')

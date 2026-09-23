@@ -78,6 +78,15 @@ export function createGameSession() {
     return piece.cells
   }
 
+  // One piece per turn: a settled placement spends the candidate it was dropped from. The hand is
+  // the session's, so the flag is set through here rather than by whoever happens to hold the
+  // piece (plan §6 P6a: 现存 currentDrag.piece.used = true 改由明确 session 动作执行，时机保持 —
+  // main still calls it at the same point of the drop it always did).
+  function usePiece(piece) {
+    piece.used = true
+    return piece
+  }
+
   // A new hand. The caller clears the selection and repaints the slots: that is UI, and it is
   // main's (main.nextPieces() is the wrapper every existing call site still calls).
   function deal() {
@@ -378,6 +387,7 @@ export function createGameSession() {
     deal,
     makePiece,
     currentCells,
+    usePiece,
     settlePlacement,
     // Items (P6b-1): the charges, the tool's reach, its effect on the board and the undo window.
     ITEM_TOOLS,

@@ -9,13 +9,13 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
 import { SH, FACES, faceLattice, isShell } from './game/board.js'
-import { SHAPES, pickShape, maxOrigin } from './game/shapes.js'
+import { SHAPES, pickShape } from './game/shapes.js'
 import { lineMultiplier } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { DRAG_GHOST, getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
+import { getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
 import { KEY_BINDINGS } from './rendering/keyboard.js'
 import './styles.css'
 import './toy.css'
@@ -134,8 +134,6 @@ const {
 // exists to answer, and a badge that only exists on the dev server cannot answer it.
 // It only shrinks on narrow screens — never display:none.
 versionEl.textContent = `v${packageInfo.version}`
-let selectedPiece = null
-let drag = null
 let isPaused = false
 // The settings / controls open flags, the sound+haptics preferences and the legend's
 // per-axis spin counters now live in ui/settings.js (plan §3 state table). Read back
@@ -143,7 +141,6 @@ let isPaused = false
 // v0.4 home screen: the cover's open flag lives in ui/home.js, read back through
 // `homeUi.isOpen()`. `gameEnded` and `runLive` are the session's since P6b-2 — read back
 // through `session.isEnded()` / `session.isSaveable()`.
-let suppressPieceClickUntil = 0
 
 // ============================================================
 // Run state (v0.3 honors / records)
@@ -313,15 +310,15 @@ const {
 // The input layer -- the pointer coordinates, the gestures and the interaction gates -- lives in
 // input/gameInput.js (refactor P7a). It owns no game state: every gate below is a read-only query
 // and every effect is a named callback, so nothing in the module can reach the board, the score or
-// the records (plan §2.1). This slice takes the view rotation and the keyboard; the piece drag
-// (P7b), the item targeting (P7c) and the listeners themselves (P7d) follow.
+// the records (plan §2.1). P7a took the view rotation and the keyboard, P7b the piece drag; the
+// item targeting (P7c) and the listeners themselves (P7d) follow.
 //
 // It is created here, before the boot-time resetGame() at the bottom of this file, because
-// boardView's onRotationReset callback above reaches it.
+// boardView's onRotationReset callback above reaches it. Everything it is handed is either a
+// read-only query, a piece of geometry it must not own, or a named callback -- never a module.
 const input = createGameInput({
   canvas: renderer.domElement,
   isPaused: () => isPaused,
-  hasDrag: () => Boolean(drag),
   hasItemActive: () => Boolean(itemActive),
   isHomeOpen: () => homeUi.isOpen(),
   isSettingsOpen: () => settingsUi.isOpen(),
@@ -335,9 +332,31 @@ const input = createGameInput({
   setLiveAngle,
   startCubeSnap,
   getLive: () => boardView.getLive(),
+  findFrontFace,
+  faceOrientedCells,
+  cellWorld,
+  cubeVector,
+  facePlaneLocalCenter,
+  camera,
+  cubeGroup,
+  cs,
+  canPlace: (face, cells, origin) => board.canPlace(face, cells, origin),
+  currentCells: (piece) => currentCells(piece),
+  cancelZones: () => [piecesPanelEl, itemBarEl],
   onItemHover: (ndc, allowOrientation) => updateItemHover(ndc, allowOrientation),
   onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
   onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
+  onStatus: (text) => setStatus(text),
+  onToast: (text) => showToast(text),
+  onHaptic: (pattern) => playHaptic(pattern),
+  onCancelZone: (active, highlighted) => setCancelZone(active, highlighted),
+  onSelectionChanged: () => updatePieceSlotSelection(),
+  onBuildGhost: (piece) => buildDragGhost(piece),
+  onSyncGhost: (params) => syncDragGhost(params),
+  onClearGhost: () => clearDragGhost(),
+  onClearLanding: () => clearLanding(),
+  onShowLanding: (params) => showLanding(params),
+  onDrop: (drop) => onDrop(drop),
 })
 
 // Opaque timber body. The shell is only a BACKING: it occludes the far faces and
@@ -413,7 +432,7 @@ const pieceView = createPieceView({
   // A new deal replaces the piece objects and every click reassigns the selection, so both are
   // read through getters rather than captured.
   getCells: currentCells,
-  getSelectedPiece: () => selectedPiece,
+  getSelectedPiece: () => input.getSelectedPiece(),
 })
 const {
   disposePiecePreviews,
@@ -531,7 +550,7 @@ function armIntroIfVisible() {
 // this file's, and they happen in the order they always did.
 function nextPieces() {
   deal()
-  selectedPiece = null
+  input.clearSelection()
   renderPieceSlots()
 }
 
@@ -549,7 +568,7 @@ function renderPieceSlots() {
   slotsEl.innerHTML = ''
   getPieces().forEach((piece, index) => {
     const slot = document.createElement('button')
-    slot.className = `piece-slot${piece.used ? ' used' : ''}${selectedPiece === piece ? ' selected' : ''}`
+    slot.className = `piece-slot${piece.used ? ' used' : ''}${input.getSelectedPiece() === piece ? ' selected' : ''}`
     slot.type = 'button'
     slot.dataset.index = index
     slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
@@ -563,14 +582,7 @@ function renderPieceSlots() {
     thumb.appendChild(canvas)
 
     slot.append(thumb)
-    slot.addEventListener('pointerdown', (event) => beginDrag(event, piece))
-    slot.addEventListener('click', () => {
-      if (!piece.used && !drag && !itemActive && performance.now() >= suppressPieceClickUntil) {
-        selectedPiece = piece
-        updatePieceSlotSelection()
-        setStatus('Drag to a face')
-      }
-    })
+    input.bindSlot(slot, piece)
     slotsEl.appendChild(slot)
     createPiecePreview(piece, canvas, slot)
   })
@@ -582,36 +594,8 @@ function setCancelZone(active, highlighted = false) {
   cancelZoneEl.setAttribute('aria-hidden', String(!active))
 }
 
-// The cancel target is the UI strip the drag came from, not one element: since v0.4.3
-// the item bar is a sibling of the candidate panel (it moves to the top on phones), and
-// releasing a piece over either strip has always meant "put it back".
-function isInsidePieceArea(event) {
-  return [piecesPanelEl, itemBarEl].some((element) => {
-    const rect = element.getBoundingClientRect()
-    if (!rect.width || !rect.height) return false
-    return event.clientX >= rect.left && event.clientX <= rect.right
-      && event.clientY >= rect.top && event.clientY <= rect.bottom
-  })
-}
-
-function cancelActiveDrag(showFeedback = true) {
-  if (!drag) return false
-  const currentDrag = drag
-  drag = null
-  releaseDragPointer(currentDrag.source, currentDrag.pointerId)
-  clearLanding()
-  clearDragGhost()
-  selectedPiece = null
-  suppressPieceClickUntil = performance.now() + 260
-  setCancelZone(false)
-  updatePieceSlotSelection()
-  setStatus('Pick a shape')
-  if (showFeedback) {
-    showToast('Placement cancelled')
-    playHaptic(10)
-  }
-  return true
-}
+// isInsidePieceArea() and cancelActiveDrag() moved to input/gameInput.js (refactor P7b); the
+// cancel ZONE it highlights stays here, because setCancelZone() above is DOM.
 
 // ============================================================
 // Settings / audio / haptics
@@ -640,7 +624,7 @@ function openSettings() {
   // The pause source is set BEFORE the gestures are cancelled, exactly as before: the
   // cancel path reaches renderItemBar(), which reads the pause state.
   settingsUi.setSettingsOpen(true)
-  if (drag) cancelActiveDrag(false)
+  if (input.hasDrag()) input.cancelActiveDrag(false)
   cancelItemSelection(true)
   clearLanding()
   clearDragGhost()
@@ -708,7 +692,7 @@ function clampCellIndex(value) {
 }
 
 function canUseItemsNow() {
-  return !session.isEnded() && !isPaused && !drag && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
+  return !session.isEnded() && !isPaused && !input.hasDrag() && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
 }
 
 function setRocketOrientation(axis) {
@@ -777,47 +761,10 @@ function resetItems() {
   renderItemBar()
 }
 
-// Pointer coordinates are the input layer's now (refactor P7a). Bound to the module's own
-// function so the call sites still in this file (the item targeting and the piece drag, until
-// P7b/P7c move them) read exactly as they always did.
+// Pointer coordinates are the input layer's now (refactor P7a/P7b). Bound to the module's own
+// function so the call sites still in this file (the item targeting, until P7c moves them) read
+// exactly as they always did. ndcToCell() and nearestOriginOnFace() moved with the drag.
 const eventNdc = input.eventNdc
-
-// Convert an NDC into the front face's (u, v) grid cell nearest to the pointer.
-function ndcToCell(face, ndc) {
-  const plane = new THREE.Plane()
-  const nWorld = cubeVector(face, 'n').applyQuaternion(cubeGroup.quaternion).normalize()
-  const centerWorld = facePlaneLocalCenter(face).applyMatrix4(cubeGroup.matrixWorld)
-  plane.setFromNormalAndCoplanarPoint(nWorld, centerWorld)
-  const raycaster = new THREE.Raycaster()
-  raycaster.setFromCamera(ndc, camera)
-  const point = new THREE.Vector3()
-  if (!raycaster.ray.intersectPlane(plane, point)) return null
-  const localP = point.applyMatrix4(new THREE.Matrix4().copy(cubeGroup.matrixWorld).invert())
-  const rel = localP.sub(facePlaneLocalCenter(face))
-  const uF = rel.dot(cubeVector(face, 'u')) / cs + (SH - 1) / 2
-  const vF = rel.dot(cubeVector(face, 'v')) / cs + (SH - 1) / 2
-  // `fu`/`fv` are the unrounded lattice coordinates: where inside the cell the
-  // pointer landed, which is what the rocket reads to pick its line (07 §3.1 A5).
-  return { u: Math.round(uF), v: Math.round(vF), fu: uF, fv: vF }
-}
-
-// For a placed set of cells, enumerate legal origins on the front face and pick
-// the one whose world projection is nearest the pointer (mirrors BlockBlast snap).
-function nearestOriginOnFace(face, ndc, cells) {
-  const projected = new THREE.Vector3()
-  const { u: uMax, v: vMax } = maxOrigin(cells, SH)
-  let bestOrigin = { u: 0, v: 0 }
-  let bestDistance = Infinity
-  let found = false
-  for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
-    if (!board.canPlace(face, cells, { u, v })) continue
-    projected.copy(cellWorld(face, u, v)).project(camera)
-    const distance = Math.hypot(projected.x - ndc.x, projected.y - ndc.y)
-    if (distance < bestDistance) { bestDistance = distance; bestOrigin = { u, v }; found = true }
-  }
-  if (found) return bestOrigin
-  return null
-}
 
 
 function rebuildItemOverlay() {
@@ -842,7 +789,7 @@ function rebuildItemOverlay() {
 function updateItemHover(ndc, allowOrientation = true) {
   if (!itemActive || itemActive.id === 'refresh') return
   const frontFace = findFrontFace()
-  const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+  const cellAt = input.isPointerOnCube(ndc) ? input.ndcToCell(frontFace, ndc) : null
   if (!cellAt) return
   itemActive.face = frontFace
   itemActive.u = clampCellIndex(cellAt.u)
@@ -866,7 +813,7 @@ function updateItemHover(ndc, allowOrientation = true) {
 function selectItemAt(event) {
   const ndc = eventNdc(event)
   const frontFace = findFrontFace()
-  const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+  const cellAt = input.isPointerOnCube(ndc) ? input.ndcToCell(frontFace, ndc) : null
   if (!cellAt) {
     // Releasing off the cube is a miss, not a confirmation on some corner cell.
     setStatus('Tap a face cell')
@@ -959,7 +906,7 @@ function rerollPieces() {
     setPieces(Array.from({ length: 3 }, () => makePiece(pickShape())))
     if (getPieces().map((piece) => piece.shape.name).join('|') !== before) break
   }
-  selectedPiece = null
+  input.clearSelection()
   renderPieceSlots()
   showToast('Refreshed')
   playHaptic(10)
@@ -1001,223 +948,31 @@ for (const button of axisPickEl.querySelectorAll('button[data-axis]')) {
 axisCancelEl.addEventListener('click', () => cancelItemSelection())
 toastEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 
-// ============================================================
-// Piece placement drag
-// ============================================================
-const raycaster = new THREE.Raycaster()
-const pointer = new THREE.Vector2()
-
-function beginDrag(event, piece) {
-  if (piece.used || isPaused || drag || itemActive) return
-  if (event.pointerType === 'mouse' && event.button !== 0) return
-  event.preventDefault()
-  selectedPiece = piece
-  drag = {
-    piece,
-    pointerId: event.pointerId,
-    source: event.currentTarget,
-    ndc: eventNdc(event),
-    face: null,
-    origin: null,
-    cells: null,
-    valid: false,
-    active: false,
-    inCancelZone: false,
-    startX: event.clientX,
-    startY: event.clientY,
-    // Where the piece was grabbed on the face (pointer px + the origin it attached
-    // at). The piece then follows the finger RELATIVELY from here — see
-    // updatePreview(). Null means "not attached": set on attach, cleared on detach.
-    anchor: null,
-  }
-  try {
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-  } catch {
-    // Some embedded browsers reject capture during an interrupted gesture.
-  }
-  // Built here (hidden) so the first pointermove that crosses the drag threshold
-  // has the piece ready instead of popping it in a frame late.
-  buildDragGhost(piece)
-  event.currentTarget.classList.add('selected')
-  setStatus('Drag to a face')
-}
-
-// Is the pointer on (or within snapMarginPx of) the cube's silhouette? The drag
-// has exactly two states and this is the line between them: off the cube the
-// piece is still IN HAND (only the ghost exists), on it the piece has ATTACHED to
-// a face (only the landing preview exists). See DRAG_GHOST in rendering/config.js.
-function isPointerOnCube(ndc) {
-  const rect = renderer.domElement.getBoundingClientRect()
-  const clientX = rect.left + (ndc.x * 0.5 + 0.5) * rect.width
-  const clientY = rect.top + (-ndc.y * 0.5 + 0.5) * rect.height
-  const bounds = cubeScreenBounds()
-  const margin = DRAG_GHOST.snapMarginPx
-  return clientX >= bounds.minX - margin && clientX <= bounds.maxX + margin
-    && clientY >= bounds.minY - margin && clientY <= bounds.maxY + margin
-}
-
-// Hand the drag ghost its three rulers. All three are this file's to measure: the pointer's NDC,
-// the canvas it is over (the renderer's CSS box) and one cell of the cube as it is drawn right
-// now (gameScene's screen bounds, exactly the ruler the ghost has always used). What is left —
-// the two corner rays, the world-per-pixel scale and the tint — is the view's own arithmetic and
-// lives in pieceView.syncDragGhost() (plan §6 P4.3).
-function syncGhostFor(event, ndc, mode) {
-  const bounds = cubeScreenBounds()
-  syncDragGhost({
-    ndc,
-    canvasHeight: Math.max(renderer.domElement.getBoundingClientRect().height, 1),
-    cellPx: Math.max(bounds.maxX - bounds.minX, 1) / SH * DRAG_GHOST.cellRatio,
-    pointerType: event.pointerType,
-    mode,
-  })
-}
-
-// One lattice step of a face, in client pixels. A finger delta is converted into
-// (du, dv) on THIS basis, which is what makes the piece follow the finger's own
-// direction on the face — including when the cube has been rotated to another face.
-function faceStepScreen(face) {
-  const rect = renderer.domElement.getBoundingClientRect()
-  const toClient = (v) => {
-    const p = v.project(camera)
-    return { x: rect.left + (p.x * 0.5 + 0.5) * rect.width, y: rect.top + (-p.y * 0.5 + 0.5) * rect.height }
-  }
-  const base = toClient(cellWorld(face, 0, 0))
-  const stepU = toClient(cellWorld(face, 1, 0))
-  const stepV = toClient(cellWorld(face, 0, 1))
-  return {
-    u: { x: stepU.x - base.x, y: stepU.y - base.y },
-    v: { x: stepV.x - base.x, y: stepV.y - base.y },
-  }
-}
-
-// Keep an origin inside the face's own bounds before asking the board about it.
-function clampOrigin(cells, u, v) {
-  const { u: uMax, v: vMax } = maxOrigin(cells, SH)
-  return {
-    u: THREE.MathUtils.clamp(u, 0, Math.max(uMax - 1, 0)),
-    v: THREE.MathUtils.clamp(v, 0, Math.max(vMax - 1, 0)),
-  }
-}
-
-// Returns true when a landing preview was actually drawn (i.e. the piece is
-// attached to a face). Every field it owns is reset first: `finishDrag()` reads
-// them as the drop decision, so "not attached" has to be a real, empty state.
-//
-// v0.4.6 — RELATIVE movement once attached. The piece is anchored where the finger
-// first grabbed the face, and then follows the finger's own travel: one lattice
-// step per cell of movement measured on the face's screen axes. Re-picking "the
-// origin nearest the pointer" every frame (up to v0.4.5) meant the piece only moved
-// once the finger had travelled all the way to the NEXT cell's centre — and with
-// occupied cells in the way it could jump a long way, because the nearest LEGAL
-// origin was no longer the nearest origin.
-function updatePreview(event, ndc) {
-  clearLanding()
-  const previous = drag?.origin ?? null
-  drag.face = null
-  drag.origin = null
-  drag.cells = null
-  drag.valid = false
-  if (!selectedPiece || !ndc || !drag?.active) { drag.anchor = null; return false }
-  // Off the cube the piece goes back to being carried, and the next grab re-anchors.
-  if (!isPointerOnCube(ndc)) { drag.anchor = null; return false }
-  const face = findFrontFace()
-  // Laid out on the front face the way the slot drew it — see
-  // faceOrientedCells(). The board gets these exact cells on release.
-  const cells = faceOrientedCells(face, currentCells(selectedPiece))
-  drag.face = face
-  drag.cells = cells
-
-  const step = faceStepScreen(face)
-  const det = step.u.x * step.v.y - step.u.y * step.v.x
-  let origin = null
-  if (drag.anchor && Math.abs(det) > 1e-3) {
-    const dx = event.clientX - drag.anchor.x
-    const dy = event.clientY - drag.anchor.y
-    const u = drag.anchor.u + Math.round((dx * step.v.y - dy * step.v.x) / det)
-    const v = drag.anchor.v + Math.round((step.u.x * dy - step.u.y * dx) / det)
-    const target = clampOrigin(cells, u, v)
-    // Sticky: an unreachable target leaves the piece where the player last had it.
-    // It never re-snaps somewhere else, so the piece cannot jump out from under the
-    // finger — and because the mapping stays anchored, it resumes exactly in step
-    // with the finger once the way is clear again.
-    origin = board.canPlace(face, cells, target) ? target : previous
-  }
-  if (!origin) origin = nearestOriginOnFace(face, ndc, cells)
-  if (!origin) return false
-  if (!drag.anchor) drag.anchor = { x: event.clientX, y: event.clientY, u: origin.u, v: origin.v }
-
-  const valid = board.canPlace(face, cells, origin)
-  drag.valid = valid
-  drag.origin = origin
-  // The marker itself is pieceView's (P4b): it draws the cells it is handed, in the piece's own
-  // colour while this drop is legal and in terracotta when it is not.
-  showLanding({ face, cells, origin, valid, color: selectedPiece.shape.color })
-  return true
-}
-
-// ---- Drag ghost (v0.4.4) ----------------------------------------------------
-// The ghost — its group (camera-local), its material rules, its placement and its tint — lives
-// in rendering/pieceView.js (refactor P4b). What stays here is everything the gesture decides:
-// when it exists (buildDragGhost at pointerdown), where it goes (syncGhostFor measures the three
-// rulers) and which mode it is in ('carry' | 'snap' | 'invalid' | 'cancel').
+// The piece placement drag (beginDrag / updatePreview / updateDrag / finishDrag /
+// cancelActiveDrag) and the pointer-to-lattice helpers moved to input/gameInput.js
+// (refactor P7b). main keeps the drop itself -- onDrop() below -- and the slot DOM.
 
 // The clear feedback - AxisEmitter, the line particles, the beam, the stars, the transient
 // list and the camera shake - lives in rendering/effects.js (refactor P5).
-
-// Pointer capture is the input layer's bookkeeping (refactor P7a); the piece drag below is the
-// last caller in this file and moves with it in P7b.
-const releaseDragPointer = input.releasePointerCapture
 
 // One settled placement, in the order the design fixes it: settle every face
 // (board.js) → chain → honors → score (§4.5) → present (§6). Keeping the whole
 // sequence here is what makes the HUD number auditable — it is the sum of the
 // named parts, and the parts are the ones the docs name.
 
-function finishDrag(event) {
-  if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return
-  const currentDrag = drag
-  drag = null
-  releaseDragPointer(currentDrag.source, currentDrag.pointerId)
-  clearLanding()
-  clearDragGhost()
-  setCancelZone(false)
-  if (!currentDrag.active) {
-    selectedPiece = currentDrag.piece
-    updatePieceSlotSelection()
-    setStatus('Drag to a face')
-    return
-  }
-  suppressPieceClickUntil = performance.now() + 260
-  if (currentDrag.inCancelZone) {
-    selectedPiece = null
-    updatePieceSlotSelection()
-    setStatus('Pick a shape')
-    showToast('Placement cancelled')
-    playHaptic(10)
-    return
-  }
-  if (!currentDrag.valid || !currentDrag.origin || !currentDrag.face) {
-    selectedPiece = null
-    updatePieceSlotSelection()
-    setStatus('Pick a shape')
-    showToast('Try another spot')
-    return
-  }
-  const face = currentDrag.face
-  // Place the cells the preview actually showed (screen-facing orientation on
-  // the front face), never a fresh re-derivation — the drop must match what the
-  // player saw under their finger.
+function onDrop({ piece, face, cells, origin }) {
   // A placement changes the board the undo was recorded against, so the window closes before
   // anything else happens (07 §3.1 A9) -- it used to be settlePlacement()'s own first line, and
   // it now sits here, in the same order, because the window is the item flow's (P6b).
   clearItemUndo()
   const {
     result, lines, lineCount, honors, level, score, previousChain,
-  } = settlePlacement(face, currentDrag.cells, currentDrag.origin, currentDrag.piece.shape.color)
+  } = settlePlacement(face, cells, origin, piece.shape.color)
   playPlaceSound(lineCount)
   playHaptic(lineCount > 1 ? [18, 35, 22] : lineCount ? [18, 28, 16] : 12)
-  currentDrag.piece.used = true
-  selectedPiece = null
+  // The hand is the session's, so the flag that spends the candidate is set through it
+  // (plan §6 P6a: 现存 currentDrag.piece.used = true 改由明确 session 动作执行，时机保持).
+  session.usePiece(piece)
   renderBoard()
   updateChainHud()
   updatePieceSlotSelection()
@@ -1239,7 +994,7 @@ function finishDrag(event) {
     if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
     setStatus('Pick a shape')
   }
-  if (getPieces().every((piece) => piece.used)) nextPieces()
+  if (getPieces().every((candidate) => candidate.used)) nextPieces()
   // The resume slot is written on the same beat as the board change, and BEFORE the
   // stuck check: checkStuckAndPrompt() may end the run, and a snapshot written after
   // that would be a save of a finished game (saveSession refuses those anyway).
@@ -1330,7 +1085,7 @@ function openHome() {
   // CLONE of the live tiles: settling first is what keeps a wave caught mid-flight
   // from being cloned into the hero as a half-built cube.
   settleIntro()
-  if (drag) cancelActiveDrag(false)
+  if (input.hasDrag()) input.cancelActiveDrag(false)
   cancelItemSelection(true)
   clearLanding()
   clearDragGhost()
@@ -1401,9 +1156,9 @@ function applySession(saved) {
   clearHonorLayer()
   resetShake()
   clearSlowMo()
-  drag = null
+  input.resetDrag()
   clearDragGhost()
-  selectedPiece = null
+  input.clearSelection()
   session.setEnded(false)
   setCancelZone(false)
   // The board, the run record, the hand and the charges (refactor P6b-2). The order around it is
@@ -1504,8 +1259,8 @@ function resetGame() {
   clearSlowMo()
   settingsUi.hideSettingsSilently()
   gameOverEl.classList.add('hidden')
-  selectedPiece = null
-  drag = null
+  input.clearSelection()
+  input.resetDrag()
   clearDragGhost()
   setCancelZone(false)
   resetCubeRotation()
@@ -1547,43 +1302,13 @@ window.addEventListener('pointermove', (event) => {
     updateItemHover(eventNdc(event))
     return
   }
-  if (!drag || event.pointerId !== drag.pointerId) return
-  event.preventDefault()
-  if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return
-  if (!drag.active) {
-    drag.active = true
-    setCancelZone(true)
-  }
-  drag.inCancelZone = isInsidePieceArea(event)
-  setCancelZone(true, drag.inCancelZone)
-  if (drag.inCancelZone) {
-    drag.valid = false
-    drag.origin = null
-    drag.cells = null
-    // Back in the strip the piece is being put down, not held over a face: the next
-    // arrival on the cube re-grabs wherever the finger is (v0.4.6).
-    drag.anchor = null
-    clearLanding()
-    syncGhostFor(event, eventNdc(event), 'cancel')
-    setStatus('Release to cancel')
-    return
-  }
-  const ndc = eventNdc(event)
-  drag.ndc = ndc
-  const attached = updatePreview(event, ndc)
-  // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
-  // carried. Once it is attached to a face the board draws it and the carried copy
-  // disappears; if the pointer is on the cube but this face has no room, the piece
-  // stays in hand and turns red instead of silently vanishing.
-  syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
-  if (attached) setStatus(drag.valid ? 'Release to place' : 'No room here')
-  else setStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
+  input.updateDrag(event)
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
   const tap = itemTap
   itemTap = null
   input.finishViewGesture(event)
-  finishDrag(event)
+  input.finishDrag(event)
   if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
   // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
   if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) >= ITEM_TAP_SLOP) return
@@ -1592,8 +1317,8 @@ window.addEventListener('pointerup', (event) => {
 window.addEventListener('pointercancel', (event) => {
   itemTap = null
   input.finishViewGesture(event)
-  if (!drag || event.pointerId !== drag.pointerId) return
-  cancelActiveDrag(false)
+  if (!input.hasDrag()) return
+  input.cancelActiveDrag(false)
 })
 renderer.domElement.addEventListener('wheel', (event) => {
   event.preventDefault()
@@ -1604,7 +1329,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
   if (event.key === 'Escape' && settingsUi.isControlsOpen()) { event.preventDefault(); closeControls(); return }
   if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
-  if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
+  if (event.key === 'Escape' && input.hasDrag()) { event.preventDefault(); input.cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsUi.isOpen()) { closeSettings(); return }
   // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
   // can be learned while it is open, and before the rocket keys so nothing steals them.
@@ -1616,9 +1341,9 @@ document.addEventListener('keydown', (event) => {
 })
 window.addEventListener('contextmenu', (event) => {
   if (itemActive) { event.preventDefault(); cancelItemSelection(); return }
-  if (!drag) return
+  if (!input.hasDrag()) return
   event.preventDefault()
-  cancelActiveDrag()
+  input.cancelActiveDrag()
 })
 leaderboardButtonEl.addEventListener('click', () => {
   if (session.isEnded()) openLeaderboard()
@@ -1649,7 +1374,7 @@ homeSettingEl.addEventListener('click', () => {
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', beginRun)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && itemActive) cancelItemSelection(true)
-  if (document.hidden && drag) cancelActiveDrag(false)
+  if (document.hidden && input.hasDrag()) input.cancelActiveDrag(false)
   // The undo toast is a pointer target, and a backgrounded tab must not leave a live
   // one behind for a click that will never come (07 §3.1 A9).
   if (document.hidden) clearItemUndo()
@@ -1984,12 +1709,12 @@ globalThis.__voxalblast = Object.freeze({
   // this: the marker used to be a fixed green whatever the candidate's colour was).
   // Read-only; no gameplay path reads it.
   preview: () => {
-    const piece = selectedPiece
+    const piece = input.getSelectedPiece()
     const hex = (color) => `#${new THREE.Color(color).getHexString()}`
     return {
       piece: piece ? piece.shape.name : null,
       pieceColor: piece ? hex(piece.shape.color) : null,
-      valid: drag?.valid === true,
+      valid: input.dragReport().valid,
       cells: landingCells(),
     }
   },
@@ -2030,23 +1755,27 @@ globalThis.__voxalblast = Object.freeze({
   // drew three voxels), `cellPx` is the on-screen cell edge, and `mode` is the
   // state the drop is in. Read-only; no gameplay path reads it. The fields arrive in
   // two halves (refactor P4b): pieceView measures the view, this file adds the gesture.
-  ghost: () => ({
-    // The view half — where the ghost's voxels actually are on screen, the measured cell pitch
-    // and the tint it is wearing — is pieceView's projection (refactor P4b).
-    ...ghostReport(),
-    attached: Boolean(drag),
-    // How many landing cells the board is drawing right now. The whole point of
-    // the v0.4.5 revision is that this and `visible` are never both non-zero.
-    previewCells: landingCount(),
-    // Where the snapped piece is anchored on the face, and the grab point the
-    // relative movement is measured from (v0.4.6).
-    previewOrigin: drag?.origin ?? null,
-    anchor: drag?.anchor ?? null,
-    // The face's own lattice basis in client pixels — the basis the relative
-    // movement is solved in. Exposed so a check can reproduce the mapping
-    // exactly instead of assuming it.
-    stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
-  }),
+  ghost: () => {
+    const d = input.dragReport()
+    return {
+      // The view half — where the ghost's voxels actually are on screen, the measured cell pitch
+      // and the tint it is wearing — is pieceView's projection (refactor P4b).
+      ...ghostReport(),
+      attached: d.attached,
+      // How many landing cells the board is drawing right now. The whole point of
+      // the v0.4.5 revision is that this and `visible` are never both non-zero.
+      previewCells: landingCount(),
+      // Where the snapped piece is anchored on the face, and the grab point the
+      // relative movement is measured from (v0.4.6).
+      previewOrigin: d.origin,
+      anchor: d.anchor,
+      // The face's own lattice basis in client pixels — the basis the relative
+      // movement is solved in. Exposed so a check can reproduce the mapping
+      // exactly instead of assuming it.
+      stepScreen: d.stepScreen,
+    }
+  },
+
   framing: () => {
     const rect = renderer.domElement.getBoundingClientRect()
     const solid = cubeScreenBounds()
