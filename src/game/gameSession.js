@@ -1,10 +1,12 @@
 // Game session -- the game's own data model and its pure actions (refactor P6a).
 //
 // Plan section 2 `game/gameSession.js`: it owns the board, the hand of pieces, the run counters,
-// the run token and the two actions that change them without touching anything outside: dealing a
-// new hand and settling a placement. It has NO DOM, NO Three.js, NO platform SDK and no UI state,
-// so it imports and runs in plain Node -- that is what makes tools/game-session-tests.mjs possible
-// (plan section 6 P6: "gameSession 可在 Node 无 DOM/WebGL 环境 import 与测试").
+// the run token, the item charges and the undo window, the rescue judgement, the end-of-run flags
+// and the resume snapshot's game data, plus the actions that change them without touching anything
+// outside: dealing a new hand, settling a placement, applying a tool and restoring a save. It has
+// NO DOM, NO Three.js, NO platform SDK and no UI state, so it imports and runs in plain Node --
+// that is what makes tools/game-session-tests.mjs possible (plan section 6 P6: "gameSession 可在
+// Node 无 DOM/WebGL 环境 import 与测试").
 //
 // What deliberately stays in main, and why (plan section 6 P6a):
 //   - the selection (`selectedPiece`), the drag record and every listener: input, P7;
@@ -12,9 +14,11 @@
 //     platform calls): this module RETURNS what happened and main decides how to show it;
 //   - `clearItemUndo()`: the undo window belongs to the item flow (P6b), and main still calls it
 //     immediately before settlePlacement(), in the order it always ran;
-//   - the resume snapshot format (P6b) and the record store (main's endGame()).
+//   - the STORE and the pose: the snapshot's game data is here (P6b-2) and main merges the pose
+//     in, because the store is platform-facing and the pose is boardView's;
+//   - the order that ends a run (local record, slot, platform): main's endGame().
 import { Board, SH, faceLattice } from './board.js'
-import { pickShape, normalizeCells } from './shapes.js'
+import { SHAPES, pickShape, normalizeCells } from './shapes.js'
 import { moveScore, nextChain } from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
 
@@ -232,6 +236,135 @@ export function createGameSession() {
     return { id, records, restored }
   }
 
+  // ---- End of run and the resume slot (refactor P6b-2) -------------------------
+  // Plan §3: `gameEnded` and `runLive` are the session's state. The ORDER that ends a run -- local
+  // record, HUD, slot cleared, score handed to the platform -- stays in main's endGame(); what
+  // lives here is the two flags that make it idempotent and the one question that reads both.
+  let gameEnded = false
+  // "The player is in a run that has not finished." Kept separate from `pieces.length` on purpose:
+  // the game boots with no run open, and writing a slot there would offer 继续游戏 on a board
+  // nobody has touched.
+  let runLive = false
+
+  function isEnded() {
+    return gameEnded
+  }
+
+  function setEnded(flag) {
+    gameEnded = flag === true
+    return gameEnded
+  }
+
+  function setRunLive(flag) {
+    runLive = flag === true
+    return runLive
+  }
+
+  // The resume slot is only worth writing for a run the player is in and has not finished
+  // (plan §6 P6: 结束后不生成可保存局). main's saveSession() asks this before touching the store.
+  function isSaveable() {
+    return runLive && !gameEnded
+  }
+
+  // ---- The rescue judgement (refactor P6b-2) -----------------------------------
+  function hasPlaceablePiece() {
+    return pieces.some((piece) => !piece.used && board.anyPlacement(piece.cells))
+  }
+
+  // 07 §3.1 B1 (v0.8.16): a jam no longer ends the run while a blocking-clear tool is
+  // still charged — the item that can open a hole has to be allowed to be used, or three
+  // of the four tools are decorative exactly when they matter. This is deliberately NOT a
+  // solvability check: whether hammer / rocket / bomb can actually open a legal spot is
+  // the player's judgement, and the exhaustive search (6 faces × 25 targets × 3 tools × 3
+  // candidate cells × their orientations) costs far more than it is worth. The charges
+  // are what keep this from looping: every prompt names a tool the player can spend, and
+  // the run ends when the last one is gone.
+  function hasBlockingClearTool() {
+    return itemCounts.hammer > 0 || itemCounts.rocket > 0 || itemCounts.bomb > 0
+  }
+
+  // The judgement only: no DOM, no status text, no ending. What the player reads and whether the
+  // run is over are main's (plan §6 P6b asks for named outcomes, not a string event list), so
+  // these four answers are the whole contract. `idle` is the two cases the old guard swallowed —
+  // the run is already over, or there is no hand to judge.
+  function stuckOutcome() {
+    if (gameEnded || !pieces.length) return 'idle'
+    if (hasPlaceablePiece()) return 'playable'
+    if (itemCounts.refresh > 0) return 'refresh'
+    if (hasBlockingClearTool()) return 'clear-path'
+    return 'end'
+  }
+
+  // ---- The resume snapshot's game data (refactor P6b-2) ------------------------
+  // Plan §4: the DATA half is the session's, the store and the presentation stay in main, and the
+  // pose is boardView's — main merges that one key in. Nothing here reads or writes storage.
+  function snapshot() {
+    return {
+      board: {
+        cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
+        score: board.score,
+        totalLines: board.totalLines,
+      },
+      // Names, not shape objects: the pool is the single source of truth for a
+      // candidate's colour and cells, so a snapshot can never resurrect a shape that
+      // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
+      pieces: pieces.map((piece) => ({ name: piece.shape.name, used: piece.used })),
+      items: { ...itemCounts },
+      run: {
+        chain: run.chain,
+        bestChain: run.bestChain,
+        maxLinesOneMove: run.maxLinesOneMove,
+        maxFacesOneMove: run.maxFacesOneMove,
+        facesLit: [...run.facesLit],
+        faceWipes: run.faceWipes,
+        honors: [...run.honors],
+        honorCounts: { ...run.honorCounts },
+      },
+    }
+  }
+
+  // Name -> shape, derived from the pool, which stays the single source of truth: a save only ever
+  // names a shape, so a retired one simply fails to resolve and its slot is dealt again.
+  const shapeByName = new Map(SHAPES.map((shape) => [shape.name, shape]))
+
+  // THREE.MathUtils.clamp, in plain code: this module has no Three.js (plan §2 boundary). Same
+  // arithmetic, so a hand-edited or stale save clamps to exactly the band it always did.
+  function clampCharge(value, min, max) {
+    return Math.max(min, Math.min(max, value))
+  }
+
+  // The data half of a resume. Everything the player sees afterwards — repaint, HUD, chain strip,
+  // item bar, pause — is main's applySession(), which calls this in the middle of its own order.
+  function applySnapshot(saved) {
+    board.restore(saved.board)
+    run.chain = saved.run.chain
+    run.bestChain = saved.run.bestChain
+    run.maxLinesOneMove = saved.run.maxLinesOneMove
+    run.maxFacesOneMove = saved.run.maxFacesOneMove
+    run.facesLit = new Set(saved.run.facesLit)
+    run.faceWipes = saved.run.faceWipes
+    run.honors = [...saved.run.honors]
+    run.honorCounts = { ...saved.run.honorCounts }
+    const restoredPieces = saved.pieces
+      .map((entry) => {
+        const shape = shapeByName.get(entry.name)
+        if (!shape) return null
+        const piece = makePiece(shape)
+        piece.used = entry.used
+        return piece
+      })
+      .filter(Boolean)
+    // A retired shape can leave fewer than three candidates; deal the missing slots
+    // instead of resuming with a short strip (the layout is a fixed row of three).
+    while (restoredPieces.length < 3) restoredPieces.push(makePiece(pickShape()))
+    setPieces(restoredPieces)
+    itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
+      tool.id,
+      clampCharge(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),
+    ]))
+    return restoredPieces
+  }
+
   return {
     // The two const records, mutated in place: main binds them straight back to `board` and `run`.
     board,
@@ -262,5 +395,15 @@ export function createGameSession() {
     hasUndo,
     getUndo,
     undoLast,
+    // End of run, the resume slot and the rescue judgement (P6b-2): the flags and the answer,
+    // never the flow that shows them.
+    isEnded,
+    setEnded,
+    setRunLive,
+    isSaveable,
+    stuckOutcome,
+    // The snapshot's game data: main merges the pose in and owns the store.
+    snapshot,
+    applySnapshot,
   }
 }

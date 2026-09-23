@@ -6,10 +6,12 @@
 //
 // Coverage in P6a (data + pure actions): dealing, the run token, placement, clearing, scoring,
 // the chain, the face ledger and the exact shape settlePlacement returns.
-// Still to come with P6b (items, undo, rescue, end-of-run, the snapshot data):
-//   - 三槽用完换批, 道具不计分, 撤销还色还次数, 三类救场, 局终幂等, 结束后不生成可保存局.
+// P6b-1: what each tool reaches, that a tool never scores, the undo (colours + charges), the
+// charge floors/caps/reset and the undo window expiring on its own.
+// P6b-2: the three rescue branches, the end-of-run flags, "a finished run is not saveable", and
+// the resume snapshot's data half (write, restore, retired shapes, clamped charges).
 import { createGameSession } from '../src/game/gameSession.js'
-import { SH, FACES, faceLattice } from '../src/game/board.js'
+import { SH, FACES, faceLattice, isShell } from '../src/game/board.js'
 import { SHAPES, normalizeCells } from '../src/game/shapes.js'
 
 let total = 0
@@ -288,6 +290,159 @@ function fillRowExceptOne(s, face, v, exceptU) {
   const next = s.deal()
   check('a new deal is a full, unused hand', next.length === 3 && next.every((piece) => !piece.used))
   check('and it replaced the old one', s.getPieces() === next)
+}
+
+// ---- 15. the three rescue branches, and only three (P6b-2) ----------------------
+// A "jam" is the real thing the rescue probe builds in the browser (07 §3.1 B1): every free shell
+// cell filled, so no candidate fits anywhere. Built here with the real lattice, not a mock.
+function jam(s) {
+  const records = []
+  for (let x = 0; x < SH; x += 1) for (let y = 0; y < SH; y += 1) for (let z = 0; z < SH; z += 1) {
+    if (isShell(x, y, z) && !s.board.has(x, y, z)) records.push({ x, y, z, color: 0 })
+  }
+  s.board.addCells(records)
+  return records.length
+}
+{
+  const s = fresh()
+  check('an empty hand is not a judgement (idle)', s.stuckOutcome() === 'idle', s.stuckOutcome())
+  s.deal()
+  check('a fresh hand on an empty board can play', s.stuckOutcome() === 'playable', s.stuckOutcome())
+
+  const filled = jam(s)
+  check('the jam filled every free shell cell', filled === 98 && s.board.occupied().length === 98, `${filled}`)
+  check('a jam with Refresh charged asks for a refresh', s.stuckOutcome() === 'refresh', s.stuckOutcome())
+
+  s.setItemCounts({ refresh: 0, hammer: 1, rocket: 1, bomb: 1 })
+  check('no refresh but a clear tool: clear a path', s.stuckOutcome() === 'clear-path', s.stuckOutcome())
+
+  s.setItemCounts({ refresh: 0, hammer: 0, rocket: 1, bomb: 0 })
+  check('one clear tool is enough to stay alive', s.stuckOutcome() === 'clear-path', s.stuckOutcome())
+  s.setItemCounts({ refresh: 0, hammer: 0, rocket: 0, bomb: 1 })
+  check('the bomb counts too', s.stuckOutcome() === 'clear-path', s.stuckOutcome())
+
+  s.setItemCounts({ refresh: 0, hammer: 0, rocket: 0, bomb: 0 })
+  check('every charge spent: the run may end', s.stuckOutcome() === 'end', s.stuckOutcome())
+
+  // The judgement must not act: ending the run and showing the prompt are main's.
+  check('the judgement itself never ends the run', s.isEnded() === false)
+  s.setEnded(true)
+  check('an ended run has nothing left to judge', s.stuckOutcome() === 'idle', s.stuckOutcome())
+  s.setEnded(false)
+  s.setPieces([])
+  check('no hand at all is idle, not an ending', s.stuckOutcome() === 'idle', s.stuckOutcome())
+
+  // The order of the branches is load-bearing: a jam with both a refresh and a clear tool
+  // prompts for the refresh, which is what the shipped text says. The hand is pinned to a Dot so
+  // the last check does not depend on what the deal happened to draw.
+  const dot = SHAPES.find((shape) => shape.name === 'Dot')
+  s.setPieces([s.makePiece(dot)])
+  s.setItemCounts({ refresh: 2, hammer: 1, rocket: 1, bomb: 1 })
+  check('refresh wins over the clear tools', s.stuckOutcome() === 'refresh', s.stuckOutcome())
+  // A tool that opens a hole really does make the board playable again.
+  const opened = s.applyItem('hammer', '+z', 0, 0, 'row')
+  check('the hammer really opened a cell', opened.removed.length === 1, JSON.stringify(opened.removed))
+  check('opening one cell makes the board playable again', s.stuckOutcome() === 'playable', s.stuckOutcome())
+}
+
+// ---- 16. ending a run is a state, and it is idempotent (P6b-2) ------------------
+{
+  const s = fresh()
+  check('a fresh session is not ended', s.isEnded() === false)
+  check('a fresh session has no run to save', s.isSaveable() === false)
+  s.setRunLive(true)
+  check('a live, unfinished run is saveable', s.isSaveable() === true)
+  s.setEnded(true)
+  check('the run is over', s.isEnded() === true)
+  check('a finished run is never saveable', s.isSaveable() === false)
+  check('ending twice is the same state', s.setEnded(true) === true && s.isEnded() === true)
+  s.setRunLive(false)
+  s.setEnded(false)
+  check('a new run starts unended', s.isEnded() === false && s.isSaveable() === false)
+  s.setRunLive(true)
+  check('and is saveable again', s.isSaveable() === true)
+}
+
+// ---- 17. the resume snapshot's data half (P6b-2) --------------------------------
+{
+  const s = fresh()
+  s.deal()
+  fillRowExceptOne(s, '+z', 2, 4)
+  s.settlePlacement('+z', [[0, 0]], { u: 4, v: 2 }, 3)
+  s.board.addCells([{ x: 0, y: 0, z: 0, color: 7 }])
+  s.getPieces()[0].used = true
+  s.spendItem('hammer')
+  s.setItemCharge('bomb', 2)
+
+  const snap = s.snapshot()
+  check('the snapshot names exactly the four data keys',
+    Object.keys(snap).join(',') === 'board,pieces,items,run', Object.keys(snap).join(','))
+  check('the snapshot carries the board cells',
+    snap.board.cells.length === s.board.occupied().length, `${snap.board.cells.length}`)
+  check('the snapshot carries the score and the line count',
+    snap.board.score === s.board.score && snap.board.totalLines === s.board.totalLines)
+  check('the snapshot names the hand, never the shape objects',
+    snap.pieces.length === 3 && snap.pieces.every((entry) => typeof entry.name === 'string' && 'used' in entry)
+    && snap.pieces[0].used === true, JSON.stringify(snap.pieces))
+  check('the snapshot copies the charges', snap.items.hammer === 0 && snap.items.bomb === 2 && snap.items !== s.getItemCounts())
+  check('the snapshot turns the face ledger into a plain array',
+    Array.isArray(snap.run.facesLit) && Array.isArray(snap.run.honors), JSON.stringify(snap.run.facesLit))
+  check('the snapshot has no pose (that key is boardView\'s)', 'pose' in snap === false)
+  // The copy is taken BEFORE the aliasing check below, which deliberately damages the snapshot.
+  const copy = JSON.parse(JSON.stringify(snap))
+  // The snapshot must not hand out the live objects: mutating it cannot reach the session.
+  snap.run.honorCounts.injected = 1
+  snap.board.cells.length = 0
+  check('the snapshot shares no state with the session',
+    s.run.honorCounts.injected === undefined && s.board.occupied().length > 0)
+
+  // A second session resumes from it, exactly the way a page reload does.
+  const resumed = fresh()
+  resumed.applySnapshot(copy)
+  check('the restored board matches cell for cell',
+    resumed.board.occupied().map((cell) => `${cell.x},${cell.y},${cell.z}:${cell.color}`).sort().join('|')
+    === s.board.occupied().map((cell) => `${cell.x},${cell.y},${cell.z}:${cell.color}`).sort().join('|'))
+  check('the restored score and lines match',
+    resumed.board.score === s.board.score && resumed.board.totalLines === s.board.totalLines)
+  check('the restored run record matches',
+    resumed.run.chain === s.run.chain && resumed.run.bestChain === s.run.bestChain
+    && resumed.run.faceWipes === s.run.faceWipes && resumed.run.maxLinesOneMove === s.run.maxLinesOneMove
+    && resumed.run.maxFacesOneMove === s.run.maxFacesOneMove)
+  check('the restored face ledger is a real Set',
+    resumed.run.facesLit instanceof Set && resumed.run.facesLit.size === s.run.facesLit.size)
+  check('the restored hand keeps the shapes and which were spent',
+    resumed.getPieces().length === 3 && resumed.getPieces()[0].shape === s.getPieces()[0].shape
+    && resumed.getPieces()[0].used === true && resumed.getPieces()[1].used === false)
+  check('the restored charges match', resumed.getItemCounts().hammer === 0 && resumed.getItemCounts().bomb === 2)
+  check('the restored pieces are new objects, not the saved entries',
+    resumed.getPieces()[0] !== snap.pieces[0] && Array.isArray(resumed.getPieces()[0].cells))
+  check('restoring does not change the run token', resumed.getRunId() === 0)
+}
+
+// ---- 18. a stale save is repaired, never trusted (P6b-2) ------------------------
+{
+  const s = fresh()
+  const snap = s.snapshot()
+  // A shape retired from the pool since the save was written: its slot is dealt again, and the
+  // strip stays a fixed row of three (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
+  snap.pieces = [{ name: 'retired-shape', used: true }, { name: SHAPES[0].name, used: false }]
+  snap.items = { refresh: 99, hammer: -3, rocket: 1.7, bomb: 1 }
+  s.applySnapshot(snap)
+  check('a retired shape does not shorten the strip', s.getPieces().length === 3, `${s.getPieces().length}`)
+  check('the surviving entry is kept', s.getPieces()[0].shape === SHAPES[0] && s.getPieces()[0].used === false)
+  check('the dealt replacements are fresh and unused', s.getPieces().slice(1).every((piece) => !piece.used))
+  check('a hand-edited charge is clamped to the cap', s.getItemCounts().refresh === 3, `${s.getItemCounts().refresh}`)
+  check('a negative charge is clamped to zero', s.getItemCounts().hammer === 0, `${s.getItemCounts().hammer}`)
+  check('a fractional charge is left alone (clamp, not floor)', s.getItemCounts().rocket === 1.7, `${s.getItemCounts().rocket}`)
+  const bare = fresh().snapshot()
+  bare.items = {}
+  bare.board = {}
+  const missing = fresh()
+  missing.applySnapshot(bare)
+  check('a save with no items falls back to the starting charges',
+    missing.getItemCounts().refresh === 2 && missing.getItemCounts().bomb === 1, JSON.stringify(missing.getItemCounts()))
+  check('a save with no board restores an empty shell',
+    missing.board.occupied().length === 0 && missing.board.score === 0)
 }
 
 console.log(`game-session-tests: ${passed}/${total} checks passed`)

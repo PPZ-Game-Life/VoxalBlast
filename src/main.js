@@ -54,9 +54,7 @@ const {
   getPieces,
   setPieces,
   getRunId,
-  ITEM_TOOLS,
   getItemCounts,
-  setItemCounts,
   setItemCharge,
   itemTool,
   resetItemCounts,
@@ -140,16 +138,12 @@ let selectedPiece = null
 let drag = null
 let viewDrag = null
 let isPaused = false
-let gameEnded = false
 // The settings / controls open flags, the sound+haptics preferences and the legend's
 // per-axis spin counters now live in ui/settings.js (plan §3 state table). Read back
 // through `settingsUi.isOpen()` / `isControlsOpen()` / `getSoundOn()` / `getHapticsOn()`.
 // v0.4 home screen: the cover's open flag lives in ui/home.js, read back through
-// `homeUi.isOpen()`. `runLive` means "the player has entered a board and has not finished
-// it", which is what makes a resume snapshot worth writing. They are separate on purpose:
-// the game boots on the home screen with no run open, and writing a slot there would offer
-// 继续游戏 on a board nobody has touched.
-let runLive = false
+// `homeUi.isOpen()`. `gameEnded` and `runLive` are the session's since P6b-2 — read back
+// through `session.isEnded()` / `session.isSaveable()`.
 let suppressPieceClickUntil = 0
 
 // ============================================================
@@ -599,7 +593,7 @@ function cancelActiveDrag(showFeedback = true) {
 // value so a caller can branch on it in the same statement.
 function syncPause() {
   const previous = isPaused
-  isPaused = homeUi.isOpen() || document.hidden || gameEnded
+  isPaused = homeUi.isOpen() || document.hidden || session.isEnded()
     || settingsUi.isOpen() || settingsUi.isControlsOpen() || introPlaying()
   // The item strip's only "not yet" affordance is a class derived from isPaused
   // (canUseItemsNow), so whoever changes the pause state has to restore it: the opening
@@ -737,7 +731,7 @@ function clampCellIndex(value) {
 }
 
 function canUseItemsNow() {
-  return !gameEnded && !isPaused && !drag && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
+  return !session.isEnded() && !isPaused && !drag && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
 }
 
 function setRocketOrientation(axis) {
@@ -1000,37 +994,25 @@ function rerollPieces() {
   checkStuckAndPrompt()
 }
 
-function hasPlaceablePiece() {
-  return getPieces().some((piece) => !piece.used && board.anyPlacement(piece.cells))
-}
-
-// 07 §3.1 B1 (v0.8.16): a jam no longer ends the run while a blocking-clear tool is
-// still charged — the item that can open a hole has to be allowed to be used, or three
-// of the four tools are decorative exactly when they matter. This is deliberately NOT a
-// solvability check: whether hammer / rocket / bomb can actually open a legal spot is
-// the player's judgement, and the exhaustive search (6 faces × 25 targets × 3 tools × 3
-// candidate cells × their orientations) costs far more than it is worth. The charges
-// are what keep this from looping: every prompt names a tool the player can spend, and
-// the run ends when the last one is gone.
-function hasBlockingClearTool() {
-  const counts = getItemCounts()
-  return counts.hammer > 0 || counts.rocket > 0 || counts.bomb > 0
-}
-
+// The judgement itself (hasPlaceablePiece / hasBlockingClearTool / the three branches) lives in
+// game/gameSession.js (refactor P6b-2): it only reads the hand, the board and the charges. What
+// stays here is what the player sees and the one action the answer can trigger.
 function checkStuckAndPrompt() {
-  if (gameEnded || isPaused || !getPieces().length) return
-  if (hasPlaceablePiece()) return
-  if (getItemCounts().refresh > 0) {
+  // `isPaused` is main's own pause calculation, so it stays in front of the session's judgement —
+  // exactly where the old guard had it (the run being over and an empty hand are `idle` now).
+  if (isPaused) return
+  const outcome = session.stuckOutcome()
+  if (outcome === 'refresh') {
     setStatus('No spot - use Refresh')
     showToast('No spot - try Refresh')
     return
   }
-  if (hasBlockingClearTool()) {
+  if (outcome === 'clear-path') {
     setStatus('No spot - clear a path')
     showToast('No spot - clear a path')
     return
   }
-  endGame()
+  if (outcome === 'end') endGame()
 }
 
 // emitItemBurst() lives in rendering/effects.js (refactor P5): it is a particle system, and the
@@ -1301,30 +1283,12 @@ function finishDrag(event) {
 // The home screen is an opaque cover over a live scene, not a second page: the
 // board, the pose and the candidate previews all survive going home, and the only
 // thing that has to be rebuilt after a page load is what session.js stored.
-const shapeByName = new Map(SHAPES.map((shape) => [shape.name, shape]))
-
+// The board, the hand, the run record and the charges come from the session (refactor P6b-2);
+// the pose is boardView's and is merged in here, because the quaternion belongs to the module
+// that owns the cube and the store below is main's.
 function sessionSnapshot() {
   return {
-    board: {
-      cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
-      score: board.score,
-      totalLines: board.totalLines,
-    },
-    // Names, not shape objects: the pool is the single source of truth for a
-    // candidate's colour and cells, so a snapshot can never resurrect a shape that
-    // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
-    pieces: getPieces().map((piece) => ({ name: piece.shape.name, used: piece.used })),
-    items: { ...getItemCounts() },
-    run: {
-      chain: run.chain,
-      bestChain: run.bestChain,
-      maxLinesOneMove: run.maxLinesOneMove,
-      maxFacesOneMove: run.maxFacesOneMove,
-      facesLit: [...run.facesLit],
-      faceWipes: run.faceWipes,
-      honors: [...run.honors],
-      honorCounts: { ...run.honorCounts },
-    },
+    ...session.snapshot(),
     pose: {
       // The LOGICAL pose plus the player's dialled bearing. The rendered quaternion
       // is a mid-animation value on the frames a save can land on, so it is never
@@ -1342,14 +1306,15 @@ function sessionSnapshot() {
 // Written after every mutation that changes the board or the candidates, so a
 // browser closed mid-run resumes on the last placement rather than on the last
 // visit home. Refuses once the run is over: endGame() clears the slot, and a save
-// written after it would offer 继续游戏 on a finished game.
+// written after it would offer 继续游戏 on a finished game. `isSaveable()` is the
+// session's answer to "is there a run worth writing" (refactor P6b-2).
 function saveSession() {
-  if (!runLive || gameEnded) return false
+  if (!session.isSaveable()) return false
   return sessionStore.save(sessionSnapshot())
 }
 
 function clearSession() {
-  runLive = false
+  session.setRunLive(false)
   return sessionStore.clear()
 }
 
@@ -1431,7 +1396,7 @@ function leaveHome() {
 // the player is looking at it, which is why the boot-time resetGame() does not.
 function beginRun() {
   resetGame()
-  runLive = true
+  session.setRunLive(true)
   saveSession()
   // RESTART and PLAY AGAIN rebuild the run in place, with the player already looking
   // at the board: the wave plays again here. The 新游戏 path leaves this to
@@ -1443,7 +1408,7 @@ function continueRun() {
   const saved = sessionStore.read()
   if (saved) {
     applySession(saved)
-    runLive = true
+    session.setRunLive(true)
   } else {
     beginRun()
   }
@@ -1469,34 +1434,11 @@ function applySession(saved) {
   drag = null
   clearDragGhost()
   selectedPiece = null
-  gameEnded = false
+  session.setEnded(false)
   setCancelZone(false)
-  board.restore(saved.board)
-  run.chain = saved.run.chain
-  run.bestChain = saved.run.bestChain
-  run.maxLinesOneMove = saved.run.maxLinesOneMove
-  run.maxFacesOneMove = saved.run.maxFacesOneMove
-  run.facesLit = new Set(saved.run.facesLit)
-  run.faceWipes = saved.run.faceWipes
-  run.honors = [...saved.run.honors]
-  run.honorCounts = { ...saved.run.honorCounts }
-  const restoredPieces = saved.pieces
-    .map((entry) => {
-      const shape = shapeByName.get(entry.name)
-      if (!shape) return null
-      const piece = makePiece(shape)
-      piece.used = entry.used
-      return piece
-    })
-    .filter(Boolean)
-  // A retired shape can leave fewer than three candidates; deal the missing slots
-  // instead of resuming with a short strip (the layout is a fixed row of three).
-  while (restoredPieces.length < 3) restoredPieces.push(makePiece(pickShape()))
-  setPieces(restoredPieces)
-  setItemCounts(Object.fromEntries(ITEM_TOOLS.map((tool) => [
-    tool.id,
-    THREE.MathUtils.clamp(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),
-  ])))
+  // The board, the run record, the hand and the charges (refactor P6b-2). The order around it is
+  // unchanged: the pose below still comes after the hand, and the item strip after that.
+  session.applySnapshot(saved)
   itemActive = null
   itemBusyUntil = 0
   lastItemHoverKey = null
@@ -1538,8 +1480,8 @@ function applySession(saved) {
 // the scaled delta back through effects.timestep().
 
 function endGame() {
-  if (gameEnded) return
-  gameEnded = true
+  if (session.isEnded()) return
+  session.setEnded(true)
   clearItemUndo()
   syncPause()
   platform.gameplayStop()
@@ -1586,7 +1528,7 @@ function resetGame() {
   board.seedOpening(SHAPES, OPENING_LAYOUT)
   resetItems()
   resetRun()
-  gameEnded = false
+  session.setEnded(false)
   settingsUi.setSettingsOpen(false)
   resetShake()
   clearSlowMo()
@@ -1787,7 +1729,7 @@ window.addEventListener('contextmenu', (event) => {
   cancelActiveDrag()
 })
 leaderboardButtonEl.addEventListener('click', () => {
-  if (gameEnded) openLeaderboard()
+  if (session.isEnded()) openLeaderboard()
 })
 leaderboardCloseEl.addEventListener('click', () => {
   closeLeaderboard()
@@ -1831,7 +1773,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) settleIntro()
   syncPause()
   if (document.hidden) { platform.gameplayStop(); setStatus(homeUi.isOpen() ? 'Home' : 'Paused') }
-  else if (gameEnded || settingsUi.isOpen() || homeUi.isOpen()) return
+  else if (session.isEnded() || settingsUi.isOpen() || homeUi.isOpen()) return
   else { platform.gameplayStart(); setStatus('Pick a shape') }
 })
 // Losing the window ends a mouse gesture the same way (button released outside).
