@@ -1,5 +1,7 @@
 # Runtime art assets
 
+Current gameplay skin: [v0.8.27 reference garden assets](reference/README.md), including generated UI cutouts, two background compositions, and the transparent stone pedestal. The older assets below remain available for fallback/legacy surfaces.
+
 ## Block pigment surface — v0.8.18
 
 - Runtime asset: `block-pigment.webp`, 768 × 768, 26,764 bytes.

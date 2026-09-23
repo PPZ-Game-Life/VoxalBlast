@@ -31,6 +31,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { BOARD_STYLE as style } from './config.js'
 import { blockSurfaceMaps, woodGrainTextureRepeating } from './woodTexture.js'
+import { referencePaintColor } from './referencePalette.js'
 
 export function createBlockResources({ metrics }) {
   // THE block. ONE geometry instance shared by the board's 98 blocks, the three candidate
@@ -90,12 +91,16 @@ export function createBlockResources({ metrics }) {
   // keeps this exact material from the tray, through the drag, onto the board.
   function makeMaterial(color, opacity = 1, variant = 0) {
     return new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(color),
+      color: new THREE.Color(referencePaintColor(color)),
       ...blockSurfaceMaps(true, variant),
       bumpScale: style.paintBumpScale,
       roughness: style.paintRoughness,
       clearcoat: style.paintClearcoat,
       clearcoatRoughness: style.paintClearcoatRoughness,
+      // Keep frontal lacquer saturated; strong white environment reflections
+      // otherwise turn emerald and blue into pastel tiles at thumbnail scale.
+      specularIntensity: 0.35,
+      envMapIntensity: 0.32,
       metalness: 0,
       transparent: opacity < 1,
       opacity,

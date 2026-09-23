@@ -10,6 +10,8 @@
   <body>
     <div id="app" class="home-open">
       <header class="topbar">
+        <div class="score-plaque" aria-hidden="true"></div>
+        <button id="sound-button" class="icon-button" type="button" aria-label="Sound" aria-pressed="true" title="Sound"></button>
         <span id="app-version" class="app-version" aria-label="Game version"></span>
         <div class="score-chip" aria-label="Score">
           <span class="score-chip-label">SCORE</span>
@@ -36,6 +38,7 @@
       </header>
       <main class="game-layout">
         <section class="board-section">
+          <img class="garden-pedestal" src="./art/reference/pedestal.webp" alt="" aria-hidden="true" draggable="false" />
           <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
           <div id="scene-wrap" class="scene-wrap"></div>
           <!-- Honor broadcast layer (08 §6): lives in the info band above the cube,

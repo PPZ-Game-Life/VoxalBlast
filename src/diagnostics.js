@@ -21,6 +21,7 @@ import { FACES } from './game/board.js'
 import { SHAPES } from './game/shapes.js'
 import { KEY_BINDINGS } from './rendering/keyboard.js'
 import { blockSurfaceArtStatus } from './rendering/woodTexture.js'
+import { referencePaintColor } from './rendering/referencePalette.js'
 
 export function createDiagnostics({
   version,
@@ -96,7 +97,8 @@ export function createDiagnostics({
       const hex = (color) => `#${new THREE.Color(color).getHexString()}`
       return {
         piece: piece ? piece.shape.name : null,
-        pieceColor: piece ? hex(piece.shape.color) : null,
+        pieceColor: piece ? hex(referencePaintColor(piece.shape.color)) : null,
+        storedPieceColor: piece ? hex(piece.shape.color) : null,
         valid: input.dragReport().valid,
         cells: pieceView.landingCells(),
       }
@@ -112,6 +114,7 @@ export function createDiagnostics({
       const candidatePieces = session.getPieces()
       const piece = candidatePieces.find((candidate) => !candidate.used) || candidatePieces[0]
       const rect = canvasRect()
+      const faceCenter = boardView.cellWorld(face, 2, 2).project(scene3d.camera)
       const stepScreen = (probeCells) => {
         const [from, to] = boardView.faceOrientedCells(face, probeCells)
         const du = to[0] - from[0]
@@ -126,6 +129,7 @@ export function createDiagnostics({
       }
       return {
         face,
+        center: { x: rect.left + (faceCenter.x + 1) * rect.width / 2, y: rect.top + (1 - faceCenter.y) * rect.height / 2 },
         piece: piece ? piece.shape.name : null,
         raw: piece ? session.currentCells(piece) : [],
         oriented: piece ? boardView.faceOrientedCells(face, session.currentCells(piece)) : [],

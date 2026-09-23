@@ -73,7 +73,7 @@ export function createHome({
       homeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
       homeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
       homeRenderer.outputColorSpace = THREE.SRGBColorSpace
-      homeRenderer.toneMapping = THREE.ACESFilmicToneMapping
+      homeRenderer.toneMapping = THREE.NeutralToneMapping
       homeRenderer.toneMappingExposure = style.exposure
       homeHeroEl.appendChild(homeRenderer.domElement)
       homeScene = new THREE.Scene()

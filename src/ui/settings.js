@@ -33,10 +33,12 @@ export function createSettings({
   let axisHintTimer
   let controlsOpener = null
   let unbind = null
+  const soundButton = document.getElementById('sound-button')
 
   function updateSettingsUi() {
     soundSettingEl.classList.toggle('enabled', soundOn)
     soundSettingEl.setAttribute('aria-pressed', String(soundOn))
+    soundButton?.setAttribute('aria-pressed', String(soundOn))
     hapticsSettingEl.classList.toggle('enabled', hapticsOn)
     hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
   }
@@ -160,6 +162,7 @@ export function createSettings({
     settingsCloseEl.addEventListener('click', onSettingsCloseClick)
     settingsEl.addEventListener('pointerdown', onSettingsBackdropPointerDown)
     soundSettingEl.addEventListener('click', onSoundSettingClick)
+    soundButton?.addEventListener('click', onSoundSettingClick)
     hapticsSettingEl.addEventListener('click', onHapticsSettingClick)
     restartSettingEl.addEventListener('click', onRestartSettingClick)
 
@@ -172,6 +175,7 @@ export function createSettings({
       settingsCloseEl.removeEventListener('click', onSettingsCloseClick)
       settingsEl.removeEventListener('pointerdown', onSettingsBackdropPointerDown)
       soundSettingEl.removeEventListener('click', onSoundSettingClick)
+      soundButton?.removeEventListener('click', onSoundSettingClick)
       hapticsSettingEl.removeEventListener('click', onHapticsSettingClick)
       restartSettingEl.removeEventListener('click', onRestartSettingClick)
       // A stale disposer must not affect a later, explicitly rebound instance.

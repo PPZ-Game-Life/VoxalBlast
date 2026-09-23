@@ -1,8 +1,5 @@
-// v0.7 「田园木作」colour system. Two families, and the split is the whole
-// direction: WARM WOOD is the object (the cube, the signboards, the frame), and
-// CRAYON PAINT is the only saturated thing on screen. Nothing else in the game is
-// allowed a high-chroma colour — that is what keeps the cube the first read at
-// 240px wide even with a full landscape behind it.
+// Garden reference skin: cream timber, saturated lacquer and generated UI art.
+// Stored game colours are mapped separately by referencePalette.js.
 export const RENDER_PALETTE = Object.freeze({
   background: 0xdcefff,
   navy: 0x4a3218, // bark ink: every label on a wooden sign is this brown, not blue
@@ -40,7 +37,7 @@ export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
   // It is therefore deliberately darker than the blocks — the groove IS this colour.
-  hullColor: 0x765033,
+  hullColor: 0xad754c,
   hullOpacity: 1,
   hullRoughness: 0.7,
   hullClearcoat: 0.1,
@@ -49,29 +46,29 @@ export const BOARD_STYLE = Object.freeze({
   hullRadius: 0.08,
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
-  blockSize: 0.94, // narrow joints, with readable rounded shoulders
-  blockRadius: 0.085, // broad polished shoulder, with 82% of the face still flat
-  blockSegments: 3,
-  blockColor: 0xff9c66,
-  blockActiveColor: 0xffa16c,
+  blockSize: 0.97, // tightly packed, individually rounded reference blocks
+  blockRadius: 0.12,
+  blockSegments: 5,
+  blockColor: 0xffcfa3,
+  blockActiveColor: 0xffd3ac,
   // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
-  blockToneSteps: Object.freeze([0.94, 0.97, 1, 1.02, 1.04, 1.06]),
+  blockToneSteps: Object.freeze([0.97, 0.985, 1, 1.01, 1.02, 1.03]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.43,
-  woodClearcoat: 0.65,
-  woodClearcoatRoughness: 0.18,
-  woodBumpScale: 0.009,
-  paintBumpScale: 0.005,
-  environmentIntensity: 0.7,
+  woodRoughness: 0.34,
+  woodClearcoat: 0.8,
+  woodClearcoatRoughness: 0.16,
+  woodBumpScale: 0.003,
+  paintBumpScale: 0.001,
+  environmentIntensity: 0.5,
   // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.3,
-  paintClearcoat: 1,
-  paintClearcoatRoughness: 0.12,
-  voxelEdgeOpacity: 0.12,
+  paintRoughness: 0.22,
+  paintClearcoat: 0.65,
+  paintClearcoatRoughness: 0.09,
+  voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
   previewLift: 0.03,
@@ -106,7 +103,9 @@ export const BOARD_STYLE = Object.freeze({
   // fine-tune band symmetric in both directions. The pitch is the one knob that trades
   // "roof visible" against "grid straight": the tilt above is ~2.2° here, ~1.4° at 5°,
   // ~6.9° back at v0.8.9's 17.35°.
-  cameraDirection: Object.freeze([0.273, 0.139, 0.952]),
+  // Reference presentation: ~26° yaw relative to the existing 16° bearing dock,
+  // with a visible top. Gesture thresholds / retained bearing are unchanged.
+  cameraDirection: Object.freeze([0.620, 0.375, 0.689]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
@@ -117,23 +116,23 @@ export const BOARD_STYLE = Object.freeze({
   // and 0.77~0.79 of the mobile canvas width, with equal roll bands on both sides
   // (302/220/376px on PC, 39~42px on mobile). `keepCubeInsideCanvas()`
   // additionally guarantees the cube cannot leave the canvas on any aspect.
-  safeFactorDesktop: 0.887,
-  safeFactorMobile: 0.96,
+  safeFactorDesktop: 1.18,
+  safeFactorMobile: 1.06,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
-  targetYDesktop: 0.1,
-  targetYMobile: -0.3,
+  targetYDesktop: 0,
+  targetYMobile: 0,
 })
 
 // The same sun / sky / reflection rig is used by the board, tray and home toy.
 export const LIGHTING_STYLE = Object.freeze({
-  sky: 0xfff4df,
-  ground: 0xa49a7b,
-  hemisphereIntensity: 0.65,
-  keyColor: 0xffefd6,
-  keyIntensity: 2.4,
-  keyPosition: Object.freeze([-3.5, 7, 5]),
+  sky: 0xffffff,
+  ground: 0xefd3b7,
+  hemisphereIntensity: 1.0,
+  keyColor: 0xfff5e6,
+  keyIntensity: 2.6,
+  keyPosition: Object.freeze([-3.5, 7, 9]),
   fillColor: 0xc9e3ff,
-  fillIntensity: 0.5,
+  fillIntensity: 0.8,
   fillPosition: Object.freeze([5, 2, -4]),
   rimColor: 0xffe6c4,
   rimIntensity: 0.75,
@@ -143,9 +142,9 @@ export const LIGHTING_STYLE = Object.freeze({
   shadowNormalBias: 0.012,
   environmentWidth: 256,
   environmentHeight: 128,
-  reflectionKeyIntensity: 14,
+  reflectionKeyIntensity: 8,
   reflectionKeyWidth: 0.48,
-  reflectionKeyHeight: 0.16,
+  reflectionKeyHeight: 0.24,
   reflectionRimIntensity: 4,
   reflectionRimFocus: 32,
 })

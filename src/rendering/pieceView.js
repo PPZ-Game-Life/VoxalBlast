@@ -27,6 +27,7 @@ import * as THREE from 'three'
 import { addToyLights } from './toyLights.js'
 import { BOARD_STYLE as style, DRAG_GHOST, dragGhostLiftPx, RENDER_PALETTE as palette, VFX_CONFIG } from './config.js'
 import { faceLattice } from '../game/board.js'
+import { referencePaintColor } from './referencePalette.js'
 
 export function createPieceView({
   blocks,
@@ -69,7 +70,7 @@ export function createPieceView({
     const previewRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' })
     previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
     previewRenderer.outputColorSpace = THREE.SRGBColorSpace
-    previewRenderer.toneMapping = THREE.ACESFilmicToneMapping
+    previewRenderer.toneMapping = THREE.NeutralToneMapping
     previewRenderer.toneMappingExposure = style.exposure
     previewRenderer.setClearColor(0x000000, 0)
 
@@ -77,7 +78,7 @@ export function createPieceView({
     addToyLights(previewScene)
 
     const previewCamera = new THREE.OrthographicCamera(-2.5, 2.5, 2.2, -2.2, 0.1, 40)
-    previewCamera.position.set(2.5, 2.9, 5.4)
+    previewCamera.position.set(0.12, 0.18, 8)
     previewCamera.lookAt(0, 0, 0)
     const root = new THREE.Group()
     previewScene.add(root)
@@ -85,10 +86,10 @@ export function createPieceView({
     const size = new THREE.Box3().setFromPoints(positions.map((p) => p.clone())).getSize(new THREE.Vector3()).addScalar(0.62)
     const baseScale = THREE.MathUtils.clamp(3.2 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
     root.scale.setScalar(baseScale)
-    const outlineColor = new THREE.Color(piece.shape.color).multiplyScalar(0.58)
+    const outlineColor = new THREE.Color(referencePaintColor(piece.shape.color)).multiplyScalar(0.58)
     const meshes = positions.map((position) => {
       const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
-      mesh.scale.setScalar(0.7)
+      mesh.scale.setScalar(0.8)
       mesh.position.copy(position)
       mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
       root.add(mesh)
@@ -128,7 +129,7 @@ export function createPieceView({
         preview.camera.bottom = center.y - halfHeight
         preview.camera.updateProjectionMatrix()
       }
-      preview.camera.position.set(2.5, 2.9, 5.4)
+      preview.camera.position.set(0.12, 0.18, 8)
       preview.camera.lookAt(0, 0, 0)
       preview.renderer.render(preview.scene, preview.camera)
     })
@@ -198,7 +199,7 @@ export function createPieceView({
     const faceNormal = cubeVector(face, 'n')
     const markerColor = valid ? color : palette.invalid
     const markerEdge = valid
-      ? new THREE.Color(color).multiplyScalar(0.58)
+      ? new THREE.Color(referencePaintColor(color)).multiplyScalar(0.58)
       : new THREE.Color(0x7a2a17)
     cells.forEach(([u, v]) => {
       const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
@@ -259,7 +260,7 @@ export function createPieceView({
   // (05「候选预览与棋盘同源」), not as a second visual language for dragging.
   function buildDragGhost(piece) {
     clearGroup(ghost)
-    const fill = new THREE.Color(piece.shape.color)
+    const fill = new THREE.Color(referencePaintColor(piece.shape.color))
     const outline = fill.clone().multiplyScalar(0.58)
     const cells = getCells(piece)
     // Rows the shape spans on screen: what the fingertip clearance is measured from.

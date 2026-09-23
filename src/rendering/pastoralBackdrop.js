@@ -294,8 +294,13 @@ export function installPastoralBackdrop(container) {
     fallback.style.visibility = 'visible'
   }, { once: true })
   // Vite's BASE_URL also supports the project's relative production base './'.
-  painting.src = `${import.meta.env.BASE_URL}art/pastoral-valley.webp`
-  layer.append(painting)
+  const picture = document.createElement('picture')
+  const portrait = document.createElement('source')
+  portrait.media = '(orientation: portrait)'
+  portrait.srcset = `${import.meta.env.BASE_URL}art/reference/valley-portrait.webp`
+  painting.src = `${import.meta.env.BASE_URL}art/reference/valley-landscape.webp`
+  picture.append(portrait, painting)
+  layer.append(picture)
   container.prepend(layer)
   return layer
 }

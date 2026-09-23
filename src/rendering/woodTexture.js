@@ -159,7 +159,7 @@ function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
       // not in bump: the old broad bump made the faces look soft and dented.
       if (channel === 'roughness') value = 218 + stroke * 1.2 - (1 - fade) * 28
       else if (channel === 'height') value = 128 + (brush - 0.5) * 12 + stroke * (painted ? 0.12 : 0.3)
-      else value = 240 + (stroke * (painted ? 1.5 : 2.15) + (wash - 0.5) * 7) * fade
+      else value = 248 + (stroke * (painted ? 0.15 : 0.65) + (wash - 0.5) * 3) * fade
       const i = (y * size + x) * 4
       pixels.data[i] = value
       pixels.data[i + 1] = value

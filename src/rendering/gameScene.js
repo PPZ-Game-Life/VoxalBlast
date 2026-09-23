@@ -32,7 +32,7 @@ import {
   ToneMappingMode,
 } from 'postprocessing'
 import { skipComposerDepthBlit } from './threeCompat.js'
-import { BOARD_STYLE as style, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, ROTATE_STYLE, VFX_CONFIG } from './config.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
 // resolved at exactly the point in main's evaluation it always was.
@@ -60,6 +60,36 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   const frameRight = new THREE.Vector3()
   const frameUp = new THREE.Vector3()
   let orbitDistance = 12
+  const pedestal = sceneWrap.parentElement.querySelector('.garden-pedestal')
+  const stagePoint = new THREE.Vector3()
+  const stageUp = new THREE.Vector3(0, 1, 0)
+  let stageProjectionKey = ''
+
+  // Anchor scenery to the resting cube footprint, not its rotating/scaling intro
+  // mesh. It follows resize and wheel zoom without wobbling during a face turn.
+  function fitPedestal() {
+    if (!pedestal) return
+    const width = sceneWrap.clientWidth, height = sceneWrap.clientHeight
+    const key = [width, height, sceneWrap.offsetLeft, sceneWrap.offsetTop,
+      camera.position.x, camera.position.y, camera.position.z,
+      cameraTarget.x, cameraTarget.y, camera.fov].join(':')
+    if (key === stageProjectionKey) return
+    stageProjectionKey = key
+    camera.updateMatrixWorld(true)
+    let minX = Infinity, maxX = -Infinity, maxY = -Infinity
+    const extent = cubeSolidExtent()
+    for (const x of [-extent, extent]) for (const y of [-extent, extent]) for (const z of [-extent, extent]) {
+      stagePoint.set(x, y, z).applyAxisAngle(stageUp, ROTATE_STYLE.bearingYaw).project(camera)
+      const px = (stagePoint.x + 1) * width / 2
+      minX = Math.min(minX, px)
+      maxX = Math.max(maxX, px)
+      maxY = Math.max(maxY, (1 - stagePoint.y) * height / 2)
+    }
+    const stageWidth = (maxX - minX) * 1.28
+    pedestal.style.width = `${stageWidth}px`
+    pedestal.style.left = `${sceneWrap.offsetLeft + (minX + maxX) / 2}px`
+    pedestal.style.top = `${sceneWrap.offsetTop + maxY - stageWidth * 0.20}px`
+  }
 
   // Fit bound covers the shell plus the one tile inset that stands proud of it.
   const cubeExtent = () => metrics().half + 0.55
@@ -112,6 +142,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   function fitCameraToPlaySpace() {
     camera.position.copy(CAMERA_DIR).multiplyScalar(orbitDistance * cameraZoom)
     camera.lookAt(cameraTarget)
+    fitPedestal()
   }
 
   // The tuned framing sits close to the edge, and how much of the canvas a given
@@ -227,7 +258,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     levels: quality.lowPower ? VFX_CONFIG.bloom.lowPowerLevels : VFX_CONFIG.bloom.levels,
   })
   const smaaEffect = new SMAAEffect({ preset: quality.lowPower ? SMAAPreset.LOW : SMAAPreset.HIGH })
-  const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC })
+  const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })
   const effectPass = new EffectPass(camera, bloomEffect, toneMappingEffect, smaaEffect)
   // SMAA carries EffectAttribute.DEPTH, so this pass would otherwise ask the composer for a
   // depth texture it never reads. Cancel that request before addPass() sees it — the reason,

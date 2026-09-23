@@ -529,10 +529,16 @@ async function caseAttachMapping(client, input) {
   for (const shape of ['Dot', 'Line 3', 'Square']) {
     await reloadWithHand(client, [shape, 'Line 3', 'Square', 'Dot'].filter((name, index, all) => all.indexOf(name) === index).slice(0, 3))
     const before = await client.readJson(STATE)
-    const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
-    const cube = cubeCentre(bounds)
-    const held = await holdDragOver(client, input, before.slots[0], centreTargets(bounds),
-      (state) => attached(state) && tracksDrag(state) && state.ghost.previewPointer !== null)
+    // Isolate the attach mapping on the operation face. A three-quarter cube's
+    // silhouette centre is not its face centre; sweeping from the tray first
+    // clamps against a different edge and measures retained over-travel instead.
+    // Case C below independently exercises that swept edge/reversal path.
+    const cube = before.placement.center
+    await input.pressAndHold(before.slots[0], cube, 1)
+    await client.frames()
+    const state = await client.readJson(STATE)
+    const held = attached(state) && tracksDrag(state) && state.ghost.previewPointer !== null
+      ? { state, target: cube } : null
     if (!held) { skip(`A attach mapping (${shape})`, 'no swept point produced an attached preview'); continue }
     const span = extent(held.state.placement.oriented)
     const centre = { u: span.u / 2, v: span.v / 2 }
@@ -901,12 +907,15 @@ async function caseOtherFace(client, input) {
     const from = await readState(client, input, cube)
     if (!attached(from)) { skip(`G ${axis.key} step on the turned face`, 'the pointer left the cube'); break }
     const base = from.ghost.previewOrigin
-    const moved = await readState(client, input, { x: Math.round(cube.x + axis.vec.x), y: Math.round(cube.y + axis.vec.y) })
+    // Move inward if this orientation's centre target is already on its last
+    // row/column. An outward step must clamp, not advance beyond the board.
+    const direction = base[axis.key] >= SH - 1 ? -1 : 1
+    const moved = await readState(client, input, { x: Math.round(cube.x + axis.vec.x * direction), y: Math.round(cube.y + axis.vec.y * direction) })
     if (!attached(moved)) { skip(`G ${axis.key} step on the turned face`, 'the pointer left the cube'); break }
     const du = moved.ghost.previewOrigin.u - base.u
     const dv = moved.ghost.previewOrigin.v - base.v
     check(`G one ${axis.key} step of pointer travel moves the piece one ${axis.key} cell on face ${turned.rotation.front}`,
-      axis.key === 'u' ? du === 1 && dv === 0 : dv === 1 && du === 0,
+      axis.key === 'u' ? du === direction && dv === 0 : dv === direction && du === 0,
       `origin ${base.u},${base.v} -> ${moved.ghost.previewOrigin.u},${moved.ghost.previewOrigin.v} (step ${axis.vec.x.toFixed(1)}, ${axis.vec.y.toFixed(1)} px)`)
   }
   await releaseWithoutPlacing(client, input, cube)
