@@ -8,9 +8,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 // Modules evaluate once, so this side-effect import and gameScene's named import are the
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
-import { Board, SH, FACES, faceLattice, isShell } from './game/board.js'
-import { SHAPES, pickShape, normalizeCells, maxOrigin } from './game/shapes.js'
-import { moveScore, lineMultiplier, nextChain } from './game/scoring.js'
+import { SH, FACES, faceLattice, isShell } from './game/board.js'
+import { SHAPES, pickShape, maxOrigin } from './game/shapes.js'
+import { lineMultiplier } from './game/scoring.js'
 import { resolveHonors, feedbackLevel, HONORS } from './game/honors.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
@@ -25,6 +25,7 @@ import { installWoodSkin, woodGrainTextureRepeating, blockSurfaceArtStatus } fro
 import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
+import { createGameSession } from './game/gameSession.js'
 import { createPieceView } from './rendering/pieceView.js'
 import { createEffects } from './rendering/effects.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
@@ -37,7 +38,23 @@ import { createSettings } from './ui/settings.js'
 
 installToyIcons()
 
-const board = new Board()
+// The game's own data model -- the board, the hand, the run counters and the placement rule --
+// lives in game/gameSession.js (refactor P6a). The board and the run record are const objects
+// mutated in place, so they bind straight back to the names this file has always used; the two
+// that are reassigned (the hand, the run token) go through accessors.
+const session = createGameSession()
+const board = session.board
+const run = session.run
+const {
+  resetRun,
+  deal,
+  makePiece,
+  currentCells,
+  settlePlacement,
+  getPieces,
+  setPieces,
+  getRunId,
+} = session
 const platform = createCrazyGamesAdapter()
 // Static DOM handles (refactor P1). The names are kept EXACTLY as they were when this file
 // queried the document itself, so every use site below still reads the identifier it
@@ -106,7 +123,6 @@ const {
 // exists to answer, and a badge that only exists on the dev server cannot answer it.
 // It only shrinks on narrow screens — never display:none.
 versionEl.textContent = `v${packageInfo.version}`
-let pieces = []
 let selectedPiece = null
 let drag = null
 let viewDrag = null
@@ -126,20 +142,8 @@ let suppressPieceClickUntil = 0
 // ============================================================
 // Run state (v0.3 honors / records)
 // ============================================================
-// Everything the chain indicator, the Game Over panel and the record wall need to
-// know about the run in progress. Nothing here is persisted as-is: endGame() hands
-// it to recordStore, which owns the snapshot format and its migration.
-const run = {
-  chain: 0, // consecutive clearing placements; a dead turn zeroes it (08 §4.4)
-  bestChain: 0,
-  maxLinesOneMove: 0,
-  maxFacesOneMove: 0,
-  facesLit: new Set(), // faces cleared at least once this run (六面制霸 progress)
-  faceWipes: 0,
-  honors: [], // ids in the order they were earned
-  honorCounts: {},
-}
-let runId = 0 // one token per game, so a score is never submitted twice
+// The run record and the run token live in game/gameSession.js (refactor P6a); `run` is bound
+// above and the token is read through getRunId().
 let bestScore = recordStore.best().score
 
 // The Game Over card's presentation, wired to the run through a getter (see ui/gameOver.js).
@@ -179,17 +183,6 @@ const {
   renderAxisPick,
 } = hud
 
-function resetRun() {
-  run.chain = 0
-  run.bestChain = 0
-  run.maxLinesOneMove = 0
-  run.maxFacesOneMove = 0
-  run.facesLit.clear()
-  run.faceWipes = 0
-  run.honors = []
-  run.honorCounts = {}
-  runId += 1
-}
 
 const quality = getRenderQuality()
 
@@ -496,16 +489,12 @@ function armIntroIfVisible() {
 // ============================================================
 // HUD / pieces / previews
 // ============================================================
-function makePiece(shape) {
-  return { shape, cells: normalizeCells(shape.cells), used: false }
-}
 
-function currentCells(piece) {
-  return piece.cells
-}
 
+// The deal itself is the session's (P6a); clearing the selection and repainting the slots are
+// this file's, and they happen in the order they always did.
 function nextPieces() {
-  pieces = Array.from({ length: 3 }, () => makePiece(pickShape()))
+  deal()
   selectedPiece = null
   renderPieceSlots()
 }
@@ -522,7 +511,7 @@ function colorHex(color) {
 function renderPieceSlots() {
   disposePiecePreviews()
   slotsEl.innerHTML = ''
-  pieces.forEach((piece, index) => {
+  getPieces().forEach((piece, index) => {
     const slot = document.createElement('button')
     slot.className = `piece-slot${piece.used ? ' used' : ''}${selectedPiece === piece ? ' selected' : ''}`
     slot.type = 'button'
@@ -1023,10 +1012,10 @@ function activateItem(id) {
 function rerollPieces() {
   // A refresh replaces the batch the undo was recorded against, so the window closes.
   clearItemUndo()
-  const before = pieces.map((piece) => piece.shape.name).join('|')
+  const before = getPieces().map((piece) => piece.shape.name).join('|')
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    pieces = Array.from({ length: 3 }, () => makePiece(pickShape()))
-    if (pieces.map((piece) => piece.shape.name).join('|') !== before) break
+    setPieces(Array.from({ length: 3 }, () => makePiece(pickShape())))
+    if (getPieces().map((piece) => piece.shape.name).join('|') !== before) break
   }
   selectedPiece = null
   renderPieceSlots()
@@ -1038,7 +1027,7 @@ function rerollPieces() {
 }
 
 function hasPlaceablePiece() {
-  return pieces.some((piece) => !piece.used && board.anyPlacement(piece.cells))
+  return getPieces().some((piece) => !piece.used && board.anyPlacement(piece.cells))
 }
 
 // 07 §3.1 B1 (v0.8.16): a jam no longer ends the run while a blocking-clear tool is
@@ -1054,7 +1043,7 @@ function hasBlockingClearTool() {
 }
 
 function checkStuckAndPrompt() {
-  if (gameEnded || isPaused || !pieces.length) return
+  if (gameEnded || isPaused || !getPieces().length) return
   if (hasPlaceablePiece()) return
   if (itemCounts.refresh > 0) {
     setStatus('No spot - use Refresh')
@@ -1256,38 +1245,6 @@ function releaseDragPointer(source, pointerId) {
 // (board.js) → chain → honors → score (§4.5) → present (§6). Keeping the whole
 // sequence here is what makes the HUD number auditable — it is the sum of the
 // named parts, and the parts are the ones the docs name.
-function settlePlacement(face, cells, origin, color) {
-  // A placement changes the board the undo was recorded against, so the window closes
-  // before anything else happens (07 §3.1 A9).
-  clearItemUndo()
-  const result = board.place(face, cells, origin, color)
-  const lines = result.lines
-  const lineCount = lines.length
-  const previousChain = run.chain
-  run.chain = nextChain(previousChain, lineCount)
-  if (lineCount > 0) {
-    run.bestChain = Math.max(run.bestChain, run.chain)
-    lines.forEach((line) => run.facesLit.add(line.face))
-  }
-  const honors = resolveHonors({ lines: lineCount, faces: result.facesHit })
-  const level = feedbackLevel({ lines: lineCount, faces: result.facesHit })
-  const score = moveScore({
-    cellCount: cells.length,
-    lines: lineCount,
-    faces: result.facesHit,
-    chain: run.chain,
-    honorBonus: honors.bonus,
-  })
-  board.addScore(score.total, lineCount)
-  run.maxLinesOneMove = Math.max(run.maxLinesOneMove, lineCount)
-  run.maxFacesOneMove = Math.max(run.maxFacesOneMove, result.facesHit)
-  run.faceWipes += result.faceWiped.length
-  honors.ids.forEach((id) => {
-    run.honors.push(id)
-    run.honorCounts[id] = (run.honorCounts[id] || 0) + 1
-  })
-  return { result, lines, lineCount, honors, level, score, previousChain }
-}
 
 function finishDrag(event) {
   if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return
@@ -1323,6 +1280,10 @@ function finishDrag(event) {
   // Place the cells the preview actually showed (screen-facing orientation on
   // the front face), never a fresh re-derivation — the drop must match what the
   // player saw under their finger.
+  // A placement changes the board the undo was recorded against, so the window closes before
+  // anything else happens (07 §3.1 A9) -- it used to be settlePlacement()'s own first line, and
+  // it now sits here, in the same order, because the window is the item flow's (P6b).
+  clearItemUndo()
   const {
     result, lines, lineCount, honors, level, score, previousChain,
   } = settlePlacement(face, currentDrag.cells, currentDrag.origin, currentDrag.piece.shape.color)
@@ -1351,7 +1312,7 @@ function finishDrag(event) {
     if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
     setStatus('Pick a shape')
   }
-  if (pieces.every((piece) => piece.used)) nextPieces()
+  if (getPieces().every((piece) => piece.used)) nextPieces()
   // The resume slot is written on the same beat as the board change, and BEFORE the
   // stuck check: checkStuckAndPrompt() may end the run, and a snapshot written after
   // that would be a save of a finished game (saveSession refuses those anyway).
@@ -1377,7 +1338,7 @@ function sessionSnapshot() {
     // Names, not shape objects: the pool is the single source of truth for a
     // candidate's colour and cells, so a snapshot can never resurrect a shape that
     // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
-    pieces: pieces.map((piece) => ({ name: piece.shape.name, used: piece.used })),
+    pieces: getPieces().map((piece) => ({ name: piece.shape.name, used: piece.used })),
     items: { ...itemCounts },
     run: {
       chain: run.chain,
@@ -1544,7 +1505,7 @@ function applySession(saved) {
   run.faceWipes = saved.run.faceWipes
   run.honors = [...saved.run.honors]
   run.honorCounts = { ...saved.run.honorCounts }
-  pieces = saved.pieces
+  const restoredPieces = saved.pieces
     .map((entry) => {
       const shape = shapeByName.get(entry.name)
       if (!shape) return null
@@ -1555,7 +1516,8 @@ function applySession(saved) {
     .filter(Boolean)
   // A retired shape can leave fewer than three candidates; deal the missing slots
   // instead of resuming with a short strip (the layout is a fixed row of three).
-  while (pieces.length < 3) pieces.push(makePiece(pickShape()))
+  while (restoredPieces.length < 3) restoredPieces.push(makePiece(pickShape()))
+  setPieces(restoredPieces)
   itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
     tool.id,
     THREE.MathUtils.clamp(Number.isFinite(saved.items[tool.id]) ? saved.items[tool.id] : tool.start, 0, tool.cap),
@@ -1634,7 +1596,7 @@ function endGame() {
   refreshHome()
   // Layer 2: exactly one submission per run, dropped silently when the game has no
   // leaderboard invitation (§7.4).
-  platform.submitScore(finalScore, runId)
+  platform.submitScore(finalScore, getRunId())
   gameOverEl.classList.remove('hidden')
 }
 
@@ -2229,7 +2191,8 @@ globalThis.__voxalblast = Object.freeze({
   // A matching placement therefore has +u rightward and +v downward.
   placement: () => {
     const face = findFrontFace()
-    const piece = pieces.find((candidate) => !candidate.used) || pieces[0]
+    const candidatePieces = getPieces()
+    const piece = candidatePieces.find((candidate) => !candidate.used) || candidatePieces[0]
     const rect = renderer.domElement.getBoundingClientRect()
     const stepScreen = (probeCells) => {
       const [from, to] = faceOrientedCells(face, probeCells)
