@@ -251,6 +251,11 @@ const STATE = `(() => {
     homeState: globalThis.__voxalblast.home(),
     slots: [...document.querySelectorAll('#piece-slots .piece-slot')].map((slot) => slot.classList.contains('used')),
     storedSound: localStorage.getItem('voxalblast-sound'),
+    // refactor P8: the storage boundary. The records key is read as the raw string so the
+    // check proves the run reached storage under the SHIPPED key, not just into the module's
+    // in-memory copy.
+    records: globalThis.__voxalblast.records(),
+    storedRecords: localStorage.getItem('voxalblast.records.v1'),
   }
 })()`
 
@@ -484,12 +489,24 @@ async function caseEscapePrecedence(client, input) {
 async function caseGameOver(client, input) {
   const ended = await client.evaluate('Boolean(globalThis.__voxalblastDev?.endGame)')
   if (!ended) { skip('F Game Over paths', 'no DEV handle: point this probe at `npm run dev`'); return }
+  const beforeOver = await client.readJson(STATE)
   await client.evaluate('globalThis.__voxalblastDev.endGame()')
   await sleep(500)
   const over = await client.readJson(STATE)
   check('F the Game Over card is shown', open(over.gameOver), `display=${over.gameOver.display}`)
   check('F PLAY AGAIN is reachable, not just present', open(over.playAgain) && over.playAgain.onTop === true,
     `display=${over.playAgain.display} ${over.playAgain.width}x${over.playAgain.height} onTop=${over.playAgain.onTop}`)
+
+  // refactor P8 (storage boundary): ending a run is the one flow that writes the record
+  // book, so it is where "the run really reached storage under the shipped key" is
+  // observable — the in-memory copy would look identical if the key or the probe broke.
+  check('F ending the run writes the record book under its shipped key',
+    over.storedRecords !== null && JSON.parse(over.storedRecords).v === 1,
+    `key=${over.storedRecords === null ? 'absent' : 'present'} v=${over.storedRecords ? JSON.parse(over.storedRecords).v : '-'}`)
+  check('F the recorded run is the one that just ended',
+    over.records.records.gamesPlayed === beforeOver.records.records.gamesPlayed + 1
+    && over.records.recent[0].score === over.board.score,
+    `gamesPlayed ${beforeOver.records.records.gamesPlayed} -> ${over.records.records.gamesPlayed}, recent[0].score=${over.records.recent[0].score} board.score=${over.board.score}`)
 
   // The Game Over card is the leaderboard's second entry point; focus must come back to
   // ITS button, not to the cover's (that is the per-opener rule from v0.8.19).
@@ -552,6 +569,16 @@ async function caseChurn(client, input) {
   check('G the sound preference survives a reload',
     reloaded.soundPressed === before.soundPressed && reloaded.storedSound === before.storedSound,
     `aria-pressed ${before.soundPressed} -> ${reloaded.soundPressed}, storage=${reloaded.storedSound}`)
+  // refactor P8: the record book is the other half of the storage boundary, and unlike the
+  // preference it is rewritten only by endGame(). The raw string has to come back byte for
+  // byte — a facade that read through a different key would show up right here.
+  check('G the local record survives a reload unchanged',
+    reloaded.storedRecords === before.storedRecords && reloaded.records.records.gamesPlayed === before.records.records.gamesPlayed,
+    `gamesPlayed ${before.records.records.gamesPlayed} -> ${reloaded.records.records.gamesPlayed}, stored=${reloaded.storedRecords === before.storedRecords ? 'identical' : 'changed'}`)
+  check('G the reloaded page reads the record book back from storage',
+    reloaded.records.best.score === before.records.best.score
+    && JSON.stringify(reloaded.records.recent) === JSON.stringify(before.records.recent),
+    `best ${before.records.best.score} -> ${reloaded.records.best.score}, recent=${reloaded.records.recent.length}`)
 }
 
 // --------------------------------------------------------------------------- driver

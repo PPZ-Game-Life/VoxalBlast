@@ -15,9 +15,13 @@
 //  3. AN UNREADABLE SLOT IS "NO SAVED RUN", NEVER A THROW. The home screen has to
 //     render on the first frame even if localStorage holds garbage; anything that
 //     cannot be played back reads as null — exactly the state of a new player.
+//
+// The storage probe comes from platform/storage.js directly since refactor P8 (it used to
+// be borrowed from records.js, which still re-exports it for older callers). The key, the
+// schema, migrate() and the memory slot below stay here, in the store that owns them.
 import { FACES, SH, isShell } from './board.js'
 import { SHAPES } from './shapes.js'
-import { pickStorage, probeStorage } from './records.js'
+import { pickStorage, probeStorage } from '../platform/storage.js'
 
 export const SESSION_VERSION = 1
 const STORAGE_KEY = 'voxalblast.session.v1'

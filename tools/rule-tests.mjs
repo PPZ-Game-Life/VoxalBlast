@@ -15,8 +15,9 @@ import {
   chainMilestoneBonus, nextChain, moveScore,
 } from '../src/game/scoring.js'
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
-import { createRecordStore, weekKey, migrate, RECORD_FIELDS } from '../src/game/records.js'
-import { createSessionStore, migrate as migrateSession, SESSION_VERSION } from '../src/game/session.js'
+import { createRecordStore, weekKey, migrate, RECORD_FIELDS, pickStorage as pickStorageFromRecords, probeStorage as probeStorageFromRecords } from '../src/game/records.js'
+import { createSessionStore, migrate as migrateSession, SESSION_VERSION, SESSION_KEY } from '../src/game/session.js'
+import { pickStorage, probeStorage, readPreferenceOn, writePreferenceOn } from '../src/platform/storage.js'
 import { KEY_BINDINGS, axisForKey } from '../src/rendering/keyboard.js'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../src/rendering/swipe.js'
 import { ROTATE_STYLE } from '../src/rendering/config.js'
@@ -462,6 +463,92 @@ group('session', () => {
   check('a storage-less save reports that it was not persisted', memory.save(snapshot) === false)
   equal('a run saved without storage still resumes this session', memory.read().board.cells.length, live.length)
   check('a storage-less slot reports itself as not persistent', !memory.persistent)
+})
+
+// ---------------------------------------------------------------- storage boundary
+// refactor P8: the "is there a storage we can trust" probe moved out of records.js into
+// platform/storage.js, and the two preferences stopped touching localStorage directly.
+// What has to hold is that the MOVE changed nothing a player can observe — same probe
+// semantics, same four key literals, same 'on'/'off' strings, same default, and the same
+// deliberately unguarded preference path.
+group('storage', () => {
+  const fake = new Map()
+  const storage = {
+    getItem: (key) => (fake.has(key) ? fake.get(key) : null),
+    setItem: (key, value) => fake.set(key, value),
+    removeItem: (key) => fake.delete(key),
+  }
+  const hostile = {
+    getItem() { throw new Error('storage disabled') },
+    setItem() { throw new Error('storage disabled') },
+    removeItem() { throw new Error('storage disabled') },
+  }
+
+  // records.js keeps re-exporting the probe, and it has to be the SAME function rather
+  // than a second copy that could drift away from the facade session.js now imports.
+  check('records.js still re-exports the storage probe',
+    pickStorageFromRecords === pickStorage && probeStorageFromRecords === probeStorage)
+
+  // probeStorage: the same object back when it accepts a write, null when it lies.
+  check('a working storage passes the probe unchanged', probeStorage(storage) === storage)
+  equal('a hostile storage probes as null', probeStorage(hostile), null)
+  equal('a missing storage probes as null', probeStorage(null), null)
+  equal('the probe leaves no key behind', fake.size, 0)
+
+  // pickStorage reads the global. Node has no localStorage at all, which is also the
+  // "webview exposes nothing" path.
+  equal('with no global storage the pick is null', pickStorage(), null)
+  globalThis.localStorage = hostile
+  equal('a global storage that throws on access is not picked', pickStorage(), null)
+  globalThis.localStorage = storage
+  check('a usable global storage is picked', pickStorage() === storage)
+  equal('picking through the global leaves no key behind', fake.size, 0)
+  delete globalThis.localStorage
+  equal('the global is left as it was found', pickStorage(), null)
+
+  // The shipped keys and schema versions must not move: a rename here resets a player's
+  // records, their save slot and their preferences.
+  equal('the session key is unchanged', SESSION_KEY, 'voxalblast.session.v1')
+  const recordsFake = new Map()
+  const recordsStorage = {
+    getItem: (key) => (recordsFake.has(key) ? recordsFake.get(key) : null),
+    setItem: (key, value) => recordsFake.set(key, value),
+    removeItem: (key) => recordsFake.delete(key),
+  }
+  createRecordStore(recordsStorage).recordRun({ score: 10, at: 1 })
+  equal('the records key is unchanged, and the probe cleaned up after itself',
+    [...recordsFake.keys()].join(','), 'voxalblast.records.v1')
+
+  // Preferences: 'off' is the only off, a missing key is on, and the stored strings are
+  // the shipped ones.
+  const prefFake = new Map()
+  const prefStorage = {
+    getItem: (key) => (prefFake.has(key) ? prefFake.get(key) : null),
+    setItem: (key, value) => prefFake.set(key, value),
+    removeItem: (key) => prefFake.delete(key),
+  }
+  check('a sound preference with no key stored reads as on', readPreferenceOn('sound', prefStorage))
+  check('a haptics preference with no key stored reads as on', readPreferenceOn('haptics', prefStorage))
+  writePreferenceOn('sound', false, prefStorage)
+  equal('turning sound off writes the shipped key', [...prefFake.keys()].join(','), 'voxalblast-sound')
+  equal('turning sound off writes "off"', prefFake.get('voxalblast-sound'), 'off')
+  check('and it reads back as off', !readPreferenceOn('sound', prefStorage))
+  writePreferenceOn('sound', true, prefStorage)
+  equal('turning it back on writes "on"', prefFake.get('voxalblast-sound'), 'on')
+  writePreferenceOn('haptics', false, prefStorage)
+  equal('haptics keeps its own shipped key', prefFake.get('voxalblast-haptics'), 'off')
+  prefFake.set('voxalblast-sound', 'yes please')
+  check('only "off" reads as off', readPreferenceOn('sound', prefStorage))
+
+  // P8 keeps the old exception semantics on purpose (计划 §6 P8 第 4 条): the preference
+  // path is NOT guarded, so a storage that throws still throws. Turning this into a silent
+  // fallback is a separate, deliberate fix — not a side effect of the move.
+  let threw = false
+  try { readPreferenceOn('sound', hostile) } catch { threw = true }
+  check('the preference read still throws with a hostile storage', threw)
+  threw = false
+  try { writePreferenceOn('sound', false, hostile) } catch { threw = true }
+  check('the preference write still throws with a hostile storage', threw)
 })
 
 // ---------------------------------------------------------------- keyboard (PC)

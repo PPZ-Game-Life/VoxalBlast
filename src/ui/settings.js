@@ -1,5 +1,12 @@
 // Settings and keyboard-legend presentation. Main keeps the business actions and
 // inserts these UI steps at their original positions in each orchestration flow.
+//
+// The two preferences are the only thing this module persists. Since refactor P8 they go
+// through platform/storage.js instead of touching localStorage here: same keys, same
+// 'on'/'off' strings, same default ON when the key is absent, and deliberately the same
+// unguarded behaviour (a throwing storage still throws — see the facade's header).
+import { readPreferenceOn, writePreferenceOn } from '../platform/storage.js'
+
 export function createSettings({
   settingsEl,
   settingsButtonEl,
@@ -18,13 +25,11 @@ export function createSettings({
   onOpen,
   onClose,
 }) {
-  const soundKey = 'voxalblast-sound'
-  const hapticsKey = 'voxalblast-haptics'
   let settingsOpen = false
   let controlsOpen = false
   const controlSpin = { pitch: 0, yaw: 0, roll: 0 }
-  let soundOn = localStorage.getItem(soundKey) !== 'off'
-  let hapticsOn = localStorage.getItem(hapticsKey) !== 'off'
+  let soundOn = readPreferenceOn('sound')
+  let hapticsOn = readPreferenceOn('haptics')
   let axisHintTimer
   let controlsOpener = null
   let unbind = null
@@ -135,13 +140,13 @@ export function createSettings({
     }
     function onSoundSettingClick() {
       soundOn = !soundOn
-      localStorage.setItem(soundKey, soundOn ? 'on' : 'off')
+      writePreferenceOn('sound', soundOn)
       updateSettingsUi()
       if (soundOn) playTone(520, 0.08, 0.035)
     }
     function onHapticsSettingClick() {
       hapticsOn = !hapticsOn
-      localStorage.setItem(hapticsKey, hapticsOn ? 'on' : 'off')
+      writePreferenceOn('haptics', hapticsOn)
       updateSettingsUi()
       if (hapticsOn) playHaptic(18)
     }

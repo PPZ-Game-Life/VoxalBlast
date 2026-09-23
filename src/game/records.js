@@ -14,6 +14,13 @@
 //     would take the first frame down with it.
 //  3. VERSIONED SNAPSHOT, MIGRATED ON READ. `v` + migrate() means adding a field
 //     later never wipes a player's history.
+//
+// The "is there a storage we can trust" half is platform/storage.js (refactor P8); the
+// key, the schema, migrate() and the memory fallback stay HERE, in the store that owns
+// them. Re-exported below so an existing `import { pickStorage } from './records.js'`
+// keeps working.
+import { pickStorage, probeStorage } from '../platform/storage.js'
+
 const STORAGE_KEY = 'voxalblast.records.v1'
 export const RECORDS_VERSION = 1
 const RECENT_LIMIT = 10
@@ -110,38 +117,12 @@ export function migrate(raw) {
   return records
 }
 
-// Exported for src/game/session.js: the save slot needs the very same
-// "is there a storage that does not lie to us" probe, and a second copy of it
-// would be a second place for the private-mode edge case to drift.
-export function pickStorage() {
-  try {
-    const storage = globalThis.localStorage
-    if (!storage) return null
-    const probe = 'voxalblast.records.probe'
-    storage.setItem(probe, '1')
-    storage.removeItem(probe)
-    return storage
-  } catch {
-    // Safari private mode, storage disabled, or an embedded webview that throws
-    // on access instead of returning null.
-    return null
-  }
-}
-
-// A storage that lies about being usable (setItem throwing, quota gone, an embedded
-// webview that throws on access instead of returning null) is treated as no storage
-// at all, so `persistent` reports the truth and every write goes to memory.
-export function probeStorage(storage) {
-  if (!storage) return null
-  try {
-    const probe = `${STORAGE_KEY}.probe`
-    storage.setItem(probe, '1')
-    storage.removeItem(probe)
-    return storage
-  } catch {
-    return null
-  }
-}
+// Exported for src/game/session.js and for callers that still reach for the probe through
+// this module: the save slot needs the very same "is there a storage that does not lie to
+// us" check, and a second copy of it would be a second place for the private-mode edge case
+// to drift. The implementation moved to platform/storage.js in P8; this is the compatibility
+// re-export (计划 §6 P8 第 2 条), not a second copy.
+export { pickStorage, probeStorage }
 
 // A store over some Storage-like object. `createRecordStore(fakeStorage)` is what
 // the tests use; the game uses the default instance below.
