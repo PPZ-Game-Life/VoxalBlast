@@ -26,7 +26,7 @@ export function createGameInput({
   // Read-only queries and the interaction gates (plan section 3: nothing here is copied, and
   // nothing here is written).
   isPaused,
-  hasItemActive,
+  isEnded,
   isHomeOpen,
   isSettingsOpen,
   isControlsOpen,
@@ -57,12 +57,16 @@ export function createGameInput({
   // both and mutates neither (plan section 2.1).
   canPlace,
   currentCells,
+  // A tool's reach is the session's rule (P6b-1) and whether a cell is taken is the board's; the
+  // overlay that draws the answer is pieceView's. Both are read through here.
+  toolScope,
+  isOccupied,
   // The two DOM strips a release over means "put it back". ui/dom owns the elements; the input
   // layer only measures them, which is why it gets them as a list rather than as selectors.
   cancelZones,
-  // main's callbacks -- the two things a key press does outside the pose: teach the legend, and
-  // aim the armed tool from the keyboard.
-  onItemHover,
+  // main's callbacks -- the legend the keyboard teaches, and everything a gesture makes the
+  // player see. The two item ones (the strip's repaint and the Row/Col panel) are hud's; the
+  // overlay and the axis panel's visibility are pieceView's and the DOM's.
   onControlsSpin,
   onAxisHint,
   // main's callbacks -- everything a gesture makes the player see, and the one action a settled
@@ -73,6 +77,12 @@ export function createGameInput({
   onHaptic,
   onCancelZone,
   onSelectionChanged,
+  onItemBar,
+  onAxisPick,
+  onAxisPickVisibility,
+  onClearOverlay,
+  onShowOverlay,
+  onConfirmItem,
   onBuildGhost,
   onSyncGhost,
   onClearGhost,
@@ -92,6 +102,21 @@ export function createGameInput({
   let selectedPiece = null
   let drag = null
   let suppressPieceClickUntil = 0
+
+  // The armed tool (P7c). `itemActive` is the targeting mode, `itemTap` the press that may or may
+  // not become a target, `itemBusyUntil` the short window after a clear in which the strip is not
+  // accepting input, and `lastItemHoverKey` the cache that keeps the overlay from being rebuilt on
+  // every pointermove.
+  let itemActive = null // { id, face, u, v, orientation }
+  let itemTap = null
+  let itemBusyUntil = 0
+  let lastItemHoverKey = null
+  // Same 6px slop the candidate drag uses to tell a tap from a gesture.
+  const ITEM_TAP_SLOP = 6
+
+  function hasItemActive() {
+    return Boolean(itemActive)
+  }
 
   // A pointer event in NDC against the canvas box. The input layer's own ruler: the view
   // gesture, the item targeting and the piece drag all measure the pointer with it.
@@ -613,6 +638,176 @@ export function createGameInput({
     }
   }
 
+  // ---- The armed tool (P7c) ------------------------------------------------------
+  // Plan section 4.1 splits the item area three ways and this is the input third: the targeting
+  // mode, the 6px tap-vs-turn decision, the hover, the rocket's Row/Col and the busy gate. The
+  // charges and the reach of each tool are the session's; the strip, the panel and the overlay are
+  // hud's and pieceView's; what USING a tool does to the board is main's.
+  function clampCellIndex(value) {
+    return THREE.MathUtils.clamp(value, 0, SH - 1)
+  }
+
+  // The item strip's only "not yet" state: the board is live, no gesture owns the pointer, no
+  // panel is up, and the short hold after a clear has expired.
+  function canUseItemsNow() {
+    return !isEnded() && !isPaused() && !drag && !isSettingsOpen() && performance.now() >= itemBusyUntil
+  }
+
+  // The two writes main's business paths make to the busy gate. `performance.now()` stays here,
+  // where the gate is read (plan section 3).
+  function holdItemsFor(ms) {
+    itemBusyUntil = performance.now() + ms
+  }
+
+  function releaseItems() {
+    itemBusyUntil = 0
+  }
+
+  function getItemActive() {
+    return itemActive
+  }
+
+  function setRocketOrientation(axis) {
+    if (itemActive?.id !== 'rocket') return
+    itemActive.orientation = axis === 'col' ? 'col' : 'row'
+    lastItemHoverKey = null
+    if (itemActive.u !== undefined) rebuildItemOverlay()
+    onAxisPick()
+    onStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
+  }
+
+  function cancelItemSelection(silent = false) {
+    itemTap = null
+    if (!itemActive) {
+      onAxisPickVisibility(true)
+      onClearOverlay()
+      return
+    }
+    itemActive = null
+    lastItemHoverKey = null
+    onClearOverlay()
+    onAxisPickVisibility(true)
+    if (!silent) onStatus('Pick a shape')
+    onItemBar()
+  }
+
+  // The state half of a new run: no armed tool, no pending press, no hold, no cached hover key.
+  // main keeps the charges (session) and the undo window's DOM around this.
+  function resetItemTargeting() {
+    itemActive = null
+    itemTap = null
+    itemBusyUntil = 0
+    lastItemHoverKey = null
+    onClearOverlay()
+    onAxisPickVisibility(true)
+  }
+
+  // Arm a tool that is not the refresh: the mode, its Row/Col panel and the status line. Spending
+  // the charge and closing the undo window stay with the caller, which is what orders them.
+  function armItem(id) {
+    itemActive = { id, face: null, u: undefined, v: undefined, orientation: id === 'bomb' ? '2x2' : 'row' }
+    itemTap = null
+    lastItemHoverKey = null
+    onAxisPickVisibility(id !== 'rocket')
+    onAxisPick()
+    onStatus(id === 'hammer' ? 'Tap a block to remove' : id === 'rocket' ? 'Tap a line to clear' : 'Tap a 2x2 area')
+  }
+
+  function rebuildItemOverlay() {
+    onClearOverlay()
+    if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
+    const scope = toolScope(itemActive.id, itemActive.face, itemActive.u, itemActive.v, itemActive.orientation)
+    // The overlay itself is pieceView's (P4c): which cells a tool covers is the tool's rule, and
+    // whether a cell already holds a block is the board's — both are read here, so the module is
+    // handed the finished list.
+    onShowOverlay({
+      face: itemActive.face,
+      cells: scope.map((cell) => ({ cell, occupied: isOccupied(cell) })),
+    })
+  }
+
+  // v0.6 (07 §3.1 A1/A2/A5/A8). Two fixes live here. The pointer only counts as a
+  // target when it is actually over the cube's screen silhouette — v0.5 intersected
+  // the front face's infinite plane instead, so aiming past the cube dragged the
+  // highlight onto a corner cell the player never pointed at. And the rocket picks
+  // Row/Col from where inside the cell the pointer sits (on the vertical centreline it
+  // reads as a column), with the panel left in place as the manual override.
+  function updateItemHover(ndc, allowOrientation = true) {
+    if (!itemActive || itemActive.id === 'refresh') return
+    const frontFace = findFrontFace()
+    const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+    if (!cellAt) return
+    itemActive.face = frontFace
+    itemActive.u = clampCellIndex(cellAt.u)
+    itemActive.v = clampCellIndex(cellAt.v)
+    if (allowOrientation && itemActive.id === 'rocket') {
+      const du = cellAt.fu - cellAt.u
+      const dv = cellAt.fv - cellAt.v
+      const want = Math.abs(du) < Math.abs(dv) ? 'col' : 'row'
+      if (want !== itemActive.orientation) {
+        itemActive.orientation = want
+        onAxisPick()
+      }
+    }
+    const key = `${itemActive.id}:${frontFace}:${itemActive.u},${itemActive.v}:${itemActive.orientation || ''}`
+    if (key !== lastItemHoverKey) {
+      lastItemHoverKey = key
+      rebuildItemOverlay()
+    }
+  }
+
+  // The press that may become a target. An armed tool fires on RELEASE, not on press, so a
+  // mis-touch can still be turned into a rotation by moving the finger instead of spending the
+  // item; the undo window in gameSession is the second safety net for everything the slop cannot
+  // catch (07 §3.1 A1/A2). The press aims at once, so a touch player — who has no hover — sees
+  // the highlight under their finger before committing.
+  function beginItemPress(event) {
+    itemTap = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    updateItemHover(eventNdc(event))
+  }
+
+  // The release, in the two halves the pointerup listener needs: the pending press is taken out of
+  // the way first, the view gesture and the drag are ended, and only then is the tap judged. That
+  // is the order the listener always ran in.
+  let pendingItemTap = null
+
+  function beginItemRelease() {
+    pendingItemTap = itemTap
+    itemTap = null
+  }
+
+  function endItemRelease(event) {
+    const tap = pendingItemTap
+    pendingItemTap = null
+    if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
+    // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
+    if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) >= ITEM_TAP_SLOP) return
+    selectItemAt(event)
+  }
+
+  function clearItemPress() {
+    itemTap = null
+    pendingItemTap = null
+  }
+
+  function selectItemAt(event) {
+    const ndc = eventNdc(event)
+    const frontFace = findFrontFace()
+    const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
+    if (!cellAt) {
+      // Releasing off the cube is a miss, not a confirmation on some corner cell.
+      onStatus('Tap a face cell')
+      onToast('Tap a face cell')
+      return
+    }
+    itemActive.face = frontFace
+    itemActive.u = clampCellIndex(cellAt.u)
+    itemActive.v = clampCellIndex(cellAt.v)
+    // Using the tool is main's: it spends the charge, clears the cells, presents it and arms the
+    // undo window.
+    onConfirmItem()
+  }
+
   return {
     // Pointer coordinates and the pointer-level read-outs (plan section 2.1: this module owns
     // them).
@@ -639,5 +834,19 @@ export function createGameInput({
     clearSelection,
     hasDrag,
     dragReport,
+    // The armed tool.
+    hasItemActive,
+    getItemActive,
+    canUseItemsNow,
+    holdItemsFor,
+    releaseItems,
+    armItem,
+    setRocketOrientation,
+    cancelItemSelection,
+    resetItemTargeting,
+    beginItemPress,
+    beginItemRelease,
+    endItemRelease,
+    clearItemPress,
   }
 }

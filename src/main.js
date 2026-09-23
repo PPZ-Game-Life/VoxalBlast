@@ -166,8 +166,8 @@ const hud = createHud({
   getBest: () => bestScore,
   getChain: () => run.chain,
   getItemCounts: () => getItemCounts(),
-  getItemActive: () => itemActive,
-  canUseItems: () => canUseItemsNow(),
+  getItemActive: () => input.getItemActive(),
+  canUseItems: () => input.canUseItemsNow(),
   onChainBreak: (chain) => playChainBreakSound(chain),
 })
 
@@ -319,7 +319,7 @@ const {
 const input = createGameInput({
   canvas: renderer.domElement,
   isPaused: () => isPaused,
-  hasItemActive: () => Boolean(itemActive),
+  isEnded: () => session.isEnded(),
   isHomeOpen: () => homeUi.isOpen(),
   isSettingsOpen: () => settingsUi.isOpen(),
   isControlsOpen: () => settingsUi.isControlsOpen(),
@@ -342,10 +342,17 @@ const input = createGameInput({
   cs,
   canPlace: (face, cells, origin) => board.canPlace(face, cells, origin),
   currentCells: (piece) => currentCells(piece),
+  toolScope: (id, face, u, v, orientation) => toolScopeCells(id, face, u, v, orientation),
+  isOccupied: (cell) => board.has(cell[0], cell[1], cell[2]),
   cancelZones: () => [piecesPanelEl, itemBarEl],
-  onItemHover: (ndc, allowOrientation) => updateItemHover(ndc, allowOrientation),
   onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
   onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
+  onItemBar: () => renderItemBar(),
+  onAxisPick: () => renderAxisPick(),
+  onAxisPickVisibility: (hidden) => axisPickEl.classList.toggle('hidden', hidden),
+  onClearOverlay: () => clearItemOverlay(),
+  onShowOverlay: (params) => showItemOverlay(params),
+  onConfirmItem: () => confirmItem(),
   onStatus: (text) => setStatus(text),
   onToast: (text) => showToast(text),
   onHaptic: (pattern) => playHaptic(pattern),
@@ -625,7 +632,7 @@ function openSettings() {
   // cancel path reaches renderItemBar(), which reads the pause state.
   settingsUi.setSettingsOpen(true)
   if (input.hasDrag()) input.cancelActiveDrag(false)
-  cancelItemSelection(true)
+  input.cancelItemSelection(true)
   clearLanding()
   clearDragGhost()
   settingsUi.showSettings()
@@ -674,35 +681,9 @@ function closeControls() {
 // Items (front-face based)
 // ============================================================
 // The tool definitions and the charges live in game/gameSession.js (refactor P6b-1): they are
-// game data, read back through getItemCounts() and spent through spendItem().
-let itemActive = null // { id, face, u, v, orientation }
-let itemBusyUntil = 0
-let lastItemHoverKey = null
-// A press that has not moved far enough to become a cube turn (07 §3.1 A1/A2). An
-// armed tool fires on RELEASE, not on press, so a mis-touch can still be turned into
-// a rotation by moving the finger instead of spending the item; the undo window in
-// gameSession is the second safety net for everything the slop cannot catch.
-let itemTap = null
-// Same 6px slop the candidate drag uses to tell a tap from a gesture.
-const ITEM_TAP_SLOP = 6
-
-
-function clampCellIndex(value) {
-  return THREE.MathUtils.clamp(value, 0, SH - 1)
-}
-
-function canUseItemsNow() {
-  return !session.isEnded() && !isPaused && !input.hasDrag() && !settingsUi.isOpen() && performance.now() >= itemBusyUntil
-}
-
-function setRocketOrientation(axis) {
-  if (itemActive?.id !== 'rocket') return
-  itemActive.orientation = axis === 'col' ? 'col' : 'row'
-  lastItemHoverKey = null
-  if (itemActive.u !== undefined) rebuildItemOverlay()
-  renderAxisPick()
-  setStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
-}
+// game data, read back through getItemCounts() and spent through spendItem(). The targeting
+// mode, the tap slop, the hover, the rocket's Row/Col and the busy gate moved to
+// input/gameInput.js (refactor P7c); what USING a tool does to the board stays here.
 
 // Closing the undo window also un-arms the toast, so a stale window can never keep a
 // clickable "Undo" on screen after a placement or a new clear.
@@ -721,7 +702,7 @@ function undoItem() {
   if (!undone) return
   clearItemUndo()
   toastEl.classList.remove('visible')
-  itemBusyUntil = 0
+  input.releaseItems()
   renderBoard()
   renderItemBar()
   saveSession()
@@ -734,102 +715,23 @@ function undoItem() {
   checkStuckAndPrompt()
 }
 
-function cancelItemSelection(silent = false) {
-  itemTap = null
-  if (!itemActive) {
-    axisPickEl.classList.add('hidden')
-    clearItemOverlay()
-    return
-  }
-  itemActive = null
-  lastItemHoverKey = null
-  clearItemOverlay()
-  axisPickEl.classList.add('hidden')
-  if (!silent) setStatus('Pick a shape')
-  renderItemBar()
-}
-
+// A new run: the charges are the session's, the targeting state is the input layer's, and
+// the undo window plus the strip are this file's. The order is the one it always ran in.
 function resetItems() {
   resetItemCounts()
-  itemActive = null
-  itemTap = null
-  itemBusyUntil = 0
-  lastItemHoverKey = null
-  clearItemOverlay()
-  axisPickEl.classList.add('hidden')
+  input.resetItemTargeting()
   clearItemUndo()
   renderItemBar()
 }
 
-// Pointer coordinates are the input layer's now (refactor P7a/P7b). Bound to the module's own
-// function so the call sites still in this file (the item targeting, until P7c moves them) read
-// exactly as they always did. ndcToCell() and nearestOriginOnFace() moved with the drag.
-const eventNdc = input.eventNdc
-
-
-function rebuildItemOverlay() {
-  clearItemOverlay()
-  if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
-  const scope = toolScopeCells(itemActive.id, itemActive.face, itemActive.u, itemActive.v, itemActive.orientation)
-  // The overlay itself is pieceView's (P4c): which cells a tool covers is the tool's rule, and
-  // whether a cell already holds a block is the board's — both are this file's to answer, so the
-  // module is handed the finished list.
-  showItemOverlay({
-    face: itemActive.face,
-    cells: scope.map((cell) => ({ cell, occupied: board.has(cell[0], cell[1], cell[2]) })),
-  })
-}
-
-// v0.6 (07 §3.1 A1/A2/A5/A8). Two fixes live here. The pointer only counts as a
-// target when it is actually over the cube's screen silhouette — v0.5 intersected
-// the front face's infinite plane instead, so aiming past the cube dragged the
-// highlight onto a corner cell the player never pointed at. And the rocket picks
-// Row/Col from where inside the cell the pointer sits (on the vertical centreline it
-// reads as a column), with the panel left in place as the manual override.
-function updateItemHover(ndc, allowOrientation = true) {
-  if (!itemActive || itemActive.id === 'refresh') return
-  const frontFace = findFrontFace()
-  const cellAt = input.isPointerOnCube(ndc) ? input.ndcToCell(frontFace, ndc) : null
-  if (!cellAt) return
-  itemActive.face = frontFace
-  itemActive.u = clampCellIndex(cellAt.u)
-  itemActive.v = clampCellIndex(cellAt.v)
-  if (allowOrientation && itemActive.id === 'rocket') {
-    const du = cellAt.fu - cellAt.u
-    const dv = cellAt.fv - cellAt.v
-    const want = Math.abs(du) < Math.abs(dv) ? 'col' : 'row'
-    if (want !== itemActive.orientation) {
-      itemActive.orientation = want
-      renderAxisPick()
-    }
-  }
-  const key = `${itemActive.id}:${frontFace}:${itemActive.u},${itemActive.v}:${itemActive.orientation || ''}`
-  if (key !== lastItemHoverKey) {
-    lastItemHoverKey = key
-    rebuildItemOverlay()
-  }
-}
-
-function selectItemAt(event) {
-  const ndc = eventNdc(event)
-  const frontFace = findFrontFace()
-  const cellAt = input.isPointerOnCube(ndc) ? input.ndcToCell(frontFace, ndc) : null
-  if (!cellAt) {
-    // Releasing off the cube is a miss, not a confirmation on some corner cell.
-    setStatus('Tap a face cell')
-    showToast('Tap a face cell')
-    return
-  }
-  itemActive.face = frontFace
-  itemActive.u = clampCellIndex(cellAt.u)
-  itemActive.v = clampCellIndex(cellAt.v)
-  confirmItem()
-}
+// The item targeting (the hover, the tap, the overlay it draws) moved to input/gameInput.js
+// (refactor P7c), together with the pointer coordinates it measured. What stays here is the
+// business of USING a tool: confirmItem() below and activateItem() after it.
 
 function confirmItem() {
-  const { id, face, u, v } = itemActive
+  const { id, face, u, v, orientation } = input.getItemActive()
   if (u === undefined || v === undefined) return
-  const { records, removed } = applyItem(id, face, u, v, itemActive.orientation)
+  const { records, removed } = applyItem(id, face, u, v, orientation)
   if (!removed.length) {
     // A silent miss read as "the button is broken" (07 §3.1 A6), so the failure now
     // says so on the toast and buzzes as well as setting the status line.
@@ -839,11 +741,11 @@ function confirmItem() {
     return
   }
   spendItem(id)
-  itemBusyUntil = performance.now() + 420
+  input.holdItemsFor(420)
   setTimeout(renderItemBar, 450)
   emitItemBurst(removed, id)
   renderBoard()
-  cancelItemSelection(true)
+  input.cancelItemSelection(true)
   setStatus('Pick a shape')
   renderItemBar()
   saveSession()
@@ -865,12 +767,12 @@ function activateItem(id) {
   // Tapping the armed tool again puts it away (07 §3.1 A3). Before v0.6 the same tap
   // cancelled and immediately re-armed, so a phone player — who has no Esc — could
   // not leave the mode without spending the item.
-  if (itemActive?.id === id) {
-    cancelItemSelection()
+  if (input.getItemActive()?.id === id) {
+    input.cancelItemSelection()
     return
   }
-  if (itemActive) cancelItemSelection(true)
-  if (!canUseItemsNow()) {
+  if (input.hasItemActive()) input.cancelItemSelection(true)
+  if (!input.canUseItemsNow()) {
     renderItemBar()
     return
   }
@@ -886,15 +788,11 @@ function activateItem(id) {
     rerollPieces()
     return
   }
-  itemActive = { id, face: null, u: undefined, v: undefined, orientation: id === 'bomb' ? '2x2' : 'row' }
-  itemTap = null
-  lastItemHoverKey = null
-  // Arming a tool is moving on: a live undo toast must not stay clickable underneath
-  // the targeting mode that is about to replace it (07 §3.1 A9).
+  // The mode, its panel and the status line are the input layer's; the undo window closes
+  // here because it is the toast's (07 §3.1 A9: a live undo toast must not stay clickable
+  // underneath the targeting mode that is about to replace it).
+  input.armItem(id)
   clearItemUndo()
-  axisPickEl.classList.toggle('hidden', id !== 'rocket')
-  renderAxisPick()
-  setStatus(id === 'hammer' ? 'Tap a block to remove' : id === 'rocket' ? 'Tap a line to clear' : 'Tap a 2x2 area')
   renderItemBar()
 }
 
@@ -943,9 +841,9 @@ for (const button of itemBarEl.querySelectorAll('.item-button')) {
   button.addEventListener('click', () => activateItem(button.dataset.item))
 }
 for (const button of axisPickEl.querySelectorAll('button[data-axis]')) {
-  button.addEventListener('click', () => setRocketOrientation(button.dataset.axis))
+  button.addEventListener('click', () => input.setRocketOrientation(button.dataset.axis))
 }
-axisCancelEl.addEventListener('click', () => cancelItemSelection())
+axisCancelEl.addEventListener('click', () => input.cancelItemSelection())
 toastEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 
 // The piece placement drag (beginDrag / updatePreview / updateDrag / finishDrag /
@@ -984,7 +882,7 @@ function onDrop({ piece, face, cells, origin }) {
     playHonorSound(level)
     playChainSound(run.chain)
     triggerSlowMo(level)
-    itemBusyUntil = performance.now() + 650
+    input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)
     setStatus('Clear! Keep building')
   } else {
@@ -1086,7 +984,7 @@ function openHome() {
   // from being cloned into the hero as a half-built cube.
   settleIntro()
   if (input.hasDrag()) input.cancelActiveDrag(false)
-  cancelItemSelection(true)
+  input.cancelItemSelection(true)
   clearLanding()
   clearDragGhost()
   // The panel is closed rather than kept behind the cover: it would otherwise still
@@ -1164,11 +1062,7 @@ function applySession(saved) {
   // The board, the run record, the hand and the charges (refactor P6b-2). The order around it is
   // unchanged: the pose below still comes after the hand, and the item strip after that.
   session.applySnapshot(saved)
-  itemActive = null
-  itemBusyUntil = 0
-  lastItemHoverKey = null
-  clearItemOverlay()
-  axisPickEl.classList.add('hidden')
+  input.resetItemTargeting()
   // Pose is restored from the LOGICAL base quaternion, so the cube comes back on
   // exactly the face it was left on (a face-aligned pose matters: the candidate's
   // drop orientation is derived from it), with the bearing the player had dialled —
@@ -1276,15 +1170,14 @@ function resetGame() {
 // input/gameInput.js (refactor P7a). main's listeners below delegate to it.
 
 renderer.domElement.addEventListener('pointerdown', (event) => {
-  if (itemActive) {
+  if (input.hasItemActive()) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     // Armed tool (v0.6, 07 §3.1 A1/A2). The press now does two things at once: it
     // aims (so a touch player, who has no hover, sees the highlight under their
     // finger before committing) and it hands the gesture to the view drag, so the
     // cube can still be turned to reach the face they want. Nothing fires here — the
     // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
-    itemTap = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
-    updateItemHover(eventNdc(event))
+    input.beginItemPress(event)
     // beginViewGesture() prevents the default itself, but it bails out early while paused
     // or mid-drag — the item branch used to prevent unconditionally, so keep that.
     event.preventDefault()
@@ -1298,24 +1191,23 @@ window.addEventListener('pointermove', (event) => {
   // return the inline branch used to do, including the one that waits for a decisive
   // direction before the pose may move at all (refactor P7a).
   if (input.updateViewGesture(event)) return
-  if (itemActive) {
-    updateItemHover(eventNdc(event))
+  if (input.hasItemActive()) {
+    input.updateItemHover(input.eventNdc(event))
     return
   }
   input.updateDrag(event)
 }, { passive: false })
 window.addEventListener('pointerup', (event) => {
-  const tap = itemTap
-  itemTap = null
+  // The pending item press is taken out of the way first, then the two gestures are ended, and
+  // only then is the tap judged -- the order this listener always ran in (refactor P7c).
+  input.beginItemRelease()
   input.finishViewGesture(event)
   input.finishDrag(event)
-  if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
-  // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
-  if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) >= ITEM_TAP_SLOP) return
-  selectItemAt(event)
+  input.endItemRelease(event)
 })
+
 window.addEventListener('pointercancel', (event) => {
-  itemTap = null
+  input.clearItemPress()
   input.finishViewGesture(event)
   if (!input.hasDrag()) return
   input.cancelActiveDrag(false)
@@ -1328,19 +1220,19 @@ renderer.domElement.addEventListener('wheel', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !leaderboardEl.classList.contains('hidden')) { event.preventDefault(); closeLeaderboard(); return }
   if (event.key === 'Escape' && settingsUi.isControlsOpen()) { event.preventDefault(); closeControls(); return }
-  if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
+  if (event.key === 'Escape' && input.hasItemActive()) { event.preventDefault(); input.cancelItemSelection(); return }
   if (event.key === 'Escape' && input.hasDrag()) { event.preventDefault(); input.cancelActiveDrag(); return }
   if (event.key === 'Escape' && settingsUi.isOpen()) { closeSettings(); return }
   // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
   // can be learned while it is open, and before the rocket keys so nothing steals them.
   if (input.handleRotateKey(event)) { event.preventDefault(); return }
   if (settingsUi.isOpen() || settingsUi.isControlsOpen()) return
-  if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
-    setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
+  if (input.getItemActive()?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
+    input.setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
   }
 })
 window.addEventListener('contextmenu', (event) => {
-  if (itemActive) { event.preventDefault(); cancelItemSelection(); return }
+  if (input.hasItemActive()) { event.preventDefault(); input.cancelItemSelection(); return }
   if (!input.hasDrag()) return
   event.preventDefault()
   input.cancelActiveDrag()
@@ -1373,7 +1265,7 @@ homeSettingEl.addEventListener('click', () => {
 // slot: the reset board is the new unfinished game.
 for (const button of document.querySelectorAll('#reset-button, #reset-modal')) button.addEventListener('click', beginRun)
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && itemActive) cancelItemSelection(true)
+  if (document.hidden && input.hasItemActive()) input.cancelItemSelection(true)
   if (document.hidden && input.hasDrag()) input.cancelActiveDrag(false)
   // The undo toast is a pointer target, and a backgrounded tab must not leave a live
   // one behind for a click that will never come (07 §3.1 A9).
