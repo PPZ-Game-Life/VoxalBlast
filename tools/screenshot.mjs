@@ -292,6 +292,19 @@ async function capture(browser, shot) {
             backdropImage: image ? { loaded: image.complete && image.naturalWidth > 0, width: image.naturalWidth, height: image.naturalHeight } : null,
             viewport: { width: innerWidth, height: innerHeight },
             rendering: globalThis.__voxalblast?.rendering?.() ?? null,
+            framing: globalThis.__voxalblast?.framing?.() ?? null,
+            playLayout: (() => {
+              const cube = globalThis.__voxalblast?.framing?.()?.solid
+              if (!cube) return null
+              const tray = document.querySelector('.bottom-panel').getBoundingClientRect()
+              const tools = document.querySelector('#item-bar').getBoundingClientRect()
+              return {
+                widthShare: (cube.maxX - cube.minX) / innerWidth,
+                heightShare: (cube.maxY - cube.minY) / innerHeight,
+                clearOfTools: cube.minY >= tools.bottom,
+                clearOfTray: cube.maxY <= tray.top,
+              }
+            })(),
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
             gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
             candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
@@ -417,6 +430,8 @@ async function capture(browser, shot) {
       // v0.8.22: a run must be on screen at boot. The two home shots get there through
       // settings → 回到主页, so only the board/gameover modes are graded on it.
       if (!onHome) {
+        if (parsed.framing?.clipped) failures.push('play cube clipped by canvas')
+        if (parsed.playLayout && (!parsed.playLayout.clearOfTools || !parsed.playLayout.clearOfTray)) failures.push('play cube overlaps tools or tray')
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)
         }

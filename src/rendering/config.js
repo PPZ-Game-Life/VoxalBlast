@@ -103,15 +103,12 @@ export const BOARD_STYLE = Object.freeze({
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the
-  // v0.2.25 fit pushes it much closer than v0.2.24's "~10%/14% bigger" step; the
-  // remaining margin is what the "swipe outside the cube" roll band needs.
-  // Measured across six viewports (PC 1280/1440/1920 wide, mobile 360/390/414
-  // wide) after horizontal centring: the cube fills 0.82 of the PC canvas height
-  // and 0.77~0.79 of the mobile canvas width, with equal roll bands on both sides
-  // (302/220/376px on PC, 39~42px on mobile). `keepCubeInsideCanvas()`
-  // additionally guarantees the cube cannot leave the canvas on any aspect.
+  // Portrait framing prioritizes the play face while retaining a narrow band
+  // on both sides for the outside-cube roll gesture. The CSS play area reserves
+  // the tool row above and the candidate tray below; keepCubeInsideCanvas()
+  // applies the final pixel inset for the current viewport.
   safeFactorDesktop: 1.18,
-  safeFactorMobile: 1.06,
+  safeFactorMobile: 1.24,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0,
   targetYMobile: 0,

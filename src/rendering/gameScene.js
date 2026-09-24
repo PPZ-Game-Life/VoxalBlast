@@ -85,7 +85,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
       maxX = Math.max(maxX, px)
       maxY = Math.max(maxY, (1 - stagePoint.y) * height / 2)
     }
-    const stageWidth = (maxX - minX) * 1.28
+    const stageWidth = Math.min((maxX - minX) * 1.24, width * 1.03)
     pedestal.style.width = `${stageWidth}px`
     pedestal.style.left = `${sceneWrap.offsetLeft + (minX + maxX) / 2}px`
     pedestal.style.top = `${sceneWrap.offsetTop + maxY - stageWidth * 0.20}px`
@@ -350,8 +350,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
       bandLeft: solid.minX - rect.left,
       bandRight: rect.left + rect.width - solid.maxX,
       clipped: solid.minX < rect.left || solid.maxX > rect.left + rect.width || solid.minY < rect.top || solid.maxY > rect.top + rect.height,
-      orbitDistance: getOrbitDistance(),
-      zoom: getCameraZoom(),
+      orbitDistance,
+      zoom: cameraZoom,
       fov: camera.fov,
       aspect: camera.aspect,
     }
