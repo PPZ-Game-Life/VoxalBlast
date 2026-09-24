@@ -1,19 +1,20 @@
 # VoxalBlast 文档导航
 
-> 当前工作区版本：**v0.8.23**（以 `package.json` 和源码为准）；各文档保留自身核对版本，待实施提案单独标注。本轮仅新增特效设计与整理导航，没有重跑游戏测试、截图、构建或平台联调。
+> 当前工作区版本：**v0.9.0**（以 `package.json` 和源码为准）；各文档保留自身核对版本，待实施提案单独标注。本轮落地的是**发牌机制与渐进难度 P1**（见 [发牌与渐进难度 P1](Technical/DEALING_P1.md)）；没有重跑真人试玩、物理机或平台联调。
 
 ## 先看当前实现
 
 | 文档 | 负责的口径 |
 | --- | --- |
 | [01 产品概览](Planning/01-立项PRD.md) | 产品循环、已实现范围与边界 |
-| [02 核心规则与数值](Planning/02-核心规则与数值.md) | 98 共享格、14 类候选、开局、消除与计分 |
+| [02 核心规则与数值](Planning/02-核心规则与数值.md) | 98 共享格、15 类候选、盘面感知发牌与 30/60/90 分级、开局、消除与计分 |
 | [03 交互与界面](Planning/03-交互与表现需求.md) | 拖放/取消、翻面/方位、键盘、主页与续玩 |
 | [04 发布回归清单](Planning/04-MVP验收清单.md) | 当前待执行项，以及具名版本的历史验收证据 |
 | [05 美术规范](Planning/05-美术方向与视觉规范.md) | 木质田园、98 实体、程序材质、WebP/SVG 背景 |
 | [07 道具实现](Planning/07-道具系统设计.md) | 初始次数、目标、取消、救场；与未实施补给方案分开 |
 | [08 荣誉与纪录](Planning/08-荣誉与排行榜系统.md) | 荣誉、计分、本地纪录与平台排行榜边界 |
 | [技术结构](Technical/ARCHITECTURE.md) | 模块、存档、渲染与开发探针 |
+| [发牌与渐进难度 P1](Technical/DEALING_P1.md) | v0.9.0 的盘面感知发牌、分级与阶段机、存档迁移与全部验证证据；P2 未实现 |
 | [构建与部署事实](Technical/NETLIFY_DEPLOYMENT_BASELINE.md) | 本地构建与仓库配置，不能证明远端部署状态 |
 | [已知缺口与验证边界](Technical/KNOWN_GAPS.md) | 尚未实现、尚待验证、待决提案的集中入口 |
 
@@ -22,12 +23,12 @@
 | 文档 | 阅读方式 |
 | --- | --- |
 | [十四类池难度曲线](Technical/DIFFICULTY_CURVE_POOL14.md) | 与当前候选池对应的无道具机器人测量，不是当前救局流程或真人体验验收 |
-| [方块清单与 Block Blast 对照](Technical/SHAPE_POOL_VS_BLOCKBLAST.md) | 正式池几何对照及测量专用形状；Line 4 / Line 5 未进游戏 |
+| [方块清单与 Block Blast 对照](Technical/SHAPE_POOL_VS_BLOCKBLAST.md) | 正式池几何对照；`Line 4` 已按 v0.9.0 发牌 spec 进池，`Line 5` 仍只是测量专用件 |
 | [难度基线](Technical/DIFFICULTY_BASELINE.md) | 历史候选池、棋盘与随机源复核，不代表十四类池的现行难度 |
 | [A/B/C/D](Technical/DIFFICULTY_ABCD.md) · [候选池](Technical/DIFFICULTY_POOL.md) · [开局](Technical/DIFFICULTY_OPENING.md) · [紧张度](Technical/DIFFICULTY_TENSION.md) | 具名历史实验，保留当时样本、池定义与局限 |
 | [竞品拆解](Planning/竞品拆解-Block-Blast.md) | 第三方研究与本项目待评审建议，不代表功能排期 |
 
-**实验命名陷阱**：`tools/difficulty-model.mjs` 的 `current` 是冻结的旧十类等权池；`soft75` 跟随正式权重，当前十四类池的四格件占比是 **60%**，不能按名字推断为 75%。
+**实验命名陷阱**：`tools/difficulty-model.mjs` 的池名一个都不能按字面读——`current` 是冻结的旧十类等权池；`soft75` 是**冻结的十四类历史池**（`Block 9` 权重 1、无 `Line 4`；v0.9.0 之前的每一份已发布数字都出自它，它不再跟随游戏）；只有 **`ship`** 跟随正式权重（v0.9.0：十五类、合计 20.4，`Line 4`×1、`Block 9`×0.4，四格件占发牌槽位 **58.8%**）。按 spec §3.3，历史臂的成员与权重是冻结的，改它们等于作废已发布结论——要测新池就新增一个 id。
 
 ## 制作流程、发布草案与历史
 

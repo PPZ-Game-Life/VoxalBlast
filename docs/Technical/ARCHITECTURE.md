@@ -10,10 +10,17 @@
 | src/main.js | 装配与启动：创建各模块、接线、`bind()`、boot 与唯一 rAF 主循环；`isPaused` 的唯一计算与 `syncPause()`；落子/结算/重开/续玩的流程胶水 |
 | src/diagnostics.js | 装配 `__voxalblast` 只读接口与 DEV-only `__voxalblastDev`；只汇总各属主的只读 report，不复制投影或计分算法 |
 | src/game/board.js | 外壳共享晶格、合法性、六面消除、开局预置、可放性 |
-| src/game/shapes.js | 十类平面形状、归一化和辅助旋转 |
+| src/game/shapes.js | 十五类平面形状与权重（唯一真源）、`OPENING_SHAPES`（冻结的开局成员）、归一化和辅助旋转 |
 | src/game/scoring.js / honors.js | 纯计分、荣誉及反馈等级 |
-| src/game/records.js / session.js | 已结束局纪录 / 单个未完成局，版本化校验与降级 |
-| src/game/gameSession.js | 一局的唯一数据真源：棋盘、手牌、run 账本、runId、道具次数与工具规则、撤销窗口、救场判定、局终标志与存档数据半边（零 DOM / 零 Three） |
+| src/game/records.js / session.js | 已结束局纪录 / 单个未完成局，版本化校验与降级；session 存档 v2 另带发牌导演与随机流 |
+| src/game/gameSession.js | 一局的唯一数据真源：棋盘、手牌、run 账本、runId、道具次数与工具规则、撤销窗口、救场判定、局终标志、**发牌导演与随机流**与存档数据半边（零 DOM / 零 Three） |
+| src/game/placementModel.js | 位棋盘（`Uint8Array(125)`）落点枚举与六面消除的快速镜像；与 `Board` 由对照测试逐值锁定（v0.9.0） |
+| src/game/boardPressure.js | 固定参考池（含 `Line 4`、不含 `Block 9`）与空间压力 `R`（v0.9.0） |
+| src/game/handSolver.js | 整批有解搜索（`SOLVABLE`/`UNSOLVABLE`/`UNKNOWN` + 可回放 witness）与首步容错采样（v0.9.0） |
+| src/game/dealConfig.js | 发牌与难度参数、`configVersion`、P2 开关、兜底原因枚举（v0.9.0） |
+| src/game/dealDirector.js | 步数/等级/阶段状态机、`Block 9` 冷却、成本函数、候选挑选与序列化（v0.9.0） |
+| src/game/dealer.js | 提议 → 证明 → 分阶段分析 → 挑选 → 兜底；自然发牌与道具换批走同一条路（v0.9.0） |
+| src/game/rng.js | 分离的确定性随机流（`deal`/`search`/`director`），状态可序列化进存档（v0.9.0） |
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
 | src/rendering/blockResources.js | 共享几何与材质缓存的唯一属主（`blockGeometry` / `edgeGeometry` / `paintMaterial` / `toneIndexFor` 与 `sharedGeometries` 释放清单） |
@@ -114,7 +121,7 @@ v0.8.22 开场两阶段动画（`src/rendering/boardView.js` 的 intro 区块 + 
 ## 存档边界
 
 - voxalblast.records.v1：已结束局纪录、周最佳和最近十局。
-- voxalblast.session.v1：棋盘、分数、三候选、道具、局内荣誉/链和姿态。
+- voxalblast.session.v1：棋盘、分数、三候选、道具、局内荣誉/链和姿态；**v0.9.0 起（`SESSION_VERSION = 2`）另带 `director`（步数、阶段计数、`Block 9` 冷却、最近手牌）与 `streams`（每条随机流的 32 位状态）**。键名仍是 `voxalblast.session.v1`——版本走快照里的 `v`，迁移在读取时发生；v1 存档照常可读，步数按 0 起算并只给一次缓冲批次。
 
 v0.8.19：`session.migrate()` 将历史棋盘 RGB 按原形状身份映射到现行 `SHAPES` 配色（涵盖 v0.7 前十色与 v0.8.17 前四个暖色）。不改变存档结构/键名和版本，不改棋盘占用或进度；读写均迁移且幂等，未知及现行颜色原样保留。恢复测试 fixture 为 `tools/fixtures/legacy-palette-session.json`，截图时设置 `SHOT_SESSION` 指向该文件、`SHOT_ONLY=desktop-board,mobile-board`；注入仅发生于截图工具的隔离浏览器。v0.8.19 的 278 项规则检查、生产构建、桌面/手机旧局恢复截图均通过。
 - voxalblast-sound / voxalblast-haptics：独立声音/触感偏好。
@@ -169,6 +176,11 @@ npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 
 | `tools/cube-framing-probe.mjs` | `npm run probe:framing` | 24 种标准朝向的停稳构图、面内偏斜与手势旋转轴在屏幕上的方向；正式验收不能加 `--quick` |
 | `tools/intro-probe.mjs` | `npm run probe:intro` | 开局波次：入口、两阶段、波向、跨面、节奏与结束后的位姿/颜色/材质/缩放零误差（另存 CDP screencast 帧序） |
 | `tools/rescue-probe.mjs` | `npm run probe:rescue` | 无块可放时的三条分支（Refresh → 清理挡路格 → 局终）与「装上道具再点一次卸下不花次数」 |
+| `tools/deal-director-tests.mjs` | `npm test` / `npm run test:deal` | 导演层（v0.9.0）：等级阶梯、warmup→build→challenge→relief 循环、`Block 9` 冷却、成本函数与区间语义、存档往返 |
+| `tools/deal-core-tests.mjs` | `npm test` / `npm run test:deal` | 落点模型与 `Board` 的**对照测试**（3600 组局面×形状、12000+ 次结算逐值一致）、去重、求解器三态与 witness 可回放、`R` 单调 |
+| `tools/deal-dealer-tests.mjs` | `npm test` / `npm run test:deal` | 发牌端到端：真实棋盘上出牌、witness 回放、不写棋盘、冷却与同形上限、确定性、构造兜底与**洗牌后的 witness 重映射** |
+| `tools/deal-session-tests.mjs` | `npm test` / `npm run test:deal` | 会话层（v0.9.0）：步数只由落子推进、重置、v2 往返、v1 迁移与"缓冲只给一次"、读档不重抽手牌、满盘换批不扣次数 |
+| `tools/deal-perf.mjs` | 手动 | 发牌耗时：四档盘面占用 + 真实会话路径的 p50/p95/p99，用于决定是否需要 Worker（v0.9.0） |
 | `tools/screenshot.mjs` | `npm run shot` | 10 个视口/页面组合的实机截图 + `window.onerror`/`unhandledrejection` 收集 + 候选画布未被槽裁切 + 波次已收尾且完整性误差为 0 + 结算卡可见且 `#reset-modal` 命中自身 |
 
 ## 如何加东西（以及哪里不该动）

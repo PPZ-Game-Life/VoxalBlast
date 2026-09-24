@@ -8,7 +8,7 @@
 
 | 工具 | 回答什么问题 | 是否 import 玩法代码 | 产物 | 命令 |
 | --- | --- | --- | --- | --- |
-| `tools/difficulty-model.mjs` | 规则镜像：位棋盘、放置枚举、发牌、开局、四种打法 | **是**（`src/game/board.js`、`shapes.js`、`SHAPE_WEIGHTS`） | 无（被下面两个调用） | — |
+| `tools/difficulty-model.mjs` | 规则镜像：位棋盘、放置枚举、发牌、开局、四种打法 | **是**（`src/game/board.js`、`shapes.js`、`SHAPE_WEIGHTS`、`OPENING_SHAPES`） | 无（被下面两个调用） | — |
 | `tools/difficulty-abcd.mjs` | 跑臂、出紧张度面板 / 生存曲线 / 12 步分桶 / 逐件压力 / 死亡手牌 | 是（经 model） | `<out>.json`（全量，数十 MB，**不入库**）、`<out>.summary.json` + `<out>.html`（入库） | `npm` 无脚本，直接 `node` |
 | `tools/difficulty-tests.mjs` | 口径自检：池定义、随机流、面板计数、测量池＝游戏权重表、不变量 | 是 | 终端 26/26 | `node tools/difficulty-tests.mjs` |
 | `tools/reachability.mjs` | 历史可达性测量（早期"能不能结束"那一轮） | 是 | `tools/reachability-*.json` | `npm run reachability` |
@@ -18,7 +18,7 @@
 | `tools/screenshot.mjs` | 实机截图与 DOM 硬门（含结算面板两张） | 是 | `artifacts/visual/*.png` | `npm run shot`（需先 `npm run dev`） |
 | `tools/rule-tests.mjs` | 规则层单元测试（棋盘/形状/计分/荣誉/存档） | 是 | 终端 255/255 | `npm test` |
 
-**为什么模拟器要 import 玩法代码**：形状池与权重必须"测的就是发的那一套"。`soft75` 池的权重表直接来自 `src/game/shapes.js` 的 `SHAPE_WEIGHTS`，`difficulty-tests` 会断言两者相等——这样游戏侧改权重而测量没跟上时会直接报错，而不是悄悄测旧池。
+**为什么模拟器要 import 玩法代码**：形状池与权重必须"测的就是发的那一套"。`ship` 池的权重表直接来自 `src/game/shapes.js` 的 `SHAPE_WEIGHTS`（v0.9.0：15 类、合计 20.4），`difficulty-tests` 会逐值断言两者相等——游戏侧改权重而测量没跟上时会直接报错，而不是悄悄测旧池。**反方向同样被断言**：`soft75` 是冻结的 14 类历史表（`Block 9` = 1、无 `Line 4`），它若跟着游戏一起漂移，DIFFICULTY_POOL.md / DIFFICULTY_TENSION.md / DIFFICULTY_CURVE_POOL14.md 里每一个已发布数字都会静默失效——所以两个方向都由测试钉住，见 §4 与 §7.6。
 
 ## 2. 模型层：棋盘、放置与结算
 
@@ -58,10 +58,11 @@
 
 | 池 id | 含义 | 备注 |
 | --- | --- | --- |
-| `soft75` | **正式池**：`SHAPE_WEIGHTS` 原样（现行 14 类，四格件×2、其余×1） | 唯一"跟着游戏走"的池 |
+| `ship` | **正式池**：`SHAPE_WEIGHTS` 原样（v0.9.0：15 类、合计 20.4 权重，`Line 4`×1、`Block 9`×0.4，四格件占槽位 58.8%） | 唯一"跟着游戏走"的池；v0.9.0 新增 |
+| `soft75` | **冻结的 14 类正式池**：`Block 9` = 1、无 `Line 4`，键序＝v0.8.14–v0.8.28 的 `SHAPE_WEIGHTS`（合计 20 权重） | v0.9.0 之前所有已发布数字的池；**不再跟随游戏** |
 | `current` | v0.8.4 之前的十类等权池 | 历史对照 |
-| `b9w04` / `no9` | 正式池把 Block 9 权重改 0.4 / 删掉 | Block 9 归因臂 |
-| `bb4` / `bb5` / `bb` | 正式池 + `Line 4` / + `Line 5` / + 两者 | **测量专用**：这两个形状只存在于 `tools/` 的 `EXTRA_SHAPES`，**不在 `src/`** |
+| `b9w04` / `no9` | 冻结 14 类池把 Block 9 权重改 0.4 / 删掉 | Block 9 归因臂（v0.8.15 测点，不随游戏变化） |
+| `bb4` / `bb5` / `bb` | 冻结 14 类池 + `Line 4` / + `Line 5` / + 两者（`Block 9` 仍是 1） | **BB 对齐臂**：`Line 4` 已于 v0.9.0 进游戏（正式池里本来就有它），`Line 5` 仍只存在于 `tools/` 的 `EXTRA_SHAPES`（v0.9.0 起它的唯一成员） |
 | `c` `d` `w90` `e` `e5` `soft82` | 早期压缩池候选 | 冻结在测量时点，不随游戏变化 |
 
 **发牌模式**：`uniform` = 按池权重等概率；`staged` = 按局内阶段加权（实验项，未上线）。
@@ -99,7 +100,9 @@
 3. **六面通算**：`mobility` 是六面合并计数，不区分"某个面不行但另一个面行"；`faceFragility` 那类单面概率是几何代理，不是对局结果。
 4. **幸存者偏差**：12 步分桶曲线只统计仍在场的对局，越后越偏乐观。
 5. **右删失**：>600 步记为删失，**不是**"600 步通关"；`p50 = >600` 表示"观察不到中位"。
-6. **池的冻结**：只有 `soft75` 跟随游戏权重；其余池（含 `b9w04`/`no9`/`bb*`）是测量时点的固定定义，游戏侧改动不会自动同步（`difficulty-tests` 会在成员/权重层面报错提示）。
+6. **池与开局的冻结（两个静默改写基线的入口，v0.9.0 起都在 `difficulty-tests` 里有断言）**：
+   - **（a）历史臂按字面权重表冻结**：只有 `ship` 跟随游戏权重；`soft75`、`current`、`c`/`d`/`w90`/`e`/`e5`/`soft82`、`b9w04`/`no9`、`bb4`/`bb5`/`bb` 都是**测量时点的固定定义**（成员、权重、键序三者都冻结）。v0.9.0 把 `Line 4` 放回正式池并把 `Block 9` 降到 0.4 之前，`soft75` 用的是 `{ ...SHAPE_WEIGHTS }`；那一刻起它再 spread 就会**悄悄**变成 15 类 / 20.4，DIFFICULTY_POOL.md / DIFFICULTY_TENSION.md / DIFFICULTY_CURVE_POOL14.md 的每个已发布数字都会失效而工具仍打印同一个臂名——所以它改成了字面量表。改这些池等于作废已发布的结论，要测新池请**新增 id**（`ship` 就是这么加的）。
+   - **（b）开局池冻结在 `OPENING_SHAPES`**：`Board.seedOne` 是**按下标**取形状的（`shapePool[floor(random()*shapePool.length)]`），所以往活的 `SHAPES` 里加一个形状，会让**每一局**的预置棋盘都变——哪怕一个权重都没改、候选池也没动。v0.9.0 加 `Line 4` 时这是实测到的真实破坏：模型仍把 `SHAPES` 交给 `seedOpening`，`soft75/uniform` 的开局均值从 **17.28 格变成 17.20 格**、开局直方图整条改变（50 局种子 1：截断均值 28.78→25.42、109.14→110.42），等于把"新增形状"的影响混进了历史臂。现在模型与测试都传 `OPENING_SHAPES`（`src/game/shapes.js` 里按名字冻结的 14 类、无 `Line 4`），并且 `difficulty-tests` 断言它的**成员与顺序**都等于冻结表——顺序也在断言里，因为顺序决定下标。
 7. **Block Blast 无法测量**：我们跑不了它的引擎。涉及它的部分分两类——**精确几何**（落位数、占盘面、占行长、能否自清）与**第三方资料**（清单成员、发牌是否均匀、是否有复活/God Mode），后者在文档里都带 🔸 标记，属未核实。
 8. **模拟不记分**：任何"分数被污染"的结论都是从 [02 §5](../Planning/02-核心规则与数值.md) 的计分公式推出来的，不是测出来的。
 

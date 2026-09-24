@@ -222,6 +222,13 @@ export function createDiagnostics({
     controls: () => settingsUi.report(),
     // The candidate pool itself: name, color and cell count per type.
     shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
+    // v0.9.0 P1: where the run is on the difficulty ladder, and what the LAST batch was made
+    // of — the tolerance interval it landed on, the pressure change, whether it needed a
+    // fallback, and how many search nodes it cost. This is the only read-out that can prove
+    // the board-aware dealer is actually driving the game (a screenshot cannot see a search),
+    // and it is what tools/deal-perf.mjs and the experiment harness read in the browser.
+    progress: () => session.progress(),
+    lastDeal: () => session.getDealMetrics(),
   })
 
   // DEV-ONLY handles for the headless verification run. The two modal panels cannot be

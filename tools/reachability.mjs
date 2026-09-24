@@ -10,7 +10,8 @@
 //     SH 固定为 5（那是交付的游戏），所以 `--faces=4` 时晶格按同一批公式在此重建，
 //     并在 N = SH 时逐格与 board.js 比对——映射一旦改动，模拟直接抛错而不是悄悄
 //     量一个游戏里不存在的棋盘。
-//   - 拼块池：src/game/shapes.js（v0.2.31 已移除 Line 4，旧版验证器还带着它）
+//   - 拼块池：src/game/shapes.js（v0.9.0 P1 把 Line 4 放回正式池，本工具的池随之增大；
+//     v0.2.31～v0.8.x 期间它确实不在池里，早期 JSON 基线里的形状表没有它）
 //   - 计分：src/game/scoring.js（v0.3 倍率表 + 跨面加法 + 连消链）
 //   - 荣誉：src/game/honors.js（v0.4 五枚规模系 + 理论区）
 // 这样"模型与规则漂移"不再可能：规则一改，验证器的结论跟着改。
@@ -59,9 +60,10 @@ const OUT = opt('out', '')
 // "how long a run lasts" is the difficulty complaint: the shipped pool produces runs
 // that never end at all (500/500 noise games hit the 600-placement cap), so items are
 // never needed. Both knobs are overridable HERE so a proposed pool can be measured
-// before it ships; the game draws three pieces uniformly from SHAPES (main.js
-// nextPieces / rerollPieces), which is exactly what this models, so a measured pool
-// transfers. `--pool=` takes shape names (see src/game/shapes.js), comma-separated:
+// before it ships; at v0.8.2 the game drew three pieces uniformly from SHAPES (main.js
+// nextPieces / rerollPieces) and this models exactly that drawing — note it has been a
+// WEIGHTED draw since v0.8.4 (see the pool note further down). `--pool=` takes shape
+// names (see src/game/shapes.js), comma-separated:
 // unknown names are errors, not silent omissions.
 const POOL = (opt('pool', '') || '').split(',').map((name) => name.trim()).filter(Boolean)
 const BATCH = Math.max(1, Math.trunc(Number(opt('batch', 3))))
@@ -340,7 +342,14 @@ const SHAPE_NAMES = POOL.length
     return match
   })
   : ALL_SHAPE_NAMES
-// One hand, drawn the way the game draws it: uniformly, with replacement.
+// v0.9.0: the pool is read straight from SHAPES, so `Line 4` (back since P1) is part of it.
+// This tool draws uniformly WITH replacement over the pool, which is no longer how the game
+// deals: v0.8.4+ weights the pool (`pickShape`) and main.js/gameSession.js add the batch
+// filter and the difficulty director on top. So `--pool=`/default runs here bound what the
+// POOL MEMBERSHIP can reach (that is what the honor reachability questions need) and are not
+// a forecast of the realised per-step candidate distribution — tools/difficulty-model.mjs's
+// `ship` pool is the arm for that.
+// One hand, drawn the way this tool has always drawn it: uniformly, with replacement.
 const drawHand = () => Array.from({ length: BATCH }, () => SHAPE_NAMES[Math.floor(rnd() * SHAPE_NAMES.length)])
 
 function legalPlacements(state, shape) {

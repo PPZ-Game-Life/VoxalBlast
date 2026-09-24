@@ -21,9 +21,11 @@
 // schema, migrate() and the memory slot below stay here, in the store that owns them.
 import { FACES, SH, isShell } from './board.js'
 import { SHAPES } from './shapes.js'
+import { WARMUP_BATCHES } from './dealConfig.js'
+import { revive as reviveDirector } from './dealDirector.js'
 import { pickStorage, probeStorage } from '../platform/storage.js'
 
-export const SESSION_VERSION = 1
+export const SESSION_VERSION = 2
 const STORAGE_KEY = 'voxalblast.session.v1'
 // The candidate slots the game deals every turn. A snapshot with fewer playable
 // candidates is padded back up by the caller (which owns Math.random).
@@ -110,6 +112,27 @@ export function migrate(raw) {
   })
   const pose = raw.pose && typeof raw.pose === 'object' ? raw.pose : {}
 
+  // ---- v0.9.0 P1: the run's difficulty progress (§4.3) ------------------------
+  // A v1 save has no director at all. The spec's rules for that case are explicit:
+  //   - do NOT reconstruct the step count from the score (it is not the same quantity, and a
+  //     guessed tier is worse than an honest 0);
+  //   - give the run ONE buffer batch on the first deal after the migration, so an old save
+  //     resumes into a hand it can play;
+  //   - record that a migration happened, so the run report can tell the two apart.
+  // The buffer is granted by starting the migrated run past warmup with `reliefPending` armed:
+  // the first natural batch then comes out on the relief target and the flag is persisted as
+  // false afterwards, which is what stops every load from handing out a fresh buffer.
+  const migratedDirector = !raw.director || typeof raw.director !== 'object'
+  const director = migratedDirector
+    ? { ...reviveDirector({}), naturalBatchIndex: WARMUP_BATCHES, reliefPending: true, migration: true }
+    : reviveDirector(raw.director)
+  const streams = {}
+  if (raw.streams && typeof raw.streams === 'object') {
+    Object.entries(raw.streams).forEach(([name, state]) => {
+      if (typeof name === 'string' && Number.isFinite(state)) streams[name] = Math.floor(state) >>> 0
+    })
+  }
+
   return {
     v: SESSION_VERSION,
     at: toCount(raw.at),
@@ -120,6 +143,8 @@ export function migrate(raw) {
     },
     pieces,
     items,
+    director,
+    streams,
     run: {
       chain: toCount(rawRun.chain),
       bestChain: toCount(rawRun.bestChain),

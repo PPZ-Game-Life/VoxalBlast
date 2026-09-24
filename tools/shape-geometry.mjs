@@ -61,7 +61,11 @@ function geometry(w, h, size) {
   }
 }
 
-console.log('=== 本作现行池（14 类，放置自动取平面内四朝向）')
+// v0.9.0: the row count is read off SHAPES instead of being written into the heading, so
+// this stops saying "14 类" the moment the shipped pool changes again. Line 4 is back in
+// the shipped pool (P1, 2026-09-23 spec §3.1), so it is a row in this table; Line 5 stays
+// BB-only (see BLOCK_BLAST_FAMILIES) and deliberately has no counterpart on our side.
+console.log(`=== 本作现行池（${SHAPES.length} 类，放置自动取平面内四朝向）`)
 console.log('shape       cells  bbox   orientations  ' + GRIDS.map((n) => `origins@${n}  selfClear@${n}  board%@${n}  line%@${n}`).join('  '))
 for (const shape of SHAPES) {
   const { w, h } = bbox(shape.cells)
@@ -99,4 +103,4 @@ const ourVariants = SHAPES.reduce((sum, s) => {
   void w; void h
   return sum + distinct.size
 }, 0)
-console.log(`本作 14 类展开后（同一形状的重复朝向合并）：${ourVariants} 件`)
+console.log(`本作 ${SHAPES.length} 类展开后（同一形状的重复朝向合并）：${ourVariants} 件`)

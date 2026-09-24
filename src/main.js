@@ -8,7 +8,7 @@ import * as THREE from 'three'
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
 import { SH, FACES, isShell } from './game/board.js'
-import { SHAPES, pickShape } from './game/shapes.js'
+import { OPENING_SHAPES } from './game/shapes.js'
 import { lineMultiplier } from './game/scoring.js'
 import { resolveHonors, feedbackLevel } from './game/honors.js'
 import { recordStore } from './game/records.js'
@@ -48,11 +48,9 @@ const run = session.run
 const {
   resetRun,
   deal,
-  makePiece,
   currentCells,
   settlePlacement,
   getPieces,
-  setPieces,
   getRunId,
   getItemCounts,
   setItemCharge,
@@ -561,11 +559,15 @@ function armIntroIfVisible() {
 
 
 // The deal itself is the session's (P6a); clearing the selection and repainting the slots are
-// this file's, and they happen in the order they always did.
+// this file's, and they happen in the order they always did. v0.9.0 P1: the deal can now REFUSE
+// — when the cube has no legal placement left for any shape, the session leaves the used batch
+// in place rather than emptying the hand, because an empty hand reads as `idle` and would skip
+// the stuck flow that is supposed to handle exactly this position.
 function nextPieces() {
-  deal()
+  const result = deal()
   input.clearSelection()
   renderPieceSlots()
+  return result
 }
 
 // The three candidate previews (refactor P4a) live in rendering/pieceView.js: each slot owns
@@ -762,8 +764,14 @@ function activateItem(id) {
     return
   }
   if (id === 'refresh') {
-    spendItem('refresh')
-    rerollPieces()
+    // v0.9.0 P1: deal first, spend only on success (§10.1). A refresh that cannot produce a
+    // playable batch — the cube is full for every shape the dealer may use — must not cost the
+    // player a charge, and must not be silent about it either.
+    if (!rerollPieces()) {
+      showToast('No room - clear a path')
+      playHaptic(20)
+      renderItemBar()
+    }
     return
   }
   // The mode, its panel and the status line are the input layer's; the undo window closes
@@ -777,11 +785,14 @@ function activateItem(id) {
 function rerollPieces() {
   // A refresh replaces the batch the undo was recorded against, so the window closes.
   clearItemUndo()
-  const before = getPieces().map((piece) => piece.shape.name).join('|')
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    setPieces(Array.from({ length: 3 }, () => makePiece(pickShape())))
-    if (getPieces().map((piece) => piece.shape.name).join('|') !== before) break
-  }
+  // The batch comes from the same dealing service as a natural one (v0.9.0 P1, spec §10.1):
+  // relief target, Block 9 excluded, and it does NOT advance the natural batch counter or
+  // Block 9's cooldown. The old local "re-draw up to 24 times until it differs" loop is gone
+  // because the dealer's proposal step already guarantees a different combination, and because
+  // "different" was never the property that mattered — "playable" is.
+  const result = session.refreshDeal()
+  if (!result.ok) return false
+  spendItem('refresh')
   input.clearSelection()
   renderPieceSlots()
   showToast('Refreshed')
@@ -789,6 +800,7 @@ function rerollPieces() {
   renderItemBar()
   saveSession()
   checkStuckAndPrompt()
+  return true
 }
 
 // The judgement itself (hasPlaceablePiece / hasBlockingClearTool / the three branches) lives in
@@ -1120,7 +1132,10 @@ function resetGame() {
   // v0.2.31: the cube starts with an opening layout instead of a bare shell
   // (config.js OPENING_LAYOUT). Seeding never scores or clears lines, so the HUD
   // still starts at 0 and the first placement is settled like any other.
-  board.seedOpening(SHAPES, OPENING_LAYOUT)
+  // v0.9.0 P1: the preset draws from OPENING_SHAPES, whose membership is frozen to the
+  // pre-Line-4 pool — the new candidate shape must not move the opening density too, or
+  // the A/B/C experiment could not separate the two (spec §3.3).
+  board.seedOpening(OPENING_SHAPES, OPENING_LAYOUT)
   resetItems()
   resetRun()
   session.setEnded(false)

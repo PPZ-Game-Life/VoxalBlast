@@ -2,7 +2,7 @@
 // Focused measurement tests; no browser or dependency installation required.
 import assert from 'node:assert/strict'
 import { Board, SH, FACES, faceLattice } from '../src/game/board.js'
-import { SHAPES } from '../src/game/shapes.js'
+import { OPENING_SHAPES, SHAPES } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 import {
   CELLS, PLACEMENTS, SHAPE_NAMES, ALL_SHAPE_NAMES, EXTRA_SHAPES, BY_SHAPE, EMPTY_STATE, POOLS, POOL_IDS, poolById, OPENINGS, OPENING_IDS, openingById,
@@ -16,6 +16,42 @@ import {
 } from './difficulty-abcd.mjs'
 
 let checks = 0
+
+// v0.9.0 spec §3.3 — 「旧实验臂必须冻结原始池与权重；不能让新增 Line 4 静默改写历史基线」.
+// The frozen baseline is spelled out HERE, independently of difficulty-model.mjs, so a
+// model-side edit cannot rewrite history unnoticed: 14 shapes, `Block 9` at 1, no
+// `Line 4`, 20 weight units. That is the table every number in DIFFICULTY_POOL.md,
+// DIFFICULTY_TENSION.md, DIFFICULTY_ABCD.md and DIFFICULTY_CURVE_POOL14.md was measured
+// against, and `soft75` must still be bit-identical to it. Key order is part of the
+// definition: the uniform dealer walks this table's cumulative sums.
+const FROZEN14 = {
+  Dot: 1,
+  'Line 2': 1,
+  'Line 3': 1,
+  Corner: 1,
+  'Slant 3': 1,
+  Square: 2,
+  L: 2,
+  J: 2,
+  T: 2,
+  S: 2,
+  Z: 2,
+  'Rect 6': 1,
+  'L 5': 1,
+  'Block 9': 1,
+}
+
+// The same fourteen shapes in the OTHER order that matters: `SHAPES` (pool) order, which
+// is the order `Board.seedOne` walks when it draws the opening decoration
+// (`shapePool[floor(random() * shapePool.length)]`, so the index decides both the shape
+// and every geometry draw after it). `FROZEN14` above is the weighted deal's order
+// (v0.8.14 `SHAPE_WEIGHTS` key order); this is the decoration's. Two orders, one
+// membership — and both are load-bearing, which is why they are pinned separately:
+// identical weights reordered still re-deal every arm, and an identical pool reordered
+// still re-seeds every opening.
+const FROZEN_OPENING_ORDER = [
+  'Dot', 'Line 2', 'Line 3', 'Square', 'L', 'J', 'T', 'S', 'Z', 'Corner', 'Rect 6', 'L 5', 'Slant 3', 'Block 9',
+]
 function test(name, fn) {
   fn(); checks++; console.log(`PASS ${name}`)
 }
@@ -56,7 +92,7 @@ test('fast legality and settlement match real Board on 12 seeded positions', () 
   let settlements = 0
   for (let seed = 1; seed <= 12; seed++) {
     const board = new Board()
-    board.seedOpening(SHAPES, OPENING_LAYOUT, rngFor(seed, 0, 'opening'))
+    board.seedOpening(OPENING_SHAPES, OPENING_LAYOUT, rngFor(seed, 0, 'opening'))
     const state = stateFromBoard(board)
     assertEquivalent(board, state)
     assert.equal(board.findAllFullLines().length, 0)
@@ -108,7 +144,7 @@ test('random dense-board parity exercises terminal and multiple-line states', ()
 
 test('1000-step differential trajectory including batch changes', () => {
   const board = new Board()
-  board.seedOpening(SHAPES, OPENING_LAYOUT, rngFor(9, 0, 'opening'))
+  board.seedOpening(OPENING_SHAPES, OPENING_LAYOUT, rngFor(9, 0, 'opening'))
   let state = stateFromBoard(board), hand = []
   const deal = rngFor(9, 0, 'deal'), policy = rngFor(9, 0, 'policy')
   let steps = 0
@@ -157,7 +193,7 @@ test('empirical shape weights and fixed RNG consumption', () => {
 test('baseline opening calls actual seeder and first deal uses the independent stream', () => {
   for (let seed = 1; seed <= 4; seed++) {
     const board = new Board()
-    board.seedOpening(SHAPES, OPENING_LAYOUT, rngFor(seed, 0, 'opening'))
+    board.seedOpening(OPENING_SHAPES, OPENING_LAYOUT, rngFor(seed, 0, 'opening'))
     for (const staged of [false, true]) {
       const opening = makeOpening({ seed, gameIndex: 0, structured: false, staged })
       assertEquivalent(board, opening.state)
@@ -307,58 +343,99 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9', 'bb4', 'bb5', 'bb'])
+  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'ship', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9', 'bb4', 'bb5', 'bb'])
   // `current`, `c`, `d` and `soft82` are frozen to the ten shapes they were MEASURED
   // with (v0.8.12 added two shapes to the game; letting them into these pools would
   // have silently redefined three published candidates and invalidated every number
-  // in DIFFICULTY_POOL.md). Only `soft75` follows the shipped weights.
+  // in DIFFICULTY_POOL.md). `ship` is the ONE pool that follows the shipped weights.
   const TEN = ['Dot', 'Line 2', 'Line 3', 'Corner', 'Square', 'L', 'J', 'T', 'S', 'Z']
   assert.equal(POOLS.current.entries.length, TEN.length)
   assert.deepEqual(POOLS.current.entries.map((entry) => entry.weight), TEN.map(() => 1))
-  // The measurement pool must follow the shipped weights, so a game-side reweighting
-  // cannot silently leave the tool measuring the old pool. Compare by name: the
-  // cumulative table is order-sensitive, the weights are not.
+  // Compare by name: the cumulative table is order-sensitive, the weights are not.
   const weightsOf = (id) => Object.fromEntries(POOLS[id].entries.map((entry) => [entry.name, entry.weight]))
-  assert.deepEqual(weightsOf('soft75'), { ...SHAPE_WEIGHTS })
-  assert.equal(POOLS.soft75.members.size, SHAPE_NAMES.length)
+  // FROZEN14 (module scope) is the v0.9.0 spec §3.3 frozen baseline: 14 shapes, `Block 9`
+  // at 1, no `Line 4`, 20 weight units — the table every published number was measured
+  // against, and `soft75` must still be bit-identical to it.
+  assert.deepEqual(weightsOf('soft75'), FROZEN14)
+  // Key order is part of the definition: the uniform dealer walks the cumulative table,
+  // so a reordered table re-deals every arm from the same seed.
+  assert.deepEqual(Object.keys(weightsOf('soft75')), Object.keys(FROZEN14))
+  assert.equal(POOLS.soft75.entries.length, 14)
+  assert.equal(POOLS.soft75.members.size, 14)
+  assert.equal(weightsOf('soft75')['Block 9'], 1, 'soft75 must keep Block 9 at 1 — v0.9.0 moves it to 0.4 in `ship` only')
+  assert.equal(POOLS.soft75.members.has('Line 4'), false, 'soft75 must not gain the v0.9.0 shape')
+  assert.equal(POOLS.soft75.members.has('Line 5'), false)
+  assert.ok(Math.abs(POOLS.soft75.entries.reduce((sum, entry) => sum + entry.weight, 0) - 20) < 1e-9)
+  // The anti-drift assertion: `ship` IS the shipped table, value for value. If the game
+  // reweights and the measurement does not follow, this fails — which is the whole point
+  // of having exactly one pool that tracks src/game/shapes.js.
+  assert.deepEqual(weightsOf('ship'), { ...SHAPE_WEIGHTS })
+  assert.equal(POOLS.ship.entries.length, SHAPE_NAMES.length, 'ship must cover every shipped shape and nothing else')
+  assert.equal(POOLS.ship.members.size, SHAPE_NAMES.length)
+  assert.equal(POOLS.ship.members.has('Line 5'), false, 'Line 5 is measurement-only and must never reach the shipped pool')
   for (const name of ['Solid', 'Line 4', 'current ', '']) assert.throws(() => poolById(name))
-  // Every pool must name known shapes only (shipped ones, plus the two measurement-only
-  // Block Blast lines declared in EXTRA_SHAPES); a typo would otherwise silently deal a
-  // smaller pool. The shipped-pool guard below keeps the extras out of `soft75`.
+  // Every pool must name known shapes only (shipped ones, plus the one measurement-only
+  // Block Blast line declared in EXTRA_SHAPES); a typo would otherwise silently deal a
+  // smaller pool. The shipped-pool guard below keeps the extras out of `ship`.
   for (const id of POOL_IDS) for (const entry of POOLS[id].entries) assert.ok(ALL_SHAPE_NAMES.includes(entry.name))
   assert.deepEqual([...POOLS.e.members].sort(), ['J', 'L', 'S', 'Square', 'T', 'Z'])
   assert.deepEqual([...POOLS.e5.members].sort(), ['J', 'L', 'S', 'T', 'Z'])
   assert.equal(POOLS.d.members.has('Corner'), false)
   assert.equal(POOLS.w90.cumulative[POOLS.w90.cumulative.length - 1].upTo, 1)
   // A weighted pool is not automatically a non-destructive one: w90 has the same
-  // members as d (the small shapes are weight 0), while soft75 keeps every shipped
-  // shape and soft82 keeps the ten it was measured with.
+  // members as d (the small shapes are weight 0), while `ship` keeps every shipped
+  // shape, `soft75` keeps the fourteen it was measured with and soft82 keeps the ten.
   assert.deepEqual([...POOLS.w90.members].sort(), [...POOLS.d.members].sort())
-  assert.equal(POOLS.soft75.entries.length, SHAPE_NAMES.length)
+  assert.equal(POOLS.ship.entries.length, SHAPE_NAMES.length)
+  assert.equal(POOLS.soft75.entries.length, 14)
   assert.equal(POOLS.soft82.entries.length, TEN.length)
-  assert.ok(POOLS.soft75.members.has('Rect 6') && POOLS.soft75.members.has('L 5'))
+  assert.ok(POOLS.ship.members.has('Rect 6') && POOLS.ship.members.has('L 5'))
   assert.ok(!POOLS.soft82.members.has('Rect 6') && !POOLS.soft82.members.has('L 5'))
-  // The v0.8.15 Block 9 diagnostic arms follow the shipped pool and only move that
-  // one weight, so they can never drift into measuring a different 13th/14th shape.
+  // The v0.8.15 Block 9 diagnostic arms keep the FROZEN 14-shape base and only move that
+  // one weight. They must not follow the shipped table any more: v0.9.0 P1 turned the same
+  // weight down to 0.4, and if `b9w04` tracked the game it would stop being the v0.8.15
+  // measurement it is cited as (see DIFFICULTY_CURVE_POOL14.md §Block 9 归因).
   const weightOf = (id, name) => POOLS[id].entries.find((entry) => entry.name === name)?.weight
-  assert.equal(POOLS.b9w04.entries.length, SHAPE_NAMES.length)
+  assert.equal(POOLS.b9w04.entries.length, 14)
+  assert.deepEqual(weightsOf('b9w04'), { ...FROZEN14, 'Block 9': 0.4 })
   assert.equal(weightOf('b9w04', 'Block 9'), 0.4)
-  assert.equal(POOLS.no9.members.size, SHAPE_NAMES.length - 1)
+  assert.equal(POOLS.b9w04.members.has('Line 4'), false)
+  assert.equal(POOLS.no9.members.size, 13)
   assert.equal(POOLS.no9.members.has('Block 9'), false)
-  assert.equal(POOLS.no9.entries.length, SHAPE_NAMES.length - 1)
-  // v0.8.16 Block Blast alignment arms: the shipped pool plus the long lines the game
-  // dropped. The extras live in the MEASUREMENT only (`EXTRA_SHAPES`), so the guard is
-  // that they stay out of every shipped-shaped pool and out of SHAPE_NAMES.
-  assert.deepEqual(EXTRA_SHAPES.map((shape) => shape.name), ['Line 4', 'Line 5'])
+  assert.equal(POOLS.no9.entries.length, 13)
+  assert.equal(POOLS.no9.members.has('Line 4'), false)
+  // v0.8.16 Block Blast alignment arms: the shipped-at-the-time pool (the frozen 14-shape
+  // base, `Block 9` at 1) plus the long lines the game dropped. `Line 5` lives in the
+  // MEASUREMENT only (`EXTRA_SHAPES`); `Line 4` is shipped as of v0.9.0, so it is only an
+  // extra in the sense that these arms add it back to a base that predates it.
+  assert.deepEqual(EXTRA_SHAPES.map((shape) => shape.name), ['Line 5'])
   assert.equal(ALL_SHAPE_NAMES.length, SHAPE_NAMES.length + EXTRA_SHAPES.length)
-  assert.ok(!SHAPE_NAMES.includes('Line 4') && !SHAPE_NAMES.includes('Line 5'))
-  assert.equal(POOLS.bb4.entries.length, SHAPE_NAMES.length + 1)
-  assert.equal(POOLS.bb5.entries.length, SHAPE_NAMES.length + 1)
-  assert.equal(POOLS.bb.entries.length, SHAPE_NAMES.length + 2)
+  assert.ok(SHAPE_NAMES.includes('Line 4'), 'v0.9.0 P1 put Line 4 back in the shipped pool')
+  assert.ok(!SHAPE_NAMES.includes('Line 5'))
+  // Line 4 must exist exactly once across the measurement's shape tables: a second copy in
+  // EXTRA_SHAPES would duplicate every placement and win the name lookup.
+  assert.equal(ALL_SHAPE_NAMES.filter((name) => name === 'Line 4').length, 1)
+  assert.equal(SHAPES.filter((shape) => shape.name === 'Line 4').length, 1)
+  for (const id of ['ship', 'soft75', 'current', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9']) {
+    assert.equal(POOLS[id].members.has('Line 5'), false, `Line 5 must stay out of ${id}`)
+  }
+  assert.equal(POOLS.bb4.entries.length, 15)
+  assert.equal(POOLS.bb5.entries.length, 15)
+  assert.equal(POOLS.bb.entries.length, 16)
   assert.equal(weightOf('bb', 'Line 4'), 1)
   assert.equal(weightOf('bb', 'Line 5'), 1)
+  // The BB base is the FROZEN table, not the shipped one: `Block 9` is still 1 there, or
+  // the arm would be measuring v0.9.0's reweighting on top of the BB comparison.
+  assert.equal(weightOf('bb4', 'Block 9'), 1)
+  assert.equal(weightOf('bb5', 'Block 9'), 1)
+  assert.equal(weightOf('bb', 'Block 9'), 1)
+  assert.equal(weightOf('bb4', 'Line 4'), 1)
+  assert.equal(weightOf('bb4', 'Line 5'), undefined)
+  assert.equal(weightOf('bb5', 'Line 4'), undefined)
+  assert.deepEqual(Object.keys(weightsOf('bb')), [...Object.keys(FROZEN14), 'Line 4', 'Line 5'])
   assert.ok(POOLS.bb.members.has('Line 4') && POOLS.bb.members.has('Line 5'))
   assert.ok(!POOLS.soft75.members.has('Line 4') && !POOLS.soft75.members.has('Line 5'))
+  assert.ok(!POOLS.ship.members.has('Line 5'))
   assert.ok(!POOLS.b9w04.members.has('Line 4') && !POOLS.no9.members.has('Line 5'))
   // The extras must be placeable and dealable, or the arm would measure nothing.
   for (const name of ['Line 4', 'Line 5']) {
@@ -373,9 +450,19 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   const FOUR = ['Square', 'L', 'J', 'T', 'S', 'Z']
   // v0.8.12–v0.8.14: Rect 6, L 5, Slant 3 and Block 9 joined the pool at weight 1 (the
   // v0.8.4 rule is "four-cell x2, everything else x1"), so the four-cell share moved
-  // 0.75 -> 12/20 and the "4 cells or larger" band is 15/20. Both are pinned.
+  // 0.75 -> 12/20 and the "4 cells or larger" band is 15/20. Both are still pinned on the
+  // FROZEN arm: these are published numbers, not the current pool's numbers.
   assert.ok(Math.abs(shareOf('soft75', FOUR) - 12 / 20) < 1e-9)
   assert.ok(Math.abs(shareOf('soft75', [...FOUR, 'Rect 6', 'L 5', 'Block 9']) - 15 / 20) < 1e-9)
+  // v0.9.0 (`ship`): total 20.4, so the base sampling shares quoted in src/game/shapes.js
+  // are 12/20.4 four-cell (58.8%, down from 60.0%), 15.4/20.4 four-or-larger (75.5%, up
+  // from 75.0%), Line 4 1/20.4 = 4.90% and Block 9 0.4/20.4 = 1.96% (down from 5.00%).
+  // Pinned to the shipped table's own numbers, so a game-side reweighting has to be a
+  // conscious decision here as well.
+  assert.ok(Math.abs(shareOf('ship', FOUR) - 12 / 20.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', [...FOUR, 'Line 4', 'Rect 6', 'L 5', 'Block 9']) - 15.4 / 20.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', ['Line 4']) - 1 / 20.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', ['Block 9']) - 0.4 / 20.4) < 1e-9)
   assert.ok(Math.abs(shareOf('soft82', FOUR) - 18 / 22) < 1e-9)
   assert.ok(Math.abs(shareOf('w90', FOUR) - 0.9) < 1e-9)
 })
@@ -441,7 +528,10 @@ test('current pool reproduces the shipped deal and legacy arms stay reproducible
       a() // the per-slot second draw is consumed but unused in uniform mode
     }
     assert.deepEqual(drawHand(b, i, false, 'current'), expected)
-    assert.deepEqual(drawHand(c, i, false), expected) // default pool stays the shipped uniform one
+    // The omitted-pool default must stay the frozen `current` id. It is the pool the
+    // first A/B/C/D reports were measured with, and a default that silently followed the
+    // shipped table would re-deal every legacy command line that omits an arm pool.
+    assert.deepEqual(drawHand(c, i, false), expected)
   }
   const record = runGame({ group: 'c/uniform', seed: 1, gameIndex: 0, strategy: 'noise', stepCap: 40 }).record
   assert.equal(record.pool, 'c')
@@ -470,6 +560,17 @@ test('staged dealing depends only on group membership, never on relative weights
 test('opening plans are explicit, validated and actually change the seeded board', () => {
   assert.deepEqual(OPENING_IDS, ['empty', 'current', 'mid', 'high', 'max'])
   assert.equal(Object.values(OPENINGS.empty.plan).every((cells) => cells === 0), true)
+  // v0.9.0 P1: the preset draws from OPENING_SHAPES — the pool frozen by name in
+  // src/game/shapes.js — NOT from `SHAPES`. `Board.seedOne` picks a shape by INDEX
+  // (`shapePool[floor(random() * shapePool.length)]`), so letting Line 4 into this pool
+  // would move every seeded board: the model passed `SHAPES` here until v0.9.0 and the
+  // frozen `soft75` arm stopped reproducing (opening mean 17.28 → 17.20 cells, and a
+  // different first-hand trajectory from every seed). Membership AND order are pinned:
+  // order decides which index a seed picks.
+  assert.deepEqual(OPENING_SHAPES.map((shape) => shape.name), FROZEN_OPENING_ORDER)
+  assert.deepEqual([...OPENING_SHAPES.map((shape) => shape.name)].sort(), Object.keys(FROZEN14).sort())
+  assert.equal(OPENING_SHAPES.some((shape) => shape.name === 'Line 4'), false)
+  assert.equal(OPENING_SHAPES.length, 14)
   // The shipped plan must carry the shipped targets verbatim (every other face 0).
   for (const [face, cells] of Object.entries(OPENING_LAYOUT)) assert.equal(OPENINGS.current.plan[face], cells)
   assert.equal(Object.values(OPENINGS.current.plan).reduce((sum, cells) => sum + cells, 0), 13)
@@ -479,14 +580,14 @@ test('opening plans are explicit, validated and actually change the seeded board
   // reproduce the pre-v0.2.31 board and consume no opening randomness at all.
   for (const gameIndex of [0, 1, 7, 42]) {
     const real = new Board()
-    real.seedOpening(SHAPES, OPENING_LAYOUT, rngFor(5, gameIndex, 'opening'))
+    real.seedOpening(OPENING_SHAPES, OPENING_LAYOUT, rngFor(5, gameIndex, 'opening'))
     const model = makeOpening({ seed: 5, gameIndex, openingId: 'current' })
     assertEquivalent(real, model.state)
     const empty = makeOpening({ seed: 5, gameIndex, openingId: 'empty' })
     assert.equal(occupiedCount(empty.state), 0)
     let draws = 0
     const counted = new Board()
-    counted.seedOpening(SHAPES, OPENINGS.empty.plan, () => { draws += 1; return 0.5 })
+    counted.seedOpening(OPENING_SHAPES, OPENINGS.empty.plan, () => { draws += 1; return 0.5 })
     assert.equal(draws, 0, 'an empty plan must not draw opening randomness')
   }
   // Density must actually move, and stay ordered across the plans (300 games each).
@@ -517,6 +618,8 @@ test('arm ids carry pool, dealer and opening, and reject unknown combinations', 
   assert.deepEqual(armParts('A'), ['current', 'uniform', 'current'])
   assert.equal(resolveGroup('e/staged/high').openingId, 'high')
   assert.equal(resolveGroup('e/staged/high').label.includes('16') || resolveGroup('e/staged/high').label.includes('14/7/7'), true)
+  assert.equal(resolveGroup('ship/uniform').poolId, 'ship')
+  assert.equal(resolveGroup('soft75/uniform').poolId, 'soft75')
   for (const id of ['e', 'e/staged/current/extra', 'e/slow', 'e/staged/nope', 'e//current']) assert.throws(() => armParts(id))
   // One-factor pairing: three arms that differ in exactly one component produce three pairs.
   assert.equal(armParts('current/uniform/current').filter((v, i) => v !== armParts('current/uniform/high')[i]).length, 1)
@@ -560,7 +663,11 @@ test('a 5-long line always clears a line by itself on a 5-wide face', () => {
   let legal = 0
   let cleared = 0
   let multi = 0
-  // Real states from a real game, not a synthetic board.
+  // Real states from a real game, not a synthetic board — and deliberately on the FROZEN
+  // `soft75` arm: SHAPE_POOL_VS_BLOCKBLAST.md §6 quotes the raw self-clear counts of this
+  // measurement, so the state generator stays on the arm they came from. The property
+  // itself is pool-independent (it is geometry on a 5-wide face), which is why `ship`
+  // needs no separate run.
   const opening = makeOpening({ seed: 1, gameIndex: 0, structured: false, staged: false, poolId: 'soft75', openingId: 'current' })
   const rng = rngFor(1, 0, 'policy')
   const dealRng = rngFor(1, 0, 'deal')
@@ -583,6 +690,10 @@ test('a 5-long line always clears a line by itself on a 5-wide face', () => {
   assert.ok(legal > 100, `expected many legal 5-line placements, saw ${legal}`)
   assert.equal(cleared, legal, `every legal 5-line placement must clear a line (${cleared}/${legal})`)
   assert.ok(multi > 0, 'a 5-line should sometimes clear more than one line')
+  // Printed so the raw counts behind SHAPE_POOL_VS_BLOCKBLAST.md §6 stay checkable: what that
+  // section relies on is the property asserted above (the percentages it quotes come from
+  // the 600-game sweep, not from this 120-step sample).
+  console.log(`  ${cleared}/${legal} legal 5-line placements cleared a line, ${multi} of them two`)
   // And on an empty board: all 60 placements (6 faces x 2 orientations x 5 positions).
   let emptyLegal = 0
   let emptyCleared = 0

@@ -18,9 +18,16 @@
 //     in, because the store is platform-facing and the pose is boardView's;
 //   - the order that ends a run (local record, slot, platform): main's endGame().
 import { Board, SH, faceLattice } from './board.js'
-import { SHAPES, pickShape, normalizeCells } from './shapes.js'
+import { SHAPES, normalizeCells } from './shapes.js'
 import { moveScore, nextChain } from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
+import { createStreams } from './rng.js'
+import { dealBatch } from './dealer.js'
+import {
+  beginNaturalBatch, batchConstraints, createDirectorState, currentIntent, noteDealt,
+  notePlacement, refreshIntent, revive as reviveDirector, serialize as serializeDirector, tierOf,
+} from './dealDirector.js'
+import { FALLBACK_REASONS } from './dealConfig.js'
 
 export function createGameSession() {
   const board = new Board()
@@ -45,6 +52,15 @@ export function createGameSession() {
   let pieces = []
   let runId = 0 // one token per game, so a score is never submitted twice
 
+  // v0.9.0 P1: the difficulty director and the separated random streams. Both are part of the
+  // RUN, not of the module, so they are replaced wholesale by a reset or a resume — the same
+  // rule the hand and the item counts already follow.
+  let director = createDirectorState()
+  let streams = createStreams(Math.floor(Math.random() * 0xffffffff))
+  // The last batch's search report (tolerance interval, pressure change, fallback, witness).
+  // Kept for the run report and the probes; nothing in the game loop branches on it.
+  let lastDealMetrics = null
+
   function getPieces() {
     return pieces
   }
@@ -68,6 +84,10 @@ export function createGameSession() {
     run.honors = []
     run.honorCounts = {}
     runId += 1
+    // A new run is a new difficulty run: back to step 0, warmup, a fresh seed. Without this a
+    // restart would inherit the previous run's tier and hand the player a level-3 deal on an
+    // empty board (and the same random stream, which would deal the same opening hands).
+    resetDirector()
   }
 
   function makePiece(shape) {
@@ -89,9 +109,83 @@ export function createGameSession() {
 
   // A new hand. The caller clears the selection and repaints the slots: that is UI, and it is
   // main's (main.nextPieces() is the wrapper every existing call site still calls).
-  function deal() {
-    pieces = Array.from({ length: 3 }, () => makePiece(pickShape()))
-    return pieces
+  //
+  // v0.9.0 P1: the hand is no longer three blind draws. The dealer proposes up to 48 batches,
+  // proves what each can do on THIS board and picks one against the director's intent — see
+  // dealer.js for why. The one rule that keeps the game honest is here: a batch that cannot be
+  // dealt at all (the cube has no legal placement for any shape) leaves the PREVIOUS hand in
+  // place rather than emptying it. An empty hand would read as `idle` in stuckOutcome() and
+  // silently skip the stuck flow; a fully-used hand is exactly the state that flow exists for.
+  function deal(options = {}) {
+    const result = dealFor(options.reason === 'refresh' ? 'refresh' : 'natural')
+    // The historical contract is "deal() hands back the hand", and every existing call site
+    // (and test) relies on it. A refused deal hands back the batch that is already on the
+    // board — used up, which is the state the stuck flow reads — and the reason is available
+    // through getDealMetrics() for the run report.
+    return result.ok ? result.pieces : pieces
+  }
+
+  function dealFor(reason) {
+    const isRefresh = reason === 'refresh'
+    // The natural counter advances BEFORE the intent is read: the batch being generated is the
+    // one whose phase is being decided (a refresh deliberately skips this — it must not move
+    // the run forward or shorten Block 9's cooldown).
+    if (!isRefresh) beginNaturalBatch(director, streams.director())
+    const intent = isRefresh ? refreshIntent(director) : currentIntent(director)
+    const constraints = batchConstraints(director, { natural: !isRefresh })
+    const result = dealBatch({
+      board,
+      director,
+      intent,
+      constraints,
+      rng: streams.deal(),
+      searchRng: streams.search(),
+      beforeHands: director.recentHands,
+    })
+    lastDealMetrics = result.metrics
+    if (!result.hand) {
+      // Nowhere to play at all. Nothing is committed and nothing is spent; main shows the
+      // player what the stuck flow already says.
+      return { ok: false, pieces: null, metrics: result.metrics, reason: result.metrics.fallback }
+    }
+    pieces = result.hand.map(makePiece)
+    noteDealt(director, result.names, { natural: !isRefresh })
+    return { ok: true, pieces, metrics: result.metrics, names: result.names, witness: result.witness }
+  }
+
+  // The item Refresh (07 §2.1) goes through the same service, on the relief target and with
+  // Block 9 excluded. It reports success so the caller can refuse to spend the charge: the
+  // spec's rule is that the inventory moves only after a new batch exists (§10.1).
+  function refreshDeal() {
+    return dealFor('refresh')
+  }
+
+  function resetDirector(seed = null) {
+    director = createDirectorState()
+    streams = createStreams(seed === null ? Math.floor(Math.random() * 0xffffffff) : seed)
+    lastDealMetrics = null
+    return director
+  }
+
+  function getDirector() {
+    return director
+  }
+
+  // Read-only view for the HUD, the run report and the probes. Nothing in the game branches
+  // on the tier yet — P1 changes the deal, not the interface.
+  function progress() {
+    return {
+      placementCount: director.placementCount,
+      tier: tierOf(director.placementCount),
+      phase: director.phase,
+      challengePlacementsLeft: director.challengePlacementsLeft,
+      reliefPending: director.reliefPending,
+      naturalBatchIndex: director.naturalBatchIndex,
+    }
+  }
+
+  function getDealMetrics() {
+    return lastDealMetrics
   }
 
   // Place a piece and settle everything that follows from it. The return shape is exactly the one
@@ -100,6 +194,11 @@ export function createGameSession() {
   // caller's business.
   function settlePlacement(face, cells, origin, color) {
     const result = board.place(face, cells, origin, color)
+    // One step = one settled placement (§4.1). A drag, an illegal drop, a cube turn, a pause, a
+    // load, an item use and its undo, and a refresh all deliberately do NOT come through here.
+    // The tier is derived from this counter, so the challenge stretch and the milestone
+    // crossing are read off the same number the player's progress is.
+    const step = notePlacement(director)
     const lines = result.lines
     const lineCount = lines.length
     const previousChain = run.chain
@@ -125,7 +224,7 @@ export function createGameSession() {
       run.honors.push(id)
       run.honorCounts[id] = (run.honorCounts[id] || 0) + 1
     })
-    return { result, lines, lineCount, honors, level, score, previousChain }
+    return { result, lines, lineCount, honors, level, score, previousChain, step }
   }
 
   // ---- Items (refactor P6b-1) --------------------------------------------------
@@ -319,6 +418,13 @@ export function createGameSession() {
       // was retired from the pool (v0.2.24 的 5 长线、v0.2.31 的 4 长线).
       pieces: pieces.map((piece) => ({ name: piece.shape.name, used: piece.used })),
       items: { ...itemCounts },
+      // v0.9.0 P1 (§4.3): from this version a save carries the run's PROGRESS, not just its
+      // board — the step count, the phase machine's counters, Block 9's cooldown, the recent
+      // hands and the exact state of every random stream. That is what makes a resumed run
+      // continue the same difficulty instead of restarting it, and what makes "the same save
+      // replayed twice deals the same hands" true.
+      director: serializeDirector(director),
+      streams: streams.snapshot(),
       run: {
         chain: run.chain,
         bestChain: run.bestChain,
@@ -363,9 +469,22 @@ export function createGameSession() {
         return piece
       })
       .filter(Boolean)
+    // The run's PROGRESS comes back before the hand is completed: the director decides what
+    // the fill batch is aimed at (relief) and the stream state decides what it draws, so
+    // restoring them afterwards would deal the fill from the wrong run's state.
+    director = reviveDirector(saved.director)
+    if (saved.streams) streams.restore(saved.streams)
+    lastDealMetrics = null
     // A retired shape can leave fewer than three candidates; deal the missing slots
     // instead of resuming with a short strip (the layout is a fixed row of three).
-    while (restoredPieces.length < 3) restoredPieces.push(makePiece(pickShape()))
+    // v0.9.0 P1: those slots come from the same dealer, on the relief target, because a
+    // resumed run must never be handed a hand it cannot finish. A resumed hand that IS
+    // complete is left exactly as it was (the spec forbids re-dealing a displayed hand).
+    while (restoredPieces.length < 3) {
+      const fill = dealFor('refresh')
+      if (!fill.ok) break
+      restoredPieces.push(...fill.pieces.slice(0, 3 - restoredPieces.length))
+    }
     setPieces(restoredPieces)
     itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [
       tool.id,
@@ -385,6 +504,11 @@ export function createGameSession() {
     // Actions.
     resetRun,
     deal,
+    refreshDeal,
+    resetDirector,
+    getDirector,
+    progress,
+    getDealMetrics,
     makePiece,
     currentCells,
     usePiece,

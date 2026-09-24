@@ -5,7 +5,7 @@
 // 98 shell cells; Board is used only to reproduce the real opening seeder and at
 // conversion boundaries.
 import { Board, FACES, SH, faceLattice } from '../src/game/board.js'
-import { SHAPES, SHAPE_WEIGHTS, rotateCells } from '../src/game/shapes.js'
+import { OPENING_SHAPES, SHAPES, SHAPE_WEIGHTS, rotateCells } from '../src/game/shapes.js'
 import { OPENING_LAYOUT } from '../src/rendering/config.js'
 
 const WORDS = 4
@@ -30,17 +30,58 @@ const TEN = Object.freeze(['Dot', 'Line 2', 'Line 3', 'Square', 'L', 'J', 'T', '
 const CHALLENGE_WEIGHTS = Object.freeze([0, 0.1, 0.9])
 const RELIEF_WEIGHTS = Object.freeze([0.1, 0.2, 0.7])
 
+// The pool every PUBLISHED number was measured against — the fourteen shapes with
+// `Block 9` at 1 and no `Line 4` (20 weight units) — spelled out literally and in the
+// exact key order the shipped `SHAPE_WEIGHTS` had at v0.8.16 and had kept since
+// v0.8.14. Order is not cosmetic here: the uniform dealer walks this table's
+// cumulative sums, so a reordered table maps the same random value to a different
+// shape and silently re-deals every arm.
+//
+// v0.9.0 (the producer's 2026-09-23 dealing spec, §3.1) put `Line 4` back at weight 1
+// and turned `Block 9` down to 0.4. §3.3 requires the historical arms to stay put —
+// 「旧实验臂必须冻结原始池与权重；不能让新增 Line 4 静默改写历史基线」 — so this
+// table, `SHAPE_WEIGHTS` frozen at the moment it was measured, is now written out
+// instead of spread from `src/game/shapes.js`. Keeping the spread would (a) add a
+// 15th shape, (b) drop `Block 9` from 1 to 0.4, (c) renormalize the total 20 → 20.4,
+// and therefore change the first hand of every seeded game: every ending rate, median
+// step count, Block-9 attribution and per-shape pressure figure in
+// DIFFICULTY_POOL.md / DIFFICULTY_TENSION.md / DIFFICULTY_CURVE_POOL14.md would stop
+// reproducing while the tool still printed the same arm ids.
+//
+// Exactly ONE pool is allowed to follow the game — that is `ship`, below. The rest of
+// this file's pools, including the ones built from this table, are frozen history.
+const SOFT75_FROZEN = Object.freeze({
+  Dot: 1,
+  'Line 2': 1,
+  'Line 3': 1,
+  Corner: 1,
+  'Slant 3': 1,
+  Square: 2,
+  L: 2,
+  J: 2,
+  T: 2,
+  S: 2,
+  Z: 2,
+  'Rect 6': 1,
+  'L 5': 1,
+  'Block 9': 1,
+})
+
 export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 
-// v0.8.16 measurement-only: Block Blast's two long lines, which the game deliberately
-// does NOT have (v0.2.24 removed Line 5, v0.2.31 removed Line 4 — on a 5-wide face the
-// 5-line can only land on a completely empty row and clears it instantly, and the
-// 4-line ate 80% of a row). They exist here for the "BB alignment" arms so the claim
-// "putting them back is free points" can be measured instead of asserted.
-// ⚠️ Nothing in src/ knows about these names; they must never be added to a shipped
-// pool without the producer's call.
+// v0.8.16 measurement-only: Block Blast's 5-long line, which the game still does NOT
+// have (v0.2.24 removed it, and the v0.9.0 P1 call did not bring it back — on a
+// 5-wide face it can only land on a completely empty row and clears it instantly, so
+// it would be free points rather than a choice). It stays here for the "BB alignment"
+// arm so the claim "putting it back is free points" can be measured instead of
+// asserted.
+//
+// `Line 4` USED to live in this list (added in v0.8.16, removed again in v0.9.0): the
+// same four cells as the shipped piece, kept measurement-only while the game had dropped
+// it. v0.9.0 P1 ships it, so it now comes from `SHAPES` itself — the two entries must
+// never coexist, or ALL_SHAPES would hold the same name twice and the second copy (no
+// `color`, one duplicate of every placement) would win the SHAPE_BY_NAME lookup.
 export const EXTRA_SHAPES = Object.freeze([
-  { name: 'Line 4', cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
   { name: 'Line 5', cells: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] },
 ])
 const ALL_SHAPES = Object.freeze([...SHAPES, ...EXTRA_SHAPES])
@@ -56,15 +97,35 @@ SHAPE_BY_NAME = new Map(ALL_SHAPES.map((shape) => [shape.name, shape]))
 // rather than assuming "weighted" means "nothing removed". Pool ids are part of the
 // published CLI surface, so an unknown id throws instead of silently dealing the
 // shipped pool.
+//
+// Freeze rule (v0.9.0, spec §3.3): every id here is a FROZEN historical arm — its
+// membership, weights and key order are the ones it was published with, and editing
+// them invalidates already-published numbers instead of measuring a new idea. `ship`
+// is the single exception and the only id that follows `src/game/shapes.js`; to
+// measure a different pool, add a new id (as `ship` itself was added) rather than
+// repointing an existing one.
 const POOL_SPECS = Object.freeze({
   // `current` is the pool the game shipped BEFORE v0.8.4 (ten shapes, equal weight).
   // It keeps that id so every command and number in the earlier reports still
-  // reproduces verbatim; `soft75` is what the game actually deals now.
+  // reproduces verbatim; `ship` is what the game actually deals now.
   current: { label: '十种等权重（v0.8.4 之前的正式池）', weights: Object.fromEntries(TEN.map((name) => [name, 1])) },
-  // The pool the game actually deals. It is imported from the shipped SHAPE_WEIGHTS
-  // rather than copied, so a game-side reweighting cannot leave the measurement
-  // silently pointing at the old pool — this is the ONE pool that is meant to move.
-  soft75: { label: '正式加权池（四格件×2、其余×1，十二种全留）', weights: { ...SHAPE_WEIGHTS } },
+  // `soft75` was the anti-drift pool (it tracked `SHAPE_WEIGHTS` from v0.8.4 through
+  // v0.8.28) and is now FROZEN to the table its published numbers were measured with —
+  // see SOFT75_FROZEN. It keeps the id and the label, because the id is quoted in every
+  // command line and report in DIFFICULTY_CURVE_POOL14.md (and the label is stored
+  // verbatim inside tools/results/*.summary.json), so renaming either would break the
+  // reproduction that is the whole point of the freeze. It is 14 shapes / 20 units:
+  // `Block 9` at 1, `Line 4` absent.
+  soft75: { label: '正式加权池（四格件×2、其余×1，十二种全留）', weights: { ...SOFT75_FROZEN } },
+  // v0.9.0 (2026-09-23 spec §3.1): the shipped dealing table, and the only pool that
+  // tracks the game. It is imported from `SHAPE_WEIGHTS`, not copied, so a game-side
+  // reweighting can never leave the measurement quietly dealing the previous pool —
+  // `ship` moves the moment src/game/shapes.js moves, and difficulty-tests asserts the
+  // equality value-for-value. Today that is 15 shapes / 20.4 units (`Line 4` at 1,
+  // `Block 9` at 0.4); tomorrow's numbers are whatever the shipped table says. Compare
+  // `ship` against a frozen arm to read an experiment; compare `ship` against itself
+  // across versions to read the game.
+  ship: { label: '正式发牌池（v0.9.0：15 类，Line 4×1、Block 9×0.4，跟随 SHAPE_WEIGHTS）', weights: { ...SHAPE_WEIGHTS } },
   c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
   d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
   w90: { label: '四格件×3＋直线3×2（小件权重0，即实际去掉三种）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
@@ -72,23 +133,33 @@ const POOL_SPECS = Object.freeze({
   e5: { label: '只留L/J/T/S/Z（去Square）', weights: Object.fromEntries(FOUR.filter((name) => name !== 'Square').map((name) => [name, 1])) },
   // These two keep all ten shapes of the pool they were measured against and only
   // reweight them, so nothing leaves the pool: the four-cell shapes simply come up
-  // more often. `soft75` IS the shipped table above; `soft82` is the next, stronger
-  // step. soft82 stays on the ten it was measured with (see TEN).
+  // more often. `soft82` is the next, stronger step after the frozen `soft75`, and it
+  // stays on the ten it was measured with (see TEN).
   soft82: { label: '加权·保留十种（四格件82%）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 1], ['Corner', 1], ['Line 2', 1], ['Dot', 1]]) },
-  // v0.8.15 diagnostic: the shipped pool with the 14th shape turned down or removed.
-  // The 14-shape pool is the first one where even a greedy bot dies (92.5% of runs,
-  // median 206 steps) — and `Block 9` is the only piece that needs a 3×3 gap, of
-  // which a 5-wide face offers just 9. These two arms attribute that jump, they are
-  // not proposals: nothing here is wired into the game.
-  b9w04: { label: '正式加权池 × Block 9 权重 0.4（14 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0.4 } },
-  no9: { label: '正式加权池去掉 Block 9（13 类）', weights: { ...SHAPE_WEIGHTS, 'Block 9': 0 } },
-  // v0.8.16 Block Blast alignment arms: the shipped pool plus the long lines BB deals
-  // and we deliberately dropped. `bb` adds both (BB has both), `bb4`/`bb5` isolate one
-  // at a time so the effect of the self-clearing 5-line can be separated from the
-  // 4-line. Measurement-only — see EXTRA_SHAPES.
-  bb4: { label: '正式池 + Line 4（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 4': 1 } },
-  bb5: { label: '正式池 + Line 5（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 5': 1 } },
-  bb: { label: '正式池 + Line 4 + Line 5（BB 对齐臂）', weights: { ...SHAPE_WEIGHTS, 'Line 4': 1, 'Line 5': 1 } },
+  // v0.8.15 diagnostic: the pool this arm was measured in, with the 14th shape turned
+  // down or removed. The 14-shape pool is the first one where even a greedy bot dies
+  // (92.5% of runs, median 206 steps) — and `Block 9` is the only piece that needs a
+  // 3×3 gap, of which a 5-wide face offers just 9. These two arms attribute that jump,
+  // they are not proposals: nothing here is wired into the game. Both stay frozen to the
+  // 14-shape base (SOFT75_FROZEN, i.e. no `Line 4`), because every number in
+  // DIFFICULTY_CURVE_POOL14.md §Block 9 归因 was measured on exactly that membership and
+  // weight table. `b9w04` is the arm v0.9.0 P1 then adopted as the shipped weight, which
+  // is precisely why the two must not be confused: the arm is the measurement, `ship` is
+  // the game.
+  b9w04: { label: '正式加权池 × Block 9 权重 0.4（14 类）', weights: { ...SOFT75_FROZEN, 'Block 9': 0.4 } },
+  no9: { label: '正式加权池去掉 Block 9（13 类）', weights: { ...SOFT75_FROZEN, 'Block 9': 0 } },
+  // v0.8.16 Block Blast alignment arms: the SHIPPED-AT-THE-TIME pool (the 14-shape table,
+  // `Block 9` at 1) plus the long lines BB deals and we had deliberately dropped. They are
+  // frozen with SOFT75_FROZEN for the same reason as the two arms above: the
+  // "putting Line 4 back is free points" conclusion in tools/results/difficulty-bb-alignment
+  // was reached against that base, and adding it on top of a base that ALREADY contains
+  // Line 4 at 0.4 would measure a different question (BB alignment vs. v0.9.0 shipping).
+  // `bb` adds both (BB has both), `bb4`/`bb5` isolate one at a time so the effect of the
+  // self-clearing 5-line can be separated from the 4-line. Measurement-only — see
+  // EXTRA_SHAPES for why `Line 5` has no source counterpart.
+  bb4: { label: '正式池 + Line 4（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 4': 1 } },
+  bb5: { label: '正式池 + Line 5（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 5': 1 } },
+  bb: { label: '正式池 + Line 4 + Line 5（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 4': 1, 'Line 5': 1 } },
 })
 
 export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))
@@ -646,7 +717,16 @@ export function chooseMove(state, hand, rng, strategy = 'noise') {
 
 function seededBoard(rng, openingId = 'current') {
   const board = new Board()
-  board.seedOpening(SHAPES, openingById(openingId).plan, rng)
+  // v0.9.0: the OPENING preset draws from `OPENING_SHAPES`, not from `SHAPES`. The game
+  // froze that pool by name (see src/game/shapes.js) because `seedOne` picks a shape by
+  // INDEX from whatever pool it is handed — `shapePool[floor(random() * shapePool.length)]`
+  // — so widening the pool changes both the shape and every geometry draw that follows it.
+  // Passing the live `SHAPES` here would have re-seeded every published arm from the same
+  // seed: measured, `soft75/uniform` (50 games, seed 1, random+noise) moved from
+  // restrictedMean 28.78/109.14 to 25.42/110.42 and the opening histogram changed with it
+  // — i.e. the "Line 4" arm would have been reading a different opening board, which is
+  // exactly what spec §3.3 forbids. The measurement mirrors the game instead.
+  board.seedOpening(OPENING_SHAPES, openingById(openingId).plan, rng)
   if (board.hasFullLineOnAnyFace()) throw new Error('Board.seedOpening produced a full line')
   return board
 }

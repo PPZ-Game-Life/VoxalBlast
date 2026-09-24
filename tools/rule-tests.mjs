@@ -432,14 +432,14 @@ group('session', () => {
   }), null)
   equal('a snapshot from a retired shape pool is not resumable', migrateSession({
     board: { cells: live },
-    pieces: [{ name: 'Line 4', used: false }],
+    pieces: [{ name: 'Line 5', used: false }],
   }), null)
   equal('garbage in the slot is not resumable', migrateSession({ board: { cells: 'nope' }, pieces: [] }), null)
   equal('null in the slot is not resumable', migrateSession(null), null)
 
   const degraded = migrateSession({
     board: { cells: [[0, 0, 0, 1], [9, 9, 9, 1], [0, 0, 0, 2]], score: 400 },
-    pieces: [{ name: 'Line 4', used: false }, { name: 'Dot', used: false }],
+    pieces: [{ name: 'Line 5', used: false }, { name: 'Dot', used: false }],
     items: { bomb: -3, refresh: 2, bogus: 'x' },
     run: { facesLit: ['+z', 'q'], honors: ['TRIPLE', 7] },
   })
@@ -646,14 +646,24 @@ group('supply', () => {
   const total = Object.values(SHAPE_WEIGHTS).reduce((sum, w) => sum + w, 0)
   const shareOf = (list) => list.reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0) / total
   const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
-  const big = [...fourCell, 'Rect 6', 'L 5', 'Block 9']
+  const big = [...fourCell, 'Rect 6', 'L 5', 'Line 4', 'Block 9']
   // v0.8.12–v0.8.14 added Rect 6, L 5, Slant 3 and Block 9 to the pool. The v0.8.4 rule
   // is literally "four-cell pieces x2, everything else x1", so all four new shapes
   // joined at x1 and the four-cell share moved 0.75 -> 12/20. Both numbers are
   // asserted, so neither can drift silently — the producer's intent is "bigger pieces
   // dominate the deal", and the four-cell number alone no longer expresses it.
-  equal('four-cell candidates are 12/20 of the deal', shareOf(fourCell), 12 / 20)
-  equal('candidates of 4 cells or more are 15/20 of the deal', shareOf(big), 15 / 20)
+  // v0.9.0 P1 (2026-09-23 spec §3.1) moves both: Line 4 joins at an EXPLICIT weight 1
+  // (the one exception to the four-cell rule) and Block 9 drops to 0.4, so the total is
+  // 20.4 — four-cell 12/20.4 = 58.8%, four-cells-or-larger 15.4/20.4 = 75.5%. These are
+  // base sampling shares; the batch filter and the director move what the player sees.
+  equal('four-cell candidates are 12/20.4 of the deal', shareOf(fourCell), 12 / 20.4)
+  equal('candidates of 4 cells or more are 15.4/20.4 of the deal', shareOf(big), 15.4 / 20.4)
+  // The two numbers P1 is about, pinned individually: the four-cell rule must not
+  // silently "fix" Line 4 back to 2, and Block 9 must not silently return to 1.
+  equal('Line 4 carries an explicit weight of 1, not the four-cell 2', SHAPE_WEIGHTS['Line 4'], 1)
+  equal('Block 9 carries the reduced weight 0.4', SHAPE_WEIGHTS['Block 9'], 0.4)
+  check('the pool is 15 shapes', SHAPES.length === 15, `${SHAPES.length} shapes`)
+  check('Line 5 is still not shipped', !names.includes('Line 5'))
 
   // The two new shapes must fit a 5-wide face, not just exist in the table: a shape
   // that cannot be placed anywhere on an empty face would be a dead deal (and Rect 6
@@ -700,9 +710,22 @@ group('supply', () => {
   // are the same cell set, but legalPlacements enumerates the orientations the cube can
   // bring to the front, so it counts all four — same as for Square and Line 2.)
   check('Block 9 has somewhere to slide on an empty face', legalPlacements(emptyBoard, block9.cells).length === 216, `${legalPlacements(emptyBoard, block9.cells).length} placements (3x3 origins x 4 rotations x 6 faces)`)
-  // The 4-long and 5-long LINES were removed on purpose; this pins that no shape —
-  // including the two new ones — smuggles a 4-long straight run back into the pool.
-  equal('no shape carries a straight run longer than three', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 3)
+  // v0.2.24 / v0.2.31 removed the 5-long and 4-long lines; v0.9.0 P1 put Line 4 back by
+  // the producer's call, so the ceiling is FOUR now — and it is pinned to exactly one
+  // shape, because a second 4-long piece (or a 5-long one) would be a different pool.
+  equal('no shape carries a straight run longer than four', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 4)
+  equal('Line 4 is the only shape with a four-long run', SHAPES.filter((shape) => longestRun(shape.cells) === 4).map((shape) => shape.name).join(','), 'Line 4')
+  const line4 = SHAPES.find((shape) => shape.name === 'Line 4')
+  equal('Line 4 is four cells in a 4x1 box', `${line4.cells.length}x${Math.max(...line4.cells.map(([u]) => u)) + 1}x${Math.max(...line4.cells.map(([, v]) => v)) + 1}`, '4x4x1')
+  // The spec's correction of the old note: a 4-long line does NOT always clear a line.
+  // On an empty 5-wide face it fills four of the five cells and leaves the row one short;
+  // a 5-long line is the one that self-clears on contact, which is why Line 5 stays out.
+  // Both halves are pinned so the claim cannot be re-stated wrongly in either direction.
+  check('Line 4 does not clear a line by itself — only Line 5 would', (() => {
+    const four = new Board().place('+z', line4.cells, { u: 0, v: 0 }, line4.color)
+    const five = new Board().place('+z', [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]], { u: 0, v: 0 }, 0xffffff)
+    return four.lines.length === 0 && five.lines.length >= 1
+  })())
 
   let draws = 0
   const counted = () => { draws += 1; return 0 }
@@ -730,10 +753,16 @@ group('supply', () => {
   for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
   check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
   const observedBig = big.reduce((sum, name) => sum + counts.get(name), 0) / 20000
-  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 15 / 20) < 0.02, `observed ${observedBig.toFixed(3)}`)
+  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 15.4 / 20.4) < 0.02, `observed ${observedBig.toFixed(3)}`)
   // The shapes added in v0.8.12–v0.8.14 must actually reach the board, not just the table.
-  const added = ['Rect 6', 'L 5', 'Slant 3', 'Block 9']
-  check('every v0.8.12–v0.8.14 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
+  const added = ['Rect 6', 'L 5', 'Slant 3', 'Block 9', 'Line 4']
+  check('every v0.8.12–v0.9.0 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
+  // Block 9's reduced weight has to be visible in the sampled distribution, not just in
+  // the table: at 0.4/20.4 it is ~1.96% of slots, and the four-cell-plus share above is
+  // what the rest of the pool is judged by. A 2x overshoot here means the table and the
+  // cumulative picker disagree — exactly the drift this group exists to catch.
+  const observedBlock9 = counts.get('Block 9') / 20000
+  check('Block 9 samples near its 1.96% share', Math.abs(observedBlock9 - 0.4 / 20.4) < 0.005, `observed ${(observedBlock9 * 100).toFixed(2)}%`)
 })
 
 const selected = only === 'all' ? [...groups.keys()] : [only]

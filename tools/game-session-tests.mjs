@@ -100,7 +100,11 @@ function fillRowExceptOne(s, face, v, exceptU) {
   const settled = s.settlePlacement(face, [[0, 0]], { u: 4, v: 2 }, 3)
   const keys = Object.keys(settled).sort().join(',')
   check('settlePlacement returns the documented shape',
-    keys === 'honors,level,lineCount,lines,previousChain,result,score', keys)
+    keys === 'honors,level,lineCount,lines,previousChain,result,score,step', keys)
+  // v0.9.0 P1: `step` is the director's answer to "this was placement N" — the counter the
+  // tier ladder and the challenge stretch are derived from. It is asserted here so the one
+  // path that may increment it stays exactly this one.
+  check('the placement advanced the difficulty step counter', settled.step.placementCount === 1, JSON.stringify(settled.step))
   check('the completed line was found', settled.lineCount === 1 && settled.lines.length === 1, `lineCount=${settled.lineCount}`)
   check('the line is reported on the face it was dropped on', settled.lines[0].face === face, settled.lines[0]?.face)
   check('the line held five cells', settled.lines[0].cells.length === SH, `${settled.lines[0].cells.length}`)
@@ -375,8 +379,14 @@ function jam(s) {
   s.setItemCharge('bomb', 2)
 
   const snap = s.snapshot()
-  check('the snapshot names exactly the four data keys',
-    Object.keys(snap).join(',') === 'board,pieces,items,run', Object.keys(snap).join(','))
+  // v0.9.0 P1 (§4.3) added the run's PROGRESS to the snapshot: `director` is the step count,
+  // phase counters and Block 9 cooldown, `streams` is the exact state of every random stream.
+  // Both are asserted by name because a save that silently stops carrying them would resume a
+  // run at step 0 — a difficulty reset the player never asked for.
+  check('the snapshot names exactly the six data keys',
+    Object.keys(snap).join(',') === 'board,pieces,items,director,streams,run', Object.keys(snap).join(','))
+  check('the snapshot carries the difficulty progress', typeof snap.director?.placementCount === 'number' && typeof snap.streams === 'object',
+    JSON.stringify(snap.director))
   check('the snapshot carries the board cells',
     snap.board.cells.length === s.board.occupied().length, `${snap.board.cells.length}`)
   check('the snapshot carries the score and the line count',

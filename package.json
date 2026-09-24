@@ -1,15 +1,16 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.8.28",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tools/rule-tests.mjs && node tools/game-session-tests.mjs",
+    "test": "node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/deal-director-tests.mjs && node tools/deal-core-tests.mjs && node tools/deal-dealer-tests.mjs && node tools/deal-session-tests.mjs",
     "test:rules": "node tools/rule-tests.mjs",
     "test:session": "node tools/game-session-tests.mjs",
+    "test:deal": "node tools/deal-director-tests.mjs && node tools/deal-core-tests.mjs && node tools/deal-dealer-tests.mjs && node tools/deal-session-tests.mjs",
     "shot": "node tools/screenshot.mjs",
     "probe:intro": "node tools/intro-probe.mjs",
     "probe:swipe": "node tools/swipe-probe.mjs",

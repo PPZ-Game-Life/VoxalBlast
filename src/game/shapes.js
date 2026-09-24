@@ -8,8 +8,19 @@
 // a rescue from almost every "no legal placement" game over. v0.2.31 dropped the
 // 4-long line as well, by the producer's call: it was the only piece that ate 80%
 // of a face row, so whenever it fit it read as a free line instead of a choice.
-// 3 is the longest line in a shape's own silhouette and the pool is 13 types as of
-// v0.8.13; don't put a 4-long line back without the producer asking for it.
+//
+// v0.9.0 (P1 of the producer's 2026-09-23 dealing spec, §3.1) puts **Line 4 BACK**,
+// on the producer's explicit call, at an explicit weight of 1. Two corrections come
+// with it, both of which the older notes above got wrong and neither of which is a
+// reason to re-drop it:
+//   - a 4-long line does NOT clear a line whenever it fits. On a 5-wide face it needs
+//     a completely empty row (or column) to self-clear; on a half-full face it is an
+//     80%-of-a-row commitment, which is pressure, not a free point. The old "放下必
+//     清线" wording was inaccurate — see docs/Planning/02 §3.
+//   - `Line 4` carries weight 1 **explicitly**, so it is the one exception to the
+//     "a shape weighs 2 only if it is a four-cell piece" rule. Don't "fix" it to 2.
+// `Line 5` stays out: on a 5-wide face it can only ever land on a completely empty
+// row and clears it instantly, and P1 does not add it.
 //
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 //
@@ -60,6 +71,18 @@ export const SHAPES = [
   { name: 'Dot',    color: 0xc22b58, cells: [[0, 0]] },
   { name: 'Line 2', color: 0x3f8fe0, cells: [[0, 0], [1, 0]] },
   { name: 'Line 3', color: 0x293894, cells: [[0, 0], [1, 0], [2, 0]] },
+  // v0.9.0 P1: back in the shipped pool by the producer's call (2026-09-23 spec §3.1),
+  // explicit weight 1, geometry [[0,0],[1,0],[2,0],[3,0]] — the definition the spec
+  // names, and the same one the BB-alignment measurement arm has been using.
+  //
+  // Colour `#2121d9`: picked by the pool's own rule (v0.8.17 wood-free hue band), not
+  // by eye — of every crayon-family colour (S 0.55–0.85, V 0.45–0.90) that clears the
+  // timber, this one maximises the distance to the nearest shipped paint: ΔE 45.1 to
+  // `Square`, 48.3 to `Block 9`, 51.1 to `Line 3`, and ≥130 to all three timber tones.
+  // It keeps the "line family is blue" reading (`Line 2` sky, `Line 3` navy, `Line 4`
+  // royal) while staying far outside every existing pair — the pool's own tightest
+  // shipped pair is `J`/`Slant 3` at ΔE 16.5. Scan: tools/.tmp-line4-color.mjs.
+  { name: 'Line 4', color: 0x2121d9, cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
   { name: 'Square', color: 0x8b57c9, cells: [[0, 0], [1, 0], [0, 1], [1, 1]] },
   { name: 'L',      color: 0x217d6e, cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
   { name: 'J',      color: 0x2f5fc4, cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
@@ -139,6 +162,8 @@ export const SHAPES = [
 // shapes and the shares are 12/20 four-cell, 15/20 for four cells or larger. The
 // measurement quoted below was taken at v0.8.12 (twelve shapes); see
 // DIFFICULTY_TENSION.md for the later re-runs, which is where Block 9's effect lands.
+// v0.9.0 P1 breaks the rule in exactly one place (Line 4 = 1) and turns Block 9 down to
+// 0.4 — read the two entries in the table below before touching either number.
 export const SHAPE_WEIGHTS = Object.freeze({
   Dot: 1,
   'Line 2': 1,
@@ -153,8 +178,27 @@ export const SHAPE_WEIGHTS = Object.freeze({
   Z: 2,
   'Rect 6': 1,
   'L 5': 1,
-  'Block 9': 1,
+  // v0.9.0 P1 (2026-09-23 spec §3.1): the two numbers this release is about.
+  //   Line 4  — 1, explicit: the one exception to the four-cell rule (see its entry above).
+  //   Block 9 — 0.4, down from 1. The spec's target is "keep the nine-cell block's
+  //             strategic value, stop it monopolising the stuck states"; 0.4 is the
+  //             arm `tools/difficulty-model.mjs` already measured (greedy ending rate
+  //             92.5% → 69.5%), so the first experiment starts from a known point.
+  // Total is 20.4 (was 20): Block 9's single-slot share drops 5.00% → 1.96%, Line 4
+  // enters at 4.90%, four-cell pieces go 60.0% → 58.8%, four-cells-or-larger 75.0% →
+  // 75.5%. These are BASE SAMPLING shares, not what the player finally sees: the batch
+  // filter (≤1 Block 9, Block 9 cooldown, ≤2 of a shape per batch) and the difficulty
+  // director both move the realised distribution — see docs/Planning/02 §3.
+  'Line 4': 1,
+  'Block 9': 0.4,
 })
+
+// The opening preset (Board.seedOpening) draws UNIFORMLY from this list, and P1 freezes
+// its membership to the pre-Line-4 pool on purpose: the spec (§3.3) asks the new shape to
+// move the CANDIDATE distribution only, so a change in opening density can never be read
+// as part of the Line 4 effect in the A/B/C experiments. Frozen by name, not by slicing
+// SHAPES, so a future shape addition has to opt in here deliberately.
+export const OPENING_SHAPES = Object.freeze(SHAPES.filter((shape) => shape.name !== 'Line 4'))
 
 const WEIGHTED_POOL = (() => {
   const entries = SHAPES.map((shape) => ({ shape, weight: SHAPE_WEIGHTS[shape.name] ?? 0 }))
