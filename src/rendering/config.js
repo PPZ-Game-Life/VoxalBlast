@@ -47,7 +47,7 @@ export const BOARD_STYLE = Object.freeze({
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
   blockSize: 0.97, // tightly packed, individually rounded reference blocks
-  blockRadius: 0.12,
+  blockRadius: 0.14,
   blockSegments: 5,
   blockColor: 0xffcfa3,
   blockActiveColor: 0xffd3ac,
@@ -65,8 +65,8 @@ export const BOARD_STYLE = Object.freeze({
   environmentIntensity: 0.5,
   // Paint on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.22,
-  paintClearcoat: 0.65,
+  paintRoughness: 0.16,
+  paintClearcoat: 1,
   paintClearcoatRoughness: 0.09,
   voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
@@ -97,15 +97,9 @@ export const BOARD_STYLE = Object.freeze({
   // The three-quarter READ is unchanged — only the lens and the pitch moved.
   cameraFov: 6,
   cameraFovMobile: 7,
-  // yaw 16° / pitch 8°. NOTE for anyone retuning: the yaw stays here rather than on
-  // the cube because only the RELATIVE angle matters, and keeping it on the camera
-  // leaves ROTATE_STYLE.bearingYaw centred on 0 — which is what makes the ±stepThreshold
-  // fine-tune band symmetric in both directions. The pitch is the one knob that trades
-  // "roof visible" against "grid straight": the tilt above is ~2.2° here, ~1.4° at 5°,
-  // ~6.9° back at v0.8.9's 17.35°.
-  // Reference presentation: ~26° yaw relative to the existing 16° bearing dock,
-  // with a visible top. Gesture thresholds / retained bearing are unchanged.
-  cameraDirection: Object.freeze([0.620, 0.375, 0.689]),
+  // Restrained presentation: 10° relative yaw and 12° pitch at the 16° dock.
+  // Keep the operation face dominant; gesture thresholds / bearing are unchanged.
+  cameraDirection: Object.freeze([0.429, 0.208, 0.879]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
   // cube is the primary touch surface (rotate gestures + placement), so the

@@ -218,7 +218,9 @@ async function capture(browser, shot) {
         await send(ws, 24, 'Network.setBlockedURLs', { urls: ['*/art/block-pigment.webp'] })
       }
       await send(ws, 3, 'Page.addScriptToEvaluateOnNewDocument', {
-        source: (sessionFixture ? `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(sessionFixture.snapshot))});` : '') + `(() => { let seed = ${CAPTURE_SEED}; Math.random = () => {
+        source: (sessionFixture ? `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(sessionFixture.snapshot))});` : '')
+          + (sessionFixture?.records ? `localStorage.setItem('voxalblast.records.v1', ${JSON.stringify(JSON.stringify(sessionFixture.records))});` : '')
+          + `(() => { let seed = ${CAPTURE_SEED}; Math.random = () => {
           seed = (seed + 0x6d2b79f5) >>> 0;
           let value = Math.imul(seed ^ (seed >>> 15), seed | 1);
           value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
@@ -293,6 +295,12 @@ async function capture(browser, shot) {
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
             gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
             candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
+            scoreTextContained: [...document.querySelectorAll('#score, #best, .score-chip-label, .best-chip-label')].every(el => {
+              const range = document.createRange()
+              range.selectNodeContents(el)
+              const text = range.getBoundingClientRect(), box = el.getBoundingClientRect()
+              return text.left >= box.left - 1 && text.right <= box.right + 1 && text.top >= box.top - 1 && text.bottom <= box.bottom + 1
+            }),
             candidateCanvasesContained: [...document.querySelectorAll('.piece-preview-canvas')].every(canvas => {
               const c = canvas.getBoundingClientRect(), s = canvas.closest('.piece-slot').getBoundingClientRect()
               return c.left >= s.left && c.right <= s.right && c.top >= s.top && c.bottom <= s.bottom
@@ -421,6 +429,7 @@ async function capture(browser, shot) {
       if (!onHome) {
         if (parsed.candidateFrames.length !== 3 || parsed.candidateFrames.some(frame => ![frame.minX, frame.maxX, frame.minY, frame.maxY].every(Number.isFinite) || frame.minX < -0.99 || frame.maxX > 0.99 || frame.minY < -0.99 || frame.maxY > 0.99)) failures.push('candidate volume clipped by camera')
         if (!parsed.candidateCanvasesContained) failures.push('candidate canvas clipped by slot')
+        if (!parsed.scoreTextContained) failures.push('score or label text overflows its cell')
         if (sessionFixture && mode === 'board' && JSON.stringify(parsed.candidateFrames.map(frame => frame.name)) !== JSON.stringify(sessionFixture.snapshot.pieces.map(piece => piece.name))) failures.push('candidate fixture not restored')
       }
       if (sessionFixture && mode === 'board') {

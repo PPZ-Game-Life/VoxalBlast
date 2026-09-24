@@ -25,7 +25,7 @@
 // and every consumer must be handed the SAME instances (plan §5.3).
 import * as THREE from 'three'
 import { addToyLights } from './toyLights.js'
-import { BOARD_STYLE as style, DRAG_GHOST, dragGhostLiftPx, RENDER_PALETTE as palette, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, DRAG_GHOST, dragGhostLiftPx, RENDER_PALETTE as palette } from './config.js'
 import { faceLattice } from '../game/board.js'
 import { referencePaintColor } from './referencePalette.js'
 
@@ -83,9 +83,8 @@ export function createPieceView({
     const root = new THREE.Group()
     previewScene.add(root)
     const positions = flatPreviewPositions(getCells(piece))
-    const size = new THREE.Box3().setFromPoints(positions.map((p) => p.clone())).getSize(new THREE.Vector3()).addScalar(0.62)
-    const baseScale = THREE.MathUtils.clamp(3.2 / Math.max(size.x, size.y, size.z), 0.96, VFX_CONFIG.preview.maxScale)
-    root.scale.setScalar(baseScale)
+    // A cell has one visual size across the entire hand. Do not inflate a dot
+    // or a two-cell shape to fill the same box as a nine-cell shape.
     const outlineColor = new THREE.Color(referencePaintColor(piece.shape.color)).multiplyScalar(0.58)
     const meshes = positions.map((position) => {
       const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
@@ -120,8 +119,11 @@ export function createPieceView({
         const bounds = new THREE.Box3().setFromObject(preview.root).applyMatrix4(preview.camera.matrixWorldInverse)
         const size = bounds.getSize(new THREE.Vector3())
         const center = bounds.getCenter(new THREE.Vector3())
-        const usable = Math.max(0.5, 1 - 20 / Math.min(width, height))
-        const halfHeight = Math.max(1.6, size.y / (2 * usable), size.x * height / (2 * width * usable))
+        const usable = 0.88
+        // Reserve the same 3×3 envelope in every slot, in addition to the actual
+        // bounds, so small pieces and large pieces keep identical cell pitch.
+        const envelope = 2.45
+        const halfHeight = Math.max(envelope / (2 * usable), envelope * height / (2 * width * usable), size.y / (2 * usable), size.x * height / (2 * width * usable))
         const halfWidth = halfHeight * width / height
         preview.camera.left = center.x - halfWidth
         preview.camera.right = center.x + halfWidth

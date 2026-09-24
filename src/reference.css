@@ -3,12 +3,12 @@
 .topbar { position: absolute; inset: 0 0 auto; width: 100%; max-width: none; height: 18vh; padding: 0; overflow: visible; pointer-events: none; }
 .topbar > button { pointer-events: auto; }
 .score-plaque { position: absolute; left: 1.2vw; top: 1.2vh; width: var(--plaque-width); aspect-ratio: 1.72; background: url('/art/reference/score-panel.png') center / 100% 100% no-repeat; }
-.topbar .score-chip, .topbar .best-chip { position: absolute; left: calc(1.2vw + var(--plaque-width) * .12); width: calc(var(--plaque-width) * .73); min-width: 0; min-height: 0; height: calc(var(--plaque-width) * .16); padding: 0 0 0 calc(var(--plaque-width) * .16); margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.topbar .score-chip, .topbar .best-chip { position: absolute; left: calc(1.2vw + var(--plaque-width) * .16); width: calc(var(--plaque-width) * .66); min-width: 0; min-height: 0; height: calc(var(--plaque-width) * .16); padding: 0 0 0 calc(var(--plaque-width) * .12); margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); align-items: center; gap: 5px; }
 .topbar .best-chip { top: calc(1.2vh + var(--plaque-width) * .135); }
 .topbar .score-chip { top: calc(1.2vh + var(--plaque-width) * .315); }
-.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .135); height: 90%; background: url('/art/reference/crown.png') center / contain no-repeat; }
-.topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: clamp(14px, 1.45vw, 24px); letter-spacing: -.025em; font-weight: 900; }
-.topbar .score-chip-value, .topbar .best-chip-value { color: #fff9e9; font-size: clamp(24px, 2.55vw, 43px); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
+.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
+.topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
+.topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
 .topbar .icon-button .toy-icon, .item-button .item-icon { visibility: hidden; }
@@ -33,8 +33,8 @@
 .board-section::before, .board-section::after { display: none; }
 .garden-pedestal { position: absolute; display: block; max-width: none; height: auto; transform: translateX(-50%); pointer-events: none; user-select: none; z-index: 0; }
 .bottom-panel { position: absolute; z-index: 2; bottom: 7.4%; left: 50%; transform: translateX(-50%); width: min(840px, 52vw); height: 20%; max-height: 190px; padding: 5px 15px 9px; border: 0; border-radius: 0; box-shadow: none; background: url('/art/reference/tray.png') center / 100% 100% no-repeat; }
-.bottom-panel #piece-slots.piece-slots { height: 100%; width: 100%; max-width: none; gap: 5px; align-items: stretch; }
-.bottom-panel .piece-slot { display: flex; align-items: stretch; justify-content: center; min-height: 0; padding: 5px; background: transparent; border: 0; box-shadow: none; border-radius: 22px; }
+.bottom-panel #piece-slots.piece-slots { position: absolute; inset: 14% 5% 17%; height: auto; width: auto; max-width: none; gap: 3%; align-items: stretch; }
+.bottom-panel .piece-slot { display: flex; align-items: stretch; justify-content: center; min-height: 0; padding: 0; background: transparent; border: 0; box-shadow: none; border-radius: 16px; }
 .bottom-panel .piece-thumb { height: 100%; width: 100%; margin: 0; transform: none; border-radius: 0; background: none; filter: drop-shadow(0 3px 2px #82522244); }
 .bottom-panel .piece-slot.selected, .bottom-panel .piece-slot:hover, .bottom-panel .piece-slot:focus-visible { background: #fff5cf35; box-shadow: inset 0 0 0 2px #fff7cc99; transform: translateY(-2px); }
 .bottom-panel .piece-slot.used { background: transparent; opacity: .3; }
@@ -46,11 +46,10 @@
   :root { --plaque-width: 45vw; --hud-button: 12.4vw; }
   .topbar { height: 15%; }
   .score-plaque { top: 2.5vh; left: .8vw; }
-  .topbar .score-chip, .topbar .best-chip { left: calc(.8vw + var(--plaque-width) * .12); }
+  .topbar .score-chip, .topbar .best-chip { left: calc(.8vw + var(--plaque-width) * .16); }
   .topbar .best-chip { top: calc(2.5vh + var(--plaque-width) * .135); }
   .topbar .score-chip { top: calc(2.5vh + var(--plaque-width) * .315); }
-  .topbar .score-chip-label, .topbar .best-chip-label { font-size: 2.65vw; }
-  .topbar .score-chip-value, .topbar .best-chip-value { font-size: 4.8vw; -webkit-text-stroke-width: .8px; }
+  .topbar .score-chip-value, .topbar .best-chip-value { -webkit-text-stroke-width: .8px; }
   .topbar .icon-button { top: 4vh; width: 10.3vw; height: 10.3vw; }
   #settings-button { right: 1vw; width: 12.8vw; }
   .topbar #controls-button { right: 14vw; }
@@ -60,13 +59,11 @@
   .board-section { left: 4%; width: 92%; top: 33%; bottom: 25%; }
   .scene-wrap { bottom: 16%; }
   .bottom-panel { bottom: max(10%, env(safe-area-inset-bottom)); width: 90vw; height: 13.8%; max-height: none; padding: 4px 9px 6px; }
-  .bottom-panel .piece-slot { padding: 2px; border-radius: 15px; }
+  .bottom-panel .piece-slot { padding: 0; border-radius: 12px; }
   .chain-chip { top: 25vh; }
 }
 @media (orientation: landscape) and (max-height: 600px) {
   :root { --plaque-width: 190px; --hud-button: 50px; }
-  .topbar .score-chip-label, .topbar .best-chip-label { font-size: 12px; }
-  .topbar .score-chip-value, .topbar .best-chip-value { font-size: 24px; }
   #item-bar.item-bar { top: 2%; gap: 10px; }
   .item-button .item-count { min-width: 19px; height: 22px; font-size: 14px; }
   .board-section { top: 18%; bottom: 27%; }

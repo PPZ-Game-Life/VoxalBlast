@@ -2,7 +2,7 @@
 
 六面贴块消除小游戏，使用 Vite + 原生 JavaScript + Three.js。
 
-> 当前实现基线：**v0.8.27**（`package.json`）。本轮视觉参数见 [截图参考美术实现](docs/Technical/REFERENCE_ART_SKIN.md)；不代表远端部署版本。
+> 当前实现基线：**v0.8.28**（`package.json`）。本轮视觉参数见 [截图参考美术实现](docs/Technical/REFERENCE_ART_SKIN.md)；不代表远端部署版本。
 
 ## 当前游戏
 

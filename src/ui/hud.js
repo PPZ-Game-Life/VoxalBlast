@@ -61,6 +61,25 @@ export function createHud({
 
   // The toast's own timer, moved with the function that owns it.
   let toastTimer
+  let scoreFitFrame = 0
+  const scoreMeasure = document.createRange()
+
+  function fitScores() {
+    cancelAnimationFrame(scoreFitFrame)
+    scoreFitFrame = requestAnimationFrame(() => {
+      for (const el of [scoreEl, bestEl]) {
+        el.style.fontSize = ''
+        const style = getComputedStyle(el)
+        scoreMeasure.selectNodeContents(el)
+        const naturalWidth = scoreMeasure.getBoundingClientRect().width
+        const available = Math.max(1, el.clientWidth - 4) // outline + shadow
+        if (naturalWidth > available) el.style.fontSize = `${parseFloat(style.fontSize) * available / naturalWidth}px`
+      }
+    })
+  }
+  const scoreResize = new ResizeObserver(fitScores)
+  scoreResize.observe(scoreEl.parentElement)
+  scoreResize.observe(bestEl.parentElement)
 
   function setStatus(text) { statusEl.textContent = text }
 
@@ -75,6 +94,7 @@ export function createHud({
     scoreEl.textContent = String(getScore()).padStart(4, '0')
     // BEST is a secondary pill: same chip language, smaller type (04「UI 与发布」修订条款).
     bestEl.textContent = getBest().toLocaleString('en-US')
+    fitScores()
   }
 
   // 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /

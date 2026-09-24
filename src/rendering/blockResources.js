@@ -99,8 +99,8 @@ export function createBlockResources({ metrics }) {
       clearcoatRoughness: style.paintClearcoatRoughness,
       // Keep frontal lacquer saturated; strong white environment reflections
       // otherwise turn emerald and blue into pastel tiles at thumbnail scale.
-      specularIntensity: 0.35,
-      envMapIntensity: 0.32,
+      specularIntensity: 0.5,
+      envMapIntensity: 0.4,
       metalness: 0,
       transparent: opacity < 1,
       opacity,
