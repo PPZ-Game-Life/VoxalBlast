@@ -39,7 +39,7 @@
 // be nonsense. Every case therefore drags slot 0, and the fixture's hand is reordered per case so
 // that slot 0 holds the shape the case needs.
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -88,6 +88,14 @@ const MOUSE_OFFSET_MAX_CELLS = 0.6
 const TOUCH_OFFSET_MAX_CELLS = 3
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function feedbackShot(client, name) {
+  if (!process.env.DRAGFEEL_ARTIFACTS) return
+  const folder = resolve(ROOT, process.env.DRAGFEEL_ARTIFACTS)
+  mkdirSync(folder, { recursive: true })
+  const shot = await client.send('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(folder, `${name}.png`), Buffer.from(shot.data, 'base64'))
+}
 
 // ------------------------------------------------------------------ browser plumbing
 
@@ -290,6 +298,7 @@ const STATE = `(() => {
     board: globalThis.__voxalblast.board(),
     ghost: globalThis.__voxalblast.ghost(),
     preview: globalThis.__voxalblast.preview(),
+    clearPreview: globalThis.__voxalblast.clearPreview(),
     placement: globalThis.__voxalblast.placement(),
     rotation: globalThis.__voxalblast.rotation(),
   }
@@ -757,9 +766,27 @@ async function caseIllegalRelease(client, input) {
     attached(illegalState) && illegalState.preview.valid === false && originKey(illegalState) !== legalOrigin,
     `legal origin ${legalOrigin} -> illegal origin ${illegalState.ghost.previewOrigin ? originKey(illegalState) : 'none'}`)
 
+  await feedbackShot(client, 'invalid-overlap')
   await input.up(found.illegal.point.x, found.illegal.point.y)
-  await sleep(400)
+  const flightStart = await client.readJson(STATE)
+  await sleep(100)
+  const flightMiddle = await client.readJson(STATE)
+  check('D rejected piece visibly returns over time', Boolean(flightStart.ghost.returning)
+    && flightMiddle.ghost.returning?.progress > flightStart.ghost.returning.progress
+    && flightMiddle.ghost.returning.progress < 1, JSON.stringify(flightMiddle.ghost.returning))
+  const returnPixels = await client.readJson(`(() => {
+    const c = document.querySelector('.piece-return-flight')
+    if (!c) return 0
+    const p = c.getContext('2d').getImageData(0,0,c.width,c.height).data
+    let visible = 0
+    for(let i=3;i<p.length;i+=4) if(p[i]>32) visible++
+    return visible
+  })()`)
+  check('D return snapshot contains rendered block pixels', returnPixels > 100, `visible pixels=${returnPixels}`)
+  await feedbackShot(client, 'return-flight')
+  await sleep(450)
   const after = await client.readJson(STATE)
+  check('D return flight finishes and restores candidate', !after.ghost.returning && await client.evaluate(`!document.querySelector('.piece-return-flight, .piece-returning, .piece-dragging')`))
   check('D an illegal release spends no piece', after.slots[0].used === false, `used=${after.slots[0].used}`)
   check('D an illegal release leaves the board untouched', boardFingerprint(after.board) === boardFingerprint(before.board),
     `${boardFingerprint(before.board)} -> ${boardFingerprint(after.board)}`)
@@ -940,6 +967,70 @@ const child = spawn(browserPath, [
 
 let browserSocket = null
 let pageSocket = null
+async function caseClearForecast(client, input) {
+  const snapshot = structuredClone(FIXTURE_SNAPSHOT)
+  snapshot.board.cells = [0, 1, 3, 4].map((x, i) => [x, 2, 4, [0x3f8fe0, 0x217d6e, 0x8b57c9, 0x293894][i]])
+  snapshot.board.score = 0
+  snapshot.board.totalLines = 0
+  snapshot.pieces = ['Dot', 'Square', 'Line 3'].map(name => ({ name, used: false }))
+  await setSessionFixture(client, `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(snapshot))})`)
+  await client.send('Page.reload', { ignoreCache: false })
+  await sleep(1200)
+  await waitForHandle(client)
+  await waitIntroDone(client)
+  const before = await client.readJson(STATE)
+  const originalPaint = await client.evaluate('JSON.stringify(globalThis.__voxalblast.tileColors())')
+  const center = before.placement.center
+  await input.pressAndHold(before.slots[0], center, 1)
+  const held = await readState(client, input)
+  check('H legal forecast paints the whole completed row in the dragged colour', held.preview.valid
+    && held.clearPreview.length === 5 && held.clearPreview.every(tile => tile.color === held.preview.pieceColor), JSON.stringify(held.clearPreview))
+  check('H forecasting changes no board data', JSON.stringify(held.board) === JSON.stringify(before.board))
+  await feedbackShot(client, 'clear-forecast')
+  const step = held.ghost.stepScreen.v
+  await readState(client, input, { x: center.x + step.x, y: center.y + step.y })
+  check('H moving away restores every original tile material',
+    await client.evaluate('JSON.stringify(globalThis.__voxalblast.tileColors())') === originalPaint)
+  await readState(client, input, center)
+  await pressEscape(client)
+  await input.up(center.x, center.y)
+  const cancelled = await client.readJson(STATE)
+  check('H cancelling removes forecast without changing board', cancelled.clearPreview.length === 0
+    && JSON.stringify(cancelled.board) === JSON.stringify(before.board)
+    && await client.evaluate('JSON.stringify(globalThis.__voxalblast.tileColors())') === originalPaint)
+  // Pick up again before the first return finishes: a new drag owns the source.
+  await input.pressAndHold(before.slots[0], center, 1)
+  const again = await readState(client, input)
+  check('H a new drag interrupts the old return cleanly', !again.ghost.returning && again.preview.valid && again.clearPreview.length === 5)
+  await input.up(center.x, center.y)
+  await sleep(600)
+  const placed = await client.readJson(STATE)
+  check('H actual placement clears the predicted row and restores the view', placed.board.cells.length === 0
+    && placed.board.totalLines === 1 && placed.clearPreview.length === 0 && !placed.ghost.returning)
+}
+
+async function caseOverflow(client, input) {
+  await reloadWithHand(client, ['Square', 'Dot', 'Line 3'])
+  const before = await client.readJson(STATE)
+  const center = before.placement.center
+  await input.pressAndHold(before.slots[0], center, 1)
+  const held = await readState(client, input)
+  const step = held.ghost.stepScreen.u
+  const delta = 4 - held.ghost.previewOrigin.u
+  const point = { x: center.x + step.x * delta, y: center.y + step.y * delta }
+  const overflow = await readState(client, input, point)
+  check('I partial overflow stays at the requested edge and turns grey', overflow.ghost.onFace
+    && overflow.ghost.previewOrigin.u === 4 && !overflow.preview.valid
+    && overflow.preview.cells.length === 4 && overflow.preview.cells.every(cell => cell.color === INVALID_HEX), JSON.stringify(overflow.preview))
+  check('I overflow never forecasts a clear', overflow.clearPreview.length === 0)
+  await feedbackShot(client, 'invalid-overflow')
+  await input.up(point.x, point.y)
+  const released = await client.readJson(STATE)
+  check('I overflow release animates back and spends nothing', Boolean(released.ghost.returning)
+    && JSON.stringify(released.board) === JSON.stringify(before.board) && !released.slots[0].used)
+  await sleep(500)
+}
+
 let thrown = null
 
 try {
@@ -1008,6 +1099,12 @@ try {
 
   console.log('\n-- G. another face after a real cube turn --')
   if (wants('G')) await caseOtherFace(client, input)
+
+  console.log('\n-- H. clear forecast and original-colour restoration --')
+  if (wants('H')) await caseClearForecast(client, input)
+
+  console.log('\n-- I. partial overflow is grey and returns without placement --')
+  if (wants('I')) await caseOverflow(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))

@@ -765,6 +765,31 @@ group('supply', () => {
   check('Block 9 samples near its 1.96% share', Math.abs(observedBlock9 - 0.4 / 20.4) < 0.005, `observed ${(observedBlock9 * 100).toFixed(2)}%`)
 })
 
+group('placement-preview', () => {
+  for (const face of FACES) {
+    const board = new Board()
+    for (const u of [0, 1, 3, 4]) {
+      const [x, y, z] = faceLattice(face, u, 2)
+      board.cells.set(board.key(x, y, z), { x, y, z, color: 0x3f8fe0 })
+    }
+    board.score = 730
+    board.totalLines = 2
+    const before = JSON.stringify([board.cells.size, [...board.cells], board.score, board.totalLines])
+    const preview = board.previewLines(face, [[0, 0]], { u: 2, v: 2 })
+    equal(`${face} forecast completes one line`, preview.length, 1)
+    equal(`${face} forecast includes five unique cells`, new Set(preview.flatMap(line => line.cells.map(c => c.join(',')))).size, 5)
+    equal(`${face} overlap forecasts no clear`, board.previewLines(face, [[0, 0]], { u: 0, v: 2 }).length, 0)
+    equal(`${face} overflow forecasts no clear`, board.previewLines(face, [[0, 0], [1, 0]], { u: 4, v: 1 }).length, 0)
+    equal(`${face} forecast never changes live board`, JSON.stringify([board.cells.size, [...board.cells], board.score, board.totalLines]), before)
+    equal(`${face} forecast equals actual resolution`, JSON.stringify(board.place(face, [[0, 0]], { u: 2, v: 2 }, 0xff1644).lines), JSON.stringify(preview))
+  }
+  const shared = new Board()
+  for (const x of [0, 1, 3, 4]) shared.cells.set(shared.key(x, 0, 4), { x, y: 0, z: 4, color: 0x3f8fe0 })
+  const lines = shared.previewLines('+z', [[0, 0]], { u: 2, v: 0 })
+  equal('shared edge forecasts both faces', new Set(lines.map(line => line.face)).size, 2)
+  equal('shared edge still has only five actual cubes', new Set(lines.flatMap(line => line.cells.map(cell => cell.join(',')))).size, 5)
+})
+
 const selected = only === 'all' ? [...groups.keys()] : [only]
 for (const name of selected) {
   if (!groups.has(name)) {

@@ -444,7 +444,7 @@ async function caseLegalDrop(client, input) {
     `marker=${live.ghost.previewCells} oriented=${live.placement.oriented.length}`)
   check('A the landing marker wears the candidate own paint, not a fixed colour',
     live.preview.pieceColor !== null && live.preview.cells.every((cell) => cell.color === live.preview.pieceColor)
-      && live.preview.cells.every((cell) => cell.opacity === 0.72),
+      && live.preview.cells.every((cell) => cell.opacity === 0.86),
     `pieceColor=${live.preview.pieceColor} marker=${live.preview.cells.map((c) => c.color).join(',')}`)
   check('A the landing marker and the carried ghost never coexist',
     live.ghost.visible === false, `ghostVisible=${live.ghost.visible} mode=${live.ghost.mode}`)

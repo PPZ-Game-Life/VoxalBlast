@@ -39,10 +39,91 @@ export function createPieceView({
   getCanvasRect,
   getCells,
   getSelectedPiece,
+  onClearForecast,
 }) {
   // One entry per candidate slot: the piece, the slot button, that slot's renderer / scene /
   // camera / meshes, and the frame size the last projection was fitted to.
   const previews = new Map()
+  let draggedPiece = null
+  let returnFlight = null
+
+  function cancelReturn() {
+    if (!returnFlight) return
+    returnFlight.animation.cancel()
+    returnFlight.finish()
+  }
+
+  // A short, input-transparent flight outside the board canvas. Capture the actual
+  // posed 3D piece using its existing preview renderer, so the rejected piece
+  // starts exactly where the landing marker/ghost was, even near a canvas edge.
+  function projectedBounds(group, viewCamera, rect) {
+    group.updateWorldMatrix(true, true)
+    viewCamera.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(group)
+    const points = []
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      const p = new THREE.Vector3(x, y, z).project(viewCamera)
+      points.push({ x: rect.left + (p.x + 1) * rect.width / 2, y: rect.top + (1 - p.y) * rect.height / 2 })
+    }
+    const left = Math.min(...points.map(p => p.x)) - 2
+    const top = Math.min(...points.map(p => p.y)) - 2
+    return { left, top, width: Math.max(...points.map(p => p.x)) - left + 2, height: Math.max(...points.map(p => p.y)) - top + 2 }
+  }
+
+  function returnPiece(piece) {
+    cancelReturn()
+    const preview = previews.get(piece)
+    const source = landing.children.length ? landing : ghost.visible ? ghost : null
+    if (!preview || !source) return
+    const rect = getCanvasRect()
+    const from = projectedBounds(source, camera, rect)
+    const to = projectedBounds(preview.root, preview.camera, preview.renderer.domElement.getBoundingClientRect())
+    if (![from.width, from.height, to.width, to.height].every(n => Number.isFinite(n) && n > 0)) return
+    const snapshot = new THREE.Scene()
+    addToyLights(snapshot)
+    const copy = source.clone(true)
+    copy.visible = true
+    copy.matrixAutoUpdate = false
+    copy.matrix.copy(source.matrixWorld)
+    const temporaryMaterials = []
+    copy.traverse(node => {
+      if (!node.material) return
+      node.material = node.material.clone()
+      temporaryMaterials.push(node.material)
+      node.material.color.set(referencePaintColor(piece.shape.color))
+      if (node.isLineSegments) node.material.color.multiplyScalar(0.58)
+      node.material.opacity = node.isLineSegments ? style.voxelEdgeOpacity : 0.96
+    })
+    snapshot.add(copy)
+    const captureCamera = camera.clone(false)
+    captureCamera.setViewOffset(rect.width, rect.height, from.left - rect.left, from.top - rect.top, from.width, from.height)
+    const canvas = document.createElement('canvas')
+    canvas.className = 'piece-return-flight'
+    canvas.setAttribute('aria-hidden', 'true')
+    const ratio = preview.renderer.getPixelRatio()
+    canvas.width = Math.ceil(from.width * ratio)
+    canvas.height = Math.ceil(from.height * ratio)
+    canvas.style.cssText = `position:fixed;pointer-events:none;z-index:30;left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px;transform-origin:0 0;`
+    preview.renderer.setSize(from.width, from.height, false)
+    preview.renderer.render(snapshot, captureCamera)
+    canvas.getContext('2d').drawImage(preview.renderer.domElement, 0, 0, canvas.width, canvas.height)
+    preview.renderer.setSize(preview.frameWidth, preview.frameHeight, false)
+    preview.renderer.render(preview.scene, preview.camera)
+    temporaryMaterials.forEach(material => material.dispose())
+    document.body.appendChild(canvas)
+    preview.slot.classList.add('piece-returning')
+    const animation = canvas.animate([
+      { transform: 'translate(0px, 0px) scale(1, 1)', filter: 'grayscale(1)' },
+      { transform: `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${to.width / from.width}, ${to.height / from.height})`, filter: 'grayscale(0)' },
+    ], { duration: 420, easing: 'cubic-bezier(.22,.7,.3,1)', fill: 'forwards' })
+    const flight = { animation, from, to, finish: () => {
+      canvas.remove()
+      preview.slot.classList.remove('piece-returning')
+      if (returnFlight === flight) returnFlight = null
+    } }
+    returnFlight = flight
+    animation.finished.then(flight.finish, flight.finish)
+  }
   // Flat, face-on preview positions: (u,v) -> screen space (x right, y down).
   // `pitch` is the cell edge: the slot thumbnails pack the cells tighter (0.8) so
   // the outline fits the card, the drag ghost uses the board's own 1.0 pitch.
@@ -55,6 +136,7 @@ export function createPieceView({
   }
 
   function disposePiecePreviews() {
+    cancelReturn()
     previews.forEach((preview) => {
       preview.meshes.forEach((mesh) => {
         mesh.material.dispose()
@@ -184,6 +266,7 @@ export function createPieceView({
 
   function clearLanding() {
     clearGroup(landing)
+    onClearForecast()
   }
 
   // Draw the cells the piece would occupy at this origin. Whether the drop is LEGAL is main's
@@ -195,25 +278,25 @@ export function createPieceView({
   // reads as two different objects, and it throws away the one colour that says which
   // of the three candidates is being placed. 05 §… "候选预览与棋盘同源" — the same
   // reasoning that makes the board, the tray and the drag ghost share one material.
-  // Only the INVALID state keeps a colour of its own (`palette.invalid`, terracotta),
+  // Only the INVALID state keeps a colour of its own (`palette.invalid`, grey),
   // because there the colour is carrying a different message: "no room here".
   function showLanding({ face, cells, origin, valid, color }) {
     const faceNormal = cubeVector(face, 'n')
     const markerColor = valid ? color : palette.invalid
     const markerEdge = valid
       ? new THREE.Color(referencePaintColor(color)).multiplyScalar(0.58)
-      : new THREE.Color(0x7a2a17)
+      : new THREE.Color(palette.invalid).multiplyScalar(0.58)
     cells.forEach(([u, v]) => {
       const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
       // The landing marker IS a ghost of the block: same cube, same cell, same gap to
       // its neighbours. The player therefore sees the board it is about to get, not a
       // highlight floating over it (05 §6「落点预览」).
-      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(markerColor, 0.72))
+      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(markerColor, valid ? 0.86 : 0.96))
       mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, previewLift)
       mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
         color: markerEdge,
         transparent: true,
-        opacity: 0.92,
+        opacity: style.voxelEdgeOpacity,
         depthWrite: false,
       })))
       landing.add(mesh)
@@ -252,7 +335,9 @@ export function createPieceView({
   // piece the player was holding had no on-screen existence at all. These four
   // helpers are the whole feature: build it once when the gesture starts, place it
   // on every pointermove, tint it by the drop state, drop it when the gesture ends.
-  function clearDragGhost() {
+  function clearDragGhost({ keepReturn = false } = {}) {
+    if (!keepReturn) cancelReturn()
+    previews.forEach(preview => preview.slot.classList.remove('piece-dragging'))
     ghost.visible = false
     clearGroup(ghost)
   }
@@ -261,6 +346,8 @@ export function createPieceView({
   // darkened outline — the ghost must read as the SAME object the player picked up
   // (05「候选预览与棋盘同源」), not as a second visual language for dragging.
   function buildDragGhost(piece) {
+    cancelReturn()
+    draggedPiece = piece
     clearGroup(ghost)
     const fill = new THREE.Color(referencePaintColor(piece.shape.color))
     const outline = fill.clone().multiplyScalar(0.58)
@@ -286,7 +373,7 @@ export function createPieceView({
       const edges = new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
         color: outline,
         transparent: true,
-        opacity: 0.7,
+        opacity: style.voxelEdgeOpacity,
         depthTest: false,
         depthWrite: false,
       }))
@@ -302,7 +389,7 @@ export function createPieceView({
   // piece), 'invalid' (on the cube but this face has no room) or 'cancel' (dragged
   // back over the candidate/item strip).
   function tintDragGhost(mode) {
-    const invalid = mode === 'invalid'
+    const invalid = mode !== 'snap'
     const opacity = mode === 'cancel' ? DRAG_GHOST.cancelOpacity
       : invalid ? DRAG_GHOST.invalidOpacity : DRAG_GHOST.opacity
     ghost.userData.mode = mode
@@ -332,6 +419,7 @@ export function createPieceView({
 
   function syncDragGhost({ ndc, canvasHeight, cellPx, pointerType, mode }) {
     if (!ghost.children.length) return
+    previews.get(draggedPiece)?.slot.classList.add('piece-dragging')
     // v0.4.5: ONE piece per turn. The moment the piece attaches to a face the board
     // draws it, and the one in hand must not be there as well — the player read the
     // pair as "two blocks", which is exactly what it was.
@@ -410,6 +498,7 @@ export function createPieceView({
       // 'carry' | 'snap' | 'invalid' | 'cancel' — the state the drag is in. 'snap'
       // is the handoff: the ghost is hidden because the board is drawing the piece.
       mode: ghost.userData.mode ?? null,
+      returning: returnFlight ? { progress: returnFlight.animation.effect.getComputedTiming().progress, from: returnFlight.from, to: returnFlight.to } : null,
     }
   }
 
@@ -452,6 +541,7 @@ export function createPieceView({
     buildDragGhost,
     clearDragGhost,
     syncDragGhost,
+    returnPiece,
     ghostReport,
     clearItemOverlay,
     showItemOverlay,

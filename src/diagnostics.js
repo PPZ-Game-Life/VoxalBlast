@@ -174,6 +174,8 @@ export function createDiagnostics({
     // The camera's own framing report (gameScene owns the zoom, the orbit distance, the fit
     // box and the canvas it draws into).
     framing: () => scene3d.framingReport(),
+    clearPreview: () => boardView.clearPreviewReport(),
+    tileColors: () => boardView.tileColorReport(),
     // Board read-out for the headless checks (v0.2.31): the occupied shell cells as
     // [x, y, z, color] — the color is the shape type, so a check can prove the opening layout
     // draws from the candidate pool — plus the score and any face line that is already full.

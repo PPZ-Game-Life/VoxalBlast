@@ -66,6 +66,19 @@ export class Board {
     })
   }
 
+  // Forecast against a separate occupancy map. The live cells, score and turn
+  // remain untouched, including lines completed on adjacent shared faces.
+  previewLines(face, cells, origin) {
+    if (!this.canPlace(face, cells, origin)) return []
+    const preview = new Board()
+    preview.cells = new Map(this.cells)
+    cells.forEach(([u, v]) => {
+      const [x, y, z] = faceLattice(face, u + origin.u, v + origin.v)
+      preview.cells.set(this.key(x, y, z), { x, y, z })
+    })
+    return preview.findAllFullLines()
+  }
+
   // Drop a piece on `face` and settle every full line on the cube in the same
   // batch. Returns the resolution only (no score): `linesByFace` groups the
   // settled lines by the face they live on, `facesHit` is how many distinct faces

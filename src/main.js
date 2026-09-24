@@ -380,9 +380,14 @@ const input = createGameInput({
   onSelectionChanged: () => updatePieceSlotSelection(),
   onBuildGhost: (piece) => buildDragGhost(piece),
   onSyncGhost: (params) => syncDragGhost(params),
-  onClearGhost: () => clearDragGhost(),
+  onClearGhost: (options) => clearDragGhost(options),
+  onReturnPiece: (piece) => pieceView.returnPiece(piece),
   onClearLanding: () => clearLanding(),
-  onShowLanding: (params) => showLanding(params),
+  onShowLanding: (params) => {
+    showLanding(params)
+    const lines = params.valid ? board.previewLines(params.face, params.cells, params.origin) : []
+    boardView.setClearPreview(lines.flatMap(line => line.cells), params.color)
+  },
   onDrop: (drop) => onDrop(drop),
 })
 
@@ -445,6 +450,7 @@ const pieceView = createPieceView({
   // read through getters rather than captured.
   getCells: currentCells,
   getSelectedPiece: () => input.getSelectedPiece(),
+  onClearForecast: () => boardView.setClearPreview(),
 })
 const {
   disposePiecePreviews,

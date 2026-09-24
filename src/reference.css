@@ -39,6 +39,8 @@
 .bottom-panel .piece-thumb { height: 100%; width: 100%; margin: 0; transform: none; border-radius: 0; background: none; filter: drop-shadow(0 3px 2px #82522244); }
 .bottom-panel .piece-slot.selected, .bottom-panel .piece-slot:hover, .bottom-panel .piece-slot:focus-visible { background: #fff5cf35; box-shadow: inset 0 0 0 2px #fff7cc99; transform: translateY(-2px); }
 .bottom-panel .piece-slot.used { background: transparent; opacity: .3; }
+.bottom-panel .piece-slot.piece-dragging .piece-thumb,
+.bottom-panel .piece-slot.piece-returning .piece-thumb { opacity: 0; }
 .status-line { display: none; }
 .chain-chip { position: absolute; left: 50%; top: 15vh; transform: translateX(-50%); }
 .app-version { position: fixed; left: 8px; bottom: 6px; top: auto; margin: 0; font-size: 9px; opacity: .65; }

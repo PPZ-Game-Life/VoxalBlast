@@ -93,6 +93,7 @@ export function createGameInput({
   onBuildGhost,
   onSyncGhost,
   onClearGhost,
+  onReturnPiece,
   onClearLanding,
   onShowLanding,
   onDrop,
@@ -428,7 +429,9 @@ export function createGameInput({
     }
   }
 
-  // Keep the piece's CONTINUOUS origin inside the face's own bounds, every frame. The clamp is
+  // Keep at least one row/column over the face, allowing partial overflow to be
+  // shown as invalid instead of silently pushing the whole piece back inside.
+  // Bound the CONTINUOUS origin every frame. The clamp is
   // applied to the carried coordinate itself rather than to the answer of a running pixel offset,
   // and that difference IS the 「边缘反向拖动空行程」 fix (v0.8.27): once the piece is against an
   // edge, further over-travel is discarded here, so the first pixel back moves it again. The old
@@ -438,8 +441,8 @@ export function createGameInput({
     const spanU = Math.max(...cells.map(([cu]) => cu))
     const spanV = Math.max(...cells.map(([, cv]) => cv))
     return {
-      u: THREE.MathUtils.clamp(u, 0, Math.max(SH - 1 - spanU, 0)),
-      v: THREE.MathUtils.clamp(v, 0, Math.max(SH - 1 - spanV, 0)),
+      u: THREE.MathUtils.clamp(u, -spanU, SH - 1),
+      v: THREE.MathUtils.clamp(v, -spanV, SH - 1),
     }
   }
 
@@ -545,7 +548,7 @@ export function createGameInput({
     drag.valid = valid
     drag.attached = true
     // The marker itself is pieceView's (P4b): it draws the cells it is handed, in the piece's own
-    // colour while this drop is legal and in terracotta when it is not.
+    // colour while this drop is legal and in grey when it is not.
     onShowLanding({ face: drag.face, cells: drag.cells, origin, valid, color: selectedPiece.shape.color })
     return true
   }
@@ -591,7 +594,7 @@ export function createGameInput({
     // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
     // carried. Once it is attached to a face the board draws it and the carried copy
     // disappears; if the pointer is on the cube but this face has no room, the piece
-    // stays in hand and turns red instead of silently vanishing.
+    // stays in hand and turns grey instead of silently vanishing.
     syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
     if (attached) onStatus(drag.valid ? 'Release to place' : 'No room here')
     else onStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
@@ -606,8 +609,10 @@ export function createGameInput({
     const currentDrag = drag
     drag = null
     releasePointerCapture(currentDrag.source, currentDrag.pointerId)
+    const returning = showFeedback && currentDrag.active
+    if (returning) onReturnPiece(currentDrag.piece)
     onClearLanding()
-    onClearGhost()
+    onClearGhost({ keepReturn: returning })
     selectedPiece = null
     suppressPieceClickUntil = performance.now() + 260
     onCancelZone(false)
@@ -620,10 +625,9 @@ export function createGameInput({
     return true
   }
 
-  // Drop the drag record WITHOUT the cancel choreography: a new run rebuilds the whole board and
-  // repaints the strip itself, and it has always nulled the record directly rather than routing
-  // through the cancel path (which would add a status line, a haptic and a landing clear).
+  // Replacing a run clears its preview without the toast/haptic of a user cancel.
   function resetDrag() {
+    onClearLanding()
     drag = null
   }
 
@@ -637,8 +641,10 @@ export function createGameInput({
     const currentDrag = drag
     drag = null
     releasePointerCapture(currentDrag.source, currentDrag.pointerId)
+    const returning = currentDrag.active && (currentDrag.inCancelZone || !currentDrag.valid || !currentDrag.origin || !currentDrag.face)
+    if (returning) onReturnPiece(currentDrag.piece)
     onClearLanding()
-    onClearGhost()
+    onClearGhost({ keepReturn: returning })
     onCancelZone(false)
     if (!currentDrag.active) {
       selectedPiece = currentDrag.piece

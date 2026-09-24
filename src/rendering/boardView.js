@@ -629,7 +629,26 @@ export function createBoardView({
   // Occupancy is paint, not geometry. Each unique lattice cell keeps one mesh and
   // one material; its adjacent faces share that same solid corner block.
   let occupiedColors = new Map()
+  let clearPreviewColors = new Map()
   let tileFrontFace = null
+
+  function setClearPreview(cells = [], color) {
+    if (!cells.length && !clearPreviewColors.size) return
+    clearPreviewColors = new Map(cells.map(cell => [cell.join(','), color]))
+    applyTileMaterials()
+  }
+
+  function clearPreviewReport() {
+    const tiles = gridGroup.children.flatMap(group => group.children)
+    return tiles.filter(tile => clearPreviewColors.has(tile.userData.cell.join(',')))
+      .map(tile => ({ cell: [...tile.userData.cell], color: `#${tile.material.color.getHexString()}` }))
+  }
+
+  function tileColorReport() {
+    return gridGroup.children.flatMap(group => group.children).map(tile => ({
+      cell: [...tile.userData.cell], color: `#${tile.material.color.getHexString()}`,
+    }))
+  }
 
   // The single place that decides which material a tile wears. The per-frame front
   // face pass and the board render both go through here, so the two can never
@@ -640,7 +659,8 @@ export function createBoardView({
     gridGroup.children.forEach((group) => {
       group.children.forEach((tile) => {
         const active = tile.userData.faces.includes(front)
-        const color = occupiedColors.get(tile.userData.cell.join(','))
+        const key = tile.userData.cell.join(',')
+        const color = clearPreviewColors.get(key) ?? occupiedColors.get(key)
         if (color !== undefined) tile.material = getBlocks().paintMaterial(color, tile.userData.tone)
         else tile.material = getBlocks().blockWoodMaterials[tile.userData.tone][active ? 'active' : 'idle']
       })
@@ -658,6 +678,7 @@ export function createBoardView({
   // repainted from them. main's renderBoard() still calls updateHud() right after this, in
   // the same order it always did.
   function sync(cells) {
+    clearPreviewColors.clear()
     occupiedColors = new Map(cells.map((cell) => [`${cell.x},${cell.y},${cell.z}`, cell.color]))
     applyTileMaterials()
   }
@@ -1327,6 +1348,9 @@ export function createBoardView({
     getBearing,
     setBearing,
     getLive,
+    setClearPreview,
+    clearPreviewReport,
+    tileColorReport,
     setLive,
     // Pose commands and queries. `stepQuaternion`, `planAxisRelease`, `frontFaceOf` and
     // `updateScreenAxesLocal` are internals of this model and stay private.
