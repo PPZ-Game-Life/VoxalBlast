@@ -170,6 +170,12 @@ export function dealBatch({
     nodes: 0,
     fallback: FALLBACK_REASONS.NONE,
     fallbackSteps: [],
+    // Facts about the batch that are NOT degradations (a repeat of a recent hand, a relaxed
+    // same-shape cap). Kept apart from the ladder so neither can be read as the other.
+    informationalSteps: [],
+    // True when the tolerance target could not be met but the pressure target was honoured —
+    // the two sub-cases of a relaxed tolerance differ by ~60x in practice, so they are named.
+    pressureKept: false,
     withinSafeRange: false,
     intersectsSafeRange: false,
     withinPressureRange: false,
@@ -263,22 +269,25 @@ export function dealBatch({
       // target; it simply moved the pressure more than the soft guard prefers.
       metrics.pressureJumpExceeded = true
     } else {
-      // No sampled batch could be brought inside the tolerance target. The spec's first
-      // degradation step is to relax the PRESSURE target and keep the tolerance one; when that
-      // is what happens the batch is still chosen on tolerance, and the fallback is recorded.
+      // No sampled batch could be brought inside the tolerance target — the batch's primary
+      // intent could not be honoured. The spec's first degradation step is to relax the
+      // PRESSURE target and keep the tolerance one, so the pressure target is checked here and
+      // the two sub-cases are recorded separately.
+      //
+      // WHY THE SPLIT MATTERS (found by tools/deal-experiments.mjs): the first version of this
+      // branch pushed `relaxed-pressure` into the ladder and set `fallback` to
+      // `relaxed-tolerance`, which made the ladder read as if the PRESSURE target had been
+      // relaxed in every one of these batches. In the measured run 1981 of 2014 were
+      // pressure-KEPT (tolerance missed, pressure honoured) and only 33 missed both — reading
+      // the ladder alone overstated the degradation by ~60x. The ladder now names the step that
+      // was actually needed.
       const byPressure = [...analysed].sort((a, b) => a.scoring.pressure - b.scoring.pressure)
       const withinPressure = byPressure.filter((entry) => entry.scoring.withinPressureRange)
-      if (withinPressure.length) {
-        chosen = pickCandidate(withinPressure, rng)
-        metrics.fallback = FALLBACK_REASONS.RELAXED_TOLERANCE
-        metrics.fallbackSteps.push(FALLBACK_REASONS.RELAXED_PRESSURE)
-      } else {
-        // Both targets missed: take the batch that leaves the player the most room, and say so.
-        const loosest = [...analysed].sort((a, b) => b.analysis.aLower - a.analysis.aLower)
-        chosen = pickCandidate(loosest, rng)
-        metrics.fallback = FALLBACK_REASONS.RELAXED_TOLERANCE
-        metrics.fallbackSteps.push(FALLBACK_REASONS.RELAXED_PRESSURE, FALLBACK_REASONS.RELAXED_TOLERANCE)
-      }
+      chosen = withinPressure.length ? pickCandidate(withinPressure, rng) : pickCandidate(byPressure, rng)
+      metrics.fallback = FALLBACK_REASONS.RELAXED_TOLERANCE
+      metrics.pressureKept = withinPressure.length > 0
+      metrics.fallbackSteps.push(FALLBACK_REASONS.RELAXED_TOLERANCE)
+      if (!withinPressure.length) metrics.fallbackSteps.push(FALLBACK_REASONS.RELAXED_PRESSURE)
     }
   }
 
@@ -345,6 +354,11 @@ export function dealBatch({
   metrics.withinSafeRange = chosen.scoring.withinSafeRange === true
   metrics.intersectsSafeRange = chosen.scoring.intersectsSafeRange === true
   metrics.withinPressureRange = chosen.scoring.withinPressureRange === true
+  // One uniform meaning for the whole report: "the batch that was chosen kept the pressure
+  // target". The relaxed branch sets it earlier for its own decision; setting it here from the
+  // chosen candidate's own scoring is what makes the field readable for every batch, including
+  // the ones that needed no degradation at all.
+  metrics.pressureKept = metrics.withinPressureRange
   metrics.cost = chosen.scoring.cost
   metrics.lowBranch = analysis.lowBranch === true
   metrics.samples = analysis.samples
@@ -363,8 +377,11 @@ export function dealBatch({
   }))
   metrics.relaxedSameShape = chosen.relaxedSameShape === true
   metrics.repeatedWithRecent = chosen.scoring.repeat
-  if (metrics.relaxedSameShape) metrics.fallbackSteps.push(FALLBACK_REASONS.RELAXED_SAME_SHAPE)
-  if (beforeHands.some((hand) => sameHand(hand, chosen.names))) metrics.fallbackSteps.push(FALLBACK_REASONS.SAME_AS_PREVIOUS)
+  // Informational tags live in their own list. They used to share `fallbackSteps`, which made a
+  // tally of that list read "96.8% same-as-previous" as if it were a degradation rate — a
+  // repeat of a recent batch is a fact about the hand, not a failure to hit a target.
+  if (metrics.relaxedSameShape) metrics.informationalSteps.push(FALLBACK_REASONS.RELAXED_SAME_SHAPE)
+  if (beforeHands.some((hand) => sameHand(hand, chosen.names))) metrics.informationalSteps.push(FALLBACK_REASONS.SAME_AS_PREVIOUS)
 
   return {
     hand: chosen.hand,

@@ -326,6 +326,38 @@ function occupiedSignature(board) {
     `${second.names.join(',')} vs ${clean.names.join(',')}`)
 }
 
+// ---- The ladder and the informational tags stay apart ----------------------
+// The experiment harness found that a tally of `fallbackSteps` read "96.8% same-as-previous" as
+// if a repeat of a recent hand were a degradation, and that `fallback` said
+// `relaxed-tolerance` for two very different branches (~60x apart in frequency). Both are
+// pinned here: the two lists may not share a value, and a batch with no degradation must have
+// an empty ladder.
+{
+  const board = freshBoard(51)
+  const state = createDirectorState()
+  const directorRng = createRng(51)
+  const ladder = new Set(Object.values(FALLBACK_REASONS))
+  const informational = new Set([FALLBACK_REASONS.SAME_AS_PREVIOUS, FALLBACK_REASONS.RELAXED_SAME_SHAPE])
+  let clean = 0
+  let consistent = true
+  for (let i = 0; i < 12; i += 1) {
+    beginNaturalBatch(state, directorRng)
+    const result = dealOnce({ board, state, seed: 510 + i })
+    const m = result.metrics
+    if (m.fallback === FALLBACK_REASONS.NONE) {
+      clean += 1
+      if (m.fallbackSteps.length !== 0) consistent = false
+    } else if (!m.fallbackSteps.includes(m.fallback)) consistent = false
+    if (m.fallbackSteps.some((step) => informational.has(step))) consistent = false
+    if (m.informationalSteps.some((step) => !informational.has(step))) consistent = false
+    if (m.informationalSteps.some((step) => !ladder.has(step))) consistent = false
+    if (typeof m.pressureKept !== 'boolean') consistent = false
+    for (let step = 0; step < 3; step += 1) notePlacement(state)
+  }
+  check('a batch with no degradation has an empty ladder', clean > 0)
+  check('the ladder never contains an informational tag, and vice versa', consistent)
+}
+
 if (failures.length) {
   console.log(`deal-dealer-tests: ${passed}/${passed + failures.length} checks passed`)
   console.log('\nFAILED:')
