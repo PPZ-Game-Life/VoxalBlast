@@ -21,7 +21,8 @@ import {
 } from '../src/game/dealDirector.js'
 import { dealBatch, sampleHands } from '../src/game/dealer.js'
 import { FALLBACK_REASONS } from '../src/game/dealConfig.js'
-import { fromBoard } from '../src/game/placementModel.js'
+import { applyPlacement, enumeratePlacements, fromBoard } from '../src/game/placementModel.js'
+import { solveHand } from '../src/game/handSolver.js'
 
 let passed = 0
 const failures = []
@@ -356,6 +357,113 @@ function occupiedSignature(board) {
   }
   check('a batch with no degradation has an empty ladder', clean > 0)
   check('the ladder never contains an informational tag, and vice versa', consistent)
+}
+
+// ---- Spec §12.3 fixtures the solver must handle ----------------------------
+// Two cases the spec names explicitly, because both are the reason "each piece fits right now"
+// is not a solvability proof. They are SEARCHED for on boards built by random play rather than
+// hand-drawn: a hand-built board almost always has a face line one cell short, and one
+// placement then clears half the cube — which makes the "fixture" test the board's degeneracy
+// instead of the solver. The search is seeded, so it either always finds a case or never does.
+function searchFixture(kind, tries = 600) {
+  const rng = createRng(90210)
+  for (let attempt = 0; attempt < tries; attempt += 1) {
+    const board = freshBoard(2000 + attempt)
+    // Fill the board by playing random legal placements until it is reasonably busy.
+    const fillRng = createRng(3000 + attempt)
+    const target = 30 + (attempt % 45)
+    let guard = 0
+    while (board.occupied().length < target && guard < 200) {
+      guard += 1
+      const shape = SHAPES[fillRng.int(SHAPES.length)]
+      const placements = enumeratePlacements(fromBoard(board), shape.cells)
+      if (!placements.length) continue
+      const choice = placements[fillRng.int(placements.length)]
+      board.place(choice.face, choice.cells, choice.origin, shape.color)
+    }
+    const occ = fromBoard(board)
+    const hand = [0, 1, 2].map(() => SHAPES[rng.int(SHAPES.length)])
+    const cells = hand.map((shape) => shape.cells)
+    const each = hand.map((shape) => enumeratePlacements(occ, shape.cells).length)
+    const proof = solveHand(occ, cells, { nodeBudget: 40000 })
+
+    if (kind === 'individually-placeable-but-unsolvable') {
+      // Every piece has a legal spot right now, and yet the batch cannot be finished.
+      if (proof.status === 'UNSOLVABLE' && each.every((n) => n > 0)) {
+        return { board, occ, hand, each, proof }
+      }
+    } else {
+      // Some piece has NO spot now, and the batch is solvable only because another piece's
+      // clear opens one — the witness must therefore not start with the blocked piece.
+      if (proof.status !== 'SOLVABLE') continue
+      const blocked = hand.findIndex((shape, index) => each[index] === 0)
+      if (blocked < 0) continue
+      const first = proof.witness[0]
+      if (!first || first.pieceIndex === blocked) continue
+      // Replay the first step and confirm the previously-blocked piece now fits.
+      const after = applyPlacement(occ, {
+        face: first.face, cells: first.cells, origin: first.origin, indices: first.indices,
+      })
+      const opened = enumeratePlacements(after.occ, hand[blocked].cells).length
+      if (opened > 0) return { board, occ, hand, each, proof, blocked, after }
+    }
+  }
+  return null
+}
+
+{
+  const fixture = searchFixture('individually-placeable-but-unsolvable')
+  check('a "each piece fits, the batch does not" fixture exists on a reachable board', fixture !== null)
+  if (fixture) {
+    check('every piece in that fixture has a legal placement right now', fixture.each.every((n) => n > 0), fixture.each.join(','))
+    equal('and the batch is proven UNSOLVABLE', fixture.proof.status, 'UNSOLVABLE')
+    // `exhausted` means the BUDGET ran out (that is what forces UNKNOWN); a genuine UNSOLVABLE
+    // is returned only when the branch space was walked to the end, so the flag must be false.
+    check('and the branch space was walked to the end, not cut short by the budget',
+      fixture.proof.exhausted === false, JSON.stringify({ nodes: fixture.proof.nodes, exhausted: fixture.proof.exhausted }))
+    check('the search actually did work', fixture.proof.nodes > 0, `${fixture.proof.nodes}`)
+    check('so "each piece fits" is NOT accepted as a batch proof', fixture.proof.witness === null)
+  }
+}
+
+{
+  const fixture = searchFixture('clear-first-opens-the-big-piece')
+  check('a "must clear first to fit the big piece" fixture exists', fixture !== null)
+  if (fixture) {
+    const blockedShape = fixture.hand[fixture.blocked]
+    equal('the blocked piece really has nowhere to go on the original board',
+      fixture.each[fixture.blocked], 0)
+    equal('but the batch is proven SOLVABLE', fixture.proof.status, 'SOLVABLE')
+    check('the witness does not start with the blocked piece', fixture.proof.witness[0].pieceIndex !== fixture.blocked,
+      `${fixture.proof.witness[0].pieceIndex} vs ${fixture.blocked}`)
+    check('and after the first step the blocked piece does fit', fixture.after !== null)
+    // The whole witness must replay on the real Board, which is the strongest form of this
+    // fixture: the clear happens on the board, not only in the model.
+    check('the whole witness replays on the real board', witnessReplays(fixture.board, fixture.proof.witness, fixture.hand),
+      JSON.stringify(fixture.proof.witness))
+    check('the blocked piece is placed somewhere in that witness',
+      fixture.proof.witness.some((step) => step.pieceIndex === fixture.blocked),
+      blockedShape.name)
+  }
+}
+
+// ---- Every SOLVABLE batch carries a replayable witness (spec §12.3) --------
+{
+  const board = freshBoard(61)
+  const state = createDirectorState()
+  const directorRng = createRng(61)
+  let solvable = 0
+  let failures = 0
+  for (let i = 0; i < 25; i += 1) {
+    beginNaturalBatch(state, directorRng)
+    const result = dealOnce({ board, state, seed: 610 + i })
+    if (result.metrics.proofStatus !== 'SOLVABLE') continue
+    solvable += 1
+    if (!witnessReplays(board, result.witness, result.hand)) failures += 1
+    for (let step = 0; step < 3; step += 1) notePlacement(state)
+  }
+  check('batches were dealt to check', solvable > 15, `${solvable}`)
+  equal('every SOLVABLE batch carries a witness that replays on the real board', failures, 0)
 }
 
 if (failures.length) {

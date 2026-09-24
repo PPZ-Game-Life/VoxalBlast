@@ -210,6 +210,53 @@ function fillCube(board) {
   check('the topped-up slots are unused', resumed.getPieces().slice(1).every((piece) => piece.used === false))
 }
 
+// ---- Spec §12.3: a milestone never rewrites the hand on screen --------------
+// "29→30、59→60、89→90 的等级边界正确，旧手牌不变" — the tier changes the NEXT batch, never the
+// one the player is looking at. This is the difference between "the game got harder" and "the
+// game took my pieces away".
+{
+  for (const boundary of [30, 60, 90]) {
+    const session = freshSession(20 + boundary)
+    session.getDirector().placementCount = boundary - 1
+    session.deal()
+    const before = session.getPieces().map((piece) => `${piece.shape.name}:${piece.used}`).join(',')
+    const tierBefore = session.progress().tier
+    session.settlePlacement('+z', [[0, 0]], { u: 0, v: 4 }, 1)
+    equal(`step ${boundary} crosses the tier boundary`, session.progress().tier, tierBefore + 1)
+    equal(`step ${boundary}: the hand on screen is untouched`, session.getPieces().map((piece) => `${piece.shape.name}:${piece.used}`).join(','), before)
+  }
+}
+
+// ---- Spec §12.3: an item's undo cannot be used as a free re-deal -------------
+// "清理道具撤销能恢复相关导演状态；无免费重抽漏洞." A clear tool changes the BOARD, and the
+// board is what the next deal is computed from — so "use it, look at what the dealer would have
+// given you, then undo" would be a free reroll if the undo left anything behind. The undo
+// restores the cells and the charge; the check here is that the hand and the director are
+// bit-identical across the pair, so there is nothing to peek at.
+{
+  const session = freshSession(23)
+  session.deal()
+  session.board.addCells([{ x: 4, y: 0, z: 0, color: 1 }, { x: 4, y: 1, z: 0, color: 1 }])
+  const handBefore = session.getPieces().map((piece) => `${piece.shape.name}:${piece.used}`).join(',')
+  const progressBefore = JSON.stringify(session.progress())
+  const cellsBefore = session.board.occupied().length
+  const chargesBefore = session.getItemCounts().hammer
+
+  const applied = session.applyItem('hammer', '+x', 0, 0, 'row')
+  // The charge is spent by the caller (main spends it when the tool is committed); `applyItem`
+  // is only the board effect. Mirroring that order is what makes the refund meaningful.
+  session.spendItem('hammer')
+  session.openUndo({ id: 'hammer', records: applied.records }, 3000, null)
+  session.undoLast()
+
+  equal('the cells are back', session.board.occupied().length, cellsBefore)
+  equal('the charge is back', session.getItemCounts().hammer, chargesBefore)
+  equal('the hand is untouched by the item and its undo', session.getPieces().map((piece) => `${piece.shape.name}:${piece.used}`).join(','), handBefore)
+  equal('the director state is untouched too', JSON.stringify(session.progress()), progressBefore)
+  check('and no new batch was dealt', session.getDealMetrics() === null || session.getDealMetrics().phase !== 'relief',
+    JSON.stringify(session.getDealMetrics()?.phase))
+}
+
 if (failures.length) {
   console.log(`deal-session-tests: ${passed}/${passed + failures.length} checks passed`)
   console.log('\nFAILED:')

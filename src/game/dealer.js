@@ -250,6 +250,12 @@ export function dealBatch({
     entry.scoring = scoringFor(entry, analysis)
   }
   metrics.candidatesRefined = refine.length
+  // Spec §12.2 asks for these two by name and insists they are different facts: a specific
+  // dealt hand having no full continuation (this counter) versus the whole shape pool having no
+  // complete continuation on this board (`boardNoFullContinuation`, set by the fallback below).
+  // The first is a property of the proposal step and is invisible to the player; the second is
+  // a property of the position and is reported to the player through the stuck flow.
+  metrics.handNoFullContinuation = metrics.candidatesDropped
   metrics.nodes = spent
 
   // ---- 3. Choose, with the spec's degradation order (§7.1 step 5, §7.2) ------
