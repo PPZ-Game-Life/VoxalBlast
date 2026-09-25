@@ -135,8 +135,20 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     cameraTarget.y = isMobile ? style.targetYMobile : style.targetYDesktop
     cameraTarget.x = 0
     orbitDistance = distanceForViewDirection(CAMERA_DIR)
+    // v0.9.1: the portrait shrink, applied where the resting size is decided.
+    orbitDistance /= portraitScale()
     keepCubeInsideCanvas()
     centreCubeHorizontally()
+  }
+
+  // v0.9.1: the portrait shrink — the cube is drawn 10% smaller when the WINDOW is portrait
+  // (producer's call, 2026-09-24). Landscape and desktop are untouched, so the desktop framing
+  // gate in `npm run probe:framing` (main face 88–92%) is unaffected. `style.portraitCubeScale`
+  // is the value; this is the only reader of the orientation query, and it uses the same one the
+  // backdrop trusts for its portrait art.
+  function portraitScale() {
+    if (style.portraitCubeScale === 1) return 1
+    return window.matchMedia('(orientation: portrait)').matches ? style.portraitCubeScale : 1
   }
 
   function fitCameraToPlaySpace() {

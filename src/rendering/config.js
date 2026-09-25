@@ -106,6 +106,13 @@ export const BOARD_STYLE = Object.freeze({
   // applies the final pixel inset for the current viewport.
   safeFactorDesktop: 1.18,
   safeFactorMobile: 1.24,
+  // v0.9.1 (producer 2026-09-24): the cube is drawn 10% smaller in portrait — "竖屏现在六面体太大了，缩小 10%".
+  // Applied to the SOLVED camera distance (distance / factor = smaller cube); portrait only.
+  // Landscape and the desktop framing gate (88–92% in probe:framing) are deliberately untouched.
+  // Orientation is the WINDOW's, not the canvas box: after the tool row above and the candidate
+  // tray below are reserved, the central canvas on a 390×844 phone is 390×495 — wider than tall,
+  // so a canvas test would never fire. Same query the backdrop uses for its portrait art.
+  portraitCubeScale: 0.86,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0,
   targetYMobile: 0,
