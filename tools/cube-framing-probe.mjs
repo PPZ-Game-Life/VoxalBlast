@@ -86,7 +86,8 @@ const VIEWPORT = (() => {
 // intent: three faces visible and upright, front face clearly the subject.
 const TARGET = {
   // v0.8.26: the dock is the HEAD-ON pose (the front face points at the camera), so the
-  // resting composition is the play face plus the roof band — main 90.6% / top 9.4%, the
+  // resting composition is the play face plus the roof band — main 85.8% / top 14.2% at
+  // v0.9.2's camera, the
   // two side faces edge-on and therefore invisible. That is the producer's own request
   // in [03 §2.1] ("停下来的时候……右侧面和左侧面的面积应该一致"): a dock off the camera
   // axis always shows one side face and never its mirror, and with a symmetric fine-tune
@@ -94,7 +95,15 @@ const TARGET = {
   // therefore "the play face is the subject, and the roof band is still there" — NOT the
   // flat-plate failure mode v0.8.6 was rejected for (that camera had no pitch at all, so
   // there was no roof either), and the lower bound keeps a sliver of doubt out.
-  mainShareMin: 0.88,
+  // v0.9.2: the LOWER bound follows the camera's PITCH, because at a head-on dock the roof
+  // band is the only non-main face the rest pose has, and this camera carries 12° of pitch
+  // (the 2026-09-24 art direction asked for a visible top). That band is 14.2% of the
+  // silhouette, so the play face measures 85.8% — still unmistakably the subject, and this
+  // gate's intent ("the play face is the subject, and the roof band is still there") is
+  // unchanged. The bound was 88% while the camera pitched 8° (roof 9.4% → main 90.6%).
+  // Do not raise it back without taking the pitch back down, and do not lower it to
+  // accommodate an off-axis dock — that is the failure this section exists to catch.
+  mainShareMin: 0.84,
   mainShareMax: 0.92,
   // No non-main face may collapse into a sliver. At the dock the only non-main face is
   // the roof, and it has to stay a band (9.4% measured); at the zone ENDS all three
@@ -931,11 +940,20 @@ try {
   // local face is showing), so the check reads `centreX` — where each face's own centre
   // lands in NDC — instead.
   const sideEntry = (faces) => {
-    // `visible` is sorted by projected area, so the first entry after the main face is
-    // the side face the player can actually see; `centreX` says which side it is on.
-    const rest = faces.visible.slice(1).filter((entry) => entry.areaPx > 0)
+    // The largest non-main face is NOT necessarily a SIDE face. At a head-on dock the roof
+    // band is a legitimate non-main face, and with this camera's 12° pitch the band (13%)
+    // is even LARGER than the side face the fine-tune reveals (10%) — so picking by area
+    // read the band at both ends, found the same number in the same place twice, and
+    // reported "the two ends are not mirror images" while they were. (The old 8°-pitch
+    // camera happened to have band 9.4% < side 10.9%, so the area order only worked by
+    // luck.) The producer's question is about the LEFT/RIGHT faces, so the entry is picked
+    // by WHERE IT SITS: the visible non-main face furthest from the frame's vertical
+    // centre line. A face that never leaves the middle column — the band — is not a
+    // candidate, and `centreX` still says which side the winner is on.
+    const rest = faces.visible.slice(1).filter((entry) => entry.areaPx > 0 && Math.abs(entry.centreX) > 0.02)
     if (!rest.length) return null
-    return { face: rest[0].face, share: rest[0].areaPx / faces.totalPx, centreX: rest[0].centreX }
+    const side = rest.reduce((best, entry) => (Math.abs(entry.centreX) > Math.abs(best.centreX) ? entry : best), rest[0])
+    return { face: side.face, share: side.areaPx / faces.totalPx, centreX: side.centreX }
   }
   const sideOf = (faces, name) => (faces.others.find((entry) => entry.face === name)?.share ?? 0)
   await parkYaw() // back to the dock

@@ -94,8 +94,13 @@ export const BOARD_STYLE = Object.freeze({
   // The three-quarter READ is unchanged — only the lens and the pitch moved.
   cameraFov: 6,
   cameraFovMobile: 7,
-  // Restrained presentation: 10° relative yaw and 12° pitch at the 16° dock.
-  // Keep the operation face dominant; gesture thresholds / bearing are unchanged.
+  // Restrained presentation. v0.9.2: the camera's own AZIMUTH is no longer a presentation
+  // knob — the dock follows it (see CAMERA_BEARING_YAW below), so the resting pose is
+  // head-on at every camera angle and the only depth cue the rest pose has left is this
+  // PITCH (12° → a roof band). What the camera's yaw still decides is which way the cube
+  // faces in the WORLD (hence where the sun and the shadows fall on it); turning the
+  // camera does NOT put a side face back into the resting pose. Gesture thresholds and the
+  // bearing margin are unchanged.
   cameraDirection: Object.freeze([0.429, 0.208, 0.879]),
   feedbackSurfaceOffset: 0.62, // particles/lines start clear of the block face
   // Camera framing: higher = the cube fills more of the central canvas. The
@@ -117,6 +122,23 @@ export const BOARD_STYLE = Object.freeze({
   targetYDesktop: 0,
   targetYMobile: 0,
 })
+
+// v0.9.2: THE DOCK IS DERIVED FROM THE CAMERA, never typed in beside it.
+//
+// The fine-tune zone is centred on the dock, so "drag left and drag right and see the same
+// amount of side face" is true for exactly ONE dock: the HEAD-ON pose, whose play face
+// points at the camera. That pose is the one whose yaw equals the camera's own azimuth,
+// i.e. atan2(cameraDirection.x, cameraDirection.z) — nothing else.
+//
+// v0.8.26 pinned it by hand (0.2793 rad = 16°, the camera's yaw THEN) and the invariant
+// was invisible in the file, so when the 2026-09-24 art commits retuned the camera to a
+// 26° three-quarter view the literal stayed behind: the dock silently became 10° off-axis
+// and the asymmetry came straight back — measured at the dock, one side face 0.0% against
+// the other's 10.0%, and at the two ends of the zone 0% against 21.1%, which
+// `npm run probe:framing` reports as "the dock is off the camera axis" and "the two ends
+// of the zone are not mirror images". Deriving the dock retires that whole class of
+// regression: retune the camera and the dock follows it.
+const CAMERA_BEARING_YAW = Math.atan2(BOARD_STYLE.cameraDirection[0], BOARD_STYLE.cameraDirection[2])
 
 // The same sun / sky / reflection rig is used by the board, tray and home toy.
 export const LIGHTING_STYLE = Object.freeze({
@@ -267,7 +289,8 @@ export const ROTATE_STYLE = Object.freeze({
   //
   // ---------------------------------------------------------------------------
   // THE DOCK IS THE CENTRE OF THE ZONE, AND THE DOCK IS THE HEAD-ON POSE
-  // (v0.8.24 rebuilt the zone, v0.8.25/26 moved the dock onto the camera axis).
+  // (v0.8.24 rebuilt the zone, v0.8.25/26 moved the dock onto the camera axis, v0.9.2 made
+  //  that pose DERIVED — see CAMERA_BEARING_YAW above.)
   //
   // Through v0.8.23 the dock was 0° while the zone was ASYMMETRIC (yaw −14°..+5°,
   // pitch −2°..+8°), so the player's margin from the dock was 14° one way and 5° the
@@ -283,24 +306,34 @@ export const ROTATE_STYLE = Object.freeze({
   // (bearing +8°), the zone could reach 20.4% of the right-hand face but only 0.3% of
   // the left, because on one side the cube turns away from the camera and on the other it
   // runs into the head-on pose and stops.
+  // v0.8.26 satisfied that by hand (bearing 0.2793 = the camera's yaw of the day, 16°), and
+  // v0.9.2 hit the exact failure a hand-typed dock invites: the 2026-09-24 art commits moved
+  // the camera to a 26° azimuth and the literal did not move with it, so the dock sat 10°
+  // off-axis again — the resting pose showed one side face and never its mirror (0.0% vs
+  // 10.0% at the dock), and the two ends of the zone disagreed (side face invisible one way,
+  // 21.1% the other), which is exactly the report "往左微调看到的侧面比往右大很多". The dock
+  // is now atan2(cameraDirection.x, cameraDirection.z), so it cannot drift again.
   //
-  //   bearing   relative yaw   composition                          side faces
-  //     +6°        10°         main 85.2% side 8.9% top 5.9%         8.9% right / 0 left
-  //    +16°         0°         main 90.6%  —     top 9.4%  ← DOCK     0    / 0
-  //    +26°       -10°         main 85.2% side 8.9% top 5.9%         0    / 8.9% left
+  // Compositions at the CURRENT camera (26° azimuth, 12° pitch), measured with
+  // `npm run probe:framing` (bearing section):
   //
-  // The two ends of the zone are now exact mirror images, so "drag either way and see the
-  // same amount of the side face" is true rather than approximately true, and the resting
-  // view has no left-right lean at all (the play face's centre lands on the frame centre:
-  // 0.0%, against -11.1% at the v0.8.23 dock and -6.1% at v0.8.25's).
+  //   bearing   relative yaw   composition                            side face
+  //    +16°       -10°         main 77.0% roof 13.0% side 10.0%       none / 10.0% at x = +0.194
+  //    +26°         0°         main 85.8%  —     roof 14.2%  ← DOCK     0          / 0
+  //    +36°       +10°         main 77.0% roof 13.0% side 10.0%      10.0% at x = −0.186 / none
   //
-  // What this costs, stated plainly because it is the reason the earlier rounds went the
-  // other way: at the dock the side faces are edge-on, so the rest pose shows the play
-  // face and the ROOF BAND only (9.4% — the depth cue that keeps it a body rather than a
-  // flat grid, which is what v0.8.6 was rejected for, and that camera had no pitch at
-  // all). The play face is also the largest it can be (90.6% of the silhouette, vs 74.3%
-  // at the old dock — 22% more touch surface), and the fine-tune now reveals a side face
-  // by the same amount in either direction, up to 8.9% at the zone ends.
+  // The two ends of the zone are exact mirror images, so "drag either way and see the same
+  // amount of the side face" is true rather than approximately true, and the resting view
+  // has no left-right lean at all (the play face's centre lands on the frame centre).
+  //
+  // What this costs, stated plainly because it is the reason the 2026-09-24 art commits went
+  // the other way: at the dock the side faces are edge-on, so the rest pose shows the play
+  // face and the ROOF BAND only (14.2% — the depth cue that keeps it a body rather than a
+  // flat grid, which is what v0.8.6 was rejected for, and that camera had no pitch at all).
+  // The play face is also the largest it can be (85.8% of the silhouette, against 77.0%
+  // while the dock sat 10° off-axis — "three-quarter at rest" is exactly what the off-axis
+  // dock was buying), and the fine-tune reveals a side face by the same amount in either
+  // direction, up to 10.0% at the zone ends.
   //
   // The margin stays ±10°. It is NOT slack: the drag only claims its axis after
   // `axisLockPx` (16px ≈ 6.4° of the cube's silhouette on PC, ≈9.4° on a 390px phone),
@@ -308,10 +341,9 @@ export const ROTATE_STYLE = Object.freeze({
   // would arrive as a jump (measured 16.9° of finger travel for the ±10° zone — see
   // `bearingResistance` below).
   //
-  // The pitch dock stays 0°, and the pitch margin stays ±3°: the roof is now the only
-  // depth cue the dock has, so ±3° keeps it a band (4.4%) at the frontal end instead of a
-  // line (3.2% at ±4°, 0.6% at −6°).
-  bearingYaw: 0.2793, // the dock: the head-on pose (the camera's own yaw, 16°); 0 is the old 3/4 dock
+  // The pitch dock stays 0°, and the pitch margin stays ±3°: the roof is the only depth cue
+  // the dock has, so ±3° keeps it a band at the frontal end instead of a line.
+  bearingYaw: CAMERA_BEARING_YAW, // the dock = the camera's own azimuth (26.0° here); see CAMERA_BEARING_YAW
   bearingPitch: 0,
   bearingMargin: Object.freeze({
     yaw: 0.1745, // ±10°
