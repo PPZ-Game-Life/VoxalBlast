@@ -36,6 +36,9 @@
 //                      (parked against a face edge) arms nothing while it still moves, and turns
 //                      the cube once the push passes PIECE_SPIN.pinPx — again with the button down.
 //                      Also measures the pointer's room past the edge, which is pinPx's budget
+//   L one face only    and ONCE per gesture (v0.9.7): after the push has turned a face, neither
+//                      pulling the finger back (「转了一面以后我稍微往下一拖，它就转回来了」) nor
+//                      pushing on again may turn it a second time — release and push again
 //
 // Discipline, same as the other probes: real CDP input only, read-only `__voxalblast` handles for
 // observation, an isolated browser profile with an OS-assigned debug port, Browser.close before
@@ -1104,6 +1107,9 @@ async function caseSpin(client, input) {
 //   2. pushing past PIECE_SPIN.pinCells ARMS it and the cube LEANS, but the pose does not turn;
 //   3. holding the armed push for PIECE_SPIN.pinHoldMs turns exactly one face, with the button down;
 //   4. pulling the finger back before that springs the lean back and turns nothing.
+// v0.9.7 adds the RESISTANCE and its second commit: 「它会自动往外弹，如果这个时候我继续往外拖的话，
+// 他就应该去转面了」 — the lean deepens with the push, and pushing on by PIECE_SPIN.pinPushPx turns the
+// face without waiting out the dwell (「the push that keeps going」 section at the end).
 //
 // It also MEASURES the pointer's room past the edge, because that room is the budget `pinCells` has
 // to be reachable inside. The measurement is a NOTE, never a pass.
@@ -1352,6 +1358,213 @@ async function casePinnedPush(client, input) {
     turnedDown.rotation.front !== third.rotation.front && turnedDown.rotation.front !== down.ghost.previewFace,
     `front ${down.ghost.previewFace} -> ${turnedDown.rotation.front} after the dwell`)
   await releaseWithoutPlacing(client, input, armedDown.point)
+
+  // ---- the push that keeps going: the resistance, and the second commit (v0.9.7) -----------------
+  // 「我超框以后，它会自动往外弹，如果这个时候我继续往外拖的话，他就应该去转面了」. Two claims, in one
+  // gesture: the lean DEEPENS as the finger keeps pushing (the spring), and pushing on by
+  // PIECE_SPIN.pinPushPx turns the face — before the dwell could have fired, which is what proves the
+  // distance path committed it rather than the clock. The steps are a quarter of a cell (~9-13px at
+  // this viewport), so the arming point is crossed within ~200ms: if the face turns, it was the push.
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const fourth = await client.readJson(STATE)
+  const slot4 = fourth.slots[0]
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot4.x, y: slot4.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot4.x, y: slot4.y, button: 'left', buttons: 1, clickCount: 1 })
+  let out = null
+  for (let i = 1; i <= 24; i += 1) {
+    const t = i / 24
+    await input.move(Math.round(slot4.x + (cube.x - slot4.x) * t), Math.round(slot4.y + (cube.y - slot4.y) * t))
+    await sleep(12)
+    out = await client.readJson(STATE)
+    if (out.ghost.attached && out.ghost.previewCells > 0) break
+  }
+  if (!out?.ghost?.attached) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K push on', 'the piece never attached to the front face')
+    return
+  }
+  const step4 = out.ghost.stepScreen.u
+  const pitch4 = Math.hypot(step4.x, step4.y)
+  if (pitch4 < 24) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K push on', `the +u axis is nearly edge-on (${pitch4.toFixed(1)} px per cell)`)
+    return
+  }
+  const at4 = (cells) => ({ x: Math.round(cube.x + step4.x * cells), y: Math.round(cube.y + step4.y * cells) })
+  let armed4 = null
+  let walk4 = 0
+  for (let i = 1; i <= 40 && !armed4; i += 1) {
+    const next = await readState(client, input, at4(i / 8))
+    walk4 = i / 8
+    if (next.rotation.front !== fourth.rotation.front || !next.ghost.onFace) break
+    if (next.ghost.armed) armed4 = { walk: i / 8, point: at4(i / 8), state: next }
+  }
+  if (!armed4) {
+    check('K pushing on from a fresh gesture arms the turn', false, `never armed after ${walk4} cells of pushing`)
+    await releaseWithoutPlacing(client, input, at4(2))
+    return
+  }
+  // One more quarter cell out: still short of the commit distance, so the face must NOT move and the
+  // lean must already be deeper than it was at the arming point.
+  const leanMore = await readState(client, input, at4(armed4.walk + 0.25))
+  check('K pushing on deepens the lean without turning the face',
+    leanMore.rotation.front === fourth.rotation.front
+    && JSON.stringify(leanMore.rotation.pose) !== JSON.stringify(armed4.state.rotation.pose),
+    `front ${fourth.rotation.front} -> ${leanMore.rotation.front}; pose moved from ${PIECE_SPIN.armLeanDeg}° towards ${PIECE_SPIN.armLeanMaxDeg}°`)
+  // Now push on past PIECE_SPIN.pinPushPx in three small moves with NO read cycle in between, so the
+  // elapsed time is the pushes themselves and not the probe's step cadence: if the face turns, the
+  // DISTANCE committed it, because the clock had not run out. The total is pinPushPx past the point
+  // the lean was measured at, which leaves the pointer well inside PIECE_SPIN.pinMarginPx.
+  const base = at4(armed4.walk + 0.25)
+  const ux = step4.x / pitch4
+  const uy = step4.y / pitch4
+  const pushStart = Date.now()
+  for (let i = 1; i <= 3; i += 1) {
+    const d = (PIECE_SPIN.pinPushPx / 3) * i
+    await input.move(Math.round(base.x + ux * d), Math.round(base.y + uy * d))
+    await sleep(16)
+  }
+  await client.frames()
+  const committed = await client.readJson(STATE)
+  const elapsed = Date.now() - pushStart
+  check('K pushing on past pinPushPx turns the face WITHOUT waiting out the dwell',
+    committed.rotation.front !== fourth.rotation.front && elapsed < PIECE_SPIN.pinHoldMs,
+    `front ${fourth.rotation.front} -> ${committed.rotation.front} after ${PIECE_SPIN.pinPushPx}px of extra push in ${elapsed}ms `
+    + `(pinHoldMs=${PIECE_SPIN.pinHoldMs}ms, onFace=${committed.ghost.onFace})`)
+  note('K push budget', `pinCells ${PIECE_SPIN.pinCells} + pinPushPx ${PIECE_SPIN.pinPushPx}px; armed ${walk4} cells out, `
+    + `pointer ~${Math.round(bounds.maxX - at4(walk4).x + PIECE_SPIN.pinMarginPx)}px of room past the armed point`)
+  await releaseWithoutPlacing(client, input, at4(armed4.walk + 2))
+}
+
+// L. v0.9.7 — 「一次手势一面」 on the PUSH path.
+//
+// The producer's report on v0.9.6: 「我在往上转，转了一面以后，我稍微往下一拖，它就转回来了」. The push
+// path could turn the cube a SECOND time inside the same gesture, in any direction — including the
+// one the finger had just come from — as soon as the clamp started discarding `pinCells` again.
+// Nothing in the rule separated 「我再推一次」 from 「我把手指收回来」: after a turn the piece re-attaches
+// wherever the clamp puts it on the arriving face, which can be flush against the very edge the
+// return motion pushes into, so that motion is discarded — and counted as a push — from its first
+// pixel. The face then turns back under a finger the player thought was just relaxing.
+//
+// What the case pins: one gesture turns one face by push — the same 「一次手势一面」 the keyboard and
+// the view gesture already obey. A player who wants a second face lets go and pushes again.
+//
+// Both v-axis signs are walked, because WHICH edge the piece lands on after the turn depends on the
+// direction the cube turned: the reversal only bites when the return motion pushes into that edge.
+async function caseOnePushPerGesture(client, input) {
+  for (const dir of [1, -1]) {
+    const side = dir > 0 ? 'up' : 'down'
+    await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+    const before = await client.readJson(STATE)
+    const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+    const cube = cubeCentre(bounds)
+    const slot = before.slots[0]
+
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot.x, y: slot.y })
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot.x, y: slot.y, button: 'left', buttons: 1, clickCount: 1 })
+    let held = null
+    for (let i = 1; i <= 24; i += 1) {
+      const t = i / 24
+      await input.move(Math.round(slot.x + (cube.x - slot.x) * t), Math.round(slot.y + (cube.y - slot.y) * t))
+      await sleep(12)
+      held = await client.readJson(STATE)
+      if (held.ghost.attached && held.ghost.previewCells > 0) break
+    }
+    if (!held?.ghost?.attached) {
+      await releaseWithoutPlacing(client, input, cube)
+      skip(`L ${side}`, 'the piece never attached to the front face')
+      continue
+    }
+    const stepV = held.ghost.stepScreen.v
+    const pitch = Math.hypot(stepV.x, stepV.y)
+    if (pitch < 24) {
+      await releaseWithoutPlacing(client, input, cube)
+      skip(`L ${side}`, `the v axis is nearly edge-on (${pitch.toFixed(1)} px per cell)`)
+      continue
+    }
+    // +v points UP the screen on the front face (K's note), so `dir` walks the piece towards the
+    // edge the producer pushed against: +1 the top one, -1 the bottom one.
+    const at = (cells) => ({ x: Math.round(cube.x + stepV.x * cells * dir), y: Math.round(cube.y + stepV.y * cells * dir) })
+    let armed = null
+    for (let i = 1; i <= 40 && !armed; i += 1) {
+      const next = await readState(client, input, at(i / 8))
+      if (next.rotation.front !== before.rotation.front || !next.ghost.onFace) break
+      if (next.ghost.armed) armed = { i, point: at(i / 8), state: next }
+    }
+    if (!armed) {
+      await releaseWithoutPlacing(client, input, at(1))
+      skip(`L ${side}`, `the ${side}ward push never armed the turn`)
+      continue
+    }
+
+    await sleep(PIECE_SPIN.pinHoldMs + 320)
+    await client.frames()
+    const turned = await client.readJson(STATE)
+    const turnedNow = turned.rotation.front !== before.rotation.front
+    check(`L ${side}: holding the push turns exactly one face, button still down`, turnedNow,
+      `front ${before.rotation.front} -> ${turned.rotation.front}; onFace=${turned.ghost.onFace} `
+      + `pushCells=${turned.ghost.pushCells.toFixed(2)}`)
+    check(`L ${side}: the gesture marks its one face as spent`, turnedNow && turned.ghost.turned === true,
+      `turned=${turned.ghost.turned} armed=${turned.ghost.armed}`)
+    if (!turnedNow) {
+      await releaseWithoutPlacing(client, input, at(2))
+      continue
+    }
+
+    // The return, in the SAME gesture: the finger walks back the way it came, one eighth of a cell
+    // at a time, and then HOLDS still for longer than the dwell — a turn that re-armed anywhere on
+    // the way would fire in that hold, exactly as the producer saw it.
+    const from = { x: armed.point.x, y: armed.point.y }
+    const backPoint = (cells) => ({ x: Math.round(from.x - stepV.x * cells * dir), y: Math.round(from.y - stepV.y * cells * dir) })
+    let rearmed = null
+    let back = 0
+    for (let i = 1; i <= 56; i += 1) {
+      const point = backPoint(i / 8)
+      const next = await readState(client, input, point)
+      back = i / 8
+      if (ONLY) {
+        console.log(`       back ${back.toFixed(3)} cells -> mode=${next.ghost.mode} onFace=${next.ghost.onFace}`
+          + ` face=${next.ghost.previewFace} origin=${next.ghost.previewOrigin ? originKey(next) : 'none'}`
+          + ` pushCells=${next.ghost.pushCells.toFixed(2)} armed=${next.ghost.armed} front=${next.rotation.front}`)
+      }
+      if (next.ghost.armed && !rearmed) rearmed = { cells: i / 8, pushCells: next.ghost.pushCells, axis: next.ghost.armedAxis }
+      if (next.rotation.front !== turned.rotation.front) break
+    }
+    await sleep(PIECE_SPIN.pinHoldMs + 320)
+    await client.frames()
+    const after = await client.readJson(STATE)
+    check(`L ${side}: pulling the finger back ${back} cells does NOT turn the cube back`,
+      after.rotation.front === turned.rotation.front,
+      `front ${turned.rotation.front} -> ${after.rotation.front}`
+      + (rearmed ? `; the return armed a second turn at ${rearmed.cells} cells back (pushCells ${rearmed.pushCells.toFixed(2)}, axis ${rearmed.axis})` : ''))
+    check(`L ${side}: the return motion never even arms a second push turn`,
+      rearmed === null,
+      `armed=${after.ghost.armed} at ${back} cells back`)
+
+    // The same rule, stated positively: a second DELIBERATE push in this gesture turns nothing
+    // either — the rule is 「一次手势一面」, not 「别往回拖」. Walking the finger forward again is the
+    // strongest push the gesture can make, and it must still leave the face where it is.
+    const forwardPoint = at(2.5)
+    await readState(client, input, forwardPoint)
+    await sleep(PIECE_SPIN.pinHoldMs + 320)
+    await client.frames()
+    const pushedOn = await client.readJson(STATE)
+    check(`L ${side}: a second push inside the same gesture turns nothing either`,
+      pushedOn.rotation.front === turned.rotation.front,
+      `front ${turned.rotation.front} -> ${pushedOn.rotation.front} after pushing on again`)
+
+    // Nothing is stuck by any of it: the gesture still ends the way every other drag does — the
+    // piece lands if the cell under it takes it, and goes back to the strip (spending nothing)
+    // if it does not.
+    await input.up(forwardPoint.x, forwardPoint.y)
+    const released = await client.readJson(STATE)
+    const spent = released.slots[0].used === true
+    check(`L ${side}: the gesture still ends cleanly after the turn`,
+      released.ghost.attached === false && released.ghost.armed === false
+      && (spent || JSON.stringify(released.board) === JSON.stringify(before.board)),
+      `attached=${released.ghost.attached} armed=${released.ghost.armed} spent=${spent} toast=${released.toast}`)
+    await sleep(400)
+  }
 }
 
 // --------------------------------------------------------------------------- driver
@@ -1517,6 +1730,9 @@ try {
 
   console.log('\n-- K. a piece that cannot follow the finger turns the cube when pushed once more --')
   if (wants('K')) await casePinnedPush(client, input)
+
+  console.log('\n-- L. one gesture turns ONE face — the way back out of a turn is not a second turn --')
+  if (wants('L')) await caseOnePushPerGesture(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))

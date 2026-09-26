@@ -523,6 +523,19 @@ export const PIECE_SPIN = Object.freeze({
   pinCells: 0.5,
   armLeanDeg: 8,
   pinHoldMs: 360,
+  // The RESISTANCE, and the second way to commit it (v0.9.7): 「超框以后它会自动往外弹，如果我继续往外
+  // 拖的话，它就应该去转面」. The lean is not a fixed decoration any more — it grows with the extra
+  // push, from `armLeanDeg` at the arming point to `armLeanMaxDeg` here, so holding the piece
+  // against the frame FEELS like pulling against something; and the same extra push, once it is a
+  // whole cell's worth, commits the turn without waiting out the dwell. A player who pushes and
+  // stops still gets the time rule above; a player who pushes on gets the face straight away.
+  // Measured on the FINGER, in client px along the push direction, and therefore immune to the pose:
+  // the lean moves the cube, the ray onto the latched face moves with it, and a lattice ruler fed by
+  // that would flicker (the same reason `backPx` is a finger ruler). One cell on the tightest edge
+  // of a 430×900 viewport is 34px, so this is 「再往外推一格」 — worth about 51px of push past the
+  // edge together with `pinCells`, well inside PIECE_SPIN.pinMarginPx.
+  pinPushPx: 34,
+  armLeanMaxDeg: 16,
   // How far OUTSIDE the cube's box a PINNED piece keeps following the gesture (v0.9.6). The attach
   // margin (DRAG_GHOST.snapMarginPx, 18px) is not enough on the TIGHT edges: past the bottom of a
   // face there is no other face to widen the silhouette, so the finger leaves the cube after

@@ -187,6 +187,10 @@ export function createDiagnostics({
         // with `rotation` to prove the lean happens BEFORE the face moves.
         armed: d.armed,
         armedAxis: d.armedAxis,
+        // v0.9.7: 「一次手势一面」 — true once this gesture has turned a face by push, which closes the
+        // push path for the rest of the gesture (the return motion out of a turn can no longer arm
+        // a second one, let alone the one that would undo it).
+        turned: d.turned,
       }
     },
     // The camera's own framing report (gameScene owns the zoom, the orbit distance, the fit
