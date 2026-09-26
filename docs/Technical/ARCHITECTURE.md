@@ -33,7 +33,7 @@
 | src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
 | public/art/ | 背景与方块色素 WebP，以及来源、提示词、尺寸说明 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射；实际由 `src/input/gameInput.js` 驱动 |
-| src/input/gameInput.js | 全部指针与键盘输入：视角旋转手势、落子拖拽、道具瞄准、取消区与 click 抑制；只有只读查询与命名回调，不写游戏状态 |
+| src/input/gameInput.js | 全部指针与键盘输入：视角旋转手势、落子拖拽（v0.9.3 起含"这个面完全放不下这块时，同一手势改判为转立方体"的 spin）、道具瞄准、取消区与 click 抑制；只有只读查询与命名回调，不写游戏状态 |
 | src/rendering/threeCompat.js | three.quarks / postprocessing 与 Three.js 的兼容桥，须先于粒子导入 |
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
 | src/ui/dom.js | 静态 DOM 句柄一次性收集（缺失必需节点直接报选择器；动态节点不缓存） |

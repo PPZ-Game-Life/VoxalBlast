@@ -169,6 +169,13 @@ export function createDiagnostics({
         // solved in. Exposed so a check can reproduce the mapping exactly instead of
         // assuming it.
         stepScreen: d.stepScreen,
+        // v0.9.3 spin: `roomless` is the board's verdict on the latched face (no origin on it
+        // takes this piece, so the drag turns the cube instead) and `spin` / `spinAxis` are the
+        // turn the gesture switched into. A check reads them together with `pose` to prove the
+        // cube really turned while the finger was still down.
+        roomless: d.roomless,
+        spin: d.spin,
+        spinAxis: d.spinAxis,
       }
     },
     // The camera's own framing report (gameScene owns the zoom, the orbit distance, the fit

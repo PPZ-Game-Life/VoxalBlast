@@ -66,6 +66,23 @@ export class Board {
     })
   }
 
+  // True if the piece fits SOMEWHERE on this one face, in the orientation it is handed in. The
+  // per-face half of anyPlacement() below and now its only implementation: the same canPlace and
+  // the same origin sweep, with no rotation of its own — the caller owns the orientation, because
+  // the placement drag's cells are already oriented to the face it is over (v0.8.27).
+  //
+  // v0.9.3 reads it as the trigger for turning the cube out from under a piece: a face with no
+  // room for the piece ANYWHERE is the one case where dragging it can only mean 「turn」
+  // (input/gameInput.js, PIECE_SPIN).
+  anyPlacementOn(face, cells) {
+    if (cells.length === 0) return false
+    const { u: uMax, v: vMax } = maxOrigin(cells, SH)
+    for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
+      if (this.canPlace(face, cells, { u, v })) return true
+    }
+    return false
+  }
+
   // Forecast against a separate occupancy map. The live cells, score and turn
   // remain untouched, including lines completed on adjacent shared faces.
   previewLines(face, cells, origin) {
@@ -300,11 +317,7 @@ export class Board {
     if (cells.length === 0) return false
     for (const face of FACES) {
       for (let quarter = 0; quarter < 4; quarter += 1) {
-        const shape = rotateCells(cells, quarter)
-        const { u: uMax, v: vMax } = maxOrigin(shape, SH)
-        for (let u = 0; u < uMax; u += 1) for (let v = 0; v < vMax; v += 1) {
-          if (this.canPlace(face, shape, { u, v })) return true
-        }
+        if (this.anyPlacementOn(face, rotateCells(cells, quarter))) return true
       }
     }
     return false

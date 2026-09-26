@@ -349,6 +349,8 @@ const input = createGameInput({
   cubeGroup,
   cs,
   canPlace: (face, cells, origin) => board.canPlace(face, cells, origin),
+  // v0.9.3: the per-face "no room for this piece anywhere" verdict behind the piece drag's spin.
+  anyPlacementOn: (face, cells) => board.anyPlacementOn(face, cells),
   currentCells: (piece) => currentCells(piece),
   toolScope: (id, face, u, v, orientation) => toolScopeCells(id, face, u, v, orientation),
   isOccupied: (cell) => board.has(cell[0], cell[1], cell[2]),

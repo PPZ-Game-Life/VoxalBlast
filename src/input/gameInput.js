@@ -17,7 +17,7 @@
 import * as THREE from 'three'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../rendering/swipe.js'
 import { axisForKey } from '../rendering/keyboard.js'
-import { DRAG_GHOST, dragGhostLiftPx, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
+import { DRAG_GHOST, PIECE_SPIN, dragGhostLiftPx, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
 import { SH } from '../game/board.js'
 
 export function createGameInput({
@@ -58,6 +58,10 @@ export function createGameInput({
   // The board answers legality and the session owns a candidate's cells; the input layer reads
   // both and mutates neither (plan section 2.1).
   canPlace,
+  // The per-face "is there room for this piece ANYWHERE on it" (board, v0.9.3). Together with the
+  // latched face and cells it is the spin's trigger: a face with no room anywhere is the one case
+  // where dragging the piece can only mean 「turn the cube」.
+  anyPlacementOn,
   currentCells,
   // A tool's reach is the session's rule (P6b-1) and whether a cell is taken is the board's; the
   // overlay that draws the answer is pieceView's. Both are read through here.
@@ -314,6 +318,11 @@ export function createGameInput({
   //     measured against. Null = no valid reading, and the next one re-syncs rather than
   //     applying a delta across the gap.
   //   - `origin`: the quantised target cell the preview is drawn at. Legality never moves it.
+  //   - `roomless`: the FACE's verdict, not the target's — no origin on this face takes this
+  //     piece (board.anyPlacementOn). Latched with the face and cells, because neither the board
+  //     nor the orientation can change while the finger is down. It is the spin's trigger below.
+  //   - `spin`: the live cube turn the drag switched into because the face is roomless. Non-null
+  //     means the gesture's travel belongs to the CUBE from here, not to the piece.
   function beginDrag(event, piece) {
     if (piece.used || isPaused() || drag || hasItemActive()) return
     if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -334,6 +343,8 @@ export function createGameInput({
       origin: null,
       ref: null,
       point: null,
+      roomless: false,
+      spin: null,
       valid: false,
       attached: false,
       active: false,
@@ -475,6 +486,7 @@ export function createGameInput({
     drag.cells = null
     drag.ref = null
     drag.point = null
+    drag.roomless = false
   }
 
   // One frame of the placement preview. Returns true when the piece is ON a face (a landing
@@ -518,6 +530,10 @@ export function createGameInput({
       if (!pointerPoint || !grabPoint) return false
       drag.face = face
       drag.cells = cells
+      // The face's own verdict, read once per attach (v0.9.3): the board cannot change while the
+      // finger is down and the orientation is latched, so this is a constant of the attachment —
+      // and it is what updateDrag() reads to decide whether the drag still means 「move the piece」.
+      drag.roomless = !anyPlacementOn(face, cells)
       // The origin that puts the shape's bounding-box CENTRE where the ghost's centre was —
       // the one grab reference the hand and the face have in common.
       const centreU = Math.max(...cells.map(([cu]) => cu)) / 2
@@ -553,6 +569,81 @@ export function createGameInput({
     return true
   }
 
+  // ---- Turning the cube out from under a piece (v0.9.3) ---------------------------
+  // 「推上去的小块块在这个面没有对应的空了，我想这个大正方体会随着我拖着的方向去动」.
+  //
+  // `drag.roomless` says the face the piece is attached to takes this piece NOWHERE. That leaves
+  // the drag exactly one meaning that can still help: turn the cube and bring another face round.
+  // The gesture does not change hands — the finger that was moving the piece turns the cube,
+  // through the same model the view gesture uses (one axis per gesture, its own travel ruler, the
+  // same 30° step, boardView's own settle). There is no second rotation implementation here.
+  //
+  // Three things are deliberately NOT borrowed from the view gesture:
+  //   - the band. The finger is on the cube by definition (the piece is attached), so a vertical
+  //     drag is a pitch and a horizontal one a yaw; the side bands' in-plane roll is out of reach,
+  //     which is right — rolling a face cannot open a spot on a face that has none.
+  //   - the release. The finger stays down: the turn commits the moment the drag passes the step
+  //     threshold, so the player is still holding the piece when the next face arrives and can
+  //     release straight onto it. That is the whole gesture.
+  //   - where the piece is drawn. The landing marker stays latched to the face the piece came from
+  //     and rides it round (it is drawn in the cube's frame), so the piece never looks like it
+  //     left the player's hand in the middle of the turn.
+  //
+  // A live spin cannot place anything: `drag.valid` is false — that is what made the face roomless
+  // — and the commit drops the latch, so the release either finds a face through the ordinary
+  // updatePreview() or returns the piece to the strip exactly as any other illegal release does.
+  function beginSpin(event) {
+    drag.spin = { axis: null, span: null, startX: event.clientX, startY: event.clientY }
+    onStatus('No room — drag to turn')
+  }
+
+  function updateSpin(event) {
+    const spin = drag.spin
+    const dx = event.clientX - spin.startX
+    const dy = event.clientY - spin.startY
+    // The push (PIECE_SPIN.startPx). The ruler starts where the piece became stuck, so the very
+    // motion that carried it onto a full face cannot claim the axis by itself: a turn has to be
+    // asked for.
+    if (Math.hypot(dx, dy) < PIECE_SPIN.startPx) return
+    if (!spin.axis) {
+      if (!gestureAxisReady(dx, dy)) return
+      spin.axis = pickGestureAxis(dx, dy, 'cube')
+      spin.span = gestureSpan()
+      beginAxisGesture(spin.axis)
+    }
+    setLiveAngle(swipeAngle(spin.axis, dx, dy, spin.span, 'cube'))
+    const live = getLive()
+    // The commit reads the FINGER's angle, the same number the view gesture's release reads, so a
+    // face costs the same drag here as it does there.
+    if (live && Math.abs(live.angle) >= rotateStyle.stepThreshold) commitSpin()
+  }
+
+  // The turn is committed mid-gesture and boardView animates the pose from here. The latched face
+  // goes with it: the face the piece was on is leaving the front and the next frame that sees the
+  // settled pose re-attaches to whatever face is in front THEN — the piece hops onto the arriving
+  // face under the finger, which is the point of the gesture.
+  function commitSpin() {
+    const live = getLive()
+    drag.spin = null
+    if (live) startCubeSnap(live)
+    detachFace()
+    drag.attached = false
+    drag.origin = null
+    drag.valid = false
+  }
+
+  // Hand a still-live spin pose over when the gesture ends some other way (the finger came up,
+  // Escape, the piece dragged back into the strip). The finger's own angle decides the face,
+  // exactly as a view gesture's does. Leaving the record live would be worse than untidy:
+  // `getLive()` would stay non-null, and rotateByKey() refuses to turn the cube while a drag owns
+  // the pose — the "it won't turn any more" failure this project has already paid for once.
+  function endSpin(record) {
+    if (!record?.spin) return
+    record.spin = null
+    const live = getLive()
+    if (live) startCubeSnap(live)
+  }
+
   // The cancel target is the UI strip the drag came from, not one element: since v0.4.3
   // the item bar is a sibling of the candidate panel (it moves to the top on phones), and
   // releasing a piece over either strip has always meant "put it back".
@@ -580,6 +671,9 @@ export function createGameInput({
     if (drag.inCancelZone) {
       drag.valid = false
       drag.origin = null
+      // A live spin is handed over before the piece goes home (v0.9.3): the pose it is holding is
+      // the player's, and nobody else is going to write it.
+      endSpin(drag)
       // Back in the strip the piece is being put down, not held over a face: the next
       // arrival on the cube re-grabs wherever the finger is.
       detachFace()
@@ -590,7 +684,28 @@ export function createGameInput({
     }
     const ndc = eventNdc(event)
     drag.ndc = ndc
+    // A live spin owns the gesture (v0.9.3): its travel is the CUBE's, and the marker is latched
+    // to the face the piece came from and rides it round, so the target must not be re-derived
+    // until the turn has settled.
+    if (drag.spin) {
+      syncGhostFor(event, ndc, 'snap')
+      updateSpin(event)
+      return true
+    }
+    // A turn the spin committed is still in flight — the same ~0.22s settle a view gesture ends
+    // with, except this finger has not let go. Waiting it out is what keeps the preview from
+    // chasing the front face through the animation.
+    if (cubeSnapAnim.active) {
+      syncGhostFor(event, ndc, 'snap')
+      return true
+    }
     const attached = updatePreview(event, ndc)
+    // The face takes this piece nowhere: the drag changes meaning (v0.9.3).
+    if (attached && drag.roomless) {
+      beginSpin(event)
+      syncGhostFor(event, ndc, 'snap')
+      return true
+    }
     // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
     // carried. Once it is attached to a face the board draws it and the carried copy
     // disappears; if the pointer is on the cube but this face has no room, the piece
@@ -609,6 +724,10 @@ export function createGameInput({
     const currentDrag = drag
     drag = null
     releasePointerCapture(currentDrag.source, currentDrag.pointerId)
+    // A live spin hands its pose over for the same reason finishDrag() does — and this path is
+    // also the page taking the gesture away (a hidden tab, a new run), where a pose left live
+    // would block every later rotation.
+    endSpin(currentDrag)
     const returning = showFeedback && currentDrag.active
     if (returning) onReturnPiece(currentDrag.piece)
     onClearLanding()
@@ -625,8 +744,12 @@ export function createGameInput({
     return true
   }
 
-  // Replacing a run clears its preview without the toast/haptic of a user cancel.
+  // Replacing a run clears its preview without the toast/haptic of a user cancel. A spin the dead
+  // gesture was holding is DROPPED rather than settled (v0.9.3): both callers put the pose where
+  // they want it straight afterwards — applySession's save, or resetCubeRotation — and both clear
+  // boardView's live record on the way.
   function resetDrag() {
+    if (drag) drag.spin = null
     onClearLanding()
     drag = null
   }
@@ -639,6 +762,17 @@ export function createGameInput({
   function finishDrag(event) {
     if (!drag || (event?.pointerId !== undefined && event.pointerId !== drag.pointerId)) return
     const currentDrag = drag
+    // Both things a spin can leave behind are settled BEFORE `drag` is dropped, because both need
+    // the live record. A spin that never committed hands its pose over (its own angle decides the
+    // face, exactly as a view gesture's release does); a turn that is still in flight is landed
+    // now — instant, not animated — so that the release is judged on the pose the player is about
+    // to see. Without that a player who released the instant the cube arrived would lose a piece
+    // the face in front of them had room for, which is the one way this gesture could eat a turn.
+    endSpin(currentDrag)
+    if (cubeSnapAnim.active) {
+      settleCubeSnap()
+      if (event && currentDrag.ndc) updatePreview(event, currentDrag.ndc)
+    }
     drag = null
     releasePointerCapture(currentDrag.source, currentDrag.pointerId)
     const returning = currentDrag.active && (currentDrag.inCancelZone || !currentDrag.valid || !currentDrag.origin || !currentDrag.face)
@@ -724,6 +858,11 @@ export function createGameInput({
       pointer: drag?.point ? { fu: drag.point.fu, fv: drag.point.fv } : null,
       anchor: drag?.anchor ? { x: drag.anchor.x, y: drag.anchor.y, u: drag.anchor.u, v: drag.anchor.v } : null,
       stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
+      // v0.9.3 spin: `roomless` is the face's own verdict (no origin on it takes this piece) and
+      // `spin` / `spinAxis` are the turn the drag switched into because of it.
+      roomless: drag?.roomless === true,
+      spin: Boolean(drag?.spin),
+      spinAxis: drag?.spin?.axis ?? null,
     }
   }
 

@@ -491,6 +491,22 @@ export function dragGhostLiftPx(pointerType, rows, cellPx) {
     : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
 }
 
+// Turning the cube out from under a piece (v0.9.3). When the face the piece is on has NO room for
+// it anywhere, the same finger stops moving the piece and starts turning the cube, so another face
+// can be reached without letting go (input/gameInput.js: the spin). 「推上去没空位，立方体就跟着我
+// 拖的方向翻」.
+//
+// `startPx` is what makes that a PUSH rather than an accident. The piece can now attach to a full
+// face while the finger is still travelling — it always could — and the residual motion of an
+// ordinary drag would otherwise claim the axis and turn the cube under a player who never asked
+// for it. So the spin's ruler starts where the piece became stuck and needs this much travel
+// before an axis may claim it; ROTATE_STYLE.axisLockPx (16px) is then required ON TOP of it, and
+// the face turn itself still waits for its own 30° of drag. One number, three guards, all of them
+// in pixels the player can feel.
+export const PIECE_SPIN = Object.freeze({
+  startPx: 26,
+})
+
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
 // honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
 // banner is owed); the seconds, shake and particle strength behind each level are

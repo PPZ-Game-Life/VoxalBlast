@@ -28,6 +28,10 @@
 //                      cell with a real touch pointer
 //   G other faces      after a real cube turn the piece still tracks the finger, one lattice unit
 //                      per lattice unit, measured on the FACE's own axes
+//   J cube turn        on a face that takes the piece NOWHERE the drag turns the cube instead
+//                      (v0.9.3): armed on arrival, one axis claimed on the push, the pose turned
+//                      with the button still down, the piece re-attached to the arriving face —
+//                      and NOT turned again on a face that does take it
 //
 // Discipline, same as the other probes: real CDP input only, read-only `__voxalblast` handles for
 // observation, an isolated browser profile with an OS-assigned debug port, Browser.close before
@@ -43,7 +47,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, mkdirSync,
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { SH } from '../src/game/board.js'
+import { SH, faceLattice } from '../src/game/board.js'
 import { RENDER_PALETTE } from '../src/rendering/config.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -65,6 +69,30 @@ function fixtureSource(handOrder) {
   const byName = new Map(FIXTURE_SNAPSHOT.pieces.map((entry) => [entry.name, entry]))
   const snapshot = {
     ...FIXTURE_SNAPSHOT,
+    pieces: handOrder.map((name) => ({ ...(byName.get(name) || { name, used: false }), used: false })),
+  }
+  return `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(snapshot))})`
+}
+
+// v0.9.3 spin fixture. The interaction fixture above (one centre cell per face) with the FRONT
+// face packed edge to edge: the face then takes NO piece at all, whatever its shape, which is the
+// spin's trigger. The four side faces keep plenty of room — a packed +z face only fills one edge
+// row on each of them — so the run is still playable and `hasPlaceablePiece()` stays true, which is
+// also what makes case J's negative control reachable: after one turn, the face in front DOES take
+// the piece.
+function spinFixtureSource(handOrder) {
+  const packed = new Map()
+  FIXTURE_SNAPSHOT.board.cells.forEach((cell) => packed.set(cell.slice(0, 3).join(','), cell))
+  for (let u = 0; u < SH; u += 1) {
+    for (let v = 0; v < SH; v += 1) {
+      const [x, y, z] = faceLattice('+z', u, v)
+      packed.set(`${x},${y},${z}`, [x, y, z, FIXTURE_SNAPSHOT.board.cells[0][3]])
+    }
+  }
+  const byName = new Map(FIXTURE_SNAPSHOT.pieces.map((entry) => [entry.name, entry]))
+  const snapshot = {
+    ...FIXTURE_SNAPSHOT,
+    board: { ...FIXTURE_SNAPSHOT.board, cells: [...packed.values()] },
     pieces: handOrder.map((name) => ({ ...(byName.get(name) || { name, used: false }), used: false })),
   }
   return `localStorage.setItem('voxalblast.session.v1', ${JSON.stringify(JSON.stringify(snapshot))})`
@@ -948,6 +976,110 @@ async function caseOtherFace(client, input) {
   await releaseWithoutPlacing(client, input, cube)
 }
 
+// J. v0.9.3 — the cube turns out from under a piece whose face takes it nowhere.
+//
+// The fixture packs the FRONT face edge to edge, so every origin on it is occupied and the drag
+// has nothing left to mean but 「turn」. The case walks the whole gesture: arrive (armed, but the
+// pose has not moved), push (one axis claimed, the cube turns — with the button still DOWN, which
+// is the part no release-only probe can see), land on the face that came round, then push again on
+// a face that DOES take the piece and watch the pose stay put (the trigger's own negative).
+async function caseSpin(client, input) {
+  await setSessionFixture(client, spinFixtureSource(['Dot', 'Square', 'Line 3']))
+  await client.send('Page.reload', { ignoreCache: false })
+  await sleep(1200)
+  await waitForHandle(client)
+  await client.frames()
+  await waitIntroDone(client)
+
+  const before = await client.readJson(STATE)
+  if (before.rotation.front !== '+z') {
+    skip('J spin', `the packed face is not the front one (front=${before.rotation.front})`)
+    return
+  }
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const cube = cubeCentre(bounds)
+  const slot = before.slots[0]
+
+  // Glide onto the cube in SMALL steps and stop at the attach: the spin's ruler starts where the
+  // piece touches down, so arriving in one long sweep would have turned the cube before the
+  // precondition could be read.
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot.x, y: slot.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot.x, y: slot.y, button: 'left', buttons: 1, clickCount: 1 })
+  let held = null
+  let at = null
+  for (let i = 1; i <= 24; i += 1) {
+    const t = i / 24
+    const point = { x: Math.round(slot.x + (cube.x - slot.x) * t), y: Math.round(slot.y + (cube.y - slot.y) * t) }
+    await input.move(point.x, point.y)
+    await sleep(12)
+    const state = await client.readJson(STATE)
+    if (state.ghost.attached && state.ghost.previewCells > 0) { held = state; at = point; break }
+  }
+  if (!held) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('J spin', 'the piece never attached to the packed face')
+    return
+  }
+
+  check('J the packed face reports roomless and the target is illegal',
+    held.ghost.roomless === true && held.preview.valid === false,
+    `roomless=${held.ghost.roomless} valid=${held.preview.valid} face=${held.ghost.previewFace} origin=${originKey(held)}`)
+  check('J arriving on a face with no room arms the turn without moving the pose',
+    held.ghost.spin === true && held.rotation.front === '+z',
+    `spin=${held.ghost.spin} axis=${held.ghost.spinAxis} front=${held.rotation.front}`)
+
+  // The push: the same gesture, 16px at a time, from WHERE THE PIECE TOUCHED DOWN — the spin's
+  // ruler starts at the attach, so anything else would be measuring a throw rather than a push.
+  // It stops on its own the moment the turn commits (`spin` goes live -> null), which keeps the
+  // pointer inside the cube for the negative control that follows.
+  let axisSeen = null
+  let tip = at
+  for (let i = 1; i <= 14; i += 1) {
+    tip = { x: at.x, y: at.y - 16 * i }
+    await input.move(tip.x, tip.y)
+    await sleep(16)
+    const state = await client.readJson(STATE)
+    if (axisSeen === null && state.ghost.spinAxis) axisSeen = state.ghost.spinAxis
+    if (state.ghost.spin === false) break
+  }
+  check('J the push claims one axis of the cube turn', axisSeen !== null, `axis=${axisSeen ?? 'none'}`)
+  await sleep(450)
+  await client.frames()
+  const turned = await readState(client, input, { x: tip.x, y: tip.y - 4 })
+  check('J the cube turned to another face with the button still down',
+    turned.rotation.front !== '+z' && turned.rotation.front !== held.ghost.previewFace,
+    `front ${held.ghost.previewFace} -> ${turned.rotation.front}`)
+  check('J the piece re-attaches to the face that came round',
+    turned.ghost.onFace === true && turned.ghost.previewFace === turned.rotation.front
+      && turned.ghost.roomless === false,
+    `onFace=${turned.ghost.onFace} previewFace=${turned.ghost.previewFace} front=${turned.rotation.front} roomless=${turned.ghost.roomless}`)
+
+  // The trigger's negative, inside the same gesture: this face DOES take the piece, so the same
+  // kind of push must move the piece across it and leave the pose alone.
+  const frontNow = turned.rotation.front
+  const from = { x: tip.x, y: tip.y - 4 }
+  const roomyPoint = { x: from.x, y: from.y - 100 }
+  for (let i = 1; i <= 5; i += 1) {
+    await input.move(from.x, from.y - (100 * i) / 5)
+    await sleep(16)
+  }
+  const roomy = await readState(client, input, roomyPoint)
+  check('J a face that takes the piece does not turn the cube',
+    roomy.ghost.onFace === true && roomy.rotation.front === frontNow,
+    `onFace=${roomy.ghost.onFace} front ${frontNow} -> ${roomy.rotation.front} origin=${originKey(roomy)}`)
+
+  // The release has exactly two possible answers, and the board has to match the one that happened.
+  const legal = roomy.preview.valid === true
+  await input.up(roomyPoint.x, roomyPoint.y)
+  const released = await client.readJson(STATE)
+  const untouched = boardFingerprint(released.board) === boardFingerprint(before.board)
+  check(legal ? 'J the release after the turn places the piece on the new face'
+    : 'J the release on an illegal cell returns the piece and spends nothing',
+  legal ? released.slots[0].used === true && !untouched : released.slots[0].used === false && untouched,
+  `valid=${legal} used=${released.slots[0].used} boardChanged=${!untouched} toast=${released.toast}`)
+  await sleep(400)
+}
+
 // --------------------------------------------------------------------------- driver
 
 const browserPath = findBrowser()
@@ -1105,6 +1237,9 @@ try {
 
   console.log('\n-- I. partial overflow is grey and returns without placement --')
   if (wants('I')) await caseOverflow(client, input)
+
+  console.log('\n-- J. the cube turns out from under a piece whose face takes it nowhere --')
+  if (wants('J')) await caseSpin(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))
