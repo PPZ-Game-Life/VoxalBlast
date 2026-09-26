@@ -346,8 +346,10 @@ export function createGameInput({
       roomless: false,
       spin: null,
       // The pinned push (v0.9.4): face-lattice travel the clamp threw away, per axis. This is the
-      // general arming condition's ruler.
+      // general arming condition's ruler; `armed` (v0.9.5) is the turn that push has armed and the
+      // timer that will fire it if the push is held.
       push: { u: 0, v: 0 },
+      armed: null,
       valid: false,
       attached: false,
       active: false,
@@ -633,22 +635,94 @@ export function createGameInput({
 
   // The push measured the way the TURN's model wants it: the blocked face travel projected onto
   // the face's own lattice axes AS THEY ARE DRAWN RIGHT NOW (client px), plus the axis and the
-  // direction that screen direction means. Nothing here reads the pointer's position or its client
-  // travel: a face seen edge-on must not be easier to push off than one seen head-on.
+  // direction that screen direction means, plus the same push in LATTICE CELLS (the producer's
+  // 「超出半格」, and the unit that means the same thing on every screen). Nothing here reads the
+  // pointer's position or its client travel: a face seen edge-on must not be easier to push off
+  // than one seen head-on.
   function pinnedPush() {
     if (!(drag.push.u > PUSH_EPS) && !(drag.push.v > PUSH_EPS)) return null
     const step = faceStepScreen(drag.face)
     const sx = drag.push.u * step.u.x + drag.push.v * step.v.x
     const sy = drag.push.u * step.u.y + drag.push.v * step.v.y
     const axis = Math.abs(sx) >= Math.abs(sy) ? 'yaw' : 'pitch'
+    const px = Math.hypot(sx, sy)
     return {
-      px: Math.hypot(sx, sy),
+      px,
+      // The push in LATTICE CELLS — the producer's 「超出半格」, and the only honest ruler here: a
+      // face's own axes are foreshortened differently at its edge than at its centre (measured 34px
+      // per cell near the right edge of +z against 54px at the centre on a 430×900 viewport), so a
+      // px threshold would mean a different distance depending on where on the face it happened.
+      // Lattice units are what the clamp counts in, and they are what the player's 「半格」 means.
+      cells: Math.max(drag.push.u, drag.push.v),
       axis,
+      // The screen direction the push is going in, normalised: the armed turn measures the finger's
+      // retreat against it (see armTurn()).
+      ux: px > 0 ? sx / px : 0,
+      uy: px > 0 ? sy / px : 0,
       // The direction is the view gesture's own convention applied to the same screen direction:
       // swipeAngle() already carries the per-axis knob, and the sign of what it returns is the face
       // that gesture would have turned. Same ruler, same sign, no second opinion.
       sign: Math.sign(swipeAngle(axis, sx, sy, gestureSpan(), 'cube')) || 1,
     }
+  }
+
+  // ---- The armed turn (v0.9.5) -----------------------------------------------------
+  // 「超出下方一半格子，超过一段时间以后就向下翻」. The push passing PIECE_SPIN.pinCells does NOT turn
+  // anything by itself: it ARMS the turn, which then has to be held for PIECE_SPIN.pinHoldMs. The
+  // two halves do different jobs —
+  //   - the lean (`armLeanDeg`) is the feedback: the cube tilts the way the finger is pushing
+  //     immediately, so 「立方体跟着我拖的方向」 is visible before anything is committed;
+  //   - the dwell is the proof of intent: an edge placement that overshoots the edge is over in far
+  //     less than this, a deliberate push is not.
+  // Pulling back (the clamp stops discarding travel), releasing, or leaving the cube inside that
+  // window springs the lean back to the exact grid and turns nothing.
+  //
+  // Both halves ride boardView's own live gesture, so the cancel is `angle = 0` plus the very same
+  // settle a view gesture's release takes: no second pose model, and a cancelled turn leaves no
+  // residue on the 90° grid (`planAxisRelease` with |angle| 0 keeps the bearing the gesture started
+  // from and settles over zero distance).
+  function armTurn(push, event) {
+    beginAxisGesture(push.axis)
+    setLiveAngle(push.sign * THREE.MathUtils.degToRad(PIECE_SPIN.armLeanDeg))
+    drag.armed = {
+      axis: push.axis,
+      sign: push.sign,
+      timer: setTimeout(fireArmedTurn, PIECE_SPIN.pinHoldMs),
+      // The disarm ruler is the FINGER, in client px (`backPx` back toward the face cancels). It has
+      // to be: the lean moves the cube, the ray onto the latched face moves with it, and the piece's
+      // own advance can flicker under that — an accumulator fed by it would arm and disarm in a loop.
+      // A client position cannot be affected by the pose.
+      x: event.clientX,
+      y: event.clientY,
+      ux: push.ux,
+      uy: push.uy,
+    }
+    onHaptic(6)
+  }
+
+  // The dwell elapsed with the push still held: one face, committed by the push alone. A pinned
+  // piece does not follow the finger — that is what being pinned means — so there is no travel left
+  // to animate: the push is worth exactly one face, the same 「一次手势一面」 the keyboard obeys.
+  function fireArmedTurn() {
+    const armed = drag?.armed
+    if (!armed) return
+    drag.armed = null
+    const live = getLive()
+    if (!live) return
+    live.angle = armed.sign * ROT_STEP
+    startCubeSnap(live)
+    dropLatchForTurn()
+  }
+
+  function disarmTurn() {
+    const armed = drag?.armed
+    if (!armed) return
+    drag.armed = null
+    clearTimeout(armed.timer)
+    const live = getLive()
+    if (!live) return
+    live.angle = 0
+    startCubeSnap(live)
   }
 
   function beginSpin(event) {
@@ -688,21 +762,11 @@ export function createGameInput({
     dropLatchForTurn()
   }
 
-  // One face, committed by the PUSH alone (v0.9.4). A pinned piece does not follow the finger —
-  // that is what being pinned means — so there is no travel left to animate: the push IS the
-  // gesture, and it is worth exactly one face, the same "one gesture = one face" rule the keyboard
-  // obeys (03 §2.2). It is built from the same beginAxisGesture()/startCubeSnap() pair the keyboard
-  // uses, so it lands on the 90° grid by construction rather than by a second implementation.
-  function stepTurn(axis, sign) {
-    beginAxisGesture(axis)
-    const gesture = getLive()
-    if (!gesture) return false
-    gesture.angle = sign * ROT_STEP
-    startCubeSnap(gesture)
-    dropLatchForTurn()
-    return true
-  }
-
+  // One face, committed by the PUSH alone. A pinned piece does not follow the finger — that is what
+  // being pinned means — so there is no travel left to animate: the push is worth exactly one face,
+  // the same "one gesture = one face" rule the keyboard obeys (03 §2.2). It is built from the same
+  // beginAxisGesture()/startCubeSnap() pair the keyboard uses, so it lands on the 90° grid by
+  // construction rather than by a second implementation.
   function dropLatchForTurn() {
     detachFace()
     drag.attached = false
@@ -720,6 +784,13 @@ export function createGameInput({
     record.spin = null
     const live = getLive()
     if (live) startCubeSnap(live)
+  }
+
+  // Every way a gesture can end has to clear the armed turn's timer as well as the spin's pose
+  // (v0.9.5): a timer that outlives its drag would fire into the next one.
+  function endTurns(record) {
+    disarmTurn()
+    endSpin(record)
   }
 
   // The cancel target is the UI strip the drag came from, not one element: since v0.4.3
@@ -751,7 +822,7 @@ export function createGameInput({
       drag.origin = null
       // A live spin is handed over before the piece goes home (v0.9.3): the pose it is holding is
       // the player's, and nobody else is going to write it.
-      endSpin(drag)
+      endTurns(drag)
       // Back in the strip the piece is being put down, not held over a face: the next
       // arrival on the cube re-grabs wherever the finger is.
       detachFace()
@@ -800,22 +871,27 @@ export function createGameInput({
         syncGhostFor(event, ndc, 'snap')
         return true
       }
-      // (2) The piece is against a face edge and the finger is still pushing outward (v0.9.4). Any
-      // face, any direction — and unlike (1) this one commits on the spot: the piece is not
-      // following the finger, so the push the player has already made IS the gesture.
-      const push = pinnedPush()
-      if (push && push.px >= PIECE_SPIN.pinPx) {
-        stepTurn(push.axis, push.sign)
-        syncGhostFor(event, ndc, 'snap')
-        return true
+      // (2) The piece is pinned against a face edge and the finger is pushing outward (v0.9.4).
+      // Pushing past PIECE_SPIN.pinCells arms the turn and leans the cube that way; HOLDING it for
+      // PIECE_SPIN.pinHoldMs is what turns the face (v0.9.5). Pulling the finger back, or leaving
+      // the cube, disarms and springs the lean back.
+      if (drag.armed) {
+        const back = (event.clientX - drag.armed.x) * drag.armed.ux
+          + (event.clientY - drag.armed.y) * drag.armed.uy
+        if (back <= -PIECE_SPIN.backPx) disarmTurn()
+      } else {
+        const push = pinnedPush()
+        if (push && push.cells >= PIECE_SPIN.pinCells) armTurn(push, event)
       }
+    } else if (drag.armed) {
+      disarmTurn()
     }
     // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
     // carried. Once it is attached to a face the board draws it and the carried copy
     // disappears; if the pointer is on the cube but this face has no room, the piece
     // stays in hand and turns grey instead of silently vanishing.
     syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
-    if (attached) onStatus(drag.valid ? 'Release to place' : 'No room here')
+    if (attached) onStatus(drag.armed ? 'Hold to turn' : drag.valid ? 'Release to place' : 'No room here')
     else onStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
     return true
   }
@@ -831,7 +907,7 @@ export function createGameInput({
     // A live spin hands its pose over for the same reason finishDrag() does — and this path is
     // also the page taking the gesture away (a hidden tab, a new run), where a pose left live
     // would block every later rotation.
-    endSpin(currentDrag)
+    endTurns(currentDrag)
     const returning = showFeedback && currentDrag.active
     if (returning) onReturnPiece(currentDrag.piece)
     onClearLanding()
@@ -848,12 +924,13 @@ export function createGameInput({
     return true
   }
 
-  // Replacing a run clears its preview without the toast/haptic of a user cancel. A spin the dead
-  // gesture was holding is DROPPED rather than settled (v0.9.3): both callers put the pose where
-  // they want it straight afterwards — applySession's save, or resetCubeRotation — and both clear
-  // boardView's live record on the way.
+  // Replacing a run clears its preview without the toast/haptic of a user cancel. A live spin is
+  // DROPPED rather than settled (v0.9.3) — both callers put the pose where they want it straight
+  // afterwards (applySession's save or resetCubeRotation) and both clear boardView's live record on
+  // the way — but an ARMED turn must still be disarmed (v0.9.5): its timer outlives the record
+  // otherwise and would fire into whatever gesture comes next.
   function resetDrag() {
-    if (drag) drag.spin = null
+    if (drag) { disarmTurn(); drag.spin = null }
     onClearLanding()
     drag = null
   }
@@ -872,7 +949,7 @@ export function createGameInput({
     // now — instant, not animated — so that the release is judged on the pose the player is about
     // to see. Without that a player who released the instant the cube arrived would lose a piece
     // the face in front of them had room for, which is the one way this gesture could eat a turn.
-    endSpin(currentDrag)
+    endTurns(currentDrag)
     if (cubeSnapAnim.active) {
       settleCubeSnap()
       if (event && currentDrag.ndc) updatePreview(event, currentDrag.ndc)
@@ -973,7 +1050,12 @@ export function createGameInput({
       spin: Boolean(drag?.spin),
       spinAxis: drag?.spin?.axis ?? null,
       pushPx: push?.px ?? 0,
+      pushCells: push?.cells ?? 0,
       pinAxis: push?.axis ?? null,
+      // v0.9.5: the turn the push has ARMED and that PIECE_SPIN.pinHoldMs will fire. Non-null means
+      // the cube is leaning and nothing has been committed yet.
+      armed: Boolean(drag?.armed),
+      armedAxis: drag?.armed?.axis ?? null,
     }
   }
 

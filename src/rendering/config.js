@@ -505,18 +505,28 @@ export function dragGhostLiftPx(pointerType, rows, cellPx) {
 // in pixels the player can feel.
 export const PIECE_SPIN = Object.freeze({
   startPx: 26,
-  // The SECOND arming condition (v0.9.4): the piece is pinned against a face edge and the finger
-  // keeps pushing outward — 「块块贴在立方体上，再往某个方向拖超过阈值就翻」. `pinPx` is that push,
-  // measured on the face's OWN axes in client pixels, and it is bounded from both sides: large
-  // enough that stopping a placement AT an edge never turns the cube, small enough to be reachable
-  // inside the cube's silhouette (probe:drag case K measures that room at ~36px on a 430×900
-  // viewport) and to fire on an ordinary nudge. ≈half a cell on a 390px phone.
-  //
-  // ⚠️ The consequence, by the producer's own choice of the general rule: pushing a piece that is
-  // already parked on a face edge MORE than this turns the cube instead of leaving the piece there.
-  // Placing a piece at an edge therefore means stopping the drag at the edge (or releasing it) —
-  // an overshoot of half a cell is now a turn. Raise this number if that misfires in play.
-  pinPx: 26,
+  // The SECOND arming condition (v0.9.4, given its time rule by the producer in v0.9.5): the piece
+  // is pinned against a face edge and the finger keeps pushing outward —
+  // 「超出下方一半格子，超过一段时间以后就向下翻」. THREE numbers, and the producer's sentence names
+  // all three:
+  //   - `pinCells` 超出半格 — the push past the edge, in LATTICE CELLS (the clamp's own unit, and the
+  //     only one that means the same thing everywhere on a face: the +z face measures 34px per cell
+  //     near its right edge against 54px at its centre). Bounded from both sides: big enough that
+  //     stopping a placement AT an edge never arms anything, small enough to be reached inside the
+  //     cube's silhouette — probe:drag case K measures that room at ~0.8 of a cell (~45px) on a
+  //     430×900 viewport, and the first push has to fit 「半格 + 一点点」 inside it.
+  //   - `armLeanDeg` 立即的反馈 — the cube leans this far the way the finger is pushing the moment the
+  //     threshold is crossed, so 「立方体跟着我拖的方向」 is visible BEFORE anything is committed.
+  //   - `pinHoldMs` 超过一段时间 — how long the push has to be HELD before the face actually turns.
+  //     This is what separates 「我是故意要翻」 from 「我推到边上顺手超了一点」: the accidental
+  //     overshoot is over in well under this, a deliberate push is not.
+  pinCells: 0.5,
+  armLeanDeg: 8,
+  pinHoldMs: 360,
+  // How far the finger has to come BACK (client px, along the push direction) before an armed turn is
+  // called off. Small enough that a deliberate change of mind cancels, large enough that the tremor
+  // of a held finger does not.
+  backPx: 12,
 })
 
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).

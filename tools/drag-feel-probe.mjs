@@ -111,9 +111,9 @@ const EDGE_CANDIDATES = [
 const MOVE_STEPS = 6
 const INTRO_TIMEOUT_MS = 20000
 // The pinned-push threshold the app ships with, imported rather than copied: case K measures the
-// pointer's room past a face edge AGAINST this number, so a probe holding its own copy would keep
-// reporting a healthy budget after the constant moved out of reach.
-const PIN_PX = PIECE_SPIN.pinPx
+// pointer's room past a face edge AGAINST it, so a probe holding its own copy would keep reporting a
+// healthy budget after the constant moved out of reach. v0.9.5 expresses it in LATTICE CELLS
+// (「超出半格」) because that is the unit that survives a change of viewport.
 // Debugging aid: DRAGFEEL_CASES=AC runs only the named cases (a full run reloads the app a dozen
 // times, which is slow while a single case is being chased).
 const ONLY = (process.env.DRAGFEEL_CASES || '').toUpperCase()
@@ -530,7 +530,7 @@ async function walkToEdge(client, input, cube, vec, accept) {
     // walking through it here would silently replace the state this case means to measure. Everything
     // case C asserts (「推到边上不欠账、反向立刻跟手」) holds inside this window, which is also the
     // window a player who is placing a piece at an edge actually lives in.
-    if (state.ghost.pushPx >= PIN_PX * 0.6) break
+    if (state.ghost.pushCells >= PIECE_SPIN.pinCells * 0.6) break
     samples.push({ state, point })
   }
   const last = samples[samples.length - 1]
@@ -1094,16 +1094,19 @@ async function caseSpin(client, input) {
   await sleep(400)
 }
 
-// K. v0.9.4 — the GENERAL arming condition: a piece that cannot follow the finger, pushed once
-// more, turns the cube. No packing, no "this face has no room": the standard fixture's front face is
-// empty except its centre, the piece is a Dot parked against the right-hand edge, and from there the
-// finger keeps going right. Three claims: a piece that is still moving never arms it, the pose does
-// not move before the threshold, and past the threshold the cube turns with the button still down.
+// K. v0.9.4/v0.9.5 — the general arming condition, with the producer's time rule:
+// 「超出下方一半格子，超过一段时间以后就向下翻」. No packing, no "this face has no room": the standard
+// fixture's front face is empty except its centre, the piece is a Dot parked against a face edge, and
+// from there the finger keeps going. Four claims:
+//   1. a piece that is still following the finger never arms anything (this is what keeps an
+//      ordinary placement drag from turning the cube — v0.8.27 slides the preview across occupied
+//      cells on purpose, so the finger's own travel can never be the ruler);
+//   2. pushing past PIECE_SPIN.pinCells ARMS it and the cube LEANS, but the pose does not turn;
+//   3. holding the armed push for PIECE_SPIN.pinHoldMs turns exactly one face, with the button down;
+//   4. pulling the finger back before that springs the lean back and turns nothing.
 //
-// It also MEASURES the pointer's room past the edge, because that room is the budget `PIECE_SPIN.
-// pinPx` has to fit inside: past it the pointer leaves the cube and the piece goes back to the hand,
-// which would make the condition unreachable. The measurement is a NOTE, never a pass — if `pinPx`
-// turns out to be larger than the room, the turn check below fails on its own.
+// It also MEASURES the pointer's room past the edge, because that room is the budget `pinCells` has
+// to be reachable inside. The measurement is a NOTE, never a pass.
 async function casePinnedPush(client, input) {
   await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
   const before = await client.readJson(STATE)
@@ -1160,73 +1163,128 @@ async function casePinnedPush(client, input) {
       && armedOnTheWay === 0 && pinned.ghost.previewOrigin.u === SH - 1,
     `pushPx while moving=${armedOnTheWay} origin=${originKey(pinned)} front=${pinned.rotation.front}`)
 
-  // Push straight on, 6px at a time, watching both the counter and the pose. The frame the pose
-  // moves IS the threshold being crossed, so the two are checked against each other rather than
-  // against a stopwatch: nothing may move before the counter reaches pinPx, and something must move
-  // once it has — while the pointer is still on the cube (past that, the piece goes back to hand and
-  // the condition would be unreachable, which is exactly what pinPx's size is budgeted against).
-  // Push straight on, one eighth of a cell at a time, watching both the counter and the pose. The
-  // turn is the frame the counter crosses pinPx, so the two are checked against each other rather
-  // than against a stopwatch: nothing may move before the counter reaches pinPx, and the very next
-  // step after it does must move. NOTE the order of the two tests below — a committed turn DROPS the
-  // latch on purpose, so the piece is already back in hand on the frame the pose moves and reading
-  // `onFace` first would hide the turn entirely.
+  // Push straight on, one eighth of a cell at a time, until the push passes PIECE_SPIN.pinCells in
+  // LATTICE CELLS (the producer's 「超出半格」). Nothing may turn here: the push only ARMS the turn.
+  // The order of the two tests matters — a committed turn DROPS the latch on purpose, so the piece is
+  // already back in hand on the frame the pose moves, and reading `onFace` first would hide it.
   const pinPoint = at(pinCells)
   const stepCells = pitch / 8 // one eighth of a cell, ≈7px at a 430px viewport
+  let armedAt = null
   let last = pinned
   let lastStep = 0
-  let turnedAt = null
-  let movedEarly = null
   for (let i = 1; i <= 40; i += 1) {
     const point = at(pinCells + i / 8)
     const next = await readState(client, input, point)
-    if (next.rotation.front !== before.rotation.front) { turnedAt = { i, px: i * stepCells, point, state: next }; break }
+    if (next.rotation.front !== before.rotation.front) {
+      check('K the push arms the turn without turning the face', false,
+        `the front moved to ${next.rotation.front} at step ${i}, before the dwell`)
+      await releaseWithoutPlacing(client, input, point)
+      return
+    }
     if (!next.ghost.onFace) break
-    if (next.ghost.pushPx >= PIN_PX) movedEarly = next
+    if (next.ghost.armed) { armedAt = { i, px: i * stepCells, point, state: next }; break }
     last = next
     lastStep = i
   }
-  if (!turnedAt) {
-    check('K pushing a pinned piece past the threshold turns the cube', false,
-      `no turn after ${(lastStep * stepCells).toFixed(1)}px of pushing (pushPx=${last.ghost.pushPx.toFixed(1)}, onFace=${last.ghost.onFace})`)
+  if (!armedAt) {
+    check('K pushing past the threshold arms the turn', false,
+      `never armed after ${(lastStep * stepCells).toFixed(1)}px of pushing `
+      + `(pushCells=${last.ghost.pushCells.toFixed(2)} of ${PIECE_SPIN.pinCells}, onFace=${last.ghost.onFace})`)
     await releaseWithoutPlacing(client, input, at(pinCells))
     return
   }
-  const overhang = Math.round(turnedAt.point.x - bounds.maxX)
-  // How far the pointer could have gone on the ATTACH margin alone — the budget the pinned margin
-  // exists to extend, because it is smaller than pinPx on this viewport.
-  const insideRoom = Math.round(bounds.maxX - pinPoint.x + 18)
+  const overhang = Math.round(armedAt.point.x - bounds.maxX)
 
-  note('K pinPx budget', `pinPx=${PIN_PX} (cell pitch ${pitch.toFixed(1)}px); the turn fired ${turnedAt.px.toFixed(1)}px of pushing in,`
-    + ` ${overhang}px past the cube's silhouette. On the attach margin alone the pointer has ${insideRoom}px past the pin point — `
-    + `${insideRoom < PIN_PX ? 'less than pinPx, so the pinned margin is what makes it reachable' : 'enough on its own'}.`)
-  check('K the turn fires on the first step past the threshold, not later',
-    turnedAt.i === lastStep + 1 && last.ghost.pushPx < PIN_PX,
-    `last frame under the threshold: ${last.ghost.pushPx.toFixed(1)}px (step ${lastStep}), turned on step ${turnedAt.i}`)
-  check('K the push is made inside the cube\'s reachable band',
+  check('K pushing past half a cell arms the turn and leaves the face where it is',
+    armedAt.state.rotation.front === before.rotation.front && armedAt.state.ghost.armedAxis !== null
+      && armedAt.state.ghost.pushCells >= PIECE_SPIN.pinCells,
+    `armed at pushCells=${armedAt.state.ghost.pushCells.toFixed(2)} (${armedAt.px.toFixed(1)}px), axis=${armedAt.state.ghost.armedAxis}, front=${armedAt.state.rotation.front}`)
+  check('K the armed cube LEANS before anything is committed',
+    JSON.stringify(armedAt.state.rotation.pose) !== JSON.stringify(before.rotation.pose),
+    `pose changed while the front stayed ${armedAt.state.rotation.front} (lean ${PIECE_SPIN.armLeanDeg}°)`)
+  check('K the arming push is made inside the cube\'s reachable band',
     overhang <= DRAG_GHOST.snapMarginPx,
     `pointer ${overhang}px past the silhouette, attach margin ${DRAG_GHOST.snapMarginPx}px — past that the piece is carried again and the push can never finish`)
-  check('K the pose does not move before the push passes the threshold',
-    movedEarly === null,
-    movedEarly ? `pose moved with pushPx=${movedEarly.ghost.pushPx.toFixed(1)} < ${PIN_PX}` : 'no frame moved under the threshold')
-  check('K the cube turned to another face with the button still down',
-    turnedAt.state.rotation.front !== before.rotation.front && turnedAt.state.rotation.front !== pinned.ghost.previewFace,
-    `front ${pinned.ghost.previewFace} -> ${turnedAt.state.rotation.front} at pushPx=${last.ghost.pushPx.toFixed(1)}+, axis=${last.ghost.pinAxis}`)
+  note('K pin budget', `${PIECE_SPIN.pinCells} cell = ${(PIECE_SPIN.pinCells * pitch).toFixed(0)}px armed at ${armedAt.px.toFixed(1)}px of push;`
+    + ` the pointer has ~${Math.round(bounds.maxX - pinPoint.x + DRAG_GHOST.snapMarginPx)}px past the pin point before it leaves the cube`)
+
+  // The cancel half of the rule, in this gesture: pull the finger back before the dwell elapses ->
+  // the lean springs back, the pose returns to the grid, and the front never moves. The re-arming
+  // half is NOT tested here: the pull-back spends the pointer's room past the edge (the piece has to
+  // be walked back out before it can be pushed again), and the gesture would run out of cube before
+  // reaching the threshold. The hold half gets its own gesture below for exactly that reason.
+  await input.move(armedAt.point.x - Math.round(step.x * 0.5), armedAt.point.y - Math.round(step.y * 0.5))
+  await sleep(90)
+  const pulled = await client.readJson(STATE)
+  check('K pulling the finger back before the dwell turns nothing',
+    pulled.ghost.armed === false && pulled.rotation.front === before.rotation.front,
+    `armed=${pulled.ghost.armed} front=${pulled.rotation.front}`)
+  await releaseWithoutPlacing(client, input, at(pinCells))
+
+  // ---- the hold half, in a gesture of its own ------------------------------------------------
+  // 「超过一段时间以后就向下翻」: push past the threshold, then send NO further input at all and let
+  // the clock run. This is the one claim no expressible gesture could fake.
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const second = await client.readJson(STATE)
+  const slot2 = second.slots[0]
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot2.x, y: slot2.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot2.x, y: slot2.y, button: 'left', buttons: 1, clickCount: 1 })
+  let live = null
+  for (let i = 1; i <= 24; i += 1) {
+    const t = i / 24
+    await input.move(Math.round(slot2.x + (cube.x - slot2.x) * t), Math.round(slot2.y + (cube.y - slot2.y) * t))
+    await sleep(12)
+    live = await client.readJson(STATE)
+    if (live.ghost.attached && live.ghost.previewCells > 0) break
+  }
+  if (!live?.ghost?.attached) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K hold', 'the second drag never attached')
+    return
+  }
+  const step2 = live.ghost.stepScreen.u
+  const at2 = (cells) => ({ x: Math.round(cube.x + step2.x * cells), y: Math.round(cube.y + step2.y * cells) })
+  let armed2 = null
+  for (let i = 1; i <= 40 && !armed2; i += 1) {
+    const next = await readState(client, input, at2(i / 8))
+    if (next.ghost.armed) armed2 = { i, point: at2(i / 8), state: next }
+    else if (!next.ghost.onFace) break
+  }
+  if (!armed2) {
+    check('K a fresh gesture can arm the same turn', false, 'never armed on the second gesture')
+    await releaseWithoutPlacing(client, input, at2(2))
+    return
+  }
+  const holdStart = Date.now()
+  const holdMs = Math.round(PIECE_SPIN.pinHoldMs * 0.5)
+  await sleep(holdMs)
+  await client.frames()
+  const halfway = await client.readJson(STATE)
+  check('K the armed push does NOT turn the face before the dwell elapses',
+    halfway.rotation.front === second.rotation.front,
+    `after ${Math.round(Date.now() - holdStart)}ms of held push front is still ${halfway.rotation.front} (pinHoldMs=${PIECE_SPIN.pinHoldMs})`)
+
+  await sleep(PIECE_SPIN.pinHoldMs - holdMs + 260)
+  await client.frames()
+  const held = await client.readJson(STATE)
+  check('K holding the armed push for the dwell turns exactly one face, button still down',
+    held.rotation.front !== second.rotation.front,
+    `front ${second.rotation.front} -> ${held.rotation.front} after ${Math.round(Date.now() - holdStart)}ms of held push (pinHoldMs=${PIECE_SPIN.pinHoldMs})`)
 
   // The release has the same two possible answers as every other illegal release: the piece lands on
   // the face that came round, or it goes back to the strip with nothing spent.
-  const point = turnedAt.point
-  await sleep(450)
-  await client.frames()
-  const after = await readState(client, input, { x: point.x, y: point.y - 4 })
+  await readState(client, input, { x: armed2.point.x, y: armed2.point.y - 4 })
+  const after = await client.readJson(STATE)
   const legal = after.preview.valid === true
-  await input.up(point.x, point.y - 4)
+  await input.up(armed2.point.x, armed2.point.y - 4)
   const released = await client.readJson(STATE)
-  const untouched = boardFingerprint(released.board) === boardFingerprint(before.board)
-  check(legal ? 'K the release after the pin turn places the piece on the new face'
-    : 'K the release after the pin turn returns the piece and spends nothing',
-  legal ? released.slots[0].used === true && !untouched : released.slots[0].used === false && untouched,
-  `valid=${legal} used=${released.slots[0].used} boardChanged=${!untouched} toast=${released.toast}`)
+  const fingerprint = JSON.stringify(released.board)
+  const secondStart = JSON.stringify(second.board)
+  check(legal ? 'K the release after the held turn places the piece on the new face'
+    : 'K the release after the held turn returns the piece and spends nothing',
+  legal ? released.slots[0].used === true && fingerprint !== secondStart
+    : released.slots[0].used === false && fingerprint === secondStart,
+  `valid=${legal} used=${released.slots[0].used} boardChanged=${fingerprint !== secondStart} toast=${released.toast}`)
   await sleep(400)
 }
 

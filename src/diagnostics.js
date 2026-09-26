@@ -180,7 +180,13 @@ export function createDiagnostics({
         spin: d.spin,
         spinAxis: d.spinAxis,
         pushPx: d.pushPx,
+        pushCells: d.pushCells,
         pinAxis: d.pinAxis,
+        // v0.9.5: `armed` is the turn the push has armed (the cube leans, nothing committed) and
+        // `armedAxis` the axis it will turn on once PIECE_SPIN.pinHoldMs has passed. A check reads them
+        // with `rotation` to prove the lean happens BEFORE the face moves.
+        armed: d.armed,
+        armedAxis: d.armedAxis,
       }
     },
     // The camera's own framing report (gameScene owns the zoom, the orbit distance, the fit
