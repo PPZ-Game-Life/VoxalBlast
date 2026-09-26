@@ -375,23 +375,33 @@ export function createGameInput({
     onStatus('Drag to a face')
   }
 
-  // Is the pointer on (or within snapMarginPx of) the cube's silhouette? The drag
+  // Is the pointer on (or within `margin` of) the cube's silhouette? The drag
   // has exactly two states and this is the line between them: off the cube the
   // piece is still IN HAND (only the ghost exists), on it the piece has ATTACHED to
   // a face (only the landing preview exists). See DRAG_GHOST in rendering/config.js.
   //
-  // v0.9.4 kept this unchanged on purpose, even though the pinned push would be easier to trigger
-  // with a wider margin: widening it here is what 「把块块拖离立方体就回到手上」 means, and a piece
-  // pinned at an edge must still be carried off the cube by dragging it away. The push therefore
-  // has to be made inside the silhouette (+18px), which probe:drag case K measures.
-  function isPointerOnCube(ndc) {
+  // `margin` is the caller's since v0.9.6, and only ONE caller widens it: a PINNED piece gets
+  // PIECE_SPIN.pinMarginPx. The attach margin (18px) is measured from the cube's box, and on the
+  // tight edges — the bottom of a face, where no other face is visible past it — that leaves less
+  // room than the push threshold needs, so the finger left the cube, the piece went back to the hand
+  // and the turn never armed. That was the producer's 「我往下已经超出很多了，但是没有转，有时候又转了」:
+  // it depended on how far the piece still had to slide before it reached the edge.
+  function isPointerOnCube(ndc, margin = DRAG_GHOST.snapMarginPx) {
     const rect = canvas.getBoundingClientRect()
     const clientX = rect.left + (ndc.x * 0.5 + 0.5) * rect.width
     const clientY = rect.top + (-ndc.y * 0.5 + 0.5) * rect.height
     const bounds = cubeScreenBounds()
-    const margin = DRAG_GHOST.snapMarginPx
     return clientX >= bounds.minX - margin && clientX <= bounds.maxX + margin
       && clientY >= bounds.minY - margin && clientY <= bounds.maxY + margin
+  }
+
+  // The margin this frame's "off the cube" test is allowed: the pinned push's, or the attach's.
+  // `drag.push` is last frame's, deliberately — "pinned" has to mean 「上一次它就没跟手」, which is
+  // one frame before the finger can be outside the silhouette.
+  function pointerMargin() {
+    return drag && isPushing()
+      ? PIECE_SPIN.pinMarginPx
+      : DRAG_GHOST.snapMarginPx
   }
 
   // Hand the drag ghost its three rulers. All three are the input layer's to measure: the
@@ -524,8 +534,10 @@ export function createGameInput({
     drag.valid = false
     if (!selectedPiece || !ndc || !drag?.active) { detachFace(); return false }
     // Off the cube the piece goes back to being carried, and the next arrival on the cube
-    // re-grabs it wherever it lands.
-    if (!isPointerOnCube(ndc)) { detachFace(); return false }
+    // re-grabs it wherever it lands — with the wider margin a PINNED piece is allowed, because a
+    // piece stuck against a face edge with the finger still pushing outward is being PUSHED, not
+    // carried away (v0.9.6; see pointerMargin() and probe:drag case K).
+    if (!isPointerOnCube(ndc, pointerMargin())) { detachFace(); return false }
 
     if (!drag.face) {
       // ---- the attach: the ONE moment the piece leaves the hand -----------------
@@ -625,12 +637,30 @@ export function createGameInput({
   // updatePreview() or returns the piece to the strip like any other illegal release.
   const PUSH_EPS = 1e-4
 
-  // The push, in face-lattice units, accumulated per axis. A frame that discarded nothing clears
-  // that axis's counter — a frame where the piece took a step, or where the finger reversed. The
-  // counter has to mean 「手指一直往这个方向推，块块一直不动」, never 「很久以前推过一下」.
+  // The push, in face-lattice units, accumulated per axis with its SIGN.
+  //
+  // The sign is load-bearing (v0.9.6) and its absence was a real bug: `clampOrigin`'s bounds are
+  // `[-span, SH-1]`, so travel discarded at the LOW bound arrives as a NEGATIVE difference while
+  // travel discarded at the HIGH bound arrives positive. An accumulator that only added positive
+  // values therefore counted 「推到右边/上边推不动」 and silently ignored 「推到下边/左边推不动」 — the
+  // producer's 「我往下已经超出很多了，但是没有转，有时候又转了」, where the "sometimes" was the piece
+  // happening to be pushed the other way. The direction is also what picks the axis and the face, so
+  // it has to survive; the MAGNITUDE is what the threshold counts.
+  //
+  // A frame that discarded nothing clears the counter — the piece took the travel, or the finger
+  // turned round — so the counter has to mean 「手指一直往这个方向推，块块一直不动」.
+  function nextPush(current, blocked) {
+    if (Math.abs(blocked) <= PUSH_EPS) return 0
+    return Math.sign(blocked) === Math.sign(current) ? current + blocked : blocked
+  }
+
   function trackPush(blockedU, blockedV) {
-    drag.push.u = blockedU > PUSH_EPS ? drag.push.u + blockedU : 0
-    drag.push.v = blockedV > PUSH_EPS ? drag.push.v + blockedV : 0
+    drag.push.u = nextPush(drag.push.u, blockedU)
+    drag.push.v = nextPush(drag.push.v, blockedV)
+  }
+
+  function isPushing() {
+    return Math.abs(drag.push.u) > PUSH_EPS || Math.abs(drag.push.v) > PUSH_EPS
   }
 
   // The push measured the way the TURN's model wants it: the blocked face travel projected onto
@@ -640,7 +670,7 @@ export function createGameInput({
   // pointer's position or its client travel: a face seen edge-on must not be easier to push off
   // than one seen head-on.
   function pinnedPush() {
-    if (!(drag.push.u > PUSH_EPS) && !(drag.push.v > PUSH_EPS)) return null
+    if (!isPushing()) return null
     const step = faceStepScreen(drag.face)
     const sx = drag.push.u * step.u.x + drag.push.v * step.v.x
     const sy = drag.push.u * step.u.y + drag.push.v * step.v.y
@@ -653,7 +683,7 @@ export function createGameInput({
       // per cell near the right edge of +z against 54px at the centre on a 430×900 viewport), so a
       // px threshold would mean a different distance depending on where on the face it happened.
       // Lattice units are what the clamp counts in, and they are what the player's 「半格」 means.
-      cells: Math.max(drag.push.u, drag.push.v),
+      cells: Math.max(Math.abs(drag.push.u), Math.abs(drag.push.v)),
       axis,
       // The screen direction the push is going in, normalised: the armed turn measures the finger's
       // retreat against it (see armTurn()).

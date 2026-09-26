@@ -1286,6 +1286,72 @@ async function casePinnedPush(client, input) {
     : released.slots[0].used === false && fingerprint === secondStart,
   `valid=${legal} used=${released.slots[0].used} boardChanged=${fingerprint !== secondStart} toast=${released.toast}`)
   await sleep(400)
+
+  // ---- the DOWN edge: the same rule on the other SIGN of the clamp ---------------------------------
+  // This section is why v0.9.6 exists. `clampOrigin`'s bounds are `[-span, SH-1]`: travel discarded
+  // at the LOW bound arrives as a negative difference, at the HIGH one positive. The first
+  // implementation only added positive values, so 「推到右边推不动」 armed and 「推到下边推不动」 never
+  // did — and whether the producer's downward push worked depended on the piece's shape and where it
+  // started (「我往下已经超出很多了，但是没有转，有时候又转了」). Right/up and down/left are the two
+  // signs of the same code path, so one case per sign pins the fix.
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const third = await client.readJson(STATE)
+  const slot3 = third.slots[0]
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot3.x, y: slot3.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot3.x, y: slot3.y, button: 'left', buttons: 1, clickCount: 1 })
+  let down = null
+  for (let i = 1; i <= 24; i += 1) {
+    const t = i / 24
+    await input.move(Math.round(slot3.x + (cube.x - slot3.x) * t), Math.round(slot3.y + (cube.y - slot3.y) * t))
+    await sleep(12)
+    down = await client.readJson(STATE)
+    if (down.ghost.attached && down.ghost.previewCells > 0) break
+  }
+  if (!down?.ghost?.attached) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K down edge', 'the downward drag never attached')
+    return
+  }
+  const stepV = down.ghost.stepScreen.v
+  // `stepScreen.v` is the lattice +v direction on screen, which for the front face points UP the
+  // screen; the producer's report is about pushing DOWN, so this walks the OTHER way.
+  const atV = (cells) => ({ x: Math.round(cube.x - stepV.x * cells), y: Math.round(cube.y - stepV.y * cells) })
+  const pitchV = Math.hypot(stepV.x, stepV.y)
+  let armedDown = null
+  let lastDown = down
+  let downSteps = 0
+  for (let i = 1; i <= 40 && !armedDown; i += 1) {
+    const next = await readState(client, input, atV(i / 8))
+    if (next.rotation.front !== third.rotation.front) break
+    if (!next.ghost.onFace) break
+    lastDown = next
+    downSteps = i
+    if (next.ghost.armed) armedDown = { i, point: atV(i / 8), state: next }
+  }
+  if (!armedDown) {
+    check('K pushing DOWN past half a cell arms the turn', false,
+      `never armed after ${downSteps} eighths of a cell of downward pushing `
+      + `(pushCells=${lastDown.ghost.pushCells.toFixed(2)}, origin=${lastDown.ghost.previewOrigin ? originKey(lastDown) : 'none'}, `
+      + `onFace=${lastDown.ghost.onFace}) — the piece must reach the bottom row (v=0) before the push can count`)
+    await releaseWithoutPlacing(client, input, atV(downSteps / 8))
+    return
+  }
+  check('K pushing DOWN past half a cell arms the turn',
+    armedDown.state.ghost.armedAxis === 'pitch' && armedDown.state.rotation.front === third.rotation.front
+      && armedDown.state.ghost.pushCells >= PIECE_SPIN.pinCells
+      && originKey(armedDown.state).endsWith(',0'),
+    `armed at pushCells=${armedDown.state.ghost.pushCells.toFixed(2)} on axis=${armedDown.state.ghost.armedAxis}, `
+    + `origin=${originKey(armedDown.state)} (${(armedDown.i * pitchV / 8).toFixed(0)}px down), front still ${armedDown.state.rotation.front}`)
+  note('K down edge', `v axis ${pitchV.toFixed(1)}px per cell; armed ${(armedDown.i * pitchV / 8).toFixed(0)}px down, `
+    + `cube bounds y ${Math.round(bounds.minY)}..${Math.round(bounds.maxY)} — the bottom edge is the tight one (no face visible past it)`)
+
+  await sleep(PIECE_SPIN.pinHoldMs + 260)
+  await client.frames()
+  const turnedDown = await client.readJson(STATE)
+  check('K holding a downward push turns the cube the other way',
+    turnedDown.rotation.front !== third.rotation.front && turnedDown.rotation.front !== down.ghost.previewFace,
+    `front ${down.ghost.previewFace} -> ${turnedDown.rotation.front} after the dwell`)
+  await releaseWithoutPlacing(client, input, armedDown.point)
 }
 
 // --------------------------------------------------------------------------- driver

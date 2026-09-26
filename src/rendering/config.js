@@ -523,6 +523,16 @@ export const PIECE_SPIN = Object.freeze({
   pinCells: 0.5,
   armLeanDeg: 8,
   pinHoldMs: 360,
+  // How far OUTSIDE the cube's box a PINNED piece keeps following the gesture (v0.9.6). The attach
+  // margin (DRAG_GHOST.snapMarginPx, 18px) is not enough on the TIGHT edges: past the bottom of a
+  // face there is no other face to widen the silhouette, so the finger leaves the cube after
+  // 18px + whatever sliver is left, the piece goes back to the hand, and the push never reaches
+  // `pinCells`. Measured on a 430×900 viewport with a Dot pushed down: the piece still has to slide
+  // to the bottom row before the push even starts counting, and by then the pointer was already
+  // outside — the producer's 「我往下已经超出很多了，但是没有转，有时候又转了」. 90px is past the point
+  // where a finger that keeps going has clearly left the cube, and far short of the drag that puts
+  // the piece back in the strip.
+  pinMarginPx: 90,
   // How far the finger has to come BACK (client px, along the push direction) before an armed turn is
   // called off. Small enough that a deliberate change of mind cancels, large enough that the tremor
   // of a held finger does not.
