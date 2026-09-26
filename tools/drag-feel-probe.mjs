@@ -32,6 +32,10 @@
 //                      (v0.9.3): armed on arrival, one axis claimed on the push, the pose turned
 //                      with the button still down, the piece re-attached to the arriving face —
 //                      and NOT turned again on a face that does take it
+//   K pinned push      and on ANY face (v0.9.4): a piece that has stopped following the finger
+//                      (parked against a face edge) arms nothing while it still moves, and turns
+//                      the cube once the push passes PIECE_SPIN.pinPx — again with the button down.
+//                      Also measures the pointer's room past the edge, which is pinPx's budget
 //
 // Discipline, same as the other probes: real CDP input only, read-only `__voxalblast` handles for
 // observation, an isolated browser profile with an OS-assigned debug port, Browser.close before
@@ -48,7 +52,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { SH, faceLattice } from '../src/game/board.js'
-import { RENDER_PALETTE } from '../src/rendering/config.js'
+import { DRAG_GHOST, PIECE_SPIN, RENDER_PALETTE } from '../src/rendering/config.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_URL = (process.argv[2] || 'http://127.0.0.1:5173/').replace(/\/?$/, '/')
@@ -106,6 +110,10 @@ const EDGE_CANDIDATES = [
 
 const MOVE_STEPS = 6
 const INTRO_TIMEOUT_MS = 20000
+// The pinned-push threshold the app ships with, imported rather than copied: case K measures the
+// pointer's room past a face edge AGAINST this number, so a probe holding its own copy would keep
+// reporting a healthy budget after the constant moved out of reach.
+const PIN_PX = PIECE_SPIN.pinPx
 // Debugging aid: DRAGFEEL_CASES=AC runs only the named cases (a full run reloads the app a dozen
 // times, which is slow while a single case is being chased).
 const ONLY = (process.env.DRAGFEEL_CASES || '').toUpperCase()
@@ -517,6 +525,12 @@ async function walkToEdge(client, input, cube, vec, accept) {
       if (samples.length) break
       continue
     }
+    // Stop while the piece is pinned but still UNDER the turn threshold (v0.9.4). Past pinPx the
+    // same push turns the cube instead of leaving the piece parked — that is case K's territory, and
+    // walking through it here would silently replace the state this case means to measure. Everything
+    // case C asserts (「推到边上不欠账、反向立刻跟手」) holds inside this window, which is also the
+    // window a player who is placing a piece at an edge actually lives in.
+    if (state.ghost.pushPx >= PIN_PX * 0.6) break
     samples.push({ state, point })
   }
   const last = samples[samples.length - 1]
@@ -1080,6 +1094,142 @@ async function caseSpin(client, input) {
   await sleep(400)
 }
 
+// K. v0.9.4 — the GENERAL arming condition: a piece that cannot follow the finger, pushed once
+// more, turns the cube. No packing, no "this face has no room": the standard fixture's front face is
+// empty except its centre, the piece is a Dot parked against the right-hand edge, and from there the
+// finger keeps going right. Three claims: a piece that is still moving never arms it, the pose does
+// not move before the threshold, and past the threshold the cube turns with the button still down.
+//
+// It also MEASURES the pointer's room past the edge, because that room is the budget `PIECE_SPIN.
+// pinPx` has to fit inside: past it the pointer leaves the cube and the piece goes back to the hand,
+// which would make the condition unreachable. The measurement is a NOTE, never a pass — if `pinPx`
+// turns out to be larger than the room, the turn check below fails on its own.
+async function casePinnedPush(client, input) {
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const before = await client.readJson(STATE)
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const cube = cubeCentre(bounds)
+  const slot = before.slots[0]
+
+  // Attach at the centre, in small steps, and stop the moment the piece is on the face.
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slot.x, y: slot.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: slot.x, y: slot.y, button: 'left', buttons: 1, clickCount: 1 })
+  let state = null
+  for (let i = 1; i <= 24; i += 1) {
+    const t = i / 24
+    await input.move(Math.round(slot.x + (cube.x - slot.x) * t), Math.round(slot.y + (cube.y - slot.y) * t))
+    await sleep(12)
+    state = await client.readJson(STATE)
+    if (state.ghost.attached && state.ghost.previewCells > 0) break
+  }
+  if (!state?.ghost?.attached) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K pinned push', 'the piece never attached to the front face')
+    return
+  }
+
+  const step = state.ghost.stepScreen.u
+  const pitch = Math.hypot(step.x, step.y)
+  if (pitch < 24) {
+    await releaseWithoutPlacing(client, input, cube)
+    skip('K pinned push', `the +u axis is nearly edge-on (${pitch.toFixed(1)} px per cell)`)
+    return
+  }
+
+  // Walk right in QUARTER cells until the piece stops following the finger (`pushPx` leaves zero).
+  // Every step before that is a step the PIECE took, so it proves the negative that keeps an
+  // ordinary placement drag from turning the cube: dragging a piece across its face arms nothing,
+  // and the pose stays put.
+  const at = (cells) => ({ x: Math.round(cube.x + step.x * cells), y: Math.round(cube.y + step.y * cells) })
+  let pinned = state
+  let pinCells = 0
+  let armedOnTheWay = 0
+  for (let q = 1; q <= SH * 4; q += 1) {
+    const next = await readState(client, input, at(q / 4))
+    if (!next.ghost.onFace) break
+    if (next.ghost.pushPx > 0) { pinned = next; pinCells = q / 4; break }
+    if (next.rotation.front !== before.rotation.front) {
+      skip('K pinned push', 'the cube turned while the piece was still following the finger')
+      break
+    }
+    armedOnTheWay = next.ghost.pushPx
+    pinned = next
+  }
+  check('K a piece that is still moving never arms the turn',
+    pinned.ghost.onFace === true && pinned.rotation.front === before.rotation.front
+      && armedOnTheWay === 0 && pinned.ghost.previewOrigin.u === SH - 1,
+    `pushPx while moving=${armedOnTheWay} origin=${originKey(pinned)} front=${pinned.rotation.front}`)
+
+  // Push straight on, 6px at a time, watching both the counter and the pose. The frame the pose
+  // moves IS the threshold being crossed, so the two are checked against each other rather than
+  // against a stopwatch: nothing may move before the counter reaches pinPx, and something must move
+  // once it has — while the pointer is still on the cube (past that, the piece goes back to hand and
+  // the condition would be unreachable, which is exactly what pinPx's size is budgeted against).
+  // Push straight on, one eighth of a cell at a time, watching both the counter and the pose. The
+  // turn is the frame the counter crosses pinPx, so the two are checked against each other rather
+  // than against a stopwatch: nothing may move before the counter reaches pinPx, and the very next
+  // step after it does must move. NOTE the order of the two tests below — a committed turn DROPS the
+  // latch on purpose, so the piece is already back in hand on the frame the pose moves and reading
+  // `onFace` first would hide the turn entirely.
+  const pinPoint = at(pinCells)
+  const stepCells = pitch / 8 // one eighth of a cell, ≈7px at a 430px viewport
+  let last = pinned
+  let lastStep = 0
+  let turnedAt = null
+  let movedEarly = null
+  for (let i = 1; i <= 40; i += 1) {
+    const point = at(pinCells + i / 8)
+    const next = await readState(client, input, point)
+    if (next.rotation.front !== before.rotation.front) { turnedAt = { i, px: i * stepCells, point, state: next }; break }
+    if (!next.ghost.onFace) break
+    if (next.ghost.pushPx >= PIN_PX) movedEarly = next
+    last = next
+    lastStep = i
+  }
+  if (!turnedAt) {
+    check('K pushing a pinned piece past the threshold turns the cube', false,
+      `no turn after ${(lastStep * stepCells).toFixed(1)}px of pushing (pushPx=${last.ghost.pushPx.toFixed(1)}, onFace=${last.ghost.onFace})`)
+    await releaseWithoutPlacing(client, input, at(pinCells))
+    return
+  }
+  const overhang = Math.round(turnedAt.point.x - bounds.maxX)
+  // How far the pointer could have gone on the ATTACH margin alone — the budget the pinned margin
+  // exists to extend, because it is smaller than pinPx on this viewport.
+  const insideRoom = Math.round(bounds.maxX - pinPoint.x + 18)
+
+  note('K pinPx budget', `pinPx=${PIN_PX} (cell pitch ${pitch.toFixed(1)}px); the turn fired ${turnedAt.px.toFixed(1)}px of pushing in,`
+    + ` ${overhang}px past the cube's silhouette. On the attach margin alone the pointer has ${insideRoom}px past the pin point — `
+    + `${insideRoom < PIN_PX ? 'less than pinPx, so the pinned margin is what makes it reachable' : 'enough on its own'}.`)
+  check('K the turn fires on the first step past the threshold, not later',
+    turnedAt.i === lastStep + 1 && last.ghost.pushPx < PIN_PX,
+    `last frame under the threshold: ${last.ghost.pushPx.toFixed(1)}px (step ${lastStep}), turned on step ${turnedAt.i}`)
+  check('K the push is made inside the cube\'s reachable band',
+    overhang <= DRAG_GHOST.snapMarginPx,
+    `pointer ${overhang}px past the silhouette, attach margin ${DRAG_GHOST.snapMarginPx}px — past that the piece is carried again and the push can never finish`)
+  check('K the pose does not move before the push passes the threshold',
+    movedEarly === null,
+    movedEarly ? `pose moved with pushPx=${movedEarly.ghost.pushPx.toFixed(1)} < ${PIN_PX}` : 'no frame moved under the threshold')
+  check('K the cube turned to another face with the button still down',
+    turnedAt.state.rotation.front !== before.rotation.front && turnedAt.state.rotation.front !== pinned.ghost.previewFace,
+    `front ${pinned.ghost.previewFace} -> ${turnedAt.state.rotation.front} at pushPx=${last.ghost.pushPx.toFixed(1)}+, axis=${last.ghost.pinAxis}`)
+
+  // The release has the same two possible answers as every other illegal release: the piece lands on
+  // the face that came round, or it goes back to the strip with nothing spent.
+  const point = turnedAt.point
+  await sleep(450)
+  await client.frames()
+  const after = await readState(client, input, { x: point.x, y: point.y - 4 })
+  const legal = after.preview.valid === true
+  await input.up(point.x, point.y - 4)
+  const released = await client.readJson(STATE)
+  const untouched = boardFingerprint(released.board) === boardFingerprint(before.board)
+  check(legal ? 'K the release after the pin turn places the piece on the new face'
+    : 'K the release after the pin turn returns the piece and spends nothing',
+  legal ? released.slots[0].used === true && !untouched : released.slots[0].used === false && untouched,
+  `valid=${legal} used=${released.slots[0].used} boardChanged=${!untouched} toast=${released.toast}`)
+  await sleep(400)
+}
+
 // --------------------------------------------------------------------------- driver
 
 const browserPath = findBrowser()
@@ -1240,6 +1390,9 @@ try {
 
   console.log('\n-- J. the cube turns out from under a piece whose face takes it nowhere --')
   if (wants('J')) await caseSpin(client, input)
+
+  console.log('\n-- K. a piece that cannot follow the finger turns the cube when pushed once more --')
+  if (wants('K')) await casePinnedPush(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))

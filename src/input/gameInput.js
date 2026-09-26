@@ -345,6 +345,9 @@ export function createGameInput({
       point: null,
       roomless: false,
       spin: null,
+      // The pinned push (v0.9.4): face-lattice travel the clamp threw away, per axis. This is the
+      // general arming condition's ruler.
+      push: { u: 0, v: 0 },
       valid: false,
       attached: false,
       active: false,
@@ -374,6 +377,11 @@ export function createGameInput({
   // has exactly two states and this is the line between them: off the cube the
   // piece is still IN HAND (only the ghost exists), on it the piece has ATTACHED to
   // a face (only the landing preview exists). See DRAG_GHOST in rendering/config.js.
+  //
+  // v0.9.4 kept this unchanged on purpose, even though the pinned push would be easier to trigger
+  // with a wider margin: widening it here is what 「把块块拖离立方体就回到手上」 means, and a piece
+  // pinned at an edge must still be carried off the cube by dragging it away. The push therefore
+  // has to be made inside the silhouette (+18px), which probe:drag case K measures.
   function isPointerOnCube(ndc) {
     const rect = canvas.getBoundingClientRect()
     const clientX = rect.left + (ndc.x * 0.5 + 0.5) * rect.width
@@ -487,6 +495,8 @@ export function createGameInput({
     drag.ref = null
     drag.point = null
     drag.roomless = false
+    drag.push.u = 0
+    drag.push.v = 0
   }
 
   // One frame of the placement preview. Returns true when the piece is ON a face (a landing
@@ -548,13 +558,21 @@ export function createGameInput({
         // A missing previous reading (the first frame after the attach or a re-attach, or a
         // frame whose ray missed the face plane) re-syncs instead of applying a stale delta.
         if (drag.point) {
-          drag.ref = clampOrigin(drag.cells,
-            drag.ref.u + (point.fu - drag.point.fu),
-            drag.ref.v + (point.fv - drag.point.fv))
+          const du = point.fu - drag.point.fu
+          const dv = point.fv - drag.point.fv
+          const moved = clampOrigin(drag.cells, drag.ref.u + du, drag.ref.v + dv)
+          // What the finger travelled and the piece did NOT take is the clamp throwing it away:
+          // the piece is against that edge and the finger is still pushing outward. That difference
+          // is the spin's SECOND arming condition (v0.9.4), and the reason it needs no threshold on
+          // the finger's own travel: while the piece still follows its finger the difference is
+          // exactly zero, so no amount of ordinary dragging can arm it.
+          trackPush(du - (moved.u - drag.ref.u), dv - (moved.v - drag.ref.v))
+          drag.ref = moved
         }
         drag.point = { fu: point.fu, fv: point.fv }
       } else {
         drag.point = null
+        trackPush(0, 0)
       }
     }
 
@@ -569,29 +587,70 @@ export function createGameInput({
     return true
   }
 
-  // ---- Turning the cube out from under a piece (v0.9.3) ---------------------------
-  // 「推上去的小块块在这个面没有对应的空了，我想这个大正方体会随着我拖着的方向去动」.
+  // ---- Turning the cube out from under a piece (v0.9.3, generalised in v0.9.4) ----
+  // 「推上去的小块块在这个面没有对应的空了，我想这个大正方体会随着我拖着的方向去动」 — and, once the
+  // gesture was generalised: 「只要块块贴在立方体上，再往某个方向拖超过阈值就触发」.
   //
-  // `drag.roomless` says the face the piece is attached to takes this piece NOWHERE. That leaves
-  // the drag exactly one meaning that can still help: turn the cube and bring another face round.
-  // The gesture does not change hands — the finger that was moving the piece turns the cube,
-  // through the same model the view gesture uses (one axis per gesture, its own travel ruler, the
-  // same 30° step, boardView's own settle). There is no second rotation implementation here.
+  // Two arming conditions, ONE turn:
+  //   (1) v0.9.3 — `drag.roomless`: the face takes this piece NOWHERE, so no amount of careful
+  //       dragging on it can ever be a placement. Armed on arrival; the cube follows the finger
+  //       continuously from `PIECE_SPIN.startPx` on, and the ordinary 30° step decides the face.
+  //   (2) v0.9.4 — `drag.push`: the piece is against a face edge and the finger keeps pushing
+  //       outward (the clamp is discarding travel). Any face, any direction, no "no room" needed:
+  //       the piece stops following the finger, and one more push turns the cube that way.
   //
-  // Three things are deliberately NOT borrowed from the view gesture:
+  // (2) is deliberately NOT "any drag longer than N px". The placement drag spends its whole life
+  // dragging pieces ACROSS faces — v0.8.27 made the preview slide straight over occupied cells on
+  // purpose, and a piece crossing a four-cell face covers four cells of travel. A ruler made of the
+  // finger's own travel would turn the cube in the middle of an ordinary placement, which is the
+  // one thing this gesture must never do. What CANNOT be an accident is the piece refusing to move:
+  // it only happens at a face edge, the clamp is already discarding that travel (v0.8.27), and the
+  // difference between the finger's travel and the piece's is exactly zero for every other frame.
+  // Both conditions turn the cube through the view gesture's own machinery (one axis per gesture,
+  // boardView's settle, its 90° grid). Three things are deliberately NOT borrowed from it:
   //   - the band. The finger is on the cube by definition (the piece is attached), so a vertical
   //     drag is a pitch and a horizontal one a yaw; the side bands' in-plane roll is out of reach,
-  //     which is right — rolling a face cannot open a spot on a face that has none.
-  //   - the release. The finger stays down: the turn commits the moment the drag passes the step
-  //     threshold, so the player is still holding the piece when the next face arrives and can
-  //     release straight onto it. That is the whole gesture.
-  //   - where the piece is drawn. The landing marker stays latched to the face the piece came from
-  //     and rides it round (it is drawn in the cube's frame), so the piece never looks like it
-  //     left the player's hand in the middle of the turn.
+  //     which is right — rolling a face opens no spot on it and moves no piece.
+  //   - the release. Under (1) the finger stays down: the turn commits as soon as the drag passes
+  //     the step threshold, so the player is still holding the piece when the next face arrives.
+  //   - where the piece is drawn. Under (1) the landing marker stays latched to the face the piece
+  //     came from and rides it round (it is drawn in the cube's frame), so the piece never looks
+  //     like it left the player's hand in the middle of a turn. Under (2) there is no animation at
+  //     all — the push commits one face and the piece hops onto the arriving face afterwards.
   //
-  // A live spin cannot place anything: `drag.valid` is false — that is what made the face roomless
-  // — and the commit drops the latch, so the release either finds a face through the ordinary
-  // updatePreview() or returns the piece to the strip exactly as any other illegal release does.
+  // Neither path can place anything: (1) latches an illegal-or-unplaceable face and (2) drops the
+  // latch before the pose moves, so a release either re-finds a face through the ordinary
+  // updatePreview() or returns the piece to the strip like any other illegal release.
+  const PUSH_EPS = 1e-4
+
+  // The push, in face-lattice units, accumulated per axis. A frame that discarded nothing clears
+  // that axis's counter — a frame where the piece took a step, or where the finger reversed. The
+  // counter has to mean 「手指一直往这个方向推，块块一直不动」, never 「很久以前推过一下」.
+  function trackPush(blockedU, blockedV) {
+    drag.push.u = blockedU > PUSH_EPS ? drag.push.u + blockedU : 0
+    drag.push.v = blockedV > PUSH_EPS ? drag.push.v + blockedV : 0
+  }
+
+  // The push measured the way the TURN's model wants it: the blocked face travel projected onto
+  // the face's own lattice axes AS THEY ARE DRAWN RIGHT NOW (client px), plus the axis and the
+  // direction that screen direction means. Nothing here reads the pointer's position or its client
+  // travel: a face seen edge-on must not be easier to push off than one seen head-on.
+  function pinnedPush() {
+    if (!(drag.push.u > PUSH_EPS) && !(drag.push.v > PUSH_EPS)) return null
+    const step = faceStepScreen(drag.face)
+    const sx = drag.push.u * step.u.x + drag.push.v * step.v.x
+    const sy = drag.push.u * step.u.y + drag.push.v * step.v.y
+    const axis = Math.abs(sx) >= Math.abs(sy) ? 'yaw' : 'pitch'
+    return {
+      px: Math.hypot(sx, sy),
+      axis,
+      // The direction is the view gesture's own convention applied to the same screen direction:
+      // swipeAngle() already carries the per-axis knob, and the sign of what it returns is the face
+      // that gesture would have turned. Same ruler, same sign, no second opinion.
+      sign: Math.sign(swipeAngle(axis, sx, sy, gestureSpan(), 'cube')) || 1,
+    }
+  }
+
   function beginSpin(event) {
     drag.spin = { axis: null, span: null, startX: event.clientX, startY: event.clientY }
     onStatus('No room — drag to turn')
@@ -626,6 +685,25 @@ export function createGameInput({
     const live = getLive()
     drag.spin = null
     if (live) startCubeSnap(live)
+    dropLatchForTurn()
+  }
+
+  // One face, committed by the PUSH alone (v0.9.4). A pinned piece does not follow the finger —
+  // that is what being pinned means — so there is no travel left to animate: the push IS the
+  // gesture, and it is worth exactly one face, the same "one gesture = one face" rule the keyboard
+  // obeys (03 §2.2). It is built from the same beginAxisGesture()/startCubeSnap() pair the keyboard
+  // uses, so it lands on the 90° grid by construction rather than by a second implementation.
+  function stepTurn(axis, sign) {
+    beginAxisGesture(axis)
+    const gesture = getLive()
+    if (!gesture) return false
+    gesture.angle = sign * ROT_STEP
+    startCubeSnap(gesture)
+    dropLatchForTurn()
+    return true
+  }
+
+  function dropLatchForTurn() {
     detachFace()
     drag.attached = false
     drag.origin = null
@@ -695,16 +773,42 @@ export function createGameInput({
     // A turn the spin committed is still in flight — the same ~0.22s settle a view gesture ends
     // with, except this finger has not let go. Waiting it out is what keeps the preview from
     // chasing the front face through the animation.
+    //
+    // The marker rides the face the piece came from while it turns — but only while the piece still
+    // BELONGS to the cube. If the pointer has left the silhouette the piece is in hand again (that
+    // gesture means 「put it back」, and the next arrival re-grabs it), so the latch is dropped here
+    // too: leaving it would hide the piece for the whole animation and read as 「块块凭空消失」
+    // (found by `npm run probe:interaction`, case C, when a drag to the empty canvas above the cube
+    // turned it on the way past).
     if (cubeSnapAnim.active) {
-      syncGhostFor(event, ndc, 'snap')
+      if (isPointerOnCube(ndc)) {
+        syncGhostFor(event, ndc, 'snap')
+      } else {
+        drag.attached = false
+        drag.origin = null
+        drag.valid = false
+        onClearLanding()
+        syncGhostFor(event, ndc, 'carry')
+      }
       return true
     }
     const attached = updatePreview(event, ndc)
-    // The face takes this piece nowhere: the drag changes meaning (v0.9.3).
-    if (attached && drag.roomless) {
-      beginSpin(event)
-      syncGhostFor(event, ndc, 'snap')
-      return true
+    if (attached) {
+      // (1) The face takes this piece nowhere at all: the drag may only turn from here (v0.9.3).
+      if (drag.roomless) {
+        beginSpin(event)
+        syncGhostFor(event, ndc, 'snap')
+        return true
+      }
+      // (2) The piece is against a face edge and the finger is still pushing outward (v0.9.4). Any
+      // face, any direction — and unlike (1) this one commits on the spot: the piece is not
+      // following the finger, so the push the player has already made IS the gesture.
+      const push = pinnedPush()
+      if (push && push.px >= PIECE_SPIN.pinPx) {
+        stepTurn(push.axis, push.sign)
+        syncGhostFor(event, ndc, 'snap')
+        return true
+      }
     }
     // One piece per turn (v0.4.4): the ghost exists exactly while the piece is being
     // carried. Once it is attached to a face the board draws it and the carried copy
@@ -845,6 +949,9 @@ export function createGameInput({
   // with `origin` + `valid` they are the whole target-vs-legality split, and a check can follow
   // the piece across an occupied cell without any of it being re-derived from the DOM.
   function dragReport() {
+    // One measurement of the pinned push, shared by the two fields below: a probe comparing the
+    // number with the axis must not be reading two different frames of it.
+    const push = drag?.face ? pinnedPush() : null
     return {
       attached: Boolean(drag),
       onFace: drag?.attached === true,
@@ -859,10 +966,14 @@ export function createGameInput({
       anchor: drag?.anchor ? { x: drag.anchor.x, y: drag.anchor.y, u: drag.anchor.u, v: drag.anchor.v } : null,
       stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
       // v0.9.3 spin: `roomless` is the face's own verdict (no origin on it takes this piece) and
-      // `spin` / `spinAxis` are the turn the drag switched into because of it.
+      // `spin` / `spinAxis` are the turn the drag switched into because of it. v0.9.4 adds the
+      // general arming condition: `pushPx` is how far the finger has been pushing a piece that
+      // cannot follow it (against a face edge), in client px on the face's own axes.
       roomless: drag?.roomless === true,
       spin: Boolean(drag?.spin),
       spinAxis: drag?.spin?.axis ?? null,
+      pushPx: push?.px ?? 0,
+      pinAxis: push?.axis ?? null,
     }
   }
 
