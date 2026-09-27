@@ -21,7 +21,11 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; overflow-x: hidden; background: radial-gradient(circle at 50% -14%, #e2f4ff 0%, var(--sky-light) 24%, var(--sky) 66%, #4b82e8 100%); }
+/* v0.9.8: `min-height: 100vh` removed. It was a v0.2 flow-layout floor, and it survived the move
+   to the fixed v0.8 stage as a phantom scroll: `vh` on a phone is the LARGE viewport (address bar
+   retracted) while the visible one is `dvh`, so the document stayed one address bar taller than
+   the screen and a slide pushed the whole run up. See src/reference.css「v0.9.8 — 只有顶部能滑动」. */
+body { margin: 0; min-width: 320px; overflow-x: hidden; background: radial-gradient(circle at 50% -14%, #e2f4ff 0%, var(--sky-light) 24%, var(--sky) 66%, #4b82e8 100%); }
 body::before, body::after { content: ""; position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; opacity: .28; filter: blur(2px); }
 body::before { width: 34vw; height: 16vw; top: 18vh; left: -8vw; background: #fff; }
 body::after { width: 28vw; height: 14vw; right: -8vw; bottom: 10vh; background: #b6f5d0; }

@@ -37,6 +37,19 @@
         <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true"></span></button>
       </header>
       <main class="game-layout">
+        <!-- v0.9.8 touch map. The view is a fixed 100dvh stage, so no game surface may pan the
+             window; these two inert layers make that explicit instead of accidental. They are
+             deliberately the FIRST two children of .game-layout: the board, the candidate tray
+             and the item bar are later siblings, so they paint and hit-test ABOVE both layers
+             and never lose a drag to them.
+               .scroll-shield  owns the whole viewport with `touch-action: none` — anywhere that
+                               is not a game surface (the sky above the cube, the meadows beside
+                               it, the gaps in the tray and the item strip) consumes the gesture
+                               instead of scrolling the page.
+               .scroll-strip   re-opens `pan-y` in the top HUD band only: if the view ever does
+                               overflow, the top is the single place a slide may still scroll it. -->
+        <div class="scroll-shield" aria-hidden="true"></div>
+        <div class="scroll-strip" aria-hidden="true"></div>
         <section class="board-section">
           <img class="garden-pedestal" src="./art/reference/pedestal.webp" alt="" aria-hidden="true" draggable="false" />
           <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>

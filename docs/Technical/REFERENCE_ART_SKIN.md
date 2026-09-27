@@ -41,3 +41,12 @@ v0.8.28 追加验证：生产构建通过，交互 52 项、完整拖拽 42 项�
 计分牌和设置按钮向屏幕边缘移动，并遵守安全区；手机备选托盘底部从 10% 下移至 3%，桌面从 7.4% 下移至 2%。底座跟随方块投影缩放，并限制宽度，避免手机边缘出现过大的装饰。背景保留原生成资源，以 1.5px 柔化和 0.86 饱和度降低细节干扰。
 
 生产构建通过；桌面、手机、小屏、横屏、宽屏共五个视口截图通过。截图探针新增六面体裁切、与道具栏/托盘重叠及屏占比测量；同时修复原有 framing 诊断引用不存在的局部 getter 的问题。手机和小屏另测 9 位分数、最大候选形状，文字和候选均完整。交互 52 项及完整拖拽 42 项全部通过，无跳过。截图见 `artifacts/play-focus-final/` 和 `artifacts/play-focus-long/`，检查日志在 `artifacts/play-focus-*.log`。
+
+## 滑动归属：只有顶部能滚动（v0.9.8，2026-09-25）
+
+制作人报「滑动整个窗口会上下滑动，整体滑动的区域最好只在顶部响应」。两个独立的成因：
+
+1. **窗口本身能滚**：`styles.css` 的 `body { min-height: 100vh }` 是 v0.2 流式布局的遗留。手机上 `vh` 是**大视口**（地址栏收起时的高度），可见视口是 `dvh`，这条 100vh 地板让文档永远比可见区域高一条地址栏，滑动后整局（含顶部 HUD）被推上去；`.game-layout` 是 `position: absolute; inset: 0`，锚在初始包含块上，会跟着文档一起被推走。v0.9.8 把那行从 `styles.css` **删掉**（单一真源，不在 `reference.css` 再叠一条覆盖），文档高度 = `#app` 的 `100dvh` = 可见视口，并加 `overscroll-behavior: none` 关掉整页下拉刷新与橡皮筋。
+2. **手势归属隐含**：玩家手指落点决定 `touch-action`。`.scene-wrap` / `.piece-slot` / `.item-button` 各自是 `none`，但**它们之间的空地不是**——顶部天空带、棋盘两侧草地、托盘木框、道具条缝隙命中的都是 `.game-layout`（`auto`），一滑就滚窗口。新增两个惰性层（`index.html` 里 `.game-layout` 的**前两个子元素**，因此棋盘/托盘/道具条作为后续兄弟永远画在其上、不会丢手势）：`.scroll-shield` 以 `touch-action: none` 铺满整屏兜住这些缝隙，`.scroll-strip` 只在顶部 HUD 带（`20vh`）放行 `pan-y`，保留"万一溢出还能从顶部滚"这条后路；三块游戏表面（`.board-section` / `.bottom-panel` / `#item-bar`）各自声明 `none`，因为它们在 shield 之上。
+
+`npm run probe:scroll`（`tools/scroll-containment-probe.mjs`）用真实 CDP 触摸对账（合成两段溢出：`body` 强制 170vh 模拟手机的 vh>dvh、`#app` 内追加溢出块）：修复前顶带、托盘、两侧草地都能把窗口滚走 245px；修复后 390×844 与 1440×900 各 15 项全 PASS——只有顶带（`pan-y`）能滚，棋盘、托盘、道具条与两侧草地全部为 0，且 `body` 的 `min-height` 不再解析成视口高度。**未做物理机复测**（headless 没有地址栏，`vh === dvh`，故该差值用合成溢出代替）。

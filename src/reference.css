@@ -61,6 +61,35 @@
   .bottom-panel .piece-slot { padding: 0; border-radius: 12px; }
   .chain-chip { top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + 8px); }
 }
+/* ============================================================
+   v0.9.8 — 只有顶部能滑动
+   ------------------------------------------------------------
+   制作人 2026-09-25 报：「滑动整个窗口会上下滑动，整体滑动的区域最好只在顶部响应，其他地方
+   不要响应。」两件事都要修，而且原因不同：
+
+   1) 窗口本身不该能滚。`styles.css` 的 `body { min-height: 100vh }` 是 v0.2 流式布局的遗留：
+   那时页面比屏幕高、要靠滚动够到底部候选条。v0.8 的参考皮肤把局内改成 `position: absolute`
+   的固定舞台（`.game-layout { inset: 0 }`），页面已经不需要滚动，但这条 100vh 地板还在——
+   而 `vh` 在手机上等于**大视口**（地址栏收起时的高度），可见视口是 `dvh`，于是文档永远比
+   可见区域高一条地址栏，滑一下整局（含顶部 HUD）就被推上去且不再回位。这跟 v0.5 修过的
+   「页面滚动条」是同一个坑的另一半。v0.9.8 把那行从 `styles.css` 里**删掉**（单一真源，
+   不在这里再叠一条覆盖）：文档高度 = `#app` 的 `100dvh` = 可见视口。
+   `overscroll-behavior: none` 顺带关掉安卓的整页下拉刷新与橡皮筋。
+
+   2) 手势归属要显式。玩家手指落点决定 touch-action：`.scene-wrap`/`.piece-slot`/`.item-button`
+   各自是 `none`，但**它们之间的空地不是**——顶部天空带、棋盘两侧草地、托盘木框、道具条缝隙，
+   命中的都是 `.game-layout`（`touch-action: auto`），所以这些地方一滑就滚窗口。`.scroll-shield`
+   用 `none` 把整屏铺满兜住这些缝隙；`.scroll-strip` 只在顶部 HUD 带重新放行 `pan-y`，让"万一
+   真的溢出了，还能从顶部滚"这条后路留着（这是制作人点名要的那半边）。
+   ============================================================ */
+html, body { overscroll-behavior: none; }
+.scroll-shield { position: absolute; inset: 0; touch-action: none; }
+.scroll-strip { position: absolute; top: 0; left: 0; right: 0; height: 20vh; touch-action: pan-y; }
+/* The three game surfaces are hit-tested ABOVE the shield, so each has to say `none` itself:
+   the shield can only own what they do not cover. Ancestors are enough — `.scene-wrap`,
+   `.piece-slot` and `.item-button` already intersect down to `none` on their own. */
+.board-section, .bottom-panel, #item-bar { touch-action: none; }
+
 @media (orientation: landscape) and (max-height: 600px) {
   :root { --plaque-width: 190px; --hud-button: 50px; }
   #item-bar.item-bar { top: 2%; gap: 10px; }
