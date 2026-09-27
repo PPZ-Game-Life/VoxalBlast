@@ -8,13 +8,12 @@ import * as THREE from 'three'
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
 import { SH, FACES, isShell } from './game/board.js'
-import { OPENING_SHAPES } from './game/shapes.js'
 import { lineMultiplier } from './game/scoring.js'
 import { resolveHonors, feedbackLevel } from './game/honors.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, HUD_STYLE, OPENING_LAYOUT, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
+import { getRenderQuality, HUD_STYLE, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
 import './styles.css'
 import './toy.css'
 import './reference.css'
@@ -1137,13 +1136,15 @@ function resetGame() {
   clearHonorLayer()
   closeLeaderboard()
   board.clear()
-  // v0.2.31: the cube starts with an opening layout instead of a bare shell
-  // (config.js OPENING_LAYOUT). Seeding never scores or clears lines, so the HUD
-  // still starts at 0 and the first placement is settled like any other.
-  // v0.9.0 P1: the preset draws from OPENING_SHAPES, whose membership is frozen to the
-  // pre-Line-4 pool — the new candidate shape must not move the opening density too, or
-  // the A/B/C experiment could not separate the two (spec §3.3).
-  board.seedOpening(OPENING_SHAPES, OPENING_LAYOUT)
+  // v0.9.10: a run starts on a BARE shell — all six faces at zero. v0.2.31 used to seed
+  // config.js OPENING_LAYOUT here (≈13 cells on the three faces the camera can see) so the
+  // first frame read as a board in play; the producer's call is the opposite: 重新开始 must
+  // clear the cube, so the first move is always the player's own. `board.clear()` above is
+  // now the whole opening. `Board.seedOpening()` and `OPENING_LAYOUT` deliberately stay in
+  // the tree: the offline difficulty tools (tools/difficulty-*, tools/deal-*, and the
+  // frozen baselines in docs/Technical/DIFFICULTY_*.md) still model PRESEEDED openings with
+  // them, and deleting either would silently invalidate those measurements. The shipped
+  // game no longer calls either.
   resetItems()
   resetRun()
   session.setEnded(false)

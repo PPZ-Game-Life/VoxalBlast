@@ -121,6 +121,16 @@ function check(label, condition, detail) {
   console.log(`${condition ? 'OK  ' : 'FAIL'} ${label}${detail === undefined ? '' : `  ${detail}`}`)
   if (!condition) failures.push(label)
 }
+// An unreachable precondition is REPORTED, never silently passed (same rule as the other
+// probes). v0.9.10 made the shipped opening a bare shell, which is exactly that case for the
+// "occupied cells repaint later" assertion below: with nothing occupied there is no second
+// paint class to compare against. Keep the assertion — it is what guards the two-class wave if
+// an opening preset ever comes back.
+const skips = []
+function skip(label, reason) {
+  console.log(`SKIP ${label}  ${reason}`)
+  skips.push(label)
+}
 const mean = (values) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : Number.NaN)
 const round = (value, digits = 3) => Number(value.toFixed(digits))
 // The wave's own coordinate: NDC +x right, +y up, so this runs 0 at screen bottom-left.
@@ -307,9 +317,15 @@ try {
     if (paint.intro.active && paint.intro.stage === 'paint') {
       const progress = paint.intro.progress
       check(`${at} some blocks are repainted and some are still primer`, paint.intro.repainted > 0 && paint.intro.primed > 0, `repainted=${paint.intro.repainted} primer=${paint.intro.primed}`)
-      const paintedLater = mean(progress.filter((entry) => entry.painted).map((entry) => entry.paintDelay))
-      const bareLater = mean(progress.filter((entry) => !entry.painted).map((entry) => entry.paintDelay))
-      check(`${at} occupied cells repaint later, on average`, paintedLater - bareLater > 0.02, `+${round(paintedLater - bareLater)}s (${progress.filter((entry) => entry.painted).length} painted)`)
+      const paintedCount = progress.filter((entry) => entry.painted).length
+      if (paintedCount === 0) {
+        skip(`${at} occupied cells repaint later, on average`,
+          'the shipped opening is a bare shell since v0.9.10, so no occupied cell exists to repaint later')
+      } else {
+        const paintedLater = mean(progress.filter((entry) => entry.painted).map((entry) => entry.paintDelay))
+        const bareLater = mean(progress.filter((entry) => !entry.painted).map((entry) => entry.paintDelay))
+        check(`${at} occupied cells repaint later, on average`, paintedLater - bareLater > 0.02, `+${round(paintedLater - bareLater)}s (${paintedCount} painted)`)
+      }
       const repainted = progress.filter((entry) => entry.final)
       check(`${at} a repainted block lands on a board colour, never on a primer one`, repainted.every((entry) => !entry.primer), `${repainted.length} repainted`)
       check(`${at} only painted blocks light up while repainting`, progress.every((entry) => entry.painted || entry.emissive === 0))
@@ -393,5 +409,5 @@ if (failures.length) {
   console.error(`\n${failures.length} check(s) failed:\n  - ${failures.join('\n  - ')}`)
   process.exitCode = 1
 } else {
-  console.log(`\nopening creation wave (primer + repaint) verified on ${VIEWS.length} viewports; frame sequence in ${outDir}`)
+  console.log(`\nopening creation wave (primer + repaint) verified on ${VIEWS.length} viewports; frame sequence in ${outDir}${skips.length ? ` · ${skips.length} skipped: ${skips.join('; ')}` : ''}`)
 }

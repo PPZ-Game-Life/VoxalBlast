@@ -85,7 +85,7 @@
 
 **共享资源规则（不能被预览或缩影误伤）：** 唯一的 `blockGeometry`、`edgeGeometry` 与材质缓存由 `src/rendering/blockResources.js` 创建并持有，`sharedGeometries` 是释放前必须查的清单。棋盘的 98 格、三个候选预览、拖拽幽灵、落点标记、道具覆盖层与主页缩影**引用同一个实例**；`pieceView` 的节点释放（`disposeNode()`）与 `ui/home.js` 的缩影克隆都必须跳过清单里的几何，绝不 dispose 借来的共享实例——否则会释放掉棋盘正在绘制的几何。所有会碰 document/WebGL 的资源都通过工厂创建，不在模块求值期建立。
 
-**重开一局不重建应用：** 「重新开始 / 再来一局」走 `resetGame()`——清特效与荣誉层、关榜、`board.clear()` + `seedOpening()`、重置道具次数与瞄准态、`resetRun()`、隐藏结算卡、清选中与拖拽、`resetCubeRotation()`、重新发牌、重画棋盘与 HUD、`syncPause()`。它不 dispose 模块、不重建 renderer、不重新 `bind()`（`churn` 探针的 8 次新局 / 10 次主页往返 / 12 次换批就是这条的探测器：监听器、canvas、renderer 与 mesh 数全部平线）。
+**重开一局不重建应用：** 「重新开始 / 再来一局」走 `resetGame()`——清特效与荣誉层、关榜、`board.clear()`（v0.9.10 起清空即开局：不再 `seedOpening()`，六面零占用）、重置道具次数与瞄准态、`resetRun()`、隐藏结算卡、清选中与拖拽、`resetCubeRotation()`、重新发牌、重画棋盘与 HUD、`syncPause()`。它不 dispose 模块、不重建 renderer、不重新 `bind()`（`churn` 探针的 8 次新局 / 10 次主页往返 / 12 次换批就是这条的探测器：监听器、canvas、renderer 与 mesh 数全部平线）。
 
 **今天没有 app 级 `dispose()`。** 全 `src/` 检索 `dispose` 只有模块自己的解绑/释放入口（上表四个）与 `blockResources` / `effects` 内部的节点释放；main 不调用它们中的任何一个，也没有聚合它们的函数。重构计划 §6 P9 第 6 条要求的释放顺序因此只是**约定**，尚未实现成一个入口——真正需要它的是未来的 SPA 挂载/卸载或平台容器切换场景。
 

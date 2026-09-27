@@ -229,6 +229,7 @@ async function waitIntroDone(client) {
 const SAMPLE = `(() => {
   const rendering = globalThis.__voxalblast.rendering()
   const candidates = globalThis.__voxalblast.candidateFrames()
+  const board = globalThis.__voxalblast.board()
   return {
     canvases: document.querySelectorAll('canvas').length,
     meshes: rendering.meshes,
@@ -236,7 +237,11 @@ const SAMPLE = `(() => {
     programs: rendering.programs,
     slots: document.querySelectorAll('#piece-slots .piece-slot').length,
     candidateNames: candidates.map((frame) => frame.name),
-    score: globalThis.__voxalblast.board().score,
+    score: board.score,
+    // v0.9.10: a fresh run is a BARE shell — six faces at zero. Read here so the new-run cycle
+    // can assert it repeatedly instead of trusting one boot-time look.
+    occupied: board.cells.length,
+    busiestFace: Math.max(0, ...Object.values(board.faceOccupancy)),
     status: document.querySelector('#status')?.textContent ?? null,
     homeOpen: globalThis.__voxalblast.home().open,
   }
@@ -522,6 +527,12 @@ try {
       `scores=[${runSamples.map((sample) => sample.score).join(',')}]`)
     check('C every new run really deals three unspent candidates',
       runSamples.every((sample) => sample.slots === 3), `slots=[${runSamples.map((s) => s.slots).join(',')}]`)
+    // v0.9.10: 重新开始 clears the cube instead of seeding the v0.2.31 opening layout
+    // (main.js resetGame / docs/Planning/02 §4). A run that came back with blocks on it would
+    // mean the preset is still running or a snapshot leaked into the fresh run.
+    check('C every new run starts on a bare shell (six faces at zero)',
+      runSamples.every((sample) => sample.occupied === 0 && sample.busiestFace === 0),
+      `occupied=[${runSamples.map((s) => s.occupied).join(',')}] busiestFace=[${runSamples.map((s) => s.busiestFace).join(',')}]`)
   } else {
     skip('C new-run churn', 'no DEV endGame handle: point this probe at `npm run dev`')
   }

@@ -258,7 +258,13 @@ export class Board {
     return FACES.some((face) => this.hasFullLine(face))
   }
 
-  // ---- Opening layout (v0.2.31) ---------------------------------------------
+  // ---- Opening layout (v0.2.31; NOT used by the shipped game since v0.9.10) ----
+  // v0.9.10: a run now starts on a bare shell (six faces at zero, v0.2.31's preset removed
+  // in main.js resetGame()). This seeder and OPENING_LAYOUT stay because the OFFLINE
+  // measurement tools still build preseeded openings with them (tools/difficulty-*,
+  // tools/deal-*, and the baselines in docs/Technical/DIFFICULTY_*.md) — the numbers in
+  // those documents were measured against a 7/3/3 opening and would silently drift if the
+  // seeder changed or disappeared.
   // Seed a starting position instead of an empty shell. `plan` maps a face to how
   // many CELLS to fill on it (a target, not a shape count: shapes run from 1 to 4
   // cells, so seeding "2 shapes" could put two single blocks on the play surface

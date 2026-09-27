@@ -166,14 +166,18 @@ export const LIGHTING_STYLE = Object.freeze({
   reflectionRimFocus: 32,
 })
 
-// Opening layout (v0.2.31): the cube no longer starts as a bare shell. A few
-// blocks are seeded onto the faces the 3/4 camera can already see, drawn from the
-// SAME pool the candidate slots use — same shapes, same colors — so the first
-// frame reads as a board in play instead of an empty cage. The hard rules live in
-// Board.seedOpening(): blocks never overlap, and a seed NEVER completes a line on
-// any face. `place()` only settles the face being played, so a line seeded on some
-// other face would sit there full and unbreakable until the player happened to
-// play that face.
+// Opening layout (v0.2.31) — MEASUREMENT ONLY since v0.9.10. The shipped game no longer
+// seeds it: resetGame() clears to a bare shell so a run starts with all six faces at zero,
+// and the first move is always the player's. It stays because the offline difficulty tools
+// (and the frozen baselines they produced) model a PRESEEDED opening with exactly these
+// numbers; nothing in src/ reads it any more.
+//
+// What it described: the cube started with a few blocks on the faces the 3/4 camera can
+// already see, drawn from the SAME pool the candidate slots use — same shapes, same colors —
+// so the first frame read as a board in play instead of an empty cage. The hard rules live in
+// Board.seedOpening(): blocks never overlap, and a seed NEVER completes a line on any face.
+// `place()` only settles the face being played, so a line seeded on some other face would sit
+// there full and unbreakable until the player happened to play that face.
 //
 // One entry per face; the value is a target CELL count for that face (not a shape
 // count — shapes run from 1 to 4 cells, so "2 shapes" could be 2 cells or 8 and the
