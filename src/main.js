@@ -23,6 +23,7 @@ import { createBlockResources } from './rendering/blockResources.js'
 import { createGameScene } from './rendering/gameScene.js'
 import { createBoardView } from './rendering/boardView.js'
 import { createGameInput } from './input/gameInput.js'
+import { createEdgeTurnHint } from './ui/edgeTurnHint.js'
 import { createGameSession } from './game/gameSession.js'
 import { createPieceView } from './rendering/pieceView.js'
 import { createEffects } from './rendering/effects.js'
@@ -348,7 +349,7 @@ const input = createGameInput({
   cubeGroup,
   cs,
   canPlace: (face, cells, origin) => board.canPlace(face, cells, origin),
-  // v0.9.3: the per-face "no room for this piece anywhere" verdict behind the piece drag's spin.
+  // Availability is diagnostic; all piece turns use the viewport-edge dwell.
   anyPlacementOn: (face, cells) => board.anyPlacementOn(face, cells),
   currentCells: (piece) => currentCells(piece),
   toolScope: (id, face, u, v, orientation) => toolScopeCells(id, face, u, v, orientation),
@@ -377,6 +378,7 @@ const input = createGameInput({
   onStatus: (text) => setStatus(text),
   onToast: (text) => showToast(text),
   onHaptic: (pattern) => playHaptic(pattern),
+  onEdgeTurn: createEdgeTurnHint(),
   onCancelZone: (active, highlighted) => setCancelZone(active, highlighted),
   onSelectionChanged: () => updatePieceSlotSelection(),
   onBuildGhost: (piece) => buildDragGhost(piece),

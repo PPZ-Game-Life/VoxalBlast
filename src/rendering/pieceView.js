@@ -354,6 +354,7 @@ export function createPieceView({
     const cells = getCells(piece)
     // Rows the shape spans on screen: what the fingertip clearance is measured from.
     ghost.userData.rows = cells.reduce((max, [, v]) => Math.max(max, v), 0) + 1
+    ghost.userData.columns = cells.reduce((max, [u]) => Math.max(max, u), 0) + 1
     for (const position of flatPreviewPositions(cells, 1)) {
       const material = blocks.makeMaterial(piece.shape.color, DRAG_GHOST.opacity)
       // Fog is a depth cue for the board; at the ghost plane it would only wash the
@@ -417,7 +418,7 @@ export function createPieceView({
   const ghostPlaneMin = new THREE.Vector3()
   const ghostPlaneMax = new THREE.Vector3()
 
-  function syncDragGhost({ ndc, canvasHeight, cellPx, pointerType, mode }) {
+  function syncDragGhost({ ndc, canvasHeight, cellPx, pointerType, mode, keepInView = false }) {
     if (!ghost.children.length) return
     previews.get(draggedPiece)?.slot.classList.add('piece-dragging')
     // v0.4.5: ONE piece per turn. The moment the piece attaches to a face the board
@@ -455,6 +456,17 @@ export function createPieceView({
     // term used to be negated — invisible in every check because they all aimed at
     // the canvas centre, where ndc.x is 0.)
     ghost.position.set(ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
+    if (keepInView) {
+      // Viewport edges can lie outside this canvas (especially above the HUD and
+      // below the tray). Keep the held shape just inside the visible play area;
+      // only its display is clamped, never the pointer that drives edge dwell.
+      const insetX = ((ghost.userData.columns || 1) * cellPx / 2 + 8) * worldPerPx
+      const insetY = (rows * cellPx / 2 + 8) * worldPerPx
+      const limitX = Math.max(0, halfWidth - insetX)
+      const limitY = Math.max(0, halfHeight - insetY)
+      ghost.position.x = THREE.MathUtils.clamp(ghost.position.x, -limitX, limitX)
+      ghost.position.y = THREE.MathUtils.clamp(ghost.position.y, -limitY, limitY)
+    }
     tintDragGhost(mode)
   }
 

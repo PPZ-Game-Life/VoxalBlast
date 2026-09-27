@@ -169,27 +169,12 @@ export function createDiagnostics({
         // solved in. Exposed so a check can reproduce the mapping exactly instead of
         // assuming it.
         stepScreen: d.stepScreen,
-        // v0.9.3 spin: `roomless` is the board's verdict on the latched face (no origin on it
-        // takes this piece, so the drag turns the cube instead) and `spin` / `spinAxis` are the
-        // turn the gesture switched into. v0.9.4 adds the GENERAL arming condition: `pushPx` is how
-        // far the finger has been pushing a piece that cannot follow it (pinned against a face
-        // edge), in client px on the face's own axes, and `pinAxis` is the turn that push means. A
-        // check reads them together with `rotation.front` to prove the cube turned with the finger
-        // still down.
+        // Viewport-edge dwell while the piece remains in hand.
         roomless: d.roomless,
-        spin: d.spin,
-        spinAxis: d.spinAxis,
-        pushPx: d.pushPx,
-        pushCells: d.pushCells,
-        pinAxis: d.pinAxis,
-        // v0.9.5: `armed` is the turn the push has armed (the cube leans, nothing committed) and
-        // `armedAxis` the axis it will turn on once PIECE_SPIN.pinHoldMs has passed. A check reads them
-        // with `rotation` to prove the lean happens BEFORE the face moves.
         armed: d.armed,
         armedAxis: d.armedAxis,
-        // v0.9.7: 「一次手势一面」 — true once this gesture has turned a face by push, which closes the
-        // push path for the rest of the gesture (the return motion out of a turn can no longer arm
-        // a second one, let alone the one that would undo it).
+        edge: d.edge,
+        turnPhase: d.turnPhase,
         turned: d.turned,
       }
     },

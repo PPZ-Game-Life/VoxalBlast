@@ -1,0 +1,33 @@
+.edge-turn-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+  color: #fff9e7;
+  --edge-angle: 90deg;
+  background: linear-gradient(var(--edge-angle), #efb45277, transparent 64px);
+}
+.edge-turn-hint[hidden] { display: none; }
+.edge-turn-hint[data-edge="right"] { --edge-angle: 270deg; }
+.edge-turn-hint[data-edge="top"] { --edge-angle: 180deg; }
+.edge-turn-hint[data-edge="bottom"] { --edge-angle: 0deg; }
+.edge-turn-card {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid #ffdf8e;
+  border-radius: 18px;
+  background: #5b392aed;
+  box-shadow: 0 4px 18px #39210c40;
+  font: 700 12px/1.2 system-ui, sans-serif;
+}
+.edge-turn-hint[data-edge="left"] .edge-turn-card { left: max(10px, env(safe-area-inset-left)); top: 28%; transform: translateY(-50%); }
+.edge-turn-hint[data-edge="right"] .edge-turn-card { right: max(10px, env(safe-area-inset-right)); top: 28%; transform: translateY(-50%); }
+.edge-turn-hint[data-edge="top"] .edge-turn-card { top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); }
+.edge-turn-hint[data-edge="bottom"] .edge-turn-card { bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }
+.edge-turn-arrow { font-size: 28px; line-height: 1; }
+.edge-turn-track { width: 60px; height: 4px; border-radius: 4px; background: #ffffff33; overflow: hidden; }
+.edge-turn-track i { display: block; height: 100%; background: #ffdb82; transform: scaleX(var(--turn-progress)); transform-origin: left; }
+.edge-turn-hint[data-phase="turning"] .edge-turn-card { background: #846036; border-color: #fff3c8; }

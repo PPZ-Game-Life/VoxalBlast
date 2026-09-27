@@ -495,65 +495,12 @@ export function dragGhostLiftPx(pointerType, rows, cellPx) {
     : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
 }
 
-// Turning the cube out from under a piece (v0.9.3). When the face the piece is on has NO room for
-// it anywhere, the same finger stops moving the piece and starts turning the cube, so another face
-// can be reached without letting go (input/gameInput.js: the spin). 「推上去没空位，立方体就跟着我
-// 拖的方向翻」.
-//
-// `startPx` is what makes that a PUSH rather than an accident. The piece can now attach to a full
-// face while the finger is still travelling — it always could — and the residual motion of an
-// ordinary drag would otherwise claim the axis and turn the cube under a player who never asked
-// for it. So the spin's ruler starts where the piece became stuck and needs this much travel
-// before an axis may claim it; ROTATE_STYLE.axisLockPx (16px) is then required ON TOP of it, and
-// the face turn itself still waits for its own 30° of drag. One number, three guards, all of them
-// in pixels the player can feel.
+// Launcher-style page turning while carrying a piece. A new full dwell starts
+// after each animation, so holding at an edge can deliberately browse more faces.
 export const PIECE_SPIN = Object.freeze({
-  startPx: 26,
-  // The SECOND arming condition (v0.9.4, given its time rule by the producer in v0.9.5): the piece
-  // is pinned against a face edge and the finger keeps pushing outward —
-  // 「超出下方一半格子，超过一段时间以后就向下翻」. THREE numbers, and the producer's sentence names
-  // all three:
-  //   - `pinCells` 超出半格 — the push past the edge, in LATTICE CELLS (the clamp's own unit, and the
-  //     only one that means the same thing everywhere on a face: the +z face measures 34px per cell
-  //     near its right edge against 54px at its centre). Bounded from both sides: big enough that
-  //     stopping a placement AT an edge never arms anything, small enough to be reached inside the
-  //     cube's silhouette — probe:drag case K measures that room at ~0.8 of a cell (~45px) on a
-  //     430×900 viewport, and the first push has to fit 「半格 + 一点点」 inside it.
-  //   - `armLeanDeg` 立即的反馈 — the cube leans this far the way the finger is pushing the moment the
-  //     threshold is crossed, so 「立方体跟着我拖的方向」 is visible BEFORE anything is committed.
-  //   - `pinHoldMs` 超过一段时间 — how long the push has to be HELD before the face actually turns.
-  //     This is what separates 「我是故意要翻」 from 「我推到边上顺手超了一点」: the accidental
-  //     overshoot is over in well under this, a deliberate push is not.
-  pinCells: 0.5,
-  armLeanDeg: 8,
-  pinHoldMs: 360,
-  // The RESISTANCE, and the second way to commit it (v0.9.7): 「超框以后它会自动往外弹，如果我继续往外
-  // 拖的话，它就应该去转面」. The lean is not a fixed decoration any more — it grows with the extra
-  // push, from `armLeanDeg` at the arming point to `armLeanMaxDeg` here, so holding the piece
-  // against the frame FEELS like pulling against something; and the same extra push, once it is a
-  // whole cell's worth, commits the turn without waiting out the dwell. A player who pushes and
-  // stops still gets the time rule above; a player who pushes on gets the face straight away.
-  // Measured on the FINGER, in client px along the push direction, and therefore immune to the pose:
-  // the lean moves the cube, the ray onto the latched face moves with it, and a lattice ruler fed by
-  // that would flicker (the same reason `backPx` is a finger ruler). One cell on the tightest edge
-  // of a 430×900 viewport is 34px, so this is 「再往外推一格」 — worth about 51px of push past the
-  // edge together with `pinCells`, well inside PIECE_SPIN.pinMarginPx.
-  pinPushPx: 34,
-  armLeanMaxDeg: 16,
-  // How far OUTSIDE the cube's box a PINNED piece keeps following the gesture (v0.9.6). The attach
-  // margin (DRAG_GHOST.snapMarginPx, 18px) is not enough on the TIGHT edges: past the bottom of a
-  // face there is no other face to widen the silhouette, so the finger leaves the cube after
-  // 18px + whatever sliver is left, the piece goes back to the hand, and the push never reaches
-  // `pinCells`. Measured on a 430×900 viewport with a Dot pushed down: the piece still has to slide
-  // to the bottom row before the push even starts counting, and by then the pointer was already
-  // outside — the producer's 「我往下已经超出很多了，但是没有转，有时候又转了」. 90px is past the point
-  // where a finger that keeps going has clearly left the cube, and far short of the drag that puts
-  // the piece back in the strip.
-  pinMarginPx: 90,
-  // How far the finger has to come BACK (client px, along the push direction) before an armed turn is
-  // called off. Small enough that a deliberate change of mind cancels, large enough that the tremor
-  // of a held finger does not.
-  backPx: 12,
+  edgePx: 36,
+  exitSlopPx: 8,
+  holdMs: 650,
 })
 
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
