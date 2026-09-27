@@ -42,6 +42,18 @@ v0.8.28 追加验证：生产构建通过，交互 52 项、完整拖拽 42 项�
 
 生产构建通过；桌面、手机、小屏、横屏、宽屏共五个视口截图通过。截图探针新增六面体裁切、与道具栏/托盘重叠及屏占比测量；同时修复原有 framing 诊断引用不存在的局部 getter 的问题。手机和小屏另测 9 位分数、最大候选形状，文字和候选均完整。交互 52 项及完整拖拽 42 项全部通过，无跳过。截图见 `artifacts/play-focus-final/` 和 `artifacts/play-focus-long/`，检查日志在 `artifacts/play-focus-*.log`。
 
+## 对话框表面：每个木面按钮都必须自己定位（v0.9.9，2026-09-25）
+
+制作人报「设置界面显示有问题」。**所有几何断言都是绿的**：面板 `display: grid`、卡片盒子非零、五行都在正确坐标、`elementFromPoint` 返回卡片、UI 探针的开/关/焦点全过。真正的问题不在布局，而在**每个木面按钮的 `::before`**（v0.7 木质感那一层）：
+
+- 那条规则给 `.icon-button` / `.item-button` / `.modal-close` / `.home-primary` / `.home-secondary` 统一画木面：`content:''; position: absolute; inset: 4px 4px 5px; border-radius: inherit; z-index: -1`。
+- 它是 `position: absolute`，所以**宿主元素必须自己定位**，否则会去找最近的已定位祖先。`.icon-button` / `.home-primary` / `.home-secondary` 在 `.icon-button, .home-primary, .home-secondary { position: relative }` 里；`.item-button` 在 `styles.css` 里有；**`.modal-close` 谁都没有** → 它逃到了最近的已定位祖先，也就是 `.modal`（`position: fixed; inset: 0`），于是画出一块**内缩 4px 的整屏木板**，盖住卡片的标题与全部行。
+- 压在文字上方而不是下方，是 `isolation: isolate`（同组规则）造成的：关闭按钮成了层叠上下文，按"已定位后代"这一步绘制，排在卡片文字之后。所以 设置 / 操作说明 / 排行榜 三个带关闭按钮的对话框都读成"一块空白木板 + 只剩 ✕ 和两个开关"。没有关闭按钮的结算卡（`#game-over`）一直是好的——这也解释了为什么它没被早发现。
+- 实测指纹：木板的边界正好等于伪元素自己的 inset（390×844 下 x 4…385、y 4…838），据此定位到元凶。修复就是让 `.modal-close` 自己 `position: relative`（`toy.css` v0.7 段那一行），木面随即收进 38×38 的按钮里。
+
+**回归防线**：`npm run probe:dialog`（`tools/dialog-surface-probe.mjs`）逐个打开设置 / 操作说明 / 排行榜三个对话框，断言 ①对话框内**不存在"宿主 static + 伪元素 absolute"的组合**（这条就是上面那个缺陷的不变量形式），②把卡片自己的盒子从合成帧里裁下来、统计深色文字像素（标题区 ≥60、整卡 ≥1200；坏版本标题区实测 **0**、修好后 **530~1613**），③卡片盒子在视口内。它对未修复的 CSS **确实会红**：负向对照实测三个对话框各报 `button#…-close ::before (inset 4px 4px 5px)` 加 `0 dark px`。
+
+
 ## 滑动归属：只有顶部能滚动（v0.9.8，2026-09-25）
 
 制作人报「滑动整个窗口会上下滑动，整体滑动的区域最好只在顶部响应」。两个独立的成因：

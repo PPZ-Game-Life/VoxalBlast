@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.9.8",
+  "version": "0.9.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "probe:intro": "node tools/intro-probe.mjs",
     "probe:swipe": "node tools/swipe-probe.mjs",
     "probe:scroll": "node tools/scroll-containment-probe.mjs",
+    "probe:dialog": "node tools/dialog-surface-probe.mjs",
     "probe:framing": "node tools/cube-framing-probe.mjs",
     "probe:fragility": "node tools/face-fragility.mjs",
     "probe:shapes": "node tools/shape-geometry.mjs",
