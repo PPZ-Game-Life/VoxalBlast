@@ -279,6 +279,38 @@ async function capture(browser, shot) {
         expression: 'Promise.all([...document.querySelectorAll(".pastoral-backdrop img")].map(image => image.decode().catch(() => {})))',
         awaitPromise: true,
       })
+      // v0.9.16: derive the score plaque's BOARD-edge ratio from the art, on every run. The
+      // plaque does not begin with the board — its leaf decoration runs along the top edge — so
+      // the row that matters is the first whose longest opaque run spans half the slice. Done in
+      // the page (same origin, so getImageData is allowed) so the probe needs no PNG decoder of
+      // its own and cannot drift from what the browser actually paints. Separate evaluate call
+      // because the main probe below is a synchronous IIFE.
+      await send(ws, 22, 'Runtime.evaluate', {
+        expression: `(async () => {
+          try {
+            const img = new Image()
+            img.src = './art/reference/score-panel.png'
+            await img.decode()
+            const canvas = document.createElement('canvas')
+            canvas.width = img.naturalWidth
+            canvas.height = img.naturalHeight
+            const ctx = canvas.getContext('2d', { willReadFrequently: true })
+            ctx.drawImage(img, 0, 0)
+            const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+            for (let y = 0; y < canvas.height; y += 1) {
+              let best = 0, run = 0
+              for (let x = 0; x < canvas.width; x += 1) {
+                if (data[(y * canvas.width + x) * 4 + 3] > 8) { run += 1; if (run > best) best = run }
+                else run = 0
+              }
+              if (best >= canvas.width * 0.5) { globalThis.__artBoardTopRatio = y / canvas.height; return true }
+            }
+            globalThis.__artBoardTopRatio = null
+            return false
+          } catch { globalThis.__artBoardTopRatio = null; return false }
+        })()`,
+        awaitPromise: true,
+      })
       await sleep(400)
 
       const probe = await send(ws, 8, 'Runtime.evaluate', {
@@ -310,6 +342,10 @@ async function capture(browser, shot) {
               const band = tray.top - cube.maxY
               const hud = document.querySelector('.score-plaque').getBoundingClientRect()
               const gear = document.querySelector('#settings-button').getBoundingClientRect()
+              // v0.9.16: the ratio the layout used, read from the stylesheet — the HUD is graded
+              // against the BOARD's top edge, not the plaque element's (the leaf decoration
+              // sticks out above the board, which is what made the device screenshot look wrong).
+              const boardTop = Number(getComputedStyle(document.documentElement).getPropertyValue('--plaque-board-top'))
               return {
                 widthShare: (cube.maxX - cube.minX) / innerWidth,
                 heightShare: (cube.maxY - cube.minY) / innerHeight,
@@ -318,13 +354,12 @@ async function capture(browser, shot) {
                 turnBandPx: band,
                 turnBandFor3Row: band - touchLift3,
                 turnBandForMouse: band - mouseLift,
-                // v0.9.15: the gear's TOP EDGE against the score plaque's, in px. They are two
-                // corner elements sharing a top line (producer's call, 2026-09-28), not a
-                // centre-aligned pair — v0.9.14 graded the centre by mistake.
-                hudTopDelta: gear.top - hud.top,
-                hudCentreDelta: (gear.top + gear.height / 2) - (hud.top + hud.height / 2),
+                // The button's top against the BOARD's top edge (plaque top + its board offset).
+                boardTopRatio: boardTop,
+                hudTopDelta: gear.top - (hud.top + hud.height * boardTop),
               }
             })(),
+            artBoardTopRatio: globalThis.__artBoardTopRatio ?? null,
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
             gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
             candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
@@ -463,10 +498,19 @@ async function capture(browser, shot) {
         if (parsed.playLayout && !touchViewport && !mouseViewport) {
           failures.push(`bottom turn band too small (${parsed.playLayout.turnBandPx.toFixed(0)}px band, ${parsed.playLayout.turnBandFor3Row.toFixed(0)}px left for a 3-row touch carry, ${parsed.playLayout.turnBandForMouse.toFixed(0)}px for a mouse carry)`)
         }
-        // v0.9.15: the gear and the score plaque are two CORNER elements sharing a top edge —
-        // 「上沿对齐，一个放在左上角，一个放在右上角」. Graded on the top, not the centre.
+        // v0.9.16: the gear and the score BOARD are two corner elements sharing a top edge.
+        // Graded against the board's own edge inside the art (the ratio gate right below).
         if (parsed.playLayout && Math.abs(parsed.playLayout.hudTopDelta) > 2) {
-          failures.push(`settings button's top edge is ${parsed.playLayout.hudTopDelta.toFixed(1)}px off the score plaque's`)
+          failures.push(`settings button's top edge is ${parsed.playLayout.hudTopDelta.toFixed(1)}px off the score BOARD's top edge`)
+        }
+        // …and the ratio itself has to still match the ART, derived at run time rather than
+        // remembered: the page loads score-panel.png into a canvas and finds the first row whose
+        // longest opaque run spans half the slice (the wooden slab's top edge — the leaves never
+        // form a run that wide). `node tools/art-alpha-box.mjs score-panel.png` prints the same
+        // number offline. If the plaque is re-cut, this goes red instead of silently drifting.
+        if (parsed.playLayout && parsed.artBoardTopRatio !== null
+          && Math.abs(parsed.playLayout.boardTopRatio - parsed.artBoardTopRatio) > 0.005) {
+          failures.push(`--plaque-board-top is ${parsed.playLayout.boardTopRatio} but score-panel.png says ${parsed.artBoardTopRatio} — re-measure with node tools/art-alpha-box.mjs score-panel.png`)
         }
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)

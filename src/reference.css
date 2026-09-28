@@ -1,5 +1,5 @@
 /* Reference art skin. Generated RGBA slices; labels/counts remain live DOM. */
-:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); }
+:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; }
 .pastoral-backdrop-painting { filter: blur(1.5px) saturate(.86); transform: scale(1.015); }
 .topbar { position: absolute; inset: 0 0 auto; width: 100%; max-width: none; height: 18vh; padding: 0; overflow: visible; pointer-events: none; }
 .topbar > button { pointer-events: auto; }
@@ -13,14 +13,23 @@
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
 .topbar .icon-button .toy-icon, .item-button .item-icon { visibility: hidden; }
-/* v0.9.15 — the buttons line up with the plaque's TOP EDGE, not its centre.
+/* v0.9.15/v0.9.16 — the buttons line up with the SCORE BOARD's top edge.
    The producer's call (2026-09-28): 「我期望的纵向，积分和按钮的上沿对齐，一个放在左上角，
-   一个放在右上角，现在是中心啊对齐，不符合预期。」 v0.9.14 hung the icon's centre on the
-   plaque's centre line (`top = centre - icon/2`), which is what a "centre-aligned HUD" looks
-   like; the intent was always two corner elements sharing a top. Both now take `--hud-top`,
-   the very same variable the plaque uses, so their top edges are equal by construction at
-   every viewport and in both orientations — no arithmetic to keep in sync. */
-.topbar .icon-button { position: absolute; top: var(--hud-top); }
+   一个放在右上角，现在是中心啊对齐，不符合预期。」
+   v0.9.14 hung the icon's centre on the plaque's centre line; v0.9.15 then took both ELEMENT
+   tops to `--hud-top` together — and that still read wrong on the device, because
+   `score-panel.png` does not begin with the board: its leaf decoration runs along the top edge
+   and reaches 34px (11.5%) above the wooden slab, so element-aligned buttons sat level with the
+   LEAVES rather than with the board the producer means by 「积分」.
+   `--plaque-board-top` is where the board itself begins inside the slice, as a fraction of its
+   height: measured from the art, not typed in by hand —
+     node tools/art-alpha-box.mjs score-panel.png
+       └ board top edge at y 39 of 295 = 13.22% of the slice height
+   The plaque's on-screen height is `--plaque-width / 1.72` (its own `aspect-ratio`), so the
+   offset scales with the plaque at every viewport instead of being a phone-only magic number.
+   `npm run probe:shot` re-derives the ratio from the PNG at every run and fails if the
+   stylesheet disagrees, so re-cutting the art cannot silently rot this number. */
+.topbar .icon-button { position: absolute; top: calc(var(--hud-top) + var(--plaque-width) / 1.72 * var(--plaque-board-top)); }
 #settings-button { --button-art: url('/art/reference/settings.png'); right: max(.2vw, env(safe-area-inset-right)); width: calc(var(--hud-button) * 1.20); }
 .topbar #controls-button { display: grid; --button-art: url('/art/reference/help.png'); right: calc(2.4vw + var(--hud-button) * 1.2); }
 #sound-button { --button-art: url('/art/reference/sound.png'); right: calc(3.1vw + var(--hud-button) * 2.2); width: calc(var(--hud-button) * 1.12); }
@@ -56,11 +65,11 @@
   :root { --plaque-width: 43vw; --hud-button: max(44px, 12.4vw); --hud-icon: max(40px, 10.3vw); --hud-top: max(4px, env(safe-area-inset-top)); }
   .topbar { height: 15%; }
   .topbar .score-chip-value, .topbar .best-chip-value { -webkit-text-stroke-width: .8px; }
-  /* v0.9.15 — the three HUD buttons share the score plaque's TOP EDGE.
-     VERTICAL: both take `top: var(--hud-top)` from the base rule, so their top edges are equal
-     by construction, in every orientation and at every width — the two are corner elements, not
-     a centre-aligned row. (v0.9.14 hung the icon's CENTRE on the plaque's centre line instead;
-     the producer's call is 「上沿对齐，一个放在左上角，一个放在右上角」.)
+  /* v0.9.16 — the three HUD buttons share the SCORE BOARD's top edge.
+     VERTICAL: the base rule puts them at `--hud-top + (plaque height * --plaque-board-top)`,
+     i.e. on the wooden slab's own top edge — NOT on the plaque element's top, which is 11.5%
+     higher because the leaf decoration runs along the top edge above the board. That gap is
+     what the producer still saw as "not aligned" in the v0.9.15 device screenshot.
      HORIZONTAL: the plaque is `--plaque-width` (43vw) wide at the left inset, so its centre sits
      `43vw * .22` from the left; the gear is `12.8vw` wide and right-aligned, so
      `right = 43vw * .22 - 12.8vw / 2` puts the gear's centre on the plaque's. The other two
