@@ -1,6 +1,38 @@
 # VoxalBlast 发布回归清单
 
-> **v0.9.18 现行检查项 / 2026-09-29**（上一版 v0.9.16 / 2026-09-28）。空框表示本轮尚未记录执行，不表示实现缺失。§1 与文末 v0.7 记录是历史证据；最新一轮结果单列于「v0.9.16 HUD 对齐到木牌上沿（不是元素上沿）」，其下依次是 v0.9.15 HUD 上沿对齐、v0.9.14 加宽下方拖拽翻面区域 + 竖屏 HUD 对齐、v0.9.13 备选区推上来的第一下不再翻面（进场闩锁）、v0.9.12 拖块翻面加设置开关、v0.9.11 拖块翻面改认方块重心越过六面体轮廓、v0.9.7 转了一面后往回一拖又转回来（一次手势一面 + 阻力）、v0.9.6 向下/向左推不动也要能翻（两个符号都修）、v0.9.5 推过半个格子再停一会儿就翻、v0.9.4 推不动就翻面（通用版）、v0.9.3 面放不下时立方体跟手翻面、v0.9.2 停靠角度改为由相机派生、v0.9.1 竖屏六面体缩小 10%、v0.9.0 发牌与渐进难度 P1、v0.8.26 停靠 = 正对镜头（左右对称）、v0.8.25、v0.8.24、v0.8.23、v0.8.22、v0.8.21、v0.8.20、v0.8.16 救局判定扩展（B1 落地）、v0.8.15、v0.8.14、v0.8.13、v0.8.12、v0.8.11、v0.8.10、v0.8.9、v0.8.8、v0.8.6 → v0.8.7、v0.8.5 / v0.8.1 / v0.8.0。更早证据见 [v0.5.0 验收记录](../Technical/VISUAL_REFRESH_050.md)。
+> **v0.9.19 现行检查项 / 2026-09-29**（上一版 v0.9.18 / 2026-09-29）。空框表示本轮尚未记录执行，不表示实现缺失。§1 与文末 v0.7 记录是历史证据；最新一轮结果单列于「v0.9.19 触感开关不再对做不到的设备说谎」，其下依次是 v0.9.18 本地化：文案搬出代码、v0.9.16 HUD 对齐到木牌上沿（不是元素上沿）、v0.9.15 HUD 上沿对齐、v0.9.14 加宽下方拖拽翻面区域 + 竖屏 HUD 对齐、v0.9.13 备选区推上来的第一下不再翻面（进场闩锁）、v0.9.12 拖块翻面加设置开关、v0.9.11 拖块翻面改认方块重心越过六面体轮廓、v0.9.7 转了一面后往回一拖又转回来（一次手势一面 + 阻力）、v0.9.6 向下/向左推不动也要能翻（两个符号都修）、v0.9.5 推过半个格子再停一会儿就翻、v0.9.4 推不动就翻面（通用版）、v0.9.3 面放不下时立方体跟手翻面、v0.9.2 停靠角度改为由相机派生、v0.9.1 竖屏六面体缩小 10%、v0.9.0 发牌与渐进难度 P1、v0.8.26 停靠 = 正对镜头（左右对称）、v0.8.25、v0.8.24、v0.8.23、v0.8.22、v0.8.21、v0.8.20、v0.8.16 救局判定扩展（B1 落地）、v0.8.15、v0.8.14、v0.8.13、v0.8.12、v0.8.11、v0.8.10、v0.8.9、v0.8.8、v0.8.6 → v0.8.7、v0.8.5 / v0.8.1 / v0.8.0。更早证据见 [v0.5.0 验收记录](../Technical/VISUAL_REFRESH_050.md)。
+
+## v0.9.19 触感开关不再对做不到的设备说谎（2026-09-29）
+
+> 制作人的问题：「设置里有个震动开关，但实际好像没有震动反馈。」查证结论是**链路没坏、默认也已经是开的**：一次性诊断探针在 `navigator.vibrate` 上挂记录桩（记录"被调用"与"平台返回值"两件事），用真实 CDP 输入在桌面 Edge 154 上逐点核对：
+>
+> | 检查点 | 实测 |
+> | --- | --- |
+> | 开机默认 | `preferences().haptics === true`、`aria-pressed="true"`、行带 `enabled`、`voxalblast-haptics` **无键**（无键即开） |
+> | 点开关开启 | `navigator.vibrate(18)`，返回 `true` |
+> | 面板内点语言行 | `navigator.vibrate(12)`，返回 `true` |
+> | 真实落子（拖到合法面） | `navigator.vibrate(12)`，返回 `true` |
+> | 关掉开关后同样两处操作 | **0 次调用**（语言行与落子都被 `playHaptic()` 拦住） |
+> | 跨源 iframe 内 | `typeof navigator.vibrate === 'function'` 且返回 `true`——**不是** iframe 权限问题 |
+>
+> 所以"没有震动"是**设备能力**，不是代码：桌面 Chrome/Edge **暴露** `navigator.vibrate` 且调用返回 `true`，但桌面没有振动马达，调用就是 no-op；iOS 上全部 WebView（Safari/Chrome/微信）干脆不暴露该函数，调用被跳过；只有 Android Chrome 与微信 X5 会真震（玩家点按本身已满足 user-activation）。也就是说桌面与 iPhone 上这个开关原本只会**承诺一件设备做不到的事**——这是本轮唯一真实的产品缺口，按制作人选择「置灰 + 一行小字说明」处理。
+
+**做了什么**
+
+- `src/platform/haptics.js`（新）：`hapticsSupported()` = `navigator.vibrate` 存在 **且** 移动端档位（`navigator.userAgentData.mobile === true`，无 UA-CH 时回退 UA 正则；判定**偏宽**——假阳性只是震不了，假阴性会白白拿走 Android 玩家的功能）；`vibrate(pattern)` 不抛异常并回报平台是否接受。
+- `src/rendering/effects.js`：`playHaptic()` 改走 `vibrate()`，不再写 `if (navigator.vibrate)`（**存在不等于能震**）；开关仍在事件发生那一刻实时读。
+- `src/ui/settings.js` + `index.html`（`#haptics-note`）+ `src/ui/dom.js`：能力为假时该行 `disabled` 置灰、小字换成 `settings.hapticsUnsupported`（中英各一条）；**不重写** `voxalblast-haptics`——偏好按 origin 存，同一玩家换手机后要保留自己的选择。
+- `src/styles.css`：`.setting-row:disabled` 去掉 hover 的抬升与提亮，置灰行不再看起来可点。
+- `src/diagnostics.js`：`preferences()` 增加 `hapticsSupported`，门因此能比对"这一行为什么是灰的"。
+- `tools/refactor-ui-probe.mjs`：新增 A2 段。
+
+**验收**
+
+- [x] `npm run probe:ui` **93/93（0 跳过）**，其中新增 A2 段 6 项：本运行时不报振动器 → 行 `disabled`、小字等于词条表里的 `settings.hapticsUnsupported`、`aria-pressed` 仍为 `true` 且 `voxalblast-haptics` 仍**无键**、点它不改变任何状态也不落盘、关掉面板后棋盘回到 live。报告有振动器的运行环境按 **SKIP** 报告，不冒充通过。
+- [x] `npm test` 全过：i18n **153/153**（新增词条比 `en`/`zh-Hans` 键集一致）+ 347/347 + 145/145 + 72/72 + 146/146 + 61/61 + 56/56 + edge-turn 组。
+- [x] `npm run build` 通过（1011.51 kB / gzip 306.03 kB；v0.9.18 为 1010.82/305.75）。
+- [x] 截图 `npm run shot`（`SHOT_ONLY=desktop-settings,mobile-settings`）两张全绿：`artifacts/visual/v0.9.19-desktop-settings.png`、`artifacts/visual/v0.9.19-mobile-settings.png`；目视核对竖屏：Haptics 行整体变淡、副标题为「Not available on this device」，其余行不受影响。
+- [ ] **未验证**：Android 真机上的实际震动强度/时长（本轮只证明了桌面侧的能力判定与"调用确实发出"）；物理机与微信/QQ 内嵌；桌面触屏笔记本被判成"移动端档位"的边界未实测。
 
 ## v0.9.18 本地化：文案搬出代码，英文默认 + 简体中文（2026-09-29）
 

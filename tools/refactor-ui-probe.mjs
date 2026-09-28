@@ -17,6 +17,9 @@
 //                    one click toggle twice, i.e. net nothing)
 //   B. controls      the top-bar entry and the settings row both open the card; closing
 //                    returns focus to whichever one opened it
+//   A2. haptics      on a runtime with no vibrator the row is inert, its note says why, and
+//                    clicking it writes nothing (03 §3.2); PASS is never claimed from a device
+//                    that reports a vibrator — that case SKIPs
 //   C. home          opening the cover sets #app.home-open, makes the game layers inert,
 //                    moves focus to the primary button; playing closes it and un-inerts
 //   D. leaderboard   opens from the home cover and from the Game Over card, and closing
@@ -253,6 +256,13 @@ const STATE = `(() => {
     soundPressed: sound ? sound.getAttribute('aria-pressed') : null,
     soundEnabled: sound ? sound.classList.contains('enabled') : null,
     hapticsPressed: document.querySelector('#haptics-setting')?.getAttribute('aria-pressed') ?? null,
+    // v0.9.19 (03 §3.2): a device with no vibrator gets an INERT row that says why. Read from
+    // the DOM (what the player sees) and from the capability read-out (what the game decided),
+    // so the check tests the wiring instead of agreeing with a copy of itself.
+    hapticsDisabled: document.querySelector('#haptics-setting')?.disabled ?? null,
+    hapticsNote: document.querySelector('#haptics-note')?.textContent ?? null,
+    hapticsSupported: globalThis.__voxalblast.preferences?.().hapticsSupported ?? null,
+    storedHaptics: localStorage.getItem('voxalblast-haptics'),
     // v0.9.12: the 拖块翻面 switch, read from the row AND from the accessor the input gate uses.
     dragTurnPressed: document.querySelector('#drag-turn-setting')?.getAttribute('aria-pressed') ?? null,
     dragTurnEnabled: document.querySelector('#drag-turn-setting')?.classList.contains('enabled') ?? null,
@@ -412,6 +422,42 @@ async function caseSettings(client, input) {
   check('A closing settings un-pauses the board', shut.status === t('status.idle'), `status="${shut.status}"`)
   check('A closing settings returns focus to the gear', shut.activeId === 'settings-button',
     `activeElement=#${shut.activeId}`)
+}
+
+// A2 (v0.9.19, 03 §3.2). `navigator.vibrate` EXISTS on desktop and even returns true from it
+// while nothing in the machine can vibrate (measured — src/platform/haptics.js carries the
+// numbers), so "the function is there" is not the test. On a device with no vibrator the row
+// has to go inert and its own note has to say why; the stored preference must survive
+// untouched, because it is per-origin and the same player's phone still honours it.
+// The row is read with the panel OPEN — an inert control nobody can see is not a state.
+async function caseHaptics(client, input) {
+  const supported = (await client.readJson(STATE)).hapticsSupported
+  if (supported === true) {
+    skip('A2 haptics row on a device with no vibrator', 'this runtime reports a vibrator; nothing to grey')
+    return
+  }
+  const gear = await input.click('#settings-button', { label: 'the gear' })
+  if (!gear.clicked) { skip('A2 haptics row on a device with no vibrator', gear.reason); return }
+  const opened = await client.readJson(STATE)
+  check('A2 a device with no vibrator shows the haptics row inert', opened.hapticsDisabled === true,
+    `disabled=${opened.hapticsDisabled} preferences().hapticsSupported=${opened.hapticsSupported}`)
+  check('A2 ...and its note says why instead of promising feedback',
+    opened.hapticsNote === t('settings.hapticsUnsupported'), `note="${opened.hapticsNote}"`)
+  check('A2 the shipped default is still ON on such a device',
+    opened.hapticsPressed === 'true' && opened.storedHaptics === null,
+    `aria-pressed=${opened.hapticsPressed} localStorage=${opened.storedHaptics}`)
+
+  const click = await input.click('#haptics-setting', { label: 'the inert haptics row' })
+  const after = await client.readJson(STATE)
+  check('A2 an inert row cannot be toggled',
+    click.clicked === false || (after.hapticsPressed === opened.hapticsPressed && after.storedHaptics === null),
+    `clicked=${click.clicked} aria-pressed=${after.hapticsPressed} localStorage=${after.storedHaptics}`)
+  check('A2 ...so it never writes the preference for a device that cannot vibrate',
+    after.storedHaptics === null, `localStorage=${after.storedHaptics}`)
+
+  await input.click('#settings-close', { label: 'the settings close button' })
+  const shut = await client.readJson(STATE)
+  check('A2 closing settings after the inert row leaves the board live', closed(shut.settings), `display=${shut.settings.display}`)
 }
 
 async function caseControls(client, input) {
@@ -761,6 +807,9 @@ try {
 
   console.log('\n-- A. settings panel: open, pause, focus, single binding --')
   await caseSettings(client, input)
+
+  console.log('\n-- A2. haptics row: inert and honest where no vibrator exists --')
+  await caseHaptics(client, input)
 
   console.log('\n-- B. controls card: both entry points and focus return --')
   await caseControls(client, input)

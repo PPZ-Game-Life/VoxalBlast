@@ -157,6 +157,7 @@ export default Object.freeze({
   'settings.soundNote': 'Placement and clear SFX',
   'settings.haptics': 'Haptics',
   'settings.hapticsNote': 'Vibration feedback',
+  'settings.hapticsUnsupported': 'Not available on this device',
   'settings.dragTurn': 'Drag to turn',
   'settings.dragTurnNote': 'Carrying a piece off the cube turns it',
   'settings.controls': 'Controls',

@@ -40,13 +40,14 @@
 | src/ui/hud.js | HUD 展示（分数/连击/状态/toast/荣誉/道具条/轴选择）与候选槽 DOM 模板；预览的建与释放经回调交给 pieceView |
 | src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位 |
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
-| src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写 |
+| src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写；v0.9.19 起 `hapticsSupported()` 为假时触感行 `disabled` 且小字换成 `settings.hapticsUnsupported`（偏好不被改写） |
 | src/styles.css / toy.css | 历史布局兼容 / 当前视觉覆盖 |
 | src/i18n/index.js | 本地化的唯一语言状态：`t()` / `formatNumber()` / `applyStatic()` / `setLocale()` 与 `onLocaleChange()`；解析顺序 `?lang=` → 存储偏好 → `DEFAULT_LOCALE='en'`，**不嗅探 `navigator.language`**（标准见 [LOCALIZATION.md](LOCALIZATION.md)） |
 | src/i18n/locales/*.js | 词条表（`en` 默认 / `zh-Hans`）；键集必须一致，由 `npm run test:i18n` 守着 |
 | src/ui/itemCopy.js | 道具子系统的取词门面：键 → getter，调用点因此不随语言切换而失效（**导入时捕获字符串就是 bug**） |
 | src/platform/storage.js | 存储边界：`pickStorage()` / `probeStorage()` 与三个 `'on'/'off'` 偏好的转发；schema / `migrate()` / 内存降级仍留在各自 store |
 | src/platform/crazygames.js | 可选平台 SDK 包装和降级路径 |
+| src/platform/haptics.js | v0.9.19 震动能力判定：`hapticsSupported()`（API 存在 **且** 移动端档位）与不抛异常的 `vibrate()`。**必须走这里判断，不能写成 `if (navigator.vibrate)`**——桌面 Chrome/Edge 暴露该函数且调用返回 `true`，但机器没有振动马达，调用是 no-op；iOS 上全部 WebView 不暴露它。设置面板据此把该行置灰，玩法侧不据此分叉 |
 
 ## 状态归属
 
@@ -61,7 +62,7 @@
 | particleSystems / transientEffects / cameraShake / slowMo / audioContext | src/rendering/effects.js | main 只拿 `effects.timestep(raw)`（缩放后的 delta）、`effects.updateShake(delta)`（机位偏移）与只读 `effects.report()`；不读内部计数 |
 | 候选预览 / 落点组 / 拖拽幽灵 / 道具覆盖层 | src/rendering/pieceView.js | 只经 `landingCells()` / `landingCount()` / `ghostReport()` / `candidateFrames()` 只读投影；建与画由 main 按参数调用（`showLanding` / `syncDragGhost` / `showItemOverlay`） |
 | homeOpen | src/ui/home.js | `homeUi.isOpen()`；状态变化经 `onOpen` / `onClose` 回调通知 main 重算暂停锁 |
-| settingsOpen / controlsOpen / soundOn / hapticsOn / controlSpin / axisHintTimer | src/ui/settings.js | `isOpen()` / `isControlsOpen()` / `getSoundOn()` / `getHapticsOn()`；effects 在发声/振动那一刻经 main 注入的实时 getter 读，不捕获布尔值 |
+| settingsOpen / controlsOpen / soundOn / hapticsOn / controlSpin / axisHintTimer | src/ui/settings.js | `isOpen()` / `isControlsOpen()` / `getSoundOn()` / `getHapticsOn()`；effects 在发声/振动那一刻经 main 注入的实时 getter 读，不捕获布尔值。v0.9.19 的 `hapticsSupported` 是**只读常量**（每页读一次，设备不会中途长出马达），由 `platform/haptics.js` 判定，`__voxalblast.preferences()` 一并报出 |
 | isPaused | src/main.js（唯一计算点） | `syncPause()` 是唯一写者，以只读 getter 注入 input / boardView / effects，并由各 UI 的 `onOpen` / `onClose` 回调触发重算；没有第二个模块可以写它 |
 | bestScore | src/main.js（显示缓存） | 真值是 `game/records.js` 的 `voxalblast.records.v1`；main 在 `endGame()` 后刷新缓存，hud 经 `getBest()` 读 |
 
@@ -127,7 +128,7 @@ v0.8.22 开场两阶段动画（`src/rendering/boardView.js` 的 intro 区块 + 
 - voxalblast.session.v1：棋盘、分数、三候选、道具、局内荣誉/链和姿态；**v0.9.0 起（`SESSION_VERSION = 2`）另带 `director`（步数、阶段计数、`Block 9` 冷却、最近手牌）与 `streams`（每条随机流的 32 位状态）**。键名仍是 `voxalblast.session.v1`——版本走快照里的 `v`，迁移在读取时发生；v1 存档照常可读，步数按 0 起算并只给一次缓冲批次。
 
 v0.8.19：`session.migrate()` 将历史棋盘 RGB 按原形状身份映射到现行 `SHAPES` 配色（涵盖 v0.7 前十色与 v0.8.17 前四个暖色）。不改变存档结构/键名和版本，不改棋盘占用或进度；读写均迁移且幂等，未知及现行颜色原样保留。恢复测试 fixture 为 `tools/fixtures/legacy-palette-session.json`，截图时设置 `SHOT_SESSION` 指向该文件、`SHOT_ONLY=desktop-board,mobile-board`；注入仅发生于截图工具的隔离浏览器。v0.8.19 的 278 项规则检查、生产构建、桌面/手机旧局恢复截图均通过。
-- voxalblast-sound / voxalblast-haptics：独立声音/触感偏好。
+- voxalblast-sound / voxalblast-haptics：独立声音/触感偏好（v0.9.19：设备无振动马达时只把设置行置灰，**不重写** `voxalblast-haptics`——偏好按 origin 存，同一玩家换手机后仍要保留自己的选择）。
 
 records/session 有数据校验及存储失败后的内存降级；两个偏好自重构 P8 起经 `src/platform/storage.js` 这一窄门面转发（由 `src/ui/settings.js` 调用），而这条路径**刻意不做防护**——存储抛异常时仍然抛，安全降级仍是未做的缺口，见 [待办](KNOWN_GAPS.md)。存档不等于云存档。
 

@@ -20,6 +20,7 @@ import * as THREE from 'three'
 import { FACES } from './game/board.js'
 import { SHAPES } from './game/shapes.js'
 import { DEFAULT_LOCALE, getLocale, LOCALES } from './i18n/index.js'
+import { hapticsSupported } from './platform/haptics.js'
 import { KEY_BINDINGS } from './rendering/keyboard.js'
 import { blockSurfaceArtStatus } from './rendering/woodTexture.js'
 import { referencePaintColor } from './rendering/referencePalette.js'
@@ -259,6 +260,10 @@ export function createDiagnostics({
       sound: settingsUi.getSoundOn(),
       haptics: settingsUi.getHapticsOn(),
       dragTurn: settingsUi.getDragTurnOn(),
+      // v0.9.19: whether a buzz could be FELT here. Read from the capability module itself,
+      // NOT from the settings row it greys, so a check comparing the two is testing the wiring
+      // rather than agreeing with a copy (platform/haptics.js header).
+      hapticsSupported: hapticsSupported(),
     }),
     // The candidate pool itself: name, color and cell count per type.
     shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),

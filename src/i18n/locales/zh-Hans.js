@@ -153,6 +153,7 @@ export default Object.freeze({
   'settings.soundNote': '放置与消除音效',
   'settings.haptics': '触感',
   'settings.hapticsNote': '触摸震动反馈',
+  'settings.hapticsUnsupported': '此设备不支持震动反馈',
   'settings.dragTurn': '拖块翻面',
   'settings.dragTurnNote': '方块带出六面体即翻面',
   'settings.controls': '操作说明',

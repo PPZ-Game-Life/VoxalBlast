@@ -6,7 +6,10 @@
 // 'on'/'off' strings, same default ON when the key is absent, and deliberately the same
 // unguarded behaviour (a throwing storage still throws — see the facade's header).
 import { readPreferenceOn, writePreferenceOn } from '../platform/storage.js'
-import { getLocaleEntry, nextLocale, onLocaleChange } from '../i18n/index.js'
+// v0.9.19: whether a buzz could be felt AT ALL on this device. The row is not a preference
+// question — there is nothing to prefer on a machine with no vibrator (platform/haptics.js).
+import { hapticsSupported } from '../platform/haptics.js'
+import { getLocaleEntry, nextLocale, onLocaleChange, t } from '../i18n/index.js'
 
 export function createSettings({
   settingsEl,
@@ -16,6 +19,7 @@ export function createSettings({
   languageSettingValueEl,
   soundSettingEl,
   hapticsSettingEl,
+  hapticsNoteEl,
   dragTurnSettingEl,
   restartSettingEl,
   controlsButtonEl,
@@ -39,6 +43,8 @@ export function createSettings({
   let soundOn = readPreferenceOn('sound')
   let hapticsOn = readPreferenceOn('haptics')
   let dragTurnOn = readPreferenceOn('dragTurn')
+  // Read once per page: the device cannot grow a vibrator mid-session.
+  const hapticsAvailable = hapticsSupported()
   let axisHintTimer
   let controlsOpener = null
   let unbind = null
@@ -50,6 +56,13 @@ export function createSettings({
     soundButton?.setAttribute('aria-pressed', String(soundOn))
     hapticsSettingEl.classList.toggle('enabled', hapticsOn)
     hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
+    // v0.9.19 (03 §3.2): with no vibrator in the device the row goes inert and its note says
+    // so, instead of offering a switch that can never be honoured. The stored preference is
+    // NOT rewritten — it is per-origin, and the same player's phone must keep their choice.
+    // The note is painted HERE rather than only by i18n's static pass because this runs after
+    // applyStatic() on a locale change, so the two can never disagree about the language.
+    hapticsSettingEl.disabled = !hapticsAvailable
+    hapticsNoteEl.textContent = t(hapticsAvailable ? 'settings.hapticsNote' : 'settings.hapticsUnsupported')
     dragTurnSettingEl.classList.toggle('enabled', dragTurnOn)
     dragTurnSettingEl.setAttribute('aria-pressed', String(dragTurnOn))
     // The language row is not a switch: it names the ACTIVE language, spelled in its own
@@ -245,6 +258,9 @@ export function createSettings({
       open: settingsOpen,
       sound: soundOn,
       haptics: hapticsOn,
+      // v0.9.19: what the row's own inertness is derived from, so a check can compare the
+      // switch's state against the reason it has one.
+      hapticsSupported: hapticsAvailable,
       dragTurn: dragTurnOn,
       locale: getLocaleEntry().id,
       localeLabel: getLocaleEntry().label,

@@ -29,6 +29,9 @@ import {
   SizeOverLife,
 } from 'three.quarks'
 import { VFX_CONFIG, FEEDBACK_STYLE, RENDER_PALETTE as palette, BOARD_STYLE as style } from './config.js'
+// The buzz is the platform's, not the renderer's: whether a vibrate call can be felt at all is
+// a device question with its own measurements (platform/haptics.js header).
+import { vibrate } from '../platform/haptics.js'
 
 export function createEffects({
   scene,
@@ -381,8 +384,12 @@ export function createEffects({
     playTone(base * 0.52, 0.3, 0.034, 0.17)
   }
 
+  // v0.9.19: the call goes through platform/haptics.js, which owns the one fact this line
+  // cannot know — on desktop `navigator.vibrate` EXISTS and returns true while nothing can
+  // vibrate, so "the function is there" is not the test (that module's header has the
+  // measurements). The switch is still read LIVE, here, at the moment of the event.
   function playHaptic(pattern = 15) {
-    if (getHapticsOn() && navigator.vibrate) navigator.vibrate(pattern)
+    if (getHapticsOn()) vibrate(pattern)
   }
 
   // L5 ceremony (08 §6): the only time-dilation in the game, ≤400ms at 0.6×, and it

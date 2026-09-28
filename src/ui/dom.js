@@ -77,6 +77,9 @@ export function collectDom(root = document) {
     languageSettingValueEl: need('#language-setting-value'),
     soundSettingEl: need('#sound-setting'),
     hapticsSettingEl: need('#haptics-setting'),
+    // v0.9.19: the row's own note. It changes when the device has no vibrator at all, so
+    // settings.js repaints it from the same capability read that greys the row.
+    hapticsNoteEl: need('#haptics-note'),
     dragTurnSettingEl: need('#drag-turn-setting'),
     controlsEl: need('#controls-modal'),
     controlsButtonEl: need('#controls-button'),
