@@ -14,6 +14,7 @@
 //
 //   node tools/screenshot.mjs [url] [outDir]
 //   npm run shot
+//   SHOT_REFLECTION_SWEEP=1 adds held-drag angle captures + pose JSON for board shots.
 //
 // Defaults: url http://127.0.0.1:5173/, outDir artifacts/visual (gitignored).
 // Writes <outDir>/v<package.version>-desktop-home.png, -desktop-board.png and
@@ -611,6 +612,42 @@ async function capture(browser, shot) {
       console.log(`${clean ? 'OK  ' : 'FAIL'} ${shot.name.padEnd(13)} ${width}x${height}  ${out}`)
       console.log(`     ${JSON.stringify(parsed)}`)
       if (!clean) throw new Error(`${shot.name}: ${failures.join('; ')}`)
+      // Optional visual evidence for specular response: one real, held yaw drag
+      // visits five angles, then returns to the original pose before release.
+      // No gameplay write hook or camera/material change is used for these shots.
+      if (process.env.SHOT_REFLECTION_SWEEP === '1' && mode === 'board') {
+        const boundsRead = await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: 'JSON.stringify({ bounds: __voxalblast.bounds(), board: __voxalblast.board() })', returnByValue: true,
+        })
+        const before = JSON.parse(boundsRead.result.value)
+        const bounds = before.bounds
+        const x = (bounds.minX + bounds.maxX) / 2, y = bounds.minY * 0.3 + bounds.maxY * 0.7
+        const span = bounds.maxX - bounds.minX
+        await send(ws, nextId++, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 })
+        const poses = []
+        let previous = 0
+        for (const offset of [-0.22, -0.1, 0, 0.1, 0.22, 0]) {
+          for (let step = 1; step <= 8; step += 1) {
+            await send(ws, nextId++, 'Input.dispatchMouseEvent', {
+              type: 'mouseMoved', x: x + (previous + (offset - previous) * step / 8) * span, y, button: 'left', buttons: 1,
+            })
+          }
+          await send(ws, nextId++, 'Runtime.evaluate', { expression: 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))', awaitPromise: true })
+          const pose = await send(ws, nextId++, 'Runtime.evaluate', { expression: 'JSON.stringify(__voxalblast.rotation())', returnByValue: true })
+          const capture = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+          const path = out.replace(/\.png$/, `-reflection-${poses.length}.png`)
+          writeFileSync(path, Buffer.from(capture.data, 'base64'))
+          poses.push({ offset, path, rotation: JSON.parse(pose.result.value) })
+          previous = offset
+        }
+        await send(ws, nextId++, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 })
+        const after = await send(ws, nextId++, 'Runtime.evaluate', { expression: 'JSON.stringify(__voxalblast.board())', returnByValue: true })
+        if (JSON.stringify(before.board) !== after.result.value) throw new Error('reflection sweep mutated board state')
+        if (new Set(poses.map(pose => JSON.stringify(pose.rotation.pose))).size < 3) throw new Error('reflection sweep did not rotate the cube')
+        if (browserErrors.length) throw new Error(`reflection sweep: ${browserErrors.join('; ')}`)
+        writeFileSync(out.replace(/\.png$/, '-reflection.json'), JSON.stringify(poses, null, 2))
+        console.log(`OK   ${shot.name}: reflection sweep captured ${poses.length} poses; board unchanged`)
+      }
       return
     } catch (error) {
       captureError = error

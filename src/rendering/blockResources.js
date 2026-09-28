@@ -72,10 +72,13 @@ export function createBlockResources({ metrics }) {
   // One material per (state × tone step): the idle timber and the lighter timber of the
   // face under the camera. A small cache shares the three surface variants.
   function blockWoodMaterial(baseColor, step, variant) {
+    const surface = blockSurfaceMaps(false, variant)
     return new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(baseColor).multiplyScalar(step),
-      ...blockSurfaceMaps(false, variant),
+      ...surface,
       normalScale: new THREE.Vector2(style.woodNormalScale, style.woodNormalScale),
+      clearcoatNormalMap: surface.normalMap,
+      clearcoatNormalScale: new THREE.Vector2(style.woodNormalScale, style.woodNormalScale),
       aoMapIntensity: style.surfaceAOIntensity,
       envMapIntensity: style.woodEnvMapIntensity,
       // r172 overrides material.envMapIntensity with scene.environmentIntensity
@@ -93,13 +96,19 @@ export function createBlockResources({ metrics }) {
     active: blockWoodMaterial(style.blockActiveColor, step, variant),
   }))
 
-  // Smooth toy plastic is a separate surface family from bare maple. A piece
+  // Polished, agate-like colour has a subtle body wash under a glossy dielectric
+  // coat. It stays opaque: no transmission render target or sorting artifacts.
+  // This is a separate surface family from bare maple. A piece
   // keeps this exact material from the tray, through the drag, onto the board.
   function makeMaterial(color, opacity = 1, variant = 0) {
+    const surface = blockSurfaceMaps(true, variant)
     const material = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(referencePaintColor(color)),
-      ...blockSurfaceMaps(true, variant),
+      ...surface,
       normalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
+      clearcoatNormalMap: surface.normalMap,
+      clearcoatNormalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
+      ior: style.paintIor,
       aoMapIntensity: style.surfaceAOIntensity,
       roughness: style.paintRoughness,
       clearcoat: style.paintClearcoat,
@@ -162,6 +171,7 @@ export function createBlockResources({ metrics }) {
       size: style.blockSize, radius: style.blockRadius,
       wood: { roughness: blockWoodMaterials[0].idle.roughness, envMapIntensity: blockWoodMaterials[0].idle.envMapIntensity },
       paint: { ...paintTuning },
+      polish: { clearcoat: style.paintClearcoat, clearcoatRoughness: style.paintClearcoatRoughness, ior: style.paintIor, crownHeight: style.paintCrownHeight },
       textureChannels: ['baseColor', 'roughness', 'normal', 'ao'],
       environmentBound: [...livePaintMaterials, ...blockWoodMaterials.flatMap(pair => Object.values(pair))]
         .every(material => material.envMap === toyEnvironment()),

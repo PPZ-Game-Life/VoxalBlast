@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { BLOCK_TEXTURES } from './config.js'
+import { BLOCK_TEXTURES, BOARD_STYLE } from './config.js'
 
 // Deterministic pale timber and smooth toy plastic. Authored neutral brushwork
 // supplements only timber; both families have a complete procedural fallback.
@@ -145,8 +145,15 @@ function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
     const heights = buildSurfaceCanvas(painted, variant, 'height').getContext('2d').getImageData(0, 0, size, size).data
     const heightAt = (x, y) => heights[(Math.max(0, Math.min(size - 1, y)) * size + Math.max(0, Math.min(size - 1, x))) * 4] / 255
     for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
-      const nx = (heightAt(x - 1, y) - heightAt(x + 1, y)) * 3
-      const ny = (heightAt(x, y + 1) - heightAt(x, y - 1)) * 3
+      const u = x / (size - 1) * 2 - 1, v = 1 - y / (size - 1) * 2
+      const crown = painted ? BOARD_STYLE.paintCrownHeight : BOARD_STYLE.woodCrownHeight
+      // Analytic gradient of h = crown * (1-u²)² * (1-v²)². It is zero at
+      // the UV boundary, joining the real bevel without a normal-map seam.
+      // A view-independent normal field lets the actual environment reflection
+      // travel across a face as the cube rotates; no highlight is painted in.
+      const micro = painted ? 0.12 : 0.22
+      const nx = (heightAt(x - 1, y) - heightAt(x + 1, y)) * micro + 8 * crown * u * (1 - u * u) * (1 - v * v) ** 2
+      const ny = (heightAt(x, y + 1) - heightAt(x, y - 1)) * micro + 8 * crown * v * (1 - v * v) * (1 - u * u) ** 2
       const length = Math.hypot(nx, ny, 1), i = (y * size + x) * 4
       pixels.data.set([(nx / length * 0.5 + 0.5) * 255, (ny / length * 0.5 + 0.5) * 255, (1 / length * 0.5 + 0.5) * 255, 255], i)
     }
@@ -179,7 +186,7 @@ function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
       if (channel === 'ao') value = 255 - 38 * (1 - Math.min(1, edge / 0.12)) ** 2
       else if (channel === 'roughness') value = painted ? 244 + (fine - 0.5) * 4 : 239 + grain * 0.8
       else if (channel === 'height') value = 128 + (painted ? (fine - 0.5) * 2 : grain * 1.4) * fade
-      else value = painted ? 253 : 244 + (grain + stroke * 0.12 + (wash - 0.5) * 3) * fade
+      else value = painted ? 249 + (cloud - 0.5) * 7 : 244 + (grain + stroke * 0.12 + (wash - 0.5) * 3) * fade
       const i = (y * size + x) * 4
       pixels.data[i] = value
       pixels.data[i + 1] = value

@@ -13,9 +13,11 @@
 | `src/rendering/gameScene.js` | 阴影层与 SSAO 通道、按性能档位降级 |
 | `src/rendering/config.js` | `BOARD_STYLE`、`LIGHTING_STYLE`、`BLOCK_TEXTURES`、`SHADOW_STYLE` |
 
-原实现已经使用 `RoundedBoxGeometry`，没有替换成新的棋盘体系。边长从 0.97 调至 0.95，格点间距仍为 1，缝隙从 0.03 增至 0.05。倒角半径 0.115、细分 3，每块 588 个三角形（原为 1452，减少约 59.5%）。圆角提供真实法线过渡，面保持平整，方便判断格子与落点。
+原实现已经使用 `RoundedBoxGeometry`，没有替换成新的棋盘体系。边长从 0.97 调至 0.95，格点间距仍为 1，缝隙从 0.03 增至 0.05。倒角半径 0.13、细分 3，每块 588 个三角形（原为 1452，减少约 59.5%）。圆角提供真实法线过渡，面保持平整，方便判断格子与落点。
 
-彩色块采用 `MeshPhysicalMaterial` 的不透明玩具塑料：roughness 0.27、metalness 0、clearcoat 0.65、envMapIntensity 0.65。取消彩色块的木纹，用极弱微表面法线保持高光柔和。浅木块 roughness 0.68、clearcoat 0.12、envMapIntensity 0.35，带低对比长纤维与确定性色差。粗糙度贴图会与 roughness 参数相乘。
+彩色块采用 `MeshPhysicalMaterial`，向参考图的抛光玛瑙 / 糖果质感靠拢：roughness 0.19、metalness 0、clearcoat 1、clearcoatRoughness 0.09、ior 1.5、envMapIntensity 0.95。底色有极轻云状层次，表层有清晰亮边与柔和移动反射；保持不透明，不启用 transmission 或额外折射渲染。浅木块 roughness 0.48、clearcoat 0.45、clearcoatRoughness 0.18、envMapIntensity 0.65，带低对比长纤维与薄涂层光泽。粗糙度贴图会与 roughness 参数相乘。
+
+第一轮过于哑光，且平面法线只能让高光停留在边角。修订后程序 normal 同时供表层与基底使用：通过微凸曲面的解析梯度生成光学法线（`paintCrownHeight=0.032`、`woodCrownHeight=0.012`），边界梯度归零，无贴图接缝。它改变光照响应、不移动几何或落点，没有将白色高光画进 baseColor。新增固定在世界中的竖向反射面板，覆盖正面能反射到的方向；转动方块时，反射光带掠过表面，亮边与底色明暗随角度变化。
 
 反射复用已有 256×128 半浮点环境纹理，各 renderer 自行缓存 PMREM，无 HDRI 下载。主光、半球光和补光适当降低强度，避免浅木块过曝。两类方块材质显式绑定同一环境纹理：Three r172 在材质 `envMap === null` 时会用 `scene.environmentIntensity` 覆盖材质值，单改 `envMapIntensity` 无效。
 
@@ -48,8 +50,8 @@ lowPower 判定沿用项目原有屏宽 / CPU 核数策略。桌面法线预通�
 
 ```js
 __voxalblastDev.tuneMaterials({
-  paint: { roughness: 0.27, envMapIntensity: 0.65, metalness: 0 },
-  wood: { roughness: 0.68, envMapIntensity: 0.35 },
+  paint: { roughness: 0.19, envMapIntensity: 0.95, metalness: 0 },
+  wood: { roughness: 0.48, envMapIntensity: 0.65 },
 })
 __voxalblastDev.tuneShadows({ contactOpacity: 0.24, projectedOpacity: 0.18 })
 __voxalblast.rendering() // 材质、几何、SSAO 档位、底座阴影诊断
@@ -64,5 +66,7 @@ __voxalblast.rendering() // 材质、几何、SSAO 档位、底座阴影诊断
 - `node tools/swipe-probe.mjs`：三种旋转手势方向通过。
 - 截图检查：桌面、手机、小屏手机、横屏，含已有彩色棋盘与纯木空棋盘；另屏蔽原有笔触资源验证程序纹理回退与主页共用材质。
 - 截图工具增加材质粗糙度区分、显式环境绑定、几何预算、底座接触阴影和移动端 SSAO 降级检查。
+
+反光验证：设置环境变量 `SHOT_REFLECTION_SWEEP=1`、`SHOT_ONLY=desktop-board,mobile-board`、`SHOT_SESSION=tools/fixtures/legacy-palette-session.json`，运行 `node tools/screenshot.mjs http://127.0.0.1:5173/ artifacts/polish-sweep`。工具执行一次真实按住的水平拖拽，输出六帧及四元数 / 手势角度 JSON，覆盖约 −14.5°、−10.2°、0°、+10.2°、+14.5°、返回 0°，并检查棋盘内容不变。桌面与手机均已验证，未新增渲染 pass；两档 shader program 数仍分别为 18 / 14，每块仍为 588 三角形。
 
 本机对比图与日志位于 gitignored `artifacts/material-before`、`material-final`、`material-fallback` 等目录。构建保留现有大 bundle 警告；Windows 截图探针可能保留退出后仍被系统锁定的临时浏览器目录，不影响浏览器检查结果。

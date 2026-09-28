@@ -22,6 +22,9 @@ export function toyEnvironment() {
   const keyRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), key).normalize()
   const keyUp = new THREE.Vector3().crossVectors(key, keyRight).normalize()
   const rim = new THREE.Vector3(...light.rimPosition).normalize()
+  const card = new THREE.Vector3(...light.reflectionCardPosition).normalize()
+  const cardRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), card).normalize()
+  const cardUp = new THREE.Vector3().crossVectors(card, cardRight).normalize()
   for (let y = 0; y < height; y += 1) {
     // DataTexture rows start at v=0: inverse of Three's equirectUv().
     const theta = (1 - (y + 0.5) / height) * Math.PI
@@ -37,11 +40,16 @@ export function toyEnvironment() {
         -Math.pow(direction.dot(keyUp) / (facing * light.reflectionKeyHeight), 4),
       ) : 0
       const rimbox = light.reflectionRimIntensity * Math.pow(Math.max(0, direction.dot(rim)), light.reflectionRimFocus)
+      const cardFacing = direction.dot(card)
+      const ribbon = cardFacing > 0 ? light.reflectionCardIntensity * Math.exp(
+        -Math.pow(direction.dot(cardRight) / (cardFacing * light.reflectionCardWidth), 4)
+        -Math.pow(direction.dot(cardUp) / (cardFacing * light.reflectionCardHeight), 4),
+      ) : 0
       const offset = (y * width + x) * 4
       const rgb = [
-        0.28 + sky * 0.38 + softbox + rimbox,
-        0.3 + sky * 0.4 + softbox * 0.91 + rimbox * 0.9,
-        0.32 + sky * 0.46 + softbox * 0.76 + rimbox * 0.78,
+        0.16 + sky * 0.3 + softbox + rimbox + ribbon,
+        0.18 + sky * 0.32 + softbox * 0.96 + rimbox * 0.9 + ribbon * 0.98,
+        0.2 + sky * 0.38 + softbox * 0.9 + rimbox * 0.85 + ribbon * 0.95,
       ]
       for (let c = 0; c < 3; c += 1) data[offset + c] = THREE.DataUtils.toHalfFloat(rgb[c])
       data[offset + 3] = THREE.DataUtils.toHalfFloat(1)

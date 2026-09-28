@@ -52,7 +52,7 @@ export const BOARD_STYLE = Object.freeze({
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
   blockSize: 0.95, // 0.05-unit gap at the unchanged unit lattice pitch
-  blockRadius: 0.115,
+  blockRadius: 0.13,
   blockSegments: 3, // 588 triangles, shared by board / tray / ghost
   blockColor: 0xf3c99a,
   blockActiveColor: 0xf8d2a8,
@@ -62,21 +62,24 @@ export const BOARD_STYLE = Object.freeze({
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
   blockToneSteps: Object.freeze([0.97, 0.985, 1, 1.01, 1.02, 1.03]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.68,
-  woodClearcoat: 0.12,
-  woodClearcoatRoughness: 0.42,
-  woodNormalScale: 0.14,
-  woodEnvMapIntensity: 0.35,
-  paintNormalScale: 0.035,
+  woodRoughness: 0.48,
+  woodClearcoat: 0.45,
+  woodClearcoatRoughness: 0.18,
+  woodNormalScale: 1,
+  woodEnvMapIntensity: 0.65,
+  woodCrownHeight: 0.012,
+  paintNormalScale: 1,
+  paintCrownHeight: 0.032, // optical crown: moving reflections without changing pick geometry
   environmentIntensity: 0.55,
-  // Toy plastic on an occupied block — and on the piece in the hand, so a piece never
+  // Polished agate-like colour on the board and in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.27,
-  paintClearcoat: 0.65,
-  paintClearcoatRoughness: 0.2,
+  paintRoughness: 0.19,
+  paintClearcoat: 1,
+  paintClearcoatRoughness: 0.09,
+  paintIor: 1.5,
   paintMetalness: 0,
-  paintEnvMapIntensity: 0.65,
-  paintSpecularIntensity: 0.65,
+  paintEnvMapIntensity: 0.95,
+  paintSpecularIntensity: 1,
   surfaceAOIntensity: 0.35,
   voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
@@ -192,6 +195,12 @@ export const LIGHTING_STYLE = Object.freeze({
   reflectionKeyIntensity: 8,
   reflectionKeyWidth: 0.48,
   reflectionKeyHeight: 0.24,
+  // Fixed WORLD-space reflection cards. The tall card reaches below the horizon
+  // so a front-facing block can reflect it; the sun alone only lights shoulders.
+  reflectionCardPosition: Object.freeze([0.75, 0.12, 1]),
+  reflectionCardWidth: 0.18,
+  reflectionCardHeight: 0.85,
+  reflectionCardIntensity: 2.6,
   reflectionRimIntensity: 4,
   reflectionRimFocus: 32,
 })
