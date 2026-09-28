@@ -318,8 +318,10 @@ async function capture(browser, shot) {
                 turnBandPx: band,
                 turnBandFor3Row: band - touchLift3,
                 turnBandForMouse: band - mouseLift,
-                // v0.9.14: the gear's centre against the score plaque's, in px. The two are meant
-                // to share a centre line; before this they were 23px apart on a 390px phone.
+                // v0.9.15: the gear's TOP EDGE against the score plaque's, in px. They are two
+                // corner elements sharing a top line (producer's call, 2026-09-28), not a
+                // centre-aligned pair — v0.9.14 graded the centre by mistake.
+                hudTopDelta: gear.top - hud.top,
                 hudCentreDelta: (gear.top + gear.height / 2) - (hud.top + hud.height / 2),
               }
             })(),
@@ -461,10 +463,10 @@ async function capture(browser, shot) {
         if (parsed.playLayout && !touchViewport && !mouseViewport) {
           failures.push(`bottom turn band too small (${parsed.playLayout.turnBandPx.toFixed(0)}px band, ${parsed.playLayout.turnBandFor3Row.toFixed(0)}px left for a 3-row touch carry, ${parsed.playLayout.turnBandForMouse.toFixed(0)}px for a mouse carry)`)
         }
-        // v0.9.14: the gear and the score plaque share a centre line. 2px of slack is for
-        // sub-pixel rounding of the plaque's aspect-ratio box, nothing else.
-        if (parsed.playLayout && Math.abs(parsed.playLayout.hudCentreDelta) > 2) {
-          failures.push(`settings button is ${parsed.playLayout.hudCentreDelta.toFixed(1)}px off the score plaque's centre line`)
+        // v0.9.15: the gear and the score plaque are two CORNER elements sharing a top edge —
+        // 「上沿对齐，一个放在左上角，一个放在右上角」. Graded on the top, not the centre.
+        if (parsed.playLayout && Math.abs(parsed.playLayout.hudTopDelta) > 2) {
+          failures.push(`settings button's top edge is ${parsed.playLayout.hudTopDelta.toFixed(1)}px off the score plaque's`)
         }
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)

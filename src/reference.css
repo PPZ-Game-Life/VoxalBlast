@@ -13,7 +13,14 @@
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
 .topbar .icon-button .toy-icon, .item-button .item-icon { visibility: hidden; }
-.topbar .icon-button { position: absolute; top: calc(var(--hud-top) + var(--plaque-width) / 3.44 - var(--hud-button) / 2); }
+/* v0.9.15 — the buttons line up with the plaque's TOP EDGE, not its centre.
+   The producer's call (2026-09-28): 「我期望的纵向，积分和按钮的上沿对齐，一个放在左上角，
+   一个放在右上角，现在是中心啊对齐，不符合预期。」 v0.9.14 hung the icon's centre on the
+   plaque's centre line (`top = centre - icon/2`), which is what a "centre-aligned HUD" looks
+   like; the intent was always two corner elements sharing a top. Both now take `--hud-top`,
+   the very same variable the plaque uses, so their top edges are equal by construction at
+   every viewport and in both orientations — no arithmetic to keep in sync. */
+.topbar .icon-button { position: absolute; top: var(--hud-top); }
 #settings-button { --button-art: url('/art/reference/settings.png'); right: max(.2vw, env(safe-area-inset-right)); width: calc(var(--hud-button) * 1.20); }
 .topbar #controls-button { display: grid; --button-art: url('/art/reference/help.png'); right: calc(2.4vw + var(--hud-button) * 1.2); }
 #sound-button { --button-art: url('/art/reference/sound.png'); right: calc(3.1vw + var(--hud-button) * 2.2); width: calc(var(--hud-button) * 1.12); }
@@ -49,21 +56,19 @@
   :root { --plaque-width: 43vw; --hud-button: max(44px, 12.4vw); --hud-icon: max(40px, 10.3vw); --hud-top: max(4px, env(safe-area-inset-top)); }
   .topbar { height: 15%; }
   .topbar .score-chip-value, .topbar .best-chip-value { -webkit-text-stroke-width: .8px; }
-  /* v0.9.14 — the three HUD buttons are centred on the score plaque, in BOTH axes.
+  /* v0.9.15 — the three HUD buttons share the score plaque's TOP EDGE.
+     VERTICAL: both take `top: var(--hud-top)` from the base rule, so their top edges are equal
+     by construction, in every orientation and at every width — the two are corner elements, not
+     a centre-aligned row. (v0.9.14 hung the icon's CENTRE on the plaque's centre line instead;
+     the producer's call is 「上沿对齐，一个放在左上角，一个放在右上角」.)
      HORIZONTAL: the plaque is `--plaque-width` (43vw) wide at the left inset, so its centre sits
      `43vw * .22` from the left; the gear is `12.8vw` wide and right-aligned, so
      `right = 43vw * .22 - 12.8vw / 2` puts the gear's centre on the plaque's. The other two
-     follow the same anchor, stepping by their own 14vw / 25.7vw pitch.
-     VERTICAL: the plaque has a fixed `aspect-ratio: 1.72`, so its centre is `plaque-width / 3.44`
-     below `--hud-top`; the buttons hang their own centre on that line (`top = centre - icon/2`).
+     follow the same anchor, stepping by their own 14vw / 25.7vw pitch. Percentages of the same
+     axis, so the alignment holds at every phone width — no JS and no measuring.
      The icon's size is `--hud-icon`, declared once in this block's `:root` — a portrait icon is
-     NOT `--hud-button` (that is the ITEM row's pitch, 12.4vw), so hanging the centre on the wrong
-     one of the two left the buttons 4px high on a 390px phone. Both terms are percentages of the
-     same axis, so the alignment holds at every phone width — no JS and no measuring. (Before
-     this, the buttons kept the base rule's flat `top: max(6px, …)` while the plaque grew with
-     43vw: on a 390px phone the plaque's centre was at y 53 and the buttons' at y 30, 23px apart —
-     exactly what the producer saw.) */
-  .topbar .icon-button { width: var(--hud-icon); height: var(--hud-icon); top: calc(var(--hud-top) + var(--plaque-width) / 3.44 - var(--hud-icon) / 2); }
+     NOT `--hud-button` (that is the ITEM row's pitch, 12.4vw). */
+  .topbar .icon-button { width: var(--hud-icon); height: var(--hud-icon); }
   #settings-button { right: calc(43vw * .22 - 12.8vw / 2); width: 12.8vw; }
   .topbar #controls-button { right: calc(43vw * .22 - 12.8vw / 2 + 14vw); }
   #sound-button { right: calc(43vw * .22 - 12.8vw / 2 + 25.7vw); width: 12vw; }
