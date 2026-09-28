@@ -32,8 +32,11 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { BOARD_STYLE as style } from './config.js'
 import { blockSurfaceMaps, woodGrainTextureRepeating } from './woodTexture.js'
 import { referencePaintColor } from './referencePalette.js'
+import { toyEnvironment } from './toyLights.js'
 
 export function createBlockResources({ metrics }) {
+  const livePaintMaterials = new Set()
+  const paintTuning = { roughness: style.paintRoughness, envMapIntensity: style.paintEnvMapIntensity, metalness: style.paintMetalness }
   // THE block. ONE geometry instance shared by the board's 98 blocks, the three candidate
   // slots and the drag ghost, so a piece in the hand and a piece on the board are literally
   // the same object — same size, same six flat faces, same bevel.
@@ -72,7 +75,12 @@ export function createBlockResources({ metrics }) {
     return new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(baseColor).multiplyScalar(step),
       ...blockSurfaceMaps(false, variant),
-      bumpScale: style.woodBumpScale,
+      normalScale: new THREE.Vector2(style.woodNormalScale, style.woodNormalScale),
+      aoMapIntensity: style.surfaceAOIntensity,
+      envMapIntensity: style.woodEnvMapIntensity,
+      // r172 overrides material.envMapIntensity with scene.environmentIntensity
+      // when envMap is null. Bind the shared source so per-family tuning works.
+      envMap: toyEnvironment(),
       roughness: style.woodRoughness,
       clearcoat: style.woodClearcoat,
       clearcoatRoughness: style.woodClearcoatRoughness,
@@ -85,26 +93,30 @@ export function createBlockResources({ metrics }) {
     active: blockWoodMaterial(style.blockActiveColor, step, variant),
   }))
 
-  // A piece in the hand is PAINTED WOOD: opaque colour over the same grain the shell uses,
-  // with a real varnish layer on top. The shared grain map is what ties the board to the
-  // signboards — the UI and the cube are visibly the same material (05「同源」), and a piece
+  // Smooth toy plastic is a separate surface family from bare maple. A piece
   // keeps this exact material from the tray, through the drag, onto the board.
   function makeMaterial(color, opacity = 1, variant = 0) {
-    return new THREE.MeshPhysicalMaterial({
+    const material = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(referencePaintColor(color)),
       ...blockSurfaceMaps(true, variant),
-      bumpScale: style.paintBumpScale,
+      normalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
+      aoMapIntensity: style.surfaceAOIntensity,
       roughness: style.paintRoughness,
       clearcoat: style.paintClearcoat,
       clearcoatRoughness: style.paintClearcoatRoughness,
       // Keep frontal lacquer saturated; strong white environment reflections
       // otherwise turn emerald and blue into pastel tiles at thumbnail scale.
-      specularIntensity: 0.5,
-      envMapIntensity: 0.4,
-      metalness: 0,
+      specularIntensity: style.paintSpecularIntensity,
+      envMapIntensity: style.paintEnvMapIntensity,
+      envMap: toyEnvironment(),
+      metalness: style.paintMetalness,
+      ...paintTuning,
       transparent: opacity < 1,
       opacity,
     })
+    livePaintMaterials.add(material)
+    material.addEventListener('dispose', () => livePaintMaterials.delete(material))
+    return material
   }
 
   const paintMaterials = new Map()
@@ -145,7 +157,31 @@ export function createBlockResources({ metrics }) {
   // count of THE shared block geometry, so a check can prove the block is still the same
   // bevelled box it always was.
   function report() {
-    return { trianglesPerBlock: blockGeometry.attributes.position.count / 3 }
+    return {
+      trianglesPerBlock: blockGeometry.attributes.position.count / 3,
+      size: style.blockSize, radius: style.blockRadius,
+      wood: { roughness: blockWoodMaterials[0].idle.roughness, envMapIntensity: blockWoodMaterials[0].idle.envMapIntensity },
+      paint: { ...paintTuning },
+      textureChannels: ['baseColor', 'roughness', 'normal', 'ao'],
+      environmentBound: [...livePaintMaterials, ...blockWoodMaterials.flatMap(pair => Object.values(pair))]
+        .every(material => material.envMap === toyEnvironment()),
+    }
+  }
+
+  // DEV diagnostics calls this; only numeric material uniforms change. Cached
+  // and future paint share the same tuning, with no new textures or programs.
+  function tuneMaterials({ paint = {}, wood = {} } = {}) {
+    for (const [family, values] of [['paint', paint], ['wood', wood]]) {
+      for (const key of ['roughness', 'envMapIntensity', 'metalness']) {
+        if (!Number.isFinite(values[key])) continue
+        const value = THREE.MathUtils.clamp(values[key], key === 'roughness' ? 0.08 : 0, key === 'envMapIntensity' ? 2 : 1)
+        if (family === 'paint') {
+          paintTuning[key] = value
+          for (const material of livePaintMaterials) material[key] = value
+        } else for (const pair of blockWoodMaterials) for (const material of Object.values(pair)) material[key] = value
+      }
+    }
+    return report()
   }
 
   return {
@@ -155,6 +191,7 @@ export function createBlockResources({ metrics }) {
     // The shell mesh itself, for main to add to the cube group (see the note above).
     cubeBody,
     report,
+    tuneMaterials,
     blockWoodMaterials,
     paintMaterial,
     makeMaterial,

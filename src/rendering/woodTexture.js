@@ -1,7 +1,8 @@
 import * as THREE from 'three'
+import { BLOCK_TEXTURES } from './config.js'
 
-// Deterministic timber and lacquer, using neutral painted brushwork with a
-// procedural fallback. Paint has subtler grain and less relief than bare wood.
+// Deterministic pale timber and smooth toy plastic. Authored neutral brushwork
+// supplements only timber; both families have a complete procedural fallback.
 //
 // Everything is seeded and deterministic: the grain must be identical on every
 // load, or two screenshots of the same build would not compare, and the board
@@ -109,8 +110,10 @@ pigmentImage.onload = () => {
   artState = 'ready'
   for (const [key, maps] of surfaceCache) {
     const [painted, variant] = key.split(':')
+    if (painted === 'true') continue // toy plastic does not use the authored grain
     for (const [property, channel] of SURFACE_CHANNELS) {
       const texture = maps[property]
+      if (texture.userData.authored) continue
       texture.image.getContext('2d').drawImage(buildSurfaceCanvas(painted === 'true', Number(variant), channel), 0, 0)
       texture.needsUpdate = true
     }
@@ -138,6 +141,18 @@ function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
   const canvas = makeCanvas(size, size)
   const ctx = canvas.getContext('2d')
   const pixels = ctx.createImageData(size, size)
+  if (channel === 'normal') {
+    const heights = buildSurfaceCanvas(painted, variant, 'height').getContext('2d').getImageData(0, 0, size, size).data
+    const heightAt = (x, y) => heights[(Math.max(0, Math.min(size - 1, y)) * size + Math.max(0, Math.min(size - 1, x))) * 4] / 255
+    for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) {
+      const nx = (heightAt(x - 1, y) - heightAt(x + 1, y)) * 3
+      const ny = (heightAt(x, y + 1) - heightAt(x, y - 1)) * 3
+      const length = Math.hypot(nx, ny, 1), i = (y * size + x) * 4
+      pixels.data.set([(nx / length * 0.5 + 0.5) * 255, (ny / length * 0.5 + 0.5) * 255, (1 / length * 0.5 + 0.5) * 255, 255], i)
+    }
+    ctx.putImageData(pixels, 0, 0)
+    return canvas
+  }
   const seed = 1847 + variant * 73
   const pigment = pigmentVariants[variant % 3]
   // Domain-warped fallback washes, supplemented by authored brushwork on load.
@@ -157,9 +172,14 @@ function buildSurfaceCanvas(painted = false, variant = 0, channel = 'color') {
       const stroke = pigment ? pigment.values[y * size + x] - pigment.mean : (wash - 0.5) * 30
       // Smooth lacquer fills the grain. Large pigment changes belong in albedo,
       // not in bump: the old broad bump made the faces look soft and dented.
-      if (channel === 'roughness') value = 218 + stroke * 1.2 - (1 - fade) * 28
-      else if (channel === 'height') value = 128 + (brush - 0.5) * 12 + stroke * (painted ? 0.12 : 0.3)
-      else value = 248 + (stroke * (painted ? 0.15 : 0.65) + (wash - 0.5) * 3) * fade
+      // Long, low-contrast fibres distinguish bare maple from smooth toy plastic.
+      // Paint never inherits authored timber brushwork, even after the asset loads.
+      const fibre = Math.sin(v * 95 + warp * 12 + Math.sin(u * 9 + variant) * 2)
+      const grain = fibre * 2.5 + (noise(u * 3, v * 70, seed + 4) - 0.5) * 7
+      if (channel === 'ao') value = 255 - 38 * (1 - Math.min(1, edge / 0.12)) ** 2
+      else if (channel === 'roughness') value = painted ? 244 + (fine - 0.5) * 4 : 239 + grain * 0.8
+      else if (channel === 'height') value = 128 + (painted ? (fine - 0.5) * 2 : grain * 1.4) * fade
+      else value = painted ? 253 : 244 + (grain + stroke * 0.12 + (wash - 0.5) * 3) * fade
       const i = (y * size + x) * 4
       pixels.data[i] = value
       pixels.data[i + 1] = value
@@ -177,8 +197,9 @@ function buildGrainCanvas() {
 }
 
 const surfaceCache = new Map()
-const SURFACE_CHANNELS = [['map', 'color'], ['bumpMap', 'height'], ['roughnessMap', 'roughness']]
+const SURFACE_CHANNELS = [['map', 'color'], ['normalMap', 'normal'], ['roughnessMap', 'roughness'], ['aoMap', 'ao']]
 export function blockSurfaceMaps(painted = false, variant = 0) {
+  variant = painted ? 0 : variant % 3
   const key = `${painted}:${variant % 3}`
   if (surfaceCache.has(key)) return surfaceCache.get(key)
   const maps = {}
@@ -186,10 +207,22 @@ export function blockSurfaceMaps(painted = false, variant = 0) {
     const texture = new THREE.CanvasTexture(buildSurfaceCanvas(painted, variant % 3, channel))
     if (channel === 'color') texture.colorSpace = THREE.SRGBColorSpace
     texture.anisotropy = 4
+    texture.name = `block-${painted ? 'paint' : 'wood'}-${variant}-${channel}`
+    const source = BLOCK_TEXTURES[painted ? 'paint' : 'wood'][channel === 'color' ? 'baseColor' : channel]
+    if (source) {
+      const image = new Image()
+      image.onload = () => {
+        texture.image.getContext('2d').drawImage(image, 0, 0, GRAIN_RECIPE.size, GRAIN_RECIPE.size)
+        texture.userData.authored = true
+        texture.needsUpdate = true
+      }
+      image.onerror = () => console.warn(`Block texture unavailable; using procedural ${texture.name}`)
+      image.src = `${import.meta.env.BASE_URL}${source.replace(/^\//, '')}`
+    }
     maps[property] = texture
   }
-  // The shoulder has smoother varnish than the brushed face; share the data
-  // texture rather than allocate another image for the clearcoat layer.
+  // Share roughness data instead of allocating another clearcoat image; the
+  // clearcoatRoughness material factor controls the top layer independently.
   maps.clearcoatRoughnessMap = maps.roughnessMap
   surfaceCache.set(key, maps)
   return maps

@@ -519,6 +519,12 @@ async function capture(browser, shot) {
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')
       if (parsed.rendering?.meshes !== 98 || parsed.rendering?.uniqueCells !== 98) failures.push('board must contain exactly 98 unique meshes')
       if (parsed.rendering?.surfaceArt !== (SURFACE_FALLBACK ? 'fallback' : 'ready')) failures.push('block surface asset / fallback not ready')
+      const materials = parsed.rendering?.materials
+      if (!(materials?.wood.roughness > materials?.paint.roughness)) failures.push('bare wood must stay rougher than toy plastic')
+      if (!materials?.environmentBound) failures.push('per-material reflection tuning is bypassed by scene environment')
+      if (!(parsed.rendering?.trianglesPerBlock <= 1000)) failures.push('shared block exceeds H5 geometry budget')
+      if (!(parsed.rendering?.contactShadows?.pedestal?.contactOpacity > 0)) failures.push('pedestal contact shadow missing')
+      if (parsed.rendering?.lowPower && parsed.rendering?.contactShadows?.ssaoEnabled) failures.push('low-power path must use surface AO instead of full scene SSAO')
       const onHome = mode === 'home' || mode === 'home-return'
       // The badge is inside the hidden topbar while the home cover is up, so on those
       // two shots only its box and text are graded.

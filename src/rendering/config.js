@@ -51,28 +51,33 @@ export const BOARD_STYLE = Object.freeze({
   hullRadius: 0.08,
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
-  blockSize: 0.97, // tightly packed, individually rounded reference blocks
-  blockRadius: 0.14,
-  blockSegments: 5,
-  blockColor: 0xffcfa3,
-  blockActiveColor: 0xffd3ac,
+  blockSize: 0.95, // 0.05-unit gap at the unchanged unit lattice pitch
+  blockRadius: 0.115,
+  blockSegments: 3, // 588 triangles, shared by board / tray / ghost
+  blockColor: 0xf3c99a,
+  blockActiveColor: 0xf8d2a8,
   // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
   // the reference is visibly assembled from separate pieces of timber. Each block
   // takes one of these tone multipliers, picked deterministically from its lattice
   // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
   blockToneSteps: Object.freeze([0.97, 0.985, 1, 1.01, 1.02, 1.03]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.34,
-  woodClearcoat: 0.8,
-  woodClearcoatRoughness: 0.16,
-  woodBumpScale: 0.003,
-  paintBumpScale: 0.001,
-  environmentIntensity: 0.5,
-  // Paint on an occupied block — and on the piece in the hand, so a piece never
+  woodRoughness: 0.68,
+  woodClearcoat: 0.12,
+  woodClearcoatRoughness: 0.42,
+  woodNormalScale: 0.14,
+  woodEnvMapIntensity: 0.35,
+  paintNormalScale: 0.035,
+  environmentIntensity: 0.55,
+  // Toy plastic on an occupied block — and on the piece in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.16,
-  paintClearcoat: 1,
-  paintClearcoatRoughness: 0.09,
+  paintRoughness: 0.27,
+  paintClearcoat: 0.65,
+  paintClearcoatRoughness: 0.2,
+  paintMetalness: 0,
+  paintEnvMapIntensity: 0.65,
+  paintSpecularIntensity: 0.65,
+  surfaceAOIntensity: 0.35,
   voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
@@ -169,15 +174,15 @@ const CAMERA_BEARING_YAW = Math.atan2(BOARD_STYLE.cameraDirection[0], BOARD_STYL
 export const LIGHTING_STYLE = Object.freeze({
   sky: 0xffffff,
   ground: 0xefd3b7,
-  hemisphereIntensity: 1.0,
+  hemisphereIntensity: 0.85,
   keyColor: 0xfff5e6,
-  keyIntensity: 2.6,
+  keyIntensity: 2.25,
   keyPosition: Object.freeze([-3.5, 7, 9]),
   fillColor: 0xc9e3ff,
-  fillIntensity: 0.8,
+  fillIntensity: 0.65,
   fillPosition: Object.freeze([5, 2, -4]),
   rimColor: 0xffe6c4,
-  rimIntensity: 0.75,
+  rimIntensity: 0.6,
   rimPosition: Object.freeze([-4, 4, -5]),
   shadowExtent: 4.8,
   shadowBias: -0.00015,
@@ -189,6 +194,27 @@ export const LIGHTING_STYLE = Object.freeze({
   reflectionKeyHeight: 0.24,
   reflectionRimIntensity: 4,
   reflectionRimFocus: 32,
+})
+
+// Local URLs are relative to Vite's BASE_URL; null keeps the deterministic 256px
+// procedural fallback. Normal maps are tangent-space OpenGL, AO uses red and
+// roughness uses green. Only baseColor is sRGB. No assets are required to play.
+export const BLOCK_TEXTURES = Object.freeze({
+  wood: Object.freeze({ baseColor: null, roughness: null, normal: null, ao: null }),
+  paint: Object.freeze({ baseColor: null, roughness: null, normal: null, ao: null }),
+})
+
+export const SHADOW_STYLE = Object.freeze({
+  mapSize: 1024,
+  lowPowerMapSize: 512,
+  // The pedestal is DOM art: a transparent receiver overlays only its shadow.
+  projectedOpacity: 0.18,
+  contactOpacity: 0.24,
+  contactSize: 6.0,
+  receiverSize: 6.3,
+  floorOffset: 0.025,
+  textureSize: 128,
+  lowPowerSSAO: false, // baked surface AO + contact decal replace two scene passes
 })
 
 // Opening layout (v0.2.31) — MEASUREMENT ONLY since v0.9.10. The shipped game no longer

@@ -57,6 +57,7 @@ export function createDiagnostics({
         meshes: tiles.meshes,
         uniqueCells: tiles.uniqueCells,
         trianglesPerBlock: blocks.report().trianglesPerBlock,
+        materials: blocks.report(),
         surfaceArt: blockSurfaceArtStatus(),
         environment: scene.environment,
         hdr: scene.hdr,
@@ -287,6 +288,8 @@ export function createDiagnostics({
     globalThis.__voxalblast = readOnly
     if (import.meta.env.DEV && dev) {
       globalThis.__voxalblastDev = Object.freeze({
+        tuneMaterials: (values) => blocks.tuneMaterials(values),
+        tuneShadows: (values) => scene3d.tuneShadows(values),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
         records: () => recordStore.all(),

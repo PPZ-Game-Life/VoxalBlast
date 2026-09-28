@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { BOARD_STYLE, LIGHTING_STYLE as light } from './config.js'
+import { BOARD_STYLE, LIGHTING_STYLE as light, SHADOW_STYLE } from './config.js'
 
 // One light rig for board, hand previews and home. Sizes differ, materials do not.
 //
@@ -12,7 +12,7 @@ let environment
 
 // Linear HDR source, filtered by Three's PMREM per renderer. Unlike a GPU render
 // target, this texture also works in the independent tray / home WebGL contexts.
-function toyEnvironment() {
+export function toyEnvironment() {
   if (environment) return environment
   const width = light.environmentWidth
   const height = light.environmentHeight
@@ -62,7 +62,7 @@ export function addToyLights(scene, { shadows = false, lowPower = false } = {}) 
   const key = new THREE.DirectionalLight(light.keyColor, light.keyIntensity)
   key.position.set(...light.keyPosition)
   key.castShadow = shadows
-  key.shadow.mapSize.setScalar(lowPower ? 1024 : 2048)
+  key.shadow.mapSize.setScalar(lowPower ? SHADOW_STYLE.lowPowerMapSize : SHADOW_STYLE.mapSize)
   const extent = light.shadowExtent
   Object.assign(key.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 0.5, far: 24 })
   key.shadow.bias = light.shadowBias

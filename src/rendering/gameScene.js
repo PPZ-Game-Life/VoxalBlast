@@ -32,7 +32,8 @@ import {
   ToneMappingMode,
 } from 'postprocessing'
 import { skipComposerDepthBlit } from './threeCompat.js'
-import { BOARD_STYLE as style, ROTATE_STYLE, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
+import { createBoardShadows } from './boardShadows.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
 // resolved at exactly the point in main's evaluation it always was.
@@ -47,6 +48,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // cube away as the player zoomed out. `near` moves with it so the depth range stays sane
   // for the contact-shadow pass.
   const camera = new THREE.PerspectiveCamera(style.cameraFov, 1, 1, 500)
+  camera.layers.enable(1)
   const cameraTarget = new THREE.Vector3(0, 0, 0)
   let cameraZoom = 1
   const minCameraZoom = 0.7
@@ -315,6 +317,13 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // Contact shadows follow the geometry as the player rotates. A dedicated normal target
   // owns real depth, avoiding the composer's aliased depth-texture blit.
   const normalPass = new NormalPass(scene, camera)
+  // Shadow-only receivers must not occlude the board in the normal/depth pass.
+  const renderNormals = normalPass.render.bind(normalPass)
+  normalPass.render = (...args) => {
+    const mask = camera.layers.mask
+    camera.layers.disable(1)
+    try { renderNormals(...args) } finally { camera.layers.mask = mask }
+  }
   const contactDepth = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType)
   normalPass.renderTarget.depthTexture = contactDepth
   const occlusionEffect = new SSAOEffect(camera, normalPass.texture, {
@@ -328,6 +337,13 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   composer.addPass(normalPass)
   composer.addPass(occlusionPass)
   composer.addPass(effectPass)
+  const useSSAO = !quality.lowPower || SHADOW_STYLE.lowPowerSSAO
+  normalPass.enabled = occlusionPass.enabled = useSSAO
+  // metrics() is lazy until main has assembled the board constants.
+  let boardShadows = null
+  function ensureBoardShadows() {
+    boardShadows ??= createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift })
+  }
 
   // ---- Resize -------------------------------------------------------------------
   // The canvas is sized from the wrap's client box. `setSize` runs with updateStyle=false,
@@ -341,6 +357,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     if (width < 1 || height < 1) return
     if (width === appliedCanvasSize.width && height === appliedCanvasSize.height) return
     appliedCanvasSize = { width, height }
+    ensureBoardShadows()
     renderer.setSize(width, height, false)
     refreshCameraProjection()
     fitCameraToPlaySpace()
@@ -373,6 +390,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
       environment: Boolean(scene.environment),
       hdr: composer.inputBuffer.texture.type === THREE.HalfFloatType,
       contactShadows: {
+        ssaoEnabled: useSSAO,
+        pedestal: boardShadows?.report(),
         independentDepth: normalPass.renderTarget.depthTexture === contactDepth && composer.stableDepthTexture === null,
         width: contactDepth.image.width,
         height: contactDepth.image.height,
@@ -431,6 +450,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     stopObservingResize,
     report,
     framingReport,
+    tuneShadows: (values) => boardShadows?.tune(values),
     getAppliedCanvasSize: () => ({ ...appliedCanvasSize }),
     getCameraZoom: () => cameraZoom,
     getOrbitDistance: () => orbitDistance,
