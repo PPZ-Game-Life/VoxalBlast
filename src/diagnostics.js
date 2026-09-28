@@ -19,6 +19,7 @@
 import * as THREE from 'three'
 import { FACES } from './game/board.js'
 import { SHAPES } from './game/shapes.js'
+import { DEFAULT_LOCALE, getLocale, LOCALES } from './i18n/index.js'
 import { KEY_BINDINGS } from './rendering/keyboard.js'
 import { blockSurfaceArtStatus } from './rendering/woodTexture.js'
 import { referencePaintColor } from './rendering/referencePalette.js'
@@ -243,6 +244,15 @@ export function createDiagnostics({
     // advertise a key that does nothing (and vice versa).
     keys: () => KEY_BINDINGS.map((binding) => ({ axis: binding.axis, keys: [...binding.keys] })),
     controls: () => settingsUi.report(),
+    // v0.9.18 (docs/Technical/LOCALIZATION.md): the language the game is actually speaking.
+    // The headless check has to prove two things a screenshot cannot: that the DEFAULT is
+    // English, and that the language row moves the whole page (not just the panel it sits in).
+    i18n: () => ({
+      locale: getLocale(),
+      htmlLang: document.documentElement.lang,
+      locales: LOCALES.map((entry) => entry.id),
+      defaultLocale: DEFAULT_LOCALE,
+    }),
     // v0.9.12: the three settings preferences as the game actually reads them, so a check can
     // assert the 拖块翻面 switch gates the turn dwell without reaching into the DOM or storage.
     preferences: () => ({

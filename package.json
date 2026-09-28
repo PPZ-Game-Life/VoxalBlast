@@ -1,13 +1,14 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.9.17",
+  "version": "0.9.18",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tools/edge-turn-tests.mjs && node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/deal-director-tests.mjs && node tools/deal-core-tests.mjs && node tools/deal-dealer-tests.mjs && node tools/deal-session-tests.mjs",
+    "test": "node tools/i18n-tests.mjs && node tools/edge-turn-tests.mjs && node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/deal-director-tests.mjs && node tools/deal-core-tests.mjs && node tools/deal-dealer-tests.mjs && node tools/deal-session-tests.mjs",
+    "test:i18n": "node tools/i18n-tests.mjs",
     "test:rules": "node tools/rule-tests.mjs",
     "test:session": "node tools/game-session-tests.mjs",
     "test:deal": "node tools/deal-director-tests.mjs && node tools/deal-core-tests.mjs && node tools/deal-dealer-tests.mjs && node tools/deal-session-tests.mjs",
@@ -25,7 +26,7 @@
     "probe:drag": "node tools/drag-feel-probe.mjs",
     "probe:ui": "node tools/refactor-ui-probe.mjs",
     "probe:churn": "node tools/refactor-churn-probe.mjs",
-    "gates": "node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/refactor-interaction-probe.mjs && node tools/refactor-ui-probe.mjs && node tools/refactor-churn-probe.mjs",
+    "gates": "node tools/i18n-tests.mjs && node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/refactor-interaction-probe.mjs && node tools/refactor-ui-probe.mjs && node tools/refactor-churn-probe.mjs",
     "reachability": "node tools/reachability.mjs all"
   },
   "dependencies": {

@@ -7,6 +7,7 @@
 // the platform" is orchestration and stays in main.endGame() where it always was.
 import { FACES } from '../game/board.js'
 import { HUD_STYLE } from '../rendering/config.js'
+import { formatNumber, t } from '../i18n/index.js'
 
 export function createGameOver({ els, getRun }) {
   const { gameOverBestEl, gameOverFacesEl, gameOverHonorsEl, gameOverStatsEl } = els
@@ -17,22 +18,26 @@ export function createGameOver({ els, getRun }) {
   // the plan's state table calls out.
   function bestDimensionLabel() {
     const run = getRun()
-    if (run.maxLinesOneMove >= 4) return `本局名场面 · 单次 ${run.maxLinesOneMove} 线`
-    if (run.honorCounts.TRIFACE) return `本局三面同爆 ${run.honorCounts.TRIFACE} 次`
-    if (run.bestChain >= 3) return `本局最长链 ${run.bestChain}`
-    return `本局点亮 ${run.facesLit.size}/6 面`
+    if (run.maxLinesOneMove >= 4) return t('gameover.dim.bigMove', { n: run.maxLinesOneMove })
+    if (run.honorCounts.TRIFACE) return t('gameover.dim.triface', { n: run.honorCounts.TRIFACE })
+    if (run.bestChain >= 3) return t('gameover.dim.chain', { n: run.bestChain })
+    return t('gameover.dim.faces', { n: run.facesLit.size })
   }
 
   // The Game Over panel is the "再来一局" screen (08 §7.5), so it leads with the delta to
   // the record, not with the score the player just watched count up. Every branch here is a
   // reason to press PLAY AGAIN once more.
+  //
+  // Every string goes through t() at RENDER time, and main re-calls this with the same
+  // summary when the player switches language, so the card it is standing on never keeps the
+  // language the player just left.
   function renderGameOver(summary) {
     const run = getRun()
     if (summary.isNewBest) {
-      gameOverBestEl.textContent = '★ NEW BEST!'
+      gameOverBestEl.textContent = t('gameover.newBest')
       gameOverBestEl.className = 'game-over-best new-best'
     } else if (summary.previousBest > 0 && summary.gapRatio < HUD_STYLE.bestGapRatio) {
-      gameOverBestEl.textContent = `差 ${summary.gapToBest.toLocaleString('en-US')} 分破纪录`
+      gameOverBestEl.textContent = t('gameover.gap', { n: formatNumber(summary.gapToBest) })
       gameOverBestEl.className = 'game-over-best close'
     } else {
       gameOverBestEl.textContent = bestDimensionLabel()
@@ -42,22 +47,25 @@ export function createGameOver({ els, getRun }) {
     // 六面制霸 progress. §5.2 forbids shipping the BADGE (its old threshold fired in
     // 100% of games), but the progress bar is the panel's "next goal" and stays.
     const lit = run.facesLit.size
-    gameOverFacesEl.innerHTML = `<span class="faces-label">六面制霸</span>`
+    gameOverFacesEl.innerHTML = `<span class="faces-label">${t('gameover.facesLabel')}</span>`
       + FACES.map((face, index) => `<i class="${index < lit ? 'lit' : ''}"></i>`).join('')
       + `<small>${lit}/6</small>`
 
+    // The badge wears the honour's NAME, not its id: 'TRIPLE ×2' is a database row, and the
+    // catalogue is where that name is translated (08 §5).
     const earned = Object.entries(run.honorCounts)
       .sort((a, b) => b[1] - a[1])
-      .map(([id, times]) => `<span class="honor-badge">${id} ×${times}</span>`)
+      .map(([id, times]) => `<span class="honor-badge">${t(`honor.${id}.title`)} ×${times}</span>`)
       .join('')
-    gameOverHonorsEl.innerHTML = earned || '<span class="game-over-empty">本局还没拿到荣誉</span>'
+    gameOverHonorsEl.innerHTML = earned
+      || `<span class="game-over-empty">${t('gameover.noHonors')}</span>`
 
     gameOverStatsEl.innerHTML = [
-      `最长链 <strong>${run.bestChain}</strong>`,
-      `单次最多 <strong>${run.maxLinesOneMove}</strong> 线`,
-      `三面同爆 <strong>${run.honorCounts.TRIFACE || 0}</strong> 次`,
-      `本周最佳 <strong>${summary.weeklyBest.toLocaleString('en-US')}</strong>`,
-    ].map((text) => `<span>${text}</span>`).join('')
+      { label: 'gameover.stat.chain', value: run.bestChain },
+      { label: 'gameover.stat.lines', value: run.maxLinesOneMove },
+      { label: 'gameover.stat.triface', value: run.honorCounts.TRIFACE || 0 },
+      { label: 'gameover.stat.weekly', value: formatNumber(summary.weeklyBest) },
+    ].map(({ label, value }) => `<span>${t(label)} <strong>${value}</strong></span>`).join('')
   }
 
   return { renderGameOver, bestDimensionLabel }

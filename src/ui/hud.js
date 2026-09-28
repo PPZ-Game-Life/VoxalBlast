@@ -17,6 +17,7 @@
 // Three.js use below is a colour formatter, not a renderer.
 import * as THREE from 'three'
 import { FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
+import { formatNumber, t } from '../i18n/index.js'
 import { ITEM_COPY, ITEM_NAME } from './itemCopy.js'
 
 // The four icons exactly as index.html draws them. The status bar repeats the icon of whatever is
@@ -110,7 +111,9 @@ export function createHud({
   function updateHud() {
     scoreEl.textContent = String(getScore()).padStart(4, '0')
     // BEST is a secondary pill: same chip language, smaller type (04「UI 与发布」修订条款).
-    bestEl.textContent = getBest().toLocaleString('en-US')
+    // Grouped per locale: the same number is 12,340 in English and 12 340 in some others, and
+    // a hard-coded 'en-US' is exactly the kind of bug a second language exposes.
+    bestEl.textContent = formatNumber(getBest())
     fitScores()
   }
 
@@ -121,10 +124,12 @@ export function createHud({
   function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = false } = {}) {
     const pop = document.createElement('div')
     pop.className = quiet ? 'score-pop quiet' : 'score-pop'
+    // The honour's name is translated through the shared catalogue: honors.js is game DATA
+    // (and is imported by the Node rule tests), so it carries ids, never display text.
     const rows = [`<strong>+${points}</strong>`]
-    if (lines > 0) rows.push(`<span>${lines} LINE${lines === 1 ? '' : 'S'}</span>`)
-    if (faces > 1) rows.push(`<span class="score-pop-faces">${faces} FACES</span>`)
-    if (honor) rows.push(`<span class="score-pop-honor">${honor.title}</span>`)
+    if (lines > 0) rows.push(`<span>${t('pop.lines', { n: lines })}</span>`)
+    if (faces > 1) rows.push(`<span class="score-pop-faces">${t('pop.faces', { n: faces })}</span>`)
+    if (honor) rows.push(`<span class="score-pop-honor">${t(`honor.${honor.id}.title`)}</span>`)
     pop.innerHTML = rows.join('')
     sceneWrap.appendChild(pop)
     requestAnimationFrame(() => pop.classList.add('visible'))
@@ -159,7 +164,7 @@ export function createHud({
     if (honors.primary) {
       const banner = document.createElement('div')
       banner.className = `honor-banner honor-banner-${feedback.banner}`
-      banner.innerHTML = `<strong>${honors.primary.title}</strong><small>${honors.primary.label} · +${honors.primary.bonus}</small>`
+      banner.innerHTML = `<strong>${t(`honor.${honors.primary.id}.title`)}</strong><small>${t(`honor.${honors.primary.id}.label`)} · +${honors.primary.bonus}</small>`
       honorLayerEl.appendChild(banner)
       requestAnimationFrame(() => banner.classList.add('visible'))
       const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
@@ -172,7 +177,7 @@ export function createHud({
     if (!extras.length || !feedback.badges) return
     const row = document.createElement('div')
     row.className = 'honor-badges'
-    row.innerHTML = extras.map((honor) => `<span class="honor-badge">${honor.title}</span>`).join('')
+    row.innerHTML = extras.map((honor) => `<span class="honor-badge">${t(`honor.${honor.id}.title`)}</span>`).join('')
     honorLayerEl.appendChild(row)
     requestAnimationFrame(() => row.classList.add('visible'))
     setTimeout(() => {
@@ -212,7 +217,10 @@ export function createHud({
       const emptyEl = button.querySelector('.item-empty')
       if (emptyEl) emptyEl.textContent = ITEM_COPY.empty
       const nameEl = button.querySelector('.item-name')
-      if (nameEl) nameEl.textContent = ITEM_NAME[id]
+      if (nameEl) nameEl.textContent = ITEM_NAME[id] || id
+      // The tooltip is translated too (07 §8.3: the name alone does not explain the tool).
+      button.setAttribute('title', t(`item.title.${id}`))
+      button.setAttribute('aria-label', ITEM_NAME[id] || id)
     })
   }
 
@@ -301,7 +309,10 @@ export function createHud({
       slot.type = 'button'
       slot.dataset.index = index
       slot.style.setProperty('--piece-color', colorHex(piece.shape.color))
-      slot.setAttribute('aria-label', `${piece.shape.name}, ${piece.shape.cells.length} blocks`)
+      slot.setAttribute('aria-label', t('a11y.pieceSlot', {
+        name: piece.shape.name,
+        blocks: piece.shape.cells.length,
+      }))
 
       const thumb = document.createElement('span')
       thumb.className = 'piece-thumb'

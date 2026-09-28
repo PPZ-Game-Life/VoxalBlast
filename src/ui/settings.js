@@ -6,11 +6,14 @@
 // 'on'/'off' strings, same default ON when the key is absent, and deliberately the same
 // unguarded behaviour (a throwing storage still throws — see the facade's header).
 import { readPreferenceOn, writePreferenceOn } from '../platform/storage.js'
+import { getLocaleEntry, nextLocale, onLocaleChange } from '../i18n/index.js'
 
 export function createSettings({
   settingsEl,
   settingsButtonEl,
   settingsCloseEl,
+  languageSettingEl,
+  languageSettingValueEl,
   soundSettingEl,
   hapticsSettingEl,
   dragTurnSettingEl,
@@ -49,6 +52,10 @@ export function createSettings({
     hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
     dragTurnSettingEl.classList.toggle('enabled', dragTurnOn)
     dragTurnSettingEl.setAttribute('aria-pressed', String(dragTurnOn))
+    // The language row is not a switch: it names the ACTIVE language, spelled in its own
+    // script (English / 简体中文). Written from the i18n module's own state so the hint can
+    // never disagree with the language the rest of the panel just re-rendered in.
+    if (languageSettingValueEl) languageSettingValueEl.textContent = getLocaleEntry().label
   }
 
   // Opening settings sets its pause source BEFORE main cancels active gestures.
@@ -161,6 +168,15 @@ export function createSettings({
       if (hapticsOn) playHaptic(18)
     }
     function onRestartSettingClick(event) { beginRun(event) }
+    // The language row ADVANCES through the shipped locales rather than opening a picker: with
+    // two languages that is a toggle, and with five it is still one tap per step instead of a
+    // new modal. The panel's own labels are rewritten by the i18n module (applyStatic) before
+    // the listeners below run, so nothing here re-renders them.
+    function onLanguageSettingClick() {
+      nextLocale()
+      updateSettingsUi()
+      playHaptic(12)
+    }
     function onDragTurnSettingClick() {
       dragTurnOn = !dragTurnOn
       writePreferenceOn('dragTurn', dragTurnOn)
@@ -183,6 +199,11 @@ export function createSettings({
     hapticsSettingEl.addEventListener('click', onHapticsSettingClick)
     dragTurnSettingEl.addEventListener('click', onDragTurnSettingClick)
     restartSettingEl.addEventListener('click', onRestartSettingClick)
+    languageSettingEl?.addEventListener('click', onLanguageSettingClick)
+    // A locale can also change from somewhere else (the ?lang= deep link, a future store
+    // switch). The switch above already refreshed the row in that case; this keeps the row
+    // honest when it did not.
+    const unsubscribeLocale = onLocaleChange(() => updateSettingsUi())
 
     function dispose() {
       controlsButtonEl.removeEventListener('click', onControlsButtonClick)
@@ -197,6 +218,8 @@ export function createSettings({
       hapticsSettingEl.removeEventListener('click', onHapticsSettingClick)
       dragTurnSettingEl.removeEventListener('click', onDragTurnSettingClick)
       restartSettingEl.removeEventListener('click', onRestartSettingClick)
+      languageSettingEl?.removeEventListener('click', onLanguageSettingClick)
+      unsubscribeLocale()
       // A stale disposer must not affect a later, explicitly rebound instance.
       if (unbind === dispose) unbind = null
     }
@@ -215,6 +238,19 @@ export function createSettings({
     }
   }
 
+  // The settings panel's read-out: the three switches, the language the panel is currently
+  // showing, and whether the language row is live. Read-only, like the controls card's.
+  function settingsReport() {
+    return {
+      open: settingsOpen,
+      sound: soundOn,
+      haptics: hapticsOn,
+      dragTurn: dragTurnOn,
+      locale: getLocaleEntry().id,
+      localeLabel: getLocaleEntry().label,
+    }
+  }
+
   return {
     isOpen: () => settingsOpen,
     isControlsOpen: () => controlsOpen,
@@ -225,6 +261,7 @@ export function createSettings({
     getDragTurnOn: () => dragTurnOn,
     getControlSpin: () => ({ ...controlSpin }),
     report,
+    settingsReport,
     setSettingsOpen,
     showSettings,
     hideSettings,

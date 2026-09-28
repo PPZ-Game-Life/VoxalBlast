@@ -318,7 +318,7 @@ group('records', () => {
   equal('the weekly bucket is keyed by the CrazyGames week', weekly.key, weekKey(new Date()))
   const laterWeek = createRecordStore(storage)
   equal('a stale weekly key reads as empty', laterWeek.weeklyBest(Date.now()), weekly.score)
-  check('record fields have labels for the UI', RECORD_FIELDS.every((field) => field.label && field.key))
+  check('record fields carry the i18n key of their label', RECORD_FIELDS.every((field) => field.labelKey && field.key))
 })
 
 // ---------------------------------------------------------------- tiers

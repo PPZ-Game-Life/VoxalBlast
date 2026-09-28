@@ -8,15 +8,20 @@
 //
 // So this module ships the mechanism and leaves the numbers null. Until a
 // calibration is pasted in, `tierForScore()` returns null and the UI says
-// "阶位待校准" instead of showing a badge nobody can earn.
+// "tiers not calibrated yet" instead of showing a badge nobody can earn.
 // tools/tier-calibration.mjs turns a sample of real scores into the object below.
+//
+// NO DISPLAY TEXT IN THIS FILE (docs/Technical/LOCALIZATION.md): a tier's name and its badge
+// word are looked up from the i18n catalogue by `tier` (`tier.3.name` / `tier.3.title`). This
+// module is imported by the Node rule tests without a DOM, so a translated string here could
+// never follow the language switch anyway.
 export const TIERS = Object.freeze([
-  Object.freeze({ tier: 1, name: '新刻面', title: 'NOVICE' }),
-  Object.freeze({ tier: 2, name: '塑形者', title: 'SHAPER' }),
-  Object.freeze({ tier: 3, name: '面匠', title: 'FACER' }),
-  Object.freeze({ tier: 4, name: '六面手', title: 'CUBER' }),
-  Object.freeze({ tier: 5, name: '立方师', title: 'MASTER' }),
-  Object.freeze({ tier: 6, name: '满贯者', title: 'LEGEND' }),
+  Object.freeze({ tier: 1 }),
+  Object.freeze({ tier: 2 }),
+  Object.freeze({ tier: 3 }),
+  Object.freeze({ tier: 4 }),
+  Object.freeze({ tier: 5 }),
+  Object.freeze({ tier: 6 }),
 ])
 
 // Quantile cuts of the reference distribution, in score. `null` = uncalibrated.

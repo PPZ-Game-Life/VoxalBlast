@@ -19,6 +19,7 @@ import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../re
 import { axisForKey } from '../rendering/keyboard.js'
 import { DRAG_GHOST, dragGhostLiftPx, ITEM_STYLE, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
 import { faceLattice, SH } from '../game/board.js'
+import { t } from '../i18n/index.js'
 import { ITEM_COPY } from '../ui/itemCopy.js'
 import { createEdgeTurn } from './edgeTurn.js'
 
@@ -157,7 +158,7 @@ export function createGameInput({
       drag.origin = null
       drag.valid = false
       onClearLanding()
-      onStatus('Turning to next face')
+      onStatus(t('status.turning'))
       return true
     },
   })
@@ -447,7 +448,7 @@ export function createGameInput({
     // The gesture's OWN source element -- the same one the capture was just taken on. The
     // authoritative repaint of the strip stays main's (onSelectionChanged -> pieceView).
     event.currentTarget.classList.add('selected')
-    onStatus('Drag to a face')
+    onStatus(t('status.dragToFace'))
   }
 
   // Attachment uses the cube silhouette; turning uses the viewport edges independently.
@@ -703,7 +704,7 @@ export function createGameInput({
       detachFace()
       onClearLanding()
       syncGhostFor(event, eventNdc(event), 'cancel')
-      onStatus('Release to cancel')
+      onStatus(t('status.releaseToCancel'))
       return true
     }
     const centre = selectedPiece ? ghostCentre(event, ndc, selectedPiece) : { x: event.clientX, y: event.clientY }
@@ -719,7 +720,7 @@ export function createGameInput({
       // 'turn' rather than 'carry': off the cube with the dwell armed, so the piece keeps its
       // own colour (the grey tint means "you cannot drop it here", and here there is no drop).
       syncGhostFor(event, ndc, 'turn', true)
-      onStatus(edgeTurn.report().phase === 'turning' ? 'Turning to next face' : 'Hold to turn')
+      onStatus(t(edgeTurn.report().phase === 'turning' ? 'status.turning' : 'status.holdToTurn'))
       return true
     }
     // Keep the carried piece visible while a committed turn finishes.
@@ -735,8 +736,8 @@ export function createGameInput({
     // disappears; if the pointer is on the cube but this face has no room, the piece
     // stays in hand and turns grey instead of silently vanishing.
     syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
-    if (attached) onStatus(drag.valid ? 'Release to place' : 'Carry the block off the cube to turn')
-    else onStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
+    if (attached) onStatus(t(drag.valid ? 'status.releaseToPlace' : 'status.carryOffToTurn'))
+    else onStatus(t(isPointerOnCube(ndc) ? 'status.noRoomOnFace' : 'status.dragToFace'))
     return true
   }
 
@@ -757,9 +758,9 @@ export function createGameInput({
     suppressPieceClickUntil = performance.now() + 260
     onCancelZone(null, false, false)
     onSelectionChanged()
-    onStatus('Pick a shape')
+    onStatus(t('status.idle'))
     if (showFeedback) {
-      onToast('Placement cancelled')
+      onToast(t('toast.placementCancelled'))
       onHaptic(10)
     }
     return true
@@ -806,23 +807,23 @@ export function createGameInput({
     if (!currentDrag.active) {
       selectedPiece = currentDrag.piece
       onSelectionChanged()
-      onStatus('Drag to a face')
+      onStatus(t('status.dragToFace'))
       return
     }
     suppressPieceClickUntil = performance.now() + 260
     if (currentDrag.inCancelZone) {
       selectedPiece = null
       onSelectionChanged()
-      onStatus('Pick a shape')
-      onToast('Placement cancelled')
+      onStatus(t('status.idle'))
+      onToast(t('toast.placementCancelled'))
       onHaptic(10)
       return
     }
     if (!currentDrag.valid || !currentDrag.origin || !currentDrag.face) {
       selectedPiece = null
       onSelectionChanged()
-      onStatus('Pick a shape')
-      onToast('Try another spot')
+      onStatus(t('status.idle'))
+      onToast(t('toast.tryAnotherSpot'))
       return
     }
     // The drop itself is main's: it settles the placement and presents it. The gesture hands over
@@ -845,7 +846,7 @@ export function createGameInput({
       if (!piece.used && !drag && !hasItemActive() && performance.now() >= suppressPieceClickUntil) {
         selectedPiece = piece
         onSelectionChanged()
-        onStatus('Drag to a face')
+        onStatus(t('status.dragToFace'))
       }
     })
   }
@@ -1068,7 +1069,7 @@ export function createGameInput({
     onRefreshConfirm(false)
     onItemStatus()
     onItemBar()
-    if (had && !silent) onStatus('Pick a shape')
+    if (had && !silent) onStatus(t('status.idle'))
   }
 
   // The state half of a new run. main keeps the charges (session) and the undo window's DOM.
@@ -1231,7 +1232,7 @@ export function createGameInput({
     if (scopeKeyFor(target, itemMode.orientation) !== itemScopeKey) {
       cancelItemSelection(true)
       onToast(ITEM_COPY.stale)
-      onStatus('Pick a shape')
+      onStatus(t('status.idle'))
       return
     }
     commitItem()
@@ -1327,7 +1328,7 @@ export function createGameInput({
     if (!verifyScope(itemScope)) {
       cancelItemSelection(true)
       onToast(ITEM_COPY.stale)
-      onStatus('Pick a shape')
+      onStatus(t('status.idle'))
       return false
     }
     return commitItem()

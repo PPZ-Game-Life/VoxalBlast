@@ -33,6 +33,9 @@ const PREFERENCE_KEYS = Object.freeze({
   // other two — the key's absence means "the shipped behaviour", so an existing player who
   // has never opened settings keeps the feature.
   dragTurn: 'voxalblast-drag-turn',
+  // i18n (docs/Technical/LOCALIZATION.md): the language the player chose. ABSENT is the
+  // shipped state — absent means "the default locale", which is English.
+  locale: 'voxalblast-locale',
 })
 
 // The global storage, or null when there is none or it throws on access: Safari private
@@ -73,4 +76,27 @@ export function readPreferenceOn(name, storage = globalThis.localStorage) {
 
 export function writePreferenceOn(name, on, storage = globalThis.localStorage) {
   storage.setItem(PREFERENCE_KEYS[name], on ? 'on' : 'off')
+}
+
+// A STRING preference (today: the locale). Deliberately DIFFERENT from the boolean pair
+// above in one respect only — it is guarded. The three booleans may throw because a throwing
+// sound switch is a visible, recoverable failure the player caused; a language that cannot
+// be read or written must never take the first frame down with it, and "storage is missing"
+// is already a supported state everywhere else in the game (records.js, session.js).
+// `null` therefore means "no preference recorded", not "the preference is English".
+export function readPreferenceValue(name) {
+  try {
+    return pickStorage()?.getItem(PREFERENCE_KEYS[name]) ?? null
+  } catch {
+    return null
+  }
+}
+
+export function writePreferenceValue(name, value) {
+  try {
+    pickStorage()?.setItem(PREFERENCE_KEYS[name], String(value))
+    return true
+  } catch {
+    return false
+  }
 }

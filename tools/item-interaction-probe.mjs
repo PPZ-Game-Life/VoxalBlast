@@ -17,6 +17,10 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep, isAbsolute, basename } from 'node:path'
+// The expected copy comes from the same catalogue the page renders (docs/Technical/
+// LOCALIZATION.md). In Node there is no ?lang= and no stored preference, so t() resolves the
+// shipped default — English — which is also what a fresh headless profile boots in.
+import { t } from '../src/i18n/index.js'
 
 const CHROME = process.env.VOXALBLAST_CHROME || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const APP_URL = process.env.VOXALBLAST_URL || 'http://127.0.0.1:5173/'
@@ -204,7 +208,7 @@ try {
   const baselinePose = JSON.stringify(s.pose)
 
   // ---- §8.3 — the strip says three different things -------------------------------
-  check('strip: icons carry a name', (await evalJs('document.querySelector(".item-button .item-name")?.textContent')) === '换批')
+  check('strip: icons carry a name', (await evalJs('document.querySelector(".item-button .item-name")?.textContent')) === t('item.name.refresh'))
   await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 2, hammer: 0, rocket: 1, bomb: 1 })')
   await sleep(150)
   s = await state()
@@ -224,7 +228,7 @@ try {
   check('I01 hammer drag: the mode is closed again', s.item === null)
   check('I01 hammer drag: the cube never turned', JSON.stringify(s.pose) === baselinePose)
   check('I01 hammer drag: no score is awarded', s.score === 0, `score=${s.score}`)
-  check('§8.9 undo bar: 已清除 1 格 + a real button', s.undo.hidden === false && s.undo.text === '已清除 1 格' && s.undo.box.w >= 44 && s.undo.box.h >= 44, JSON.stringify(s.undo))
+  check('§8.9 undo bar: 已清除 1 格 + a real button', s.undo.hidden === false && s.undo.text === t('item.clearedN', { n: 1 }) && s.undo.box.w >= 44 && s.undo.box.h >= 44, JSON.stringify(s.undo))
 
   // ---- I02 — the tap path: select, aim, lock, then 使用 ---------------------------
   await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 2, hammer: 1, rocket: 1, bomb: 1 })')
@@ -245,7 +249,7 @@ try {
   s = await state()
   check('I02 tap board: the preview locks, nothing is spent', s.item?.phase === 'locked' && s.items.rocket === 1, JSON.stringify(s.item))
   check('I07 vertical: the scope is one column, five cells', s.item.span?.u0 === 2 && s.item.span?.u1 === 2 && s.item.span?.v0 === 0 && s.item.span?.v1 === 4, JSON.stringify(s.item.span))
-  check('I02 tap board: 使用 appears with N', s.bar.useHidden === false && s.bar.text.includes('将清除 5 格'), s.bar.text)
+  check('I02 tap board: 使用 appears with N', s.bar.useHidden === false && s.bar.text.includes(t('item.clearN', { n: 5 })), s.bar.text)
   check('I02 tap board: the cube never turned', JSON.stringify(s.pose) === baselinePose)
   await shoot('rocket-locked')
 
@@ -321,7 +325,7 @@ try {
   await sleep(200)
   s = await state()
   check('I08 W does not turn the cube while a tool is armed', JSON.stringify(s.pose) === lockPose)
-  check('I08 the refusal is explained (需换面？取消后转动棋盘)', s.status === '需换面？取消后转动棋盘' || s.toast === '需换面？取消后转动棋盘', `status="${s.status}" toast="${s.toast}"`)
+  check('I08 the refusal is explained (需换面？取消后转动棋盘)', s.status === t('item.lockedRotate') || s.toast === t('item.lockedRotate'), `status="${s.status}" toast="${s.toast}"`)
   check('I08 the mode survived the refused turn', s.item?.id === 'bomb', JSON.stringify(s.item))
   await clickSel('#item-cancel')
   s = await state()

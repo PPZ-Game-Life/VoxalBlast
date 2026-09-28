@@ -34,6 +34,13 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+// The copy the gate compares against comes from the SAME catalogue the game renders, so a
+// reworded string cannot make the check disagree with the product (docs/Technical/LOCALIZATION.md).
+// In Node there is no navigator and no ?lang=, so t() here resolves the shipped default: English.
+import { t } from '../src/i18n/index.js'
+// The Chinese column is imported for the same reason: the gate asserts the switch really
+// changed language by comparing against the catalogue, not against a copy of it typed here.
+import zhCopy from '../src/i18n/locales/zh-Hans.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_URL = (process.argv[2] || 'http://127.0.0.1:5173/').replace(/\/?$/, '/')
@@ -261,8 +268,28 @@ const STATE = `(() => {
     // in-memory copy.
     records: globalThis.__voxalblast.records(),
     storedRecords: localStorage.getItem('voxalblast.records.v1'),
+    // v0.9.18 i18n (docs/Technical/LOCALIZATION.md). The locale as the MODULE reports it, plus
+    // the four surfaces a language switch has to reach: the settings panel it is clicked in,
+    // the HUD chrome, the item strip and the home cover. bodyText is the leak detector — a key
+    // that has no translation prints ITSELF, so 'item.' / 'status.' inside the page text is the
+    // one failure a screenshot at the default locale can never show. (No backticks in this
+    // block: it is one big template literal.)
+    i18n: globalThis.__voxalblast.i18n(),
+    languageLabel: document.querySelector('#language-setting-value')?.textContent ?? null,
+    settingsTitle: document.querySelector('#settings-title')?.textContent ?? null,
+    chainLabel: document.querySelector('#chain .chain-chip-label')?.textContent ?? null,
+    scoreLabel: document.querySelector('#score')?.closest('.score-chip')?.querySelector('.score-chip-label')?.textContent ?? null,
+    homeTagline: document.querySelector('.home-tagline')?.textContent ?? null,
+    gameOverPlayAgain: document.querySelector('#reset-modal')?.textContent?.trim() ?? null,
+    itemNames: [...document.querySelectorAll('#item-bar .item-name')].map((el) => el.textContent),
+    storedLocale: localStorage.getItem('voxalblast-locale'),
+    bodyText: document.body.innerText,
   }
 })()`
+
+// A missing translation renders as its own key (src/i18n/index.js t() fallback), which is the
+// intended loud failure — and this is what makes it loud in the gate as well.
+const KEY_LEAK = /\b(?:item|status|toast|pop|home|settings|controls|gameover|leaderboard|honor|record|tier|hud|a11y)\.[a-zA-Z][\w.]*/
 
 // A panel is "open" only if it is actually on screen AND on top of the stack: a modal that
 // is display:block but covered by another layer is not usable, which is exactly the
@@ -326,7 +353,7 @@ function mouse(client) {
 async function caseSettings(client, input) {
   const before = await client.readJson(STATE)
   check('A the board starts live, not paused behind a panel',
-    before.status === 'Pick a shape' && before.settings.hidden === true,
+    before.status === t('status.idle') && before.settings.hidden === true,
     `status="${before.status}" settingsHidden=${before.settings.hidden}`)
 
   const gear = await input.click('#settings-button', { label: 'the gear' })
@@ -382,7 +409,7 @@ async function caseSettings(client, input) {
   await input.click('#settings-close', { label: 'the settings close button' })
   const shut = await client.readJson(STATE)
   check('A the close button hides the panel', closed(shut.settings), `display=${shut.settings.display}`)
-  check('A closing settings un-pauses the board', shut.status === 'Pick a shape', `status="${shut.status}"`)
+  check('A closing settings un-pauses the board', shut.status === t('status.idle'), `status="${shut.status}"`)
   check('A closing settings returns focus to the gear', shut.activeId === 'settings-button',
     `activeElement=#${shut.activeId}`)
 }
@@ -404,7 +431,7 @@ async function caseControls(client, input) {
   check('B closing the controls card hides it', closed(shut.controls), `display=${shut.controls.display}`)
   check('B closing the controls card returns focus to the top-bar entry', shut.activeId === 'controls-button',
     `activeElement=#${shut.activeId}`)
-  check('B closing the controls card un-pauses the board', shut.status === 'Pick a shape', `status="${shut.status}"`)
+  check('B closing the controls card un-pauses the board', shut.status === t('status.idle'), `status="${shut.status}"`)
 
   // Entry 2: the row inside settings. The card must NOT close the settings panel behind it
   // (03 §2.2 — the player returns to the legend's own panel, not to the board).
@@ -434,10 +461,10 @@ async function caseHome(client, input) {
     `topbar.inert=${home.topbar?.inert} gameLayout.inert=${home.gameLayout?.inert}`)
   check('C the cover keeps the game layers laid out (not collapsed)', (home.gameLayout?.width ?? 0) > 0,
     `gameLayout width=${home.gameLayout?.width}`)
-  check('C the cover pauses the run', home.status === 'Home', `status="${home.status}"`)
+  check('C the cover pauses the run', home.status === t('status.home'), `status="${home.status}"`)
   check('C the cover focuses its primary button', home.activeId === 'home-primary', `activeElement=#${home.activeId}`)
   check('C the cover reports itself through the read-only hook', home.homeState.open === true, `home().open=${home.homeState.open}`)
-  check('C the primary button carries a resume/new label', ['继续游戏', '新游戏'].includes(home.homePrimaryLabel),
+  check('C the primary button carries a resume/new label', [t('home.resume'), t('home.play')].includes(home.homePrimaryLabel),
     `label="${home.homePrimaryLabel}"`)
 
   const play = await input.click('#home-primary', { label: 'the primary button' })
@@ -450,7 +477,7 @@ async function caseHome(client, input) {
     `topbar.inert=${resumed.topbar?.inert} gameLayout.inert=${resumed.gameLayout?.inert}`)
   check('C leaving the cover makes the game layers visible again', resumed.gameLayout?.visibility === 'visible',
     `visibility=${resumed.gameLayout?.visibility}`)
-  check('C the run is live again', resumed.status === 'Pick a shape' && resumed.homeState.open === false,
+  check('C the run is live again', resumed.status === t('status.idle') && resumed.homeState.open === false,
     `status="${resumed.status}" home().open=${resumed.homeState.open}`)
 }
 
@@ -507,7 +534,7 @@ async function caseEscapePrecedence(client, input) {
     await input.escape()
     const afterSecond = await client.readJson(STATE)
     check('E a second Escape closes the settings panel', closed(afterSecond.settings), `settingsDisplay=${afterSecond.settings.display}`)
-    check('E closing by Escape un-pauses the board', afterSecond.status === 'Pick a shape', `status="${afterSecond.status}"`)
+    check('E closing by Escape un-pauses the board', afterSecond.status === t('status.idle'), `status="${afterSecond.status}"`)
   }
   if (open((await client.readJson(STATE)).settings)) await input.click('#settings-close', { label: 'the settings close button' })
 }
@@ -554,7 +581,7 @@ async function caseGameOver(client, input) {
   check('F PLAY AGAIN starts a fresh run at zero', fresh.board.score === 0, `score=${fresh.board.score}`)
   check('F PLAY AGAIN deals three unspent candidates',
     fresh.slots.length === 3 && fresh.slots.every((used) => used === false), `used=[${fresh.slots}]`)
-  check('F PLAY AGAIN leaves the board live', fresh.status === 'Pick a shape', `status="${fresh.status}"`)
+  check('F PLAY AGAIN leaves the board live', fresh.status === t('status.idle'), `status="${fresh.status}"`)
   check('F PLAY AGAIN leaves the cover closed', fresh.homeState.open === false, `home().open=${fresh.homeState.open}`)
 }
 
@@ -567,7 +594,7 @@ async function caseChurn(client, input) {
   }
   const after = await client.readJson(STATE)
   check(`G ${CHURN_CYCLES} open/close cycles leave the panel shut`, closed(after.settings), `display=${after.settings.display}`)
-  check(`G ${CHURN_CYCLES} open/close cycles leave the board un-paused`, after.status === 'Pick a shape', `status="${after.status}"`)
+  check(`G ${CHURN_CYCLES} open/close cycles leave the board un-paused`, after.status === t('status.idle'), `status="${after.status}"`)
   check(`G ${CHURN_CYCLES} open/close cycles leave no inert layer`, after.topbar?.inert === false && after.gameLayout?.inert === false,
     `topbar.inert=${after.topbar?.inert} gameLayout.inert=${after.gameLayout?.inert}`)
   check(`G ${CHURN_CYCLES} open/close cycles leave the cover closed`, after.appHomeOpen === false, `home-open=${after.appHomeOpen}`)
@@ -608,6 +635,68 @@ async function caseChurn(client, input) {
     reloaded.records.best.score === before.records.best.score
     && JSON.stringify(reloaded.records.recent) === JSON.stringify(before.records.recent),
     `best ${before.records.best.score} -> ${reloaded.records.best.score}, recent=${reloaded.records.recent.length}`)
+}
+
+// ------------------------------------------------------- H. localization (v0.9.18)
+// docs/Technical/LOCALIZATION.md: English is the default and the switch has to reach the WHOLE
+// page, not just the panel it is clicked in. Both halves are assertions this file is the only
+// place able to make: a unit test can prove the catalogue is aligned, but only a real page can
+// prove the HUD, the item strip and the status line were repainted from it.
+async function caseLanguage(client, input) {
+  const boot = await client.readJson(STATE)
+  check('H the game boots in the shipped default locale',
+    boot.i18n.locale === 'en' && boot.i18n.locale === boot.i18n.defaultLocale, JSON.stringify(boot.i18n))
+  check('H <html lang> follows the locale', boot.i18n.htmlLang === 'en', `lang="${boot.i18n.htmlLang}"`)
+  check('H the default locale paints English chrome',
+    boot.settingsTitle === t('settings.title') && boot.chainLabel === t('hud.chain')
+    && boot.itemNames[0] === t('item.name.refresh'),
+    `settings="${boot.settingsTitle}" chain="${boot.chainLabel}" item="${boot.itemNames[0]}"`)
+
+  const gear = await input.click('#settings-button', { label: 'the gear' })
+  if (!gear.clicked) { skip('H localization', gear.reason); return }
+  const opened = await client.readJson(STATE)
+  check('H the language row names the active language in its own script',
+    opened.languageLabel === 'English', `hint="${opened.languageLabel}"`)
+
+  const toChinese = await input.click('#language-setting', { label: 'the language row' })
+  if (!toChinese.clicked) { skip('H language switch', toChinese.reason); return }
+  const zh = await client.readJson(STATE)
+  check('H one tap switches the locale and <html lang>',
+    zh.i18n.locale === 'zh-Hans' && zh.i18n.htmlLang === 'zh-Hans', JSON.stringify(zh.i18n))
+  // The hint is the ENDONYM (LOCALES[].label), not a translated word: the row has to name the
+  // language the way that language spells itself, so '简体中文' is the correct value here and
+  // comparing it against the catalogue's settings.language would be comparing the wrong things.
+  check('H the panel the row sits in is translated',
+    zh.settingsTitle === zhCopy['settings.title'] && zh.languageLabel === '简体中文',
+    `title="${zh.settingsTitle}" hint="${zh.languageLabel}"`)
+  check('H the HUD chrome is translated', zh.chainLabel === zhCopy['hud.chain'], `chain="${zh.chainLabel}"`)
+  check('H the item strip is translated', zh.itemNames[0] === zhCopy['item.name.refresh'], `item="${zh.itemNames[0]}"`)
+  check('H the status line is translated', zh.status === zhCopy['status.paused'], `status="${zh.status}"`)
+  check('H the home cover is translated', zh.homeTagline === zhCopy['home.tagline'], `tagline="${zh.homeTagline}"`)
+  check('H the choice is persisted for the next visit', zh.storedLocale === 'zh-Hans', `stored="${zh.storedLocale}"`)
+  check('H no untranslated KEY is painted anywhere', !KEY_LEAK.test(zh.bodyText),
+    (zh.bodyText.match(KEY_LEAK) || []).slice(0, 3).join(' | '))
+
+  const toEnglish = await input.click('#language-setting', { label: 'the language row again' })
+  if (toEnglish.clicked) {
+    const back = await client.readJson(STATE)
+    check('H tapping again returns to English, catalogues both ways',
+      back.i18n.locale === 'en' && back.settingsTitle === t('settings.title') && back.status === t('status.paused'),
+      `locale="${back.i18n.locale}" title="${back.settingsTitle}" status="${back.status}"`)
+  }
+
+  // The deep link is the QA / store-build entry point: it must decide the language of the
+  // FIRST paint, before any click. Navigating away is why this case runs last.
+  await client.send('Page.navigate', { url: `${APP_URL}?lang=zh-Hans` })
+  await waitForHandle(client)
+  await waitIntroDone(client)
+  const deep = await client.readJson(STATE)
+  check('H ?lang=zh-Hans boots in Chinese without a click',
+    deep.i18n.locale === 'zh-Hans' && deep.homeTagline === zhCopy['home.tagline']
+    && deep.itemNames[0] === zhCopy['item.name.refresh'],
+    `locale="${deep.i18n.locale}" tagline="${deep.homeTagline}" item="${deep.itemNames[0]}"`)
+  check('H the deep link paints no untranslated key either', !KEY_LEAK.test(deep.bodyText),
+    (deep.bodyText.match(KEY_LEAK) || []).slice(0, 3).join(' | '))
 }
 
 // --------------------------------------------------------------------------- driver
@@ -690,6 +779,9 @@ try {
 
   console.log('\n-- G. churn, re-binding and preference persistence --')
   await caseChurn(client, input)
+
+  console.log('\n-- H. localization: default English, one-tap switch, deep link --')
+  await caseLanguage(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))

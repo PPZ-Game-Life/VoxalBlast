@@ -42,7 +42,10 @@
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
 | src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写 |
 | src/styles.css / toy.css | 历史布局兼容 / 当前视觉覆盖 |
-| src/platform/storage.js | 存储边界：`pickStorage()` / `probeStorage()` 与两个 `'on'/'off'` 偏好的转发；schema / `migrate()` / 内存降级仍留在各自 store |
+| src/i18n/index.js | 本地化的唯一语言状态：`t()` / `formatNumber()` / `applyStatic()` / `setLocale()` 与 `onLocaleChange()`；解析顺序 `?lang=` → 存储偏好 → `DEFAULT_LOCALE='en'`，**不嗅探 `navigator.language`**（标准见 [LOCALIZATION.md](LOCALIZATION.md)） |
+| src/i18n/locales/*.js | 词条表（`en` 默认 / `zh-Hans`）；键集必须一致，由 `npm run test:i18n` 守着 |
+| src/ui/itemCopy.js | 道具子系统的取词门面：键 → getter，调用点因此不随语言切换而失效（**导入时捕获字符串就是 bug**） |
+| src/platform/storage.js | 存储边界：`pickStorage()` / `probeStorage()` 与三个 `'on'/'off'` 偏好的转发；schema / `migrate()` / 内存降级仍留在各自 store |
 | src/platform/crazygames.js | 可选平台 SDK 包装和降级路径 |
 
 ## 状态归属

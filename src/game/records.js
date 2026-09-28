@@ -29,15 +29,17 @@ const RECENT_LIMIT = 10
 const WEEK_OFFSET_MS = 9 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// Personal bests, with the label the UI prints. Keeping the labels here means a
-// new dimension is one entry, not one entry plus a switch in main.js.
+// Personal bests, with the i18n KEY of the label the UI prints. Keeping the key here means a
+// new dimension is one entry, not one entry plus a switch in main.js — and, since
+// docs/Technical/LOCALIZATION.md, a new LANGUAGE is one catalogue line rather than an edit in
+// this pure data module (which the Node rule tests import without a DOM).
 export const RECORD_FIELDS = Object.freeze([
-  Object.freeze({ key: 'maxChain', label: '最长链' }),
-  Object.freeze({ key: 'maxLinesOneMove', label: '单次最多线数' }),
-  Object.freeze({ key: 'maxFacesOneMove', label: '单次最多面数' }),
-  Object.freeze({ key: 'facesLitBest', label: '点亮面数' }),
-  Object.freeze({ key: 'faceWipes', label: '净面' }),
-  Object.freeze({ key: 'pureCubes', label: '净体' }),
+  Object.freeze({ key: 'maxChain', labelKey: 'record.maxChain' }),
+  Object.freeze({ key: 'maxLinesOneMove', labelKey: 'record.maxLinesOneMove' }),
+  Object.freeze({ key: 'maxFacesOneMove', labelKey: 'record.maxFacesOneMove' }),
+  Object.freeze({ key: 'facesLitBest', labelKey: 'record.facesLitBest' }),
+  Object.freeze({ key: 'faceWipes', labelKey: 'record.faceWipes' }),
+  Object.freeze({ key: 'pureCubes', labelKey: 'record.pureCubes' }),
 ])
 
 const RECORD_KEYS = RECORD_FIELDS.map((field) => field.key)
@@ -174,7 +176,7 @@ export function createRecordStore(rawStorage = pickStorage()) {
         const value = toCount(run[key])
         if (value <= 0) return
         if (value > records.records[key]) {
-          broken.push({ key, label: RECORD_FIELDS.find((field) => field.key === key).label, value, previous: records.records[key] })
+          broken.push({ key, labelKey: RECORD_FIELDS.find((field) => field.key === key).labelKey, value, previous: records.records[key] })
           records.records[key] = value
         }
       })

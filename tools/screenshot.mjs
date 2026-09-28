@@ -58,6 +58,15 @@ const SHOTS = [
   // first, because that is the width where the button used to disappear.
   { name: 'mobile-gameover', width: 390, height: 844, mode: 'gameover' },
   { name: 'desktop-gameover', width: 1440, height: 900, mode: 'gameover' },
+  // v0.9.18: the two panels that carry the most COPY, and therefore the two surfaces a
+  // language can break. Every string in them is now looked up from src/i18n/locales/*, and
+  // copy has no fixed width: English reads longer than Chinese in the record list, Chinese
+  // reads longer in a two-word button. Screenshot both languages with
+  // `node tools/screenshot.mjs "http://127.0.0.1:5173/?lang=zh-Hans" artifacts/visual-zh`.
+  { name: 'desktop-settings', width: 1440, height: 900, mode: 'settings' },
+  { name: 'mobile-settings', width: 390, height: 844, mode: 'settings' },
+  { name: 'desktop-leaderboard', width: 1440, height: 900, mode: 'leaderboard' },
+  { name: 'mobile-leaderboard', width: 390, height: 844, mode: 'leaderboard' },
 ]
 
 // Only the screenshot page receives this seed; gameplay remains genuinely random.
@@ -270,6 +279,34 @@ async function capture(browser, shot) {
         })
         if (ended.result?.value !== 'ended') throw new Error(`game over shot needs the dev server (${ended.result?.value}); point npm run shot at npm run dev`)
         await sleep(900)
+      }
+
+      // v0.9.18 (docs/Technical/LOCALIZATION.md): the settings panel is the densest text
+      // surface in the game — eight rows, each a title over a subtitle — and it is where the
+      // language row lives. Opened through the real gear, so the shot is of the shipped path.
+      if (mode === 'settings') {
+        await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: '(() => { document.querySelector("#settings-button").click(); return "settings"; })()',
+          returnByValue: true,
+        })
+        await sleep(600)
+      }
+
+      // The leaderboard is captured from a FINISHED run (the Game Over card's own entry), not
+      // from the home cover: the cover would hide the live board behind the panel and every
+      // board gate below would be graded on a covered scene.
+      if (mode === 'leaderboard') {
+        const ended = await send(ws, 23, 'Runtime.evaluate', {
+          expression: '(() => { const dev = globalThis.__voxalblastDev; if (typeof dev?.endGame !== "function") return "no-dev-handle"; dev.endGame(); return "ended"; })()',
+          returnByValue: true,
+        })
+        if (ended.result?.value !== 'ended') throw new Error(`leaderboard shot needs the dev server (${ended.result?.value}); point npm run shot at npm run dev`)
+        await sleep(600)
+        await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: '(() => { document.querySelector("#leaderboard-button").click(); return "open"; })()',
+          returnByValue: true,
+        })
+        await sleep(600)
       }
 
       // Two rAFs and a short pause: the last state has to reach the compositor,
@@ -515,9 +552,13 @@ async function capture(browser, shot) {
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)
         }
-        // Game Over greys the strip on purpose (the run is over), so the gate is about
-        // the states a player is meant to be able to play from.
-        const stuckItems = mode === 'gameover' ? [] : (parsed.items || []).filter((item) => item.count > 0 && item.disabled)
+        // Game Over greys the strip on purpose (the run is over), and so does the settings
+        // panel (the board is paused behind it), so the gate is about the states a player is
+        // meant to be able to play from. The leaderboard shot is taken after a finished run
+        // for the first of those reasons.
+        const stuckItems = mode === 'gameover' || mode === 'leaderboard' || mode === 'settings'
+          ? []
+          : (parsed.items || []).filter((item) => item.count > 0 && item.disabled)
         if (stuckItems.length) failures.push(`item buttons are left disabled although they have charges (${JSON.stringify(stuckItems)})`)
       }
       if (parsed.gameLayers.some(layer => layer.visibility !== (onHome ? 'hidden' : 'visible') || layer.inert !== onHome || !layer.width || !layer.height)) failures.push('game layer visibility, input isolation or preserved layout incorrect')

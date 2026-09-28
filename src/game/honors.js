@@ -14,11 +14,15 @@
 // unreachable: a 4-cell piece touches at most one corner, which belongs to 3
 // faces). PERFECT_STRIKE (single face wiped) was reachable but never once occurred
 // in 6000 games. Do not add them back.
+//
+// NO DISPLAY TEXT IN THIS FILE (docs/Technical/LOCALIZATION.md). An honor's name and badge
+// are looked up from the i18n catalogue by this table's `id` (`honor.QUAD.label` /
+// `honor.QUAD.title`), because this module is game data: the Node rule tests import it
+// without a DOM, and a translated string living here would be a second source of truth that
+// the language switch could never reach.
 export const HONORS = Object.freeze([
   Object.freeze({
     id: 'TRIPLE',
-    label: '三连爆',
-    title: 'TRIPLE',
     kind: 'lines',
     minLines: 3,
     bonus: 150,
@@ -31,8 +35,6 @@ export const HONORS = Object.freeze([
   }),
   Object.freeze({
     id: 'TRIFACE',
-    label: '三面同爆',
-    title: 'TRIFACE',
     kind: 'faces',
     faces: 3,
     bonus: 600,
@@ -43,8 +45,6 @@ export const HONORS = Object.freeze([
   }),
   Object.freeze({
     id: 'QUAD',
-    label: '四连爆',
-    title: 'QUAD',
     kind: 'lines',
     minLines: 4,
     bonus: 500,
@@ -55,8 +55,6 @@ export const HONORS = Object.freeze([
   }),
   Object.freeze({
     id: 'PENTA',
-    label: '五连爆',
-    title: 'PENTA',
     kind: 'lines',
     minLines: 5,
     bonus: 1500,
@@ -67,8 +65,6 @@ export const HONORS = Object.freeze([
   }),
   Object.freeze({
     id: 'HEXA',
-    label: '六连爆',
-    title: 'HEXA',
     kind: 'lines',
     minLines: 6,
     bonus: 4000,
@@ -84,8 +80,6 @@ export const HONORS = Object.freeze([
     // entry, not a moment to interrupt). Unreachable in practice — 09 §1.1 proves
     // it is the ceiling, and 2000 games never came close.
     id: 'PERFECT_TWELVE',
-    label: '十二线满贯',
-    title: 'PERFECT TWELVE',
     kind: 'lines',
     minLines: 12,
     bonus: 20000,

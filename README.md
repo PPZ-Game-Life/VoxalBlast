@@ -2,7 +2,7 @@
 
 六面贴块消除小游戏，使用 Vite + 原生 JavaScript + Three.js。
 
-> 当前实现基线：**v0.9.17**（`package.json`）。本轮是**道具交互重设计 v1**：清理类道具改「从图标按住拖出 → 范围预览 → 有效处松手使用」，并补上轻点备用路径（点图标 → 点/滑动选目标 → 点 `使用 · −1`）；道具模式内锁死画布转面与缩放，候选托盘与道具条成为两个独立取消区，火箭方向改为显式横/纵切换（不再随格内偏移跳向），炸弹画出 2×2 外框、内部分格、锚点与边缘裁切断线，换批改成候选区内的两步确认，撤销从 toast 换成独立的 `已清除 N 格 [撤销]` 操作条。规格见 [道具系统设计 §8](docs/Planning/07-道具系统设计.md)，实施记录与逐条对账见该文 §9。新增专项门 `npm run probe:item`（39 项）。上一轮是 [交互与表现需求 §3.1](docs/Planning/03-交互与表现需求.md) 的「一次手势只翻一面」（v0.9.7），再往前 v0.9.5 / v0.9.4 / v0.9.3 是它逐级放宽的版本，竖屏尺寸与发牌难度见 v0.9.1 / [发牌与渐进难度 P1 实现记录](docs/Technical/DEALING_P1.md)。不代表远端部署版本。
+> 当前实现基线：**v0.9.18**（`package.json`）。本轮是**本地化**：全部用户可见文案搬进 `src/i18n/locales/*`，**英文为默认版本**、简体中文为第二语言，静态标记 `data-i18n*` / 动态文本渲染时 `t()` 取词，设置面板新增「语言」行一点即切、`?lang=zh-Hans` 可深链首帧即中文；行为标准见 [本地化标准](docs/Technical/LOCALIZATION.md)，守卫 `npm run test:i18n`（151 项）已进 `npm test` 与 `npm run gates`。上一轮是 [道具系统设计 §8](docs/Planning/07-道具系统设计.md) 的**道具交互重设计 v1**（v0.9.17），再往前是 [交互与表现需求 §3.1](docs/Planning/03-交互与表现需求.md) 的「一次手势只翻一面」（v0.9.7）与竖屏尺寸 / 发牌难度（v0.9.1 / [发牌与渐进难度 P1 实现记录](docs/Technical/DEALING_P1.md)）。不代表远端部署版本。
 
 ## 当前游戏
 
@@ -26,10 +26,12 @@
 ```sh
 npm ci                 # 按锁文件安装依赖
 npm run dev            # 开发服务器
-npm test               # 规则层检查
+npm test               # 本地化守卫 + 规则层检查
+npm run test:i18n      # 只跑本地化守卫（词条表对齐、无硬编码文案）
 npm run build          # 生产构建
 npm run preview        # 预览生产产物
-npm run shot           # 无头浏览器十组截图/断言，需可访问开发服务
+npm run shot           # 无头浏览器 14 组截图/断言，需可访问开发服务
+                       #   中文那套：node tools/screenshot.mjs "http://127.0.0.1:5173/?lang=zh-Hans" artifacts/visual-zh
 npm run probe:intro    # 开场两阶段动画（启动入口、底漆/上色、节奏、结束位姿，并录下启动帧序）
 npm run probe:swipe     # 手势方向
 npm run probe:framing   # 24 朝向构图与方位微调
@@ -40,6 +42,12 @@ npm run probe:shapes    # 形状几何指标对照
 
 浏览器探针依赖本机 Edge/Chrome、可用的全局 WebSocket 与开发入口；移动视口模拟**不是物理手机测试**。脚本入口与副作用见 [技术结构](docs/Technical/ARCHITECTURE.md)。纯文档修订只检查事实、链接、差异，不要求重新构建、截图或全量模拟。
 
+## 本地化
+
+- **默认英文**，第二语言简体中文；切换入口在设置面板第一行「语言」，选择存在 `voxalblast-locale`，`?lang=zh-Hans` 可直接深链（QA / 商店链接用）。**不嗅探 `navigator.language`**——默认语言是产品决定，不该被浏览器头静默改掉。
+- **任何用户可见文本都不是字面量**：只在 `src/i18n/locales/*` 里，只通过 `t(key)` 取；`npm test` 的第一道门会在中文回流 (硬编码 CJK) 或英文文案回流 (词条表外的同名字面量) 时直接失败。
+- 加词条 / 加语言 / 常见错误见 [本地化标准](docs/Technical/LOCALIZATION.md)。
+
 ## 文档与目录
 
 **先读 [文档导航](docs/README.md)**，再按问题找对应文件，不再把多代开发日志当现行说明。
@@ -47,6 +55,7 @@ npm run probe:shapes    # 形状几何指标对照
 | 路径 | 内容 |
 | --- | --- |
 | `src/game/` | 棋盘、形状、计分、荣誉、纪录、续玩与阶位 |
+| `src/i18n/` | **本地化**：语言解析、`t()`、词条表（`locales/en.js` 默认 / `locales/zh-Hans.js`） |
 | `src/rendering/` | 视觉/手感配置、材质、背景、灯光、输入与兼容桥 |
 | `src/main.js` | 场景、拖放、旋转、道具、HUD 与局内状态编排 |
 | `src/platform/` / `src/ui/` | 可选 CrazyGames 适配 / SVG 图标 |
@@ -60,12 +69,13 @@ npm run probe:shapes    # 形状几何指标对照
 
 ## 维护规则
 
-1. 当前行为以源码为准：规则查 `src/game/`，交互/道具/结束流程查 `src/main.js`，视觉与手感参数查 `src/rendering/config.js`。
+1. 当前行为以源码为准：规则查 `src/game/`，交互/道具/结束流程查 `src/main.js`，视觉与手感参数查 `src/rendering/config.js`，**文案查 `src/i18n/locales/`**。
 2. 修改行为时同步对应文档；纯文档整理不升级游戏版本，不修改锁文件。
-3. 实现、提案、历史实验和验证结果分开写；记录验证时注明版本、环境、范围，不能把旧勾选搬成当前通过。
-4. 功能或视觉变更按 [04 回归清单](docs/Planning/04-MVP验收清单.md) 选取相关检查；视觉改动先读 [05 美术规范](docs/Planning/05-美术方向与视觉规范.md)。
-5. 难度先看 [十四类池报告](docs/Technical/DIFFICULTY_CURVE_POOL14.md)。实验工具里的 `current` 是冻结的历史十类池，不能按名字误认为正式池；`soft75` 跟随正式权重，名字也不代表当前四格件占比。
-6. 版本演变与当时验收保留在 [04](docs/Planning/04-MVP验收清单.md) 和各具名实验报告；本地成功不证明远端部署、CrazyGames 接口或物理手机已验收。
+3. **任何用户可见文本都必须走 `src/i18n`**（`t(key)` 或 `data-i18n*` 标记），新增中文字面量会被 `npm run test:i18n` 挡下；数据模块只存 id 与键，不存显示文案。见 [本地化标准](docs/Technical/LOCALIZATION.md)。
+4. 实现、提案、历史实验和验证结果分开写；记录验证时注明版本、环境、范围，不能把旧勾选搬成当前通过。
+5. 功能或视觉变更按 [04 回归清单](docs/Planning/04-MVP验收清单.md) 选取相关检查；视觉改动先读 [05 美术规范](docs/Planning/05-美术方向与视觉规范.md)。
+6. 难度先看 [十四类池报告](docs/Technical/DIFFICULTY_CURVE_POOL14.md)。实验工具里的 `current` 是冻结的历史十类池，不能按名字误认为正式池；`soft75` 跟随正式权重，名字也不代表当前四格件占比。
+7. 版本演变与当时验收保留在 [04](docs/Planning/04-MVP验收清单.md) 和各具名实验报告；本地成功不证明远端部署、CrazyGames 接口或物理手机已验收。
 
 [产品概览](docs/Planning/01-立项PRD.md) · [部署事实](docs/Technical/NETLIFY_DEPLOYMENT_BASELINE.md) · [历史资料](docs/Archive/README.md)
 

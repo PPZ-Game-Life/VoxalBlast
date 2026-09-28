@@ -72,6 +72,9 @@ export function collectDom(root = document) {
     // Settings panel, controls card and their entries.
     settingsEl: need('#settings-modal'),
     settingsButtonEl: need('#settings-button'),
+    // i18n: the language row and the hint that spells the current language in its own script.
+    languageSettingEl: need('#language-setting'),
+    languageSettingValueEl: need('#language-setting-value'),
     soundSettingEl: need('#sound-setting'),
     hapticsSettingEl: need('#haptics-setting'),
     dragTurnSettingEl: need('#drag-turn-setting'),

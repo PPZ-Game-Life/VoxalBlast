@@ -20,6 +20,7 @@ import * as THREE from 'three'
 import { HONORS } from '../game/honors.js'
 import { RECORD_FIELDS, weekKey } from '../game/records.js'
 import { TIER_CUTS, tierForScore, tiersReady } from '../game/tiers.js'
+import { formatNumber, t } from '../i18n/index.js'
 import { BOARD_STYLE as style } from '../rendering/config.js'
 import { addToyLights } from '../rendering/toyLights.js'
 import { blockSurfaceArtReady } from '../rendering/woodTexture.js'
@@ -98,10 +99,13 @@ export function createHome({
     requestAnimationFrame(renderHomeBoard)
     const saved = getSavedRun()
     homePrimaryEl.classList.toggle('resume', Boolean(saved))
-    homePrimaryLabelEl.textContent = saved ? '继续游戏' : '新游戏'
-    homeBestEl.textContent = getBest().toLocaleString('en-US')
+    homePrimaryLabelEl.textContent = saved ? t('home.resume') : t('home.play')
+    homeBestEl.textContent = formatNumber(getBest())
     homeResumeNoteEl.textContent = saved
-      ? `未完成的一局：${saved.board.score.toLocaleString('en-US')} 分 · ${saved.board.cells.length} 格`
+      ? t('home.resumeNote', {
+        score: formatNumber(saved.board.score),
+        cells: saved.board.cells.length,
+      })
       : ''
     return saved
   }
@@ -160,50 +164,53 @@ export function createHome({
     // can be calibrated yet). A badge with invented thresholds would be worse than
     // no badge, so the panel says what it is waiting for.
     const tierHtml = tier
-      ? `<div class="lb-tier"><span class="lb-tier-badge">T${tier.tier}</span><span class="lb-tier-copy"><strong>${tier.name}</strong><small>${tier.title}</small></span></div>`
-      : `<div class="lb-tier uncalibrated"><span class="lb-tier-badge">T?</span><span class="lb-tier-copy"><strong>阶位待校准</strong><small>难度定稿后按真实玩家分位分档（08 §4.6）</small></span></div>`
+      ? `<div class="lb-tier"><span class="lb-tier-badge">T${tier.tier}</span><span class="lb-tier-copy"><strong>${t(`tier.${tier.tier}.name`)}</strong><small>${t(`tier.${tier.tier}.title`)}</small></span></div>`
+      : `<div class="lb-tier uncalibrated"><span class="lb-tier-badge">T?</span><span class="lb-tier-copy"><strong>${t('leaderboard.tierUncalibrated')}</strong><small>${t('leaderboard.tierUncalibratedNote')}</small></span></div>`
 
     const recent = records.recent
     const top = Math.max(1, ...recent.map((entry) => entry.score))
     const bars = recent.length
-      ? recent.map((entry, index) => `<li class="lb-bar-row"><span class="lb-bar-index">${index + 1}</span><span class="lb-bar"><i style="width:${Math.max(4, Math.round((entry.score / top) * 100))}%"></i></span><span class="lb-bar-score">${entry.score.toLocaleString('en-US')}</span></li>`).join('')
-      : '<li class="lb-empty">还没有对局记录</li>'
+      ? recent.map((entry, index) => `<li class="lb-bar-row"><span class="lb-bar-index">${index + 1}</span><span class="lb-bar"><i style="width:${Math.max(4, Math.round((entry.score / top) * 100))}%"></i></span><span class="lb-bar-score">${formatNumber(entry.score)}</span></li>`).join('')
+      : `<li class="lb-empty">${t('leaderboard.empty')}</li>`
 
+    // Labels come from the catalogue by STABLE KEY (record.maxChain / honor.QUAD.label), never
+    // from display text stored in the data modules: honors.js and records.js are game data and
+    // are imported by the Node rule tests, which must not need a locale to run.
     const recordRows = RECORD_FIELDS
-      .map((field) => `<li><span>${field.label}</span><strong>${records.records[field.key]}</strong></li>`)
+      .map((field) => `<li><span>${t(field.labelKey)}</span><strong>${records.records[field.key]}</strong></li>`)
       .join('')
     const honorRows = HONORS
-      .map((honor) => `<li><span>${honor.label}<small>${honor.title}</small></span><strong>${records.honors[honor.id] || 0}</strong></li>`)
+      .map((honor) => `<li><span>${t(`honor.${honor.id}.label`)}<small>${t(`honor.${honor.id}.title`)}</small></span><strong>${records.honors[honor.id] || 0}</strong></li>`)
       .join('')
 
     leaderboardBodyEl.innerHTML = `
     ${tierHtml}
     <section class="lb-section">
-      <h2>最近 ${recent.length || 0} 局</h2>
+      <h2>${t('leaderboard.recent', { n: recent.length || 0 })}</h2>
       <ol class="lb-bars">${bars}</ol>
     </section>
     <section class="lb-section">
-      <h2>个人最佳</h2>
+      <h2>${t('leaderboard.personalBest')}</h2>
       <ul class="lb-list">
-        <li><span>最高分</span><strong>${records.best.score.toLocaleString('en-US')}</strong></li>
-        <li><span>本周最佳</span><strong>${(records.weekly.key === weekKey() ? records.weekly.score : 0).toLocaleString('en-US')}</strong></li>
-        <li><span>已玩局数</span><strong>${records.records.gamesPlayed}</strong></li>
+        <li><span>${t('leaderboard.best')}</span><strong>${formatNumber(records.best.score)}</strong></li>
+        <li><span>${t('leaderboard.weekly')}</span><strong>${formatNumber(records.weekly.key === weekKey() ? records.weekly.score : 0)}</strong></li>
+        <li><span>${t('leaderboard.gamesPlayed')}</span><strong>${records.records.gamesPlayed}</strong></li>
         ${recordRows}
       </ul>
     </section>
     <section class="lb-section">
-      <h2>荣誉收集</h2>
+      <h2>${t('leaderboard.honors')}</h2>
       <ul class="lb-list lb-list-honors">${honorRows}</ul>
-      ${tiersReady(TIER_CUTS) ? '' : '<p class="lb-note">阶位分档取自真实玩家分位数，难度定稿后一次性标定；当前不出具体数字（08 §12 待决策 4）。</p>'}
+      ${tiersReady(TIER_CUTS) ? '' : `<p class="lb-note">${t('leaderboard.tierNote')}</p>`}
     </section>`
 
     // Layer 2 entry: without an invitation the platform has nothing to show, so the
-    // button is greyed with "即将开放" and never fires a request (§7.4).
+    // button is greyed with "coming soon" and never fires a request (§7.4).
     const invited = platform.leaderboardAvailable()
-    leaderboardPlatformEl.innerHTML = `<p>全球榜由 CrazyGames 提供</p>`
+    leaderboardPlatformEl.innerHTML = `<p>${t('leaderboard.globalBy')}</p>`
       + (invited
-        ? '<button id="platform-button" class="ghost-button" type="button">打开全球榜</button>'
-        : '<button class="ghost-button disabled" type="button" disabled>即将开放</button>')
+        ? `<button id="platform-button" class="ghost-button" type="button">${t('leaderboard.openGlobal')}</button>`
+        : `<button class="ghost-button disabled" type="button" disabled>${t('leaderboard.comingSoon')}</button>`)
     leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
   }
 

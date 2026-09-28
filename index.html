@@ -7,34 +7,39 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%23e2af78'/%3E%3Cpath d='M4 16h24M16 4v24' stroke='%23765033' stroke-width='2'/%3E%3C/svg%3E" />
     <title>VoxalBlast</title>
   </head>
+  <!-- Localization (docs/Technical/LOCALIZATION.md): the text baked into this file is the
+       ENGLISH default, so a build whose module never runs still reads correctly. Every
+       translatable node carries data-i18n / data-i18n-text / data-i18n-aria-label /
+       data-i18n-title, and src/i18n/index.js rewrites them for the active locale. A literal
+       added here without one of those attributes is a guard-test failure (tools/i18n-tests.mjs). -->
   <body>
     <div id="app" class="home-open">
       <header class="topbar">
         <div class="score-plaque" aria-hidden="true"></div>
-        <button id="sound-button" class="icon-button" type="button" aria-label="Sound" aria-pressed="true" title="Sound"></button>
-        <span id="app-version" class="app-version" aria-label="Game version"></span>
-        <div class="score-chip" aria-label="Score">
-          <span class="score-chip-label">SCORE</span>
+        <button id="sound-button" class="icon-button" type="button" aria-label="Sound" data-i18n-aria-label="a11y.sound" title="Sound" data-i18n-title="a11y.sound" aria-pressed="true"></button>
+        <span id="app-version" class="app-version" aria-label="Game version" data-i18n-aria-label="a11y.version"></span>
+        <div class="score-chip" aria-label="Score" data-i18n-aria-label="a11y.score">
+          <span class="score-chip-label" data-i18n="hud.score">SCORE</span>
           <span id="score" class="score-chip-value">0000</span>
         </div>
         <!-- CHAIN (v0.3, 08 §7.5): the stake of the streak. Hidden below a chain of
              HUD_STYLE.chainMinVisible so that breaking it costs something. -->
-        <div id="chain" class="chain-chip" aria-hidden="true" aria-label="Clear streak">
-          <span class="chain-chip-label">CHAIN</span>
+        <div id="chain" class="chain-chip" aria-hidden="true" aria-label="Clear streak" data-i18n-aria-label="a11y.chain">
+          <span class="chain-chip-label" data-i18n="hud.chain">CHAIN</span>
           <span class="chain-chip-value">×<b id="chain-value">0</b></span>
           <span class="chain-chip-bar" aria-hidden="true"><i id="chain-bar"></i></span>
         </div>
         <!-- BEST is allowed again since 2026-09-11 (04「UI 与发布」修订): it must
              stay visually below SCORE and the row must never wrap. -->
-        <div class="best-chip" aria-label="Best score">
-          <span class="best-chip-label">BEST</span>
+        <div class="best-chip" aria-label="Best score" data-i18n-aria-label="a11y.bestScore">
+          <span class="best-chip-label" data-i18n="hud.best">BEST</span>
           <span id="best" class="best-chip-value">0</span>
         </div>
         <!-- PC keyboard legend (v0.4.1, 03 §13). Rendered from 641px up only: below
              that the pointer is a thumb, and the swipe model already covers those
              axes. The bindings themselves work at any width. -->
-        <button id="controls-button" class="icon-button" type="button" aria-label="Open controls" title="Controls"><span aria-hidden="true"></span></button>
-        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><span aria-hidden="true"></span></button>
+        <button id="controls-button" class="icon-button" type="button" aria-label="Open controls" data-i18n-aria-label="a11y.openControls" title="Controls" data-i18n-title="a11y.controls"><span aria-hidden="true"></span></button>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" data-i18n-aria-label="a11y.openSettings" title="Settings" data-i18n-title="a11y.settings"><span aria-hidden="true"></span></button>
       </header>
       <main class="game-layout">
         <!-- v0.9.8 touch map. The view is a fixed 100dvh stage, so no game surface may pan the
@@ -52,7 +57,7 @@
         <div class="scroll-strip" aria-hidden="true"></div>
         <section class="board-section">
           <img class="garden-pedestal" src="./art/reference/pedestal.webp" alt="" aria-hidden="true" draggable="false" />
-          <div class="status-line"><span class="status-dot"></span><span id="status">Pick a shape</span></div>
+          <div class="status-line"><span class="status-dot"></span><span id="status" data-i18n="status.idle">Pick a shape</span></div>
           <div id="scene-wrap" class="scene-wrap"></div>
           <!-- Honor broadcast layer (08 §6): lives in the info band above the cube,
                never covers the board, never takes a pointer event. -->
@@ -72,7 +77,7 @@
           <div id="piece-slots" class="piece-slots"></div>
           <div id="cancel-zone" class="cancel-zone" aria-hidden="true">
             <span class="cancel-icon" aria-hidden="true">×</span>
-            <span class="cancel-copy"><strong id="cancel-zone-title">Cancel</strong><small id="cancel-zone-note">placement</small></span>
+            <span class="cancel-copy"><strong id="cancel-zone-title" data-i18n="item.pieceCancelTitle">Cancel</strong><small id="cancel-zone-note" data-i18n="item.pieceCancelNote">placement</small></span>
             <span class="cancel-arrow" aria-hidden="true">↩</span>
           </div>
           <!-- Refresh's inline confirmation (07 §8.8). It lives INSIDE the tray on purpose: a
@@ -80,10 +85,10 @@
                is asked where the batch is. It is absolutely positioned over the slots so nothing
                moves when it opens — 「不提前 reroll」 needs the slots to stay exactly where the
                player was already looking. -->
-          <div id="refresh-confirm" class="refresh-confirm hidden" role="group" aria-label="换批确认">
+          <div id="refresh-confirm" class="refresh-confirm hidden" role="group" aria-label="Refresh confirmation" data-i18n-aria-label="a11y.refreshConfirm">
             <span id="refresh-confirm-copy" class="refresh-confirm-copy"></span>
-            <button id="refresh-keep" class="refresh-keep" type="button">保留当前</button>
-            <button id="refresh-go" class="refresh-go" type="button">换一批 · −1</button>
+            <button id="refresh-keep" class="refresh-keep" type="button" data-i18n="item.refreshKeep">Keep current</button>
+            <button id="refresh-go" class="refresh-go" type="button" data-i18n="item.refreshGo">Refresh · −1</button>
           </div>
         </section>
         <!-- The item strip is a SIBLING of the board, not a child of the candidate panel
@@ -96,11 +101,11 @@
              and a number is not something a new player can read. The name lives INSIDE the
              button, so the strip grows by `--item-caption` and the board band is offset by the
              same amount (see reference.css) instead of the caption eating into the cube. -->
-        <div id="item-bar" class="item-bar" aria-label="Items">
-          <button class="item-button" type="button" data-item="refresh" title="丢弃当前整批候选并重抽三块" aria-label="换批"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span><span class="item-name">换批</span><span class="item-empty">本局已用完</span></button>
-          <button class="item-button" type="button" data-item="hammer" title="敲掉正面的一格方块" aria-label="锤子"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span><span class="item-name">锤子</span><span class="item-empty">本局已用完</span></button>
-          <button class="item-button" type="button" data-item="rocket" title="清掉正面的一整行或一整列" aria-label="火箭"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span><span class="item-name">火箭</span><span class="item-empty">本局已用完</span></button>
-          <button class="item-button" type="button" data-item="bomb" title="炸掉正面的 2×2 区域" aria-label="炸弹"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span><span class="item-name">炸弹</span><span class="item-empty">本局已用完</span></button>
+        <div id="item-bar" class="item-bar" aria-label="Items" data-i18n-aria-label="a11y.items">
+          <button class="item-button" type="button" data-item="refresh" title="Discard the whole batch and deal three new pieces" data-i18n-title="item.title.refresh" aria-label="Refresh" data-i18n-aria-label="item.name.refresh"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span><span class="item-name" data-i18n="item.name.refresh">Refresh</span><span class="item-empty" data-i18n="item.empty">None left this run</span></button>
+          <button class="item-button" type="button" data-item="hammer" title="Knock out one block on the front face" data-i18n-title="item.title.hammer" aria-label="Hammer" data-i18n-aria-label="item.name.hammer"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span><span class="item-name" data-i18n="item.name.hammer">Hammer</span><span class="item-empty" data-i18n="item.empty">None left this run</span></button>
+          <button class="item-button" type="button" data-item="rocket" title="Clear a whole row or column on the front face" data-i18n-title="item.title.rocket" aria-label="Rocket" data-i18n-aria-label="item.name.rocket"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span><span class="item-name" data-i18n="item.name.rocket">Rocket</span><span class="item-empty" data-i18n="item.empty">None left this run</span></button>
+          <button class="item-button" type="button" data-item="bomb" title="Blast a 2 x 2 area on the front face" data-i18n-title="item.title.bomb" aria-label="Bomb" data-i18n-aria-label="item.name.bomb"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span><span class="item-name" data-i18n="item.name.bomb">Bomb</span><span class="item-empty" data-i18n="item.empty">None left this run</span></button>
           <!-- The strip IS the second cancel zone while a tool is dragged out of an icon
                (07 §8.3): it and the candidate tray are TWO independent rectangles, never one
                big box that swallows the board between them. `pointer-events:none` — the hit
@@ -108,7 +113,7 @@
                the finger here is judged by exactly the same rule. -->
           <div id="item-cancel-zone" class="cancel-zone item-cancel-zone" aria-hidden="true">
             <span class="cancel-icon" aria-hidden="true">×</span>
-            <span class="cancel-copy"><strong>拖到这里取消</strong><small>松手取消</small></span>
+            <span class="cancel-copy"><strong data-i18n="item.dragCancelTitle">Drag here to cancel</strong><small data-i18n="item.dragCancelNote">Release to cancel</small></span>
           </div>
         </div>
         <!-- The item status bar (07 §8.3): [图标 名称] [操作提示/目标数量] [× 取消], with the
@@ -126,43 +131,43 @@
               <span id="item-status-name" class="item-status-name"></span>
             </span>
             <span id="item-status-hint" class="item-status-hint"></span>
-            <span id="axis-pick" class="axis-pick hidden" aria-label="火箭方向">
-              <button type="button" data-axis="row">↔ 横向</button>
-              <button type="button" data-axis="col">↕ 纵向</button>
+            <span id="axis-pick" class="axis-pick hidden" aria-label="Rocket direction" data-i18n-aria-label="a11y.rocketAxis">
+              <button type="button" data-axis="row" data-i18n="item.axis.row">↔ Row</button>
+              <button type="button" data-axis="col" data-i18n="item.axis.col">↕ Column</button>
             </span>
-            <button id="item-use" class="item-use hidden" type="button">使用 · −1</button>
-            <button id="item-cancel" class="item-cancel" type="button" aria-label="取消当前道具">✕ 取消</button>
+            <button id="item-use" class="item-use hidden" type="button" data-i18n="item.useOnce">Use · −1</button>
+            <button id="item-cancel" class="item-cancel" type="button" aria-label="Cancel the current item" data-i18n-aria-label="a11y.cancelItem" data-i18n="item.cancel">✕ Cancel</button>
           </div>
           <div id="undo-bar" class="undo-bar hidden" role="status" aria-live="polite">
             <span id="undo-bar-text" class="undo-bar-text"></span>
-            <button id="undo-button" class="undo-button" type="button">撤销</button>
+            <button id="undo-button" class="undo-button" type="button" data-i18n="item.undo">Undo</button>
           </div>
         </div>
       </main>
       <!-- Home screen (v0.4, 03 §「主页与断点续玩」): the game opens here instead of on
            a live board. The game layer is invisible and inert, but keeps its layout
            size behind the cover, so coming home and going back costs no reload and no
-           re-fit. The primary button reads 继续游戏 whenever a resume snapshot exists
-           (src/game/session.js), 新游戏 otherwise. -->
+           re-fit. The primary button reads Continue whenever a resume snapshot exists
+           (src/game/session.js), New game otherwise. -->
       <div id="home" class="home-screen" role="dialog" aria-modal="true" aria-labelledby="home-title">
         <div class="home-inner">
           <div class="home-brand">
             <div id="home-hero" class="home-hero" aria-hidden="true"></div>
             <h1 id="home-title">VoxalBlast</h1>
-            <p class="home-tagline">立体消除 · 六面连爆</p>
+            <p class="home-tagline" data-i18n="home.tagline">Stack · Align · Blast all six faces</p>
           </div>
           <div class="home-record">
-            <span class="home-record-label">最高分</span>
+            <span class="home-record-label" data-i18n="home.best">Best</span>
             <strong id="home-best">0</strong>
           </div>
           <button id="home-primary" class="home-primary" type="button">
             <span class="home-primary-icon" aria-hidden="true">▶</span>
-            <span id="home-primary-label">新游戏</span>
+            <span id="home-primary-label" data-i18n="home.play">New game</span>
           </button>
           <p id="home-resume-note" class="home-resume-note" aria-live="polite"></p>
           <div class="home-secondary-row">
-            <button id="home-leaderboard" class="home-secondary" type="button"><span aria-hidden="true"></span>排行榜</button>
-            <button id="home-settings" class="home-secondary" type="button"><span aria-hidden="true"></span>设置</button>
+            <button id="home-leaderboard" class="home-secondary" type="button" data-i18n-text="home.leaderboard"><span aria-hidden="true"></span>Leaderboard</button>
+            <button id="home-settings" class="home-secondary" type="button" data-i18n-text="home.settings"><span aria-hidden="true"></span>Settings</button>
           </div>
         </div>
       </div>
@@ -176,8 +181,8 @@
       <div id="controls-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="controls-title">
         <div class="modal-content controls-card">
           <div class="settings-header">
-            <div><div class="eyebrow">PC KEYBOARD</div><h1 id="controls-title">操作说明</h1></div>
-            <button id="controls-close" class="modal-close" type="button" aria-label="Close controls">×</button>
+            <div><div class="eyebrow" data-i18n="controls.eyebrow">PC KEYBOARD</div><h1 id="controls-title" data-i18n="controls.title">Controls</h1></div>
+            <button id="controls-close" class="modal-close" type="button" aria-label="Close controls" data-i18n-aria-label="a11y.closeControls">×</button>
           </div>
           <div class="controls-list">
             <div class="ctrl-row" data-axis="pitch">
@@ -186,7 +191,7 @@
                 <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
                 <span class="ctrl-ring"><i></i></span>
               </div>
-              <div class="ctrl-copy"><strong>上下翻面</strong><small>绕 X 轴（屏幕横轴）</small></div>
+              <div class="ctrl-copy"><strong data-i18n="controls.pitch">Turn up / down</strong><small data-i18n="controls.pitchNote">Around the X axis (screen horizontal)</small></div>
             </div>
             <div class="ctrl-row" data-axis="yaw">
               <div class="ctrl-keys"><kbd data-key="a">A</kbd><kbd data-key="d">D</kbd></div>
@@ -194,7 +199,7 @@
                 <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
                 <span class="ctrl-ring"><i></i></span>
               </div>
-              <div class="ctrl-copy"><strong>左右翻转</strong><small>绕 Y 轴（屏幕纵轴）</small></div>
+              <div class="ctrl-copy"><strong data-i18n="controls.yaw">Turn left / right</strong><small data-i18n="controls.yawNote">Around the Y axis (screen vertical)</small></div>
             </div>
             <div class="ctrl-row" data-axis="roll">
               <div class="ctrl-keys"><kbd data-key="q">Q</kbd><kbd data-key="e">E</kbd></div>
@@ -202,31 +207,35 @@
                 <span class="ctrl-cube"><i class="ctrl-face ctrl-back"></i><i class="ctrl-face ctrl-left"></i><i class="ctrl-face ctrl-right"></i><i class="ctrl-face ctrl-top"></i></span>
                 <span class="ctrl-ring"><i></i></span>
               </div>
-              <div class="ctrl-copy"><strong>平面自转</strong><small>绕 Z 轴（屏幕法线）</small></div>
+              <div class="ctrl-copy"><strong data-i18n="controls.roll">Spin in plane</strong><small data-i18n="controls.rollNote">Around the Z axis (screen normal)</small></div>
             </div>
           </div>
-          <p class="controls-note">每个键 = 一次翻面，与鼠标拖拽 / 单指滑动完全同轴同向；按住不连发。</p>
+          <p class="controls-note" data-i18n="controls.note">Each key turns the cube once, on the same axis and direction as a mouse drag or a one-finger swipe. Holding a key does not repeat.</p>
         </div>
       </div>
       <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-content settings-card">
           <div class="settings-header">
-            <div><h1 id="settings-title">设置</h1></div>
-            <button id="settings-close" class="modal-close" type="button" aria-label="Close settings">×</button>
+            <div><h1 id="settings-title" data-i18n="settings.title">Settings</h1></div>
+            <button id="settings-close" class="modal-close" type="button" aria-label="Close settings" data-i18n-aria-label="a11y.closeSettings">×</button>
           </div>
           <div class="settings-list">
-            <button id="sound-setting" class="setting-row" type="button"><span><strong>声音</strong><small>放置与消除音效</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="haptics-setting" class="setting-row" type="button"><span><strong>触感</strong><small>触摸震动反馈</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <!-- Language row (i18n standard). Tapping it advances to the next shipped locale
+                 (src/i18n/index.js LOCALES); the hint shows the CURRENT language spelled in its
+                 own script, which src/ui/settings.js writes on every change. -->
+            <button id="language-setting" class="setting-row" type="button" aria-label="Language" data-i18n-aria-label="settings.language"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.languageNote">Takes effect immediately</small></span><span id="language-setting-value" class="setting-hint" aria-hidden="true"></span></button>
+            <button id="sound-setting" class="setting-row" type="button"><span><strong data-i18n="settings.sound">Sound</strong><small data-i18n="settings.soundNote">Placement and clear SFX</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="haptics-setting" class="setting-row" type="button"><span><strong data-i18n="settings.haptics">Haptics</strong><small data-i18n="settings.hapticsNote">Vibration feedback</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
             <!-- v0.9.12: the drag-turn switch (03 §3.1). ON = carrying a piece until its own
                  centre leaves the cube's outline turns the cube; OFF = that gesture only ever
                  moves the piece, and faces are turned with the keyboard or by dragging the
                  background. -->
-            <button id="drag-turn-setting" class="setting-row" type="button"><span><strong>拖块翻面</strong><small>方块带出六面体即翻面</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="controls-setting" class="setting-row" type="button"><span><strong>操作说明</strong><small>键盘与旋转操作</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
+            <button id="drag-turn-setting" class="setting-row" type="button"><span><strong data-i18n="settings.dragTurn">Drag to turn</strong><small data-i18n="settings.dragTurnNote">Carrying a piece off the cube turns it</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="controls-setting" class="setting-row" type="button"><span><strong data-i18n="settings.controls">Controls</strong><small data-i18n="settings.controlsNote">Keyboard and rotation</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
             <!-- v0.4: the way home from anywhere, including the Game Over panel. The
                  run in progress is snapshotted first, so this never costs progress. -->
-            <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong>回到主页</strong></button>
-            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong>重新开始</strong></button>
+            <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong data-i18n="settings.home">Home</strong></button>
+            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong data-i18n="settings.restart">Restart</strong></button>
           </div>
         </div>
       </div>
@@ -234,16 +243,16 @@
            goal (六面制霸), then what was earned this run. -->
       <div id="game-over" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <div class="modal-content game-over-card">
-          <div class="eyebrow">本局完成</div>
-          <h1 id="game-over-title">再挑战一次</h1>
-          <div class="final-score"><span id="final-score">0000</span><small>本局得分</small></div>
+          <div class="eyebrow" data-i18n="gameover.eyebrow">RUN COMPLETE</div>
+          <h1 id="game-over-title" data-i18n="gameover.title">Play again?</h1>
+          <div class="final-score"><span id="final-score">0000</span><small data-i18n="gameover.runScore">This run</small></div>
           <p id="game-over-best" class="game-over-best"></p>
           <div id="game-over-faces" class="game-over-faces"></div>
           <div id="game-over-honors" class="game-over-honors"></div>
           <div id="game-over-stats" class="game-over-stats"></div>
           <div class="game-over-actions">
-            <button id="reset-modal" class="restart-button" type="button"><span>↻</span> 再来一局</button>
-            <button id="leaderboard-button" class="ghost-button" type="button">排行榜</button>
+            <button id="reset-modal" class="restart-button" type="button" data-i18n-text="gameover.playAgain"><span>↻</span> Play again</button>
+            <button id="leaderboard-button" class="ghost-button" type="button" data-i18n="gameover.leaderboard">Leaderboard</button>
           </div>
         </div>
       </div>
@@ -252,8 +261,8 @@
       <div id="leaderboard" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
         <div class="modal-content leaderboard-card">
           <div class="settings-header">
-            <div><div class="eyebrow">LOCAL RECORDS</div><h1 id="leaderboard-title">排行榜</h1></div>
-            <button id="leaderboard-close" class="modal-close" type="button" aria-label="Close leaderboard">×</button>
+            <div><div class="eyebrow" data-i18n="leaderboard.eyebrow">LOCAL RECORDS</div><h1 id="leaderboard-title" data-i18n="leaderboard.title">Leaderboard</h1></div>
+            <button id="leaderboard-close" class="modal-close" type="button" aria-label="Close leaderboard" data-i18n-aria-label="a11y.closeLeaderboard">×</button>
           </div>
           <div id="leaderboard-body" class="leaderboard-body"></div>
           <div id="leaderboard-platform" class="leaderboard-platform"></div>

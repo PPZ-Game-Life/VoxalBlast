@@ -1,4 +1,5 @@
 import './edgeTurnHint.css'
+import { t } from '../i18n/index.js'
 
 const ARROWS = { left: '←', right: '→', top: '↑', bottom: '↓' }
 
@@ -26,7 +27,9 @@ export function createEdgeTurnHint() {
     hint.dataset.phase = state.phase
     hint.style.setProperty('--turn-progress', state.progress)
     arrow.textContent = ARROWS[state.edge]
-    label.textContent = state.phase === 'turning' ? 'Turning…' : 'Hold to turn'
+    // Read at draw time, never captured: the card can be on screen when the player switches
+    // language, and the next state update repaints it (docs/Technical/LOCALIZATION.md).
+    label.textContent = t(state.phase === 'turning' ? 'edgeturn.turning' : 'edgeturn.hold')
     const half = card.offsetWidth / 2 || 46
     const flipX = state.x > window.innerWidth * 0.5 ? -1 : 1
     const flipY = state.y > window.innerHeight * 0.62 ? -1 : 1

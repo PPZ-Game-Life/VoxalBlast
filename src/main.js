@@ -36,8 +36,18 @@ import { createHud } from './ui/hud.js'
 import { createHome } from './ui/home.js'
 import { createSettings } from './ui/settings.js'
 import { createDiagnostics } from './diagnostics.js'
+// Localization (docs/Technical/LOCALIZATION.md). initI18n() runs before the first render
+// below, and every user-facing string in this file goes through t() at CALL time — never
+// into a module-level constant, because the player can switch language mid-run.
+import { initI18n, onLocaleChange, t } from './i18n/index.js'
 
 installToyIcons()
+
+// Language first, before a single label is painted (docs/Technical/LOCALIZATION.md). It
+// resolves the locale from ?lang= / the stored preference / the English default, stamps
+// <html lang>, and rewrites the static markup's data-i18n nodes. Module scripts run after
+// the document is parsed, so the DOM is already there.
+initI18n()
 
 // The game's own data model -- the board, the hand, the run counters and the placement rule --
 // lives in game/gameSession.js (refactor P6a). The board and the run record are const objects
@@ -101,6 +111,8 @@ const {
   cancelZoneNoteEl,
   settingsEl,
   settingsButtonEl,
+  languageSettingEl,
+  languageSettingValueEl,
   soundSettingEl,
   hapticsSettingEl,
   dragTurnSettingEl,
@@ -157,6 +169,9 @@ let isPaused = false
 // The run record and the run token live in game/gameSession.js (refactor P6a); `run` is bound
 // above and the token is read through getRunId().
 let bestScore = recordStore.best().score
+// The summary the Game Over card was last rendered from, so a language switch can re-render
+// the card the player is standing on instead of leaving the old language behind the modal.
+let lastSummary = null
 
 // The Game Over card's presentation, wired to the run through a getter (see ui/gameOver.js).
 const gameOverUi = createGameOver({
@@ -671,7 +686,7 @@ function openSettings() {
   clearDragGhost()
   settingsUi.showSettings()
   platform.gameplayStop()
-  setStatus('Paused')
+  setStatus(t('status.paused'))
   settingsUi.updateSettingsUi()
   settingsUi.focusSettingsClose()
 }
@@ -682,7 +697,7 @@ function closeSettings() {
   settingsUi.hideSettings()
   if (!isPaused) {
     platform.gameplayStart()
-    setStatus('Pick a shape')
+    setStatus(t('status.idle'))
   }
   settingsUi.focusSettingsButton()
 }
@@ -695,7 +710,7 @@ function closeSettings() {
 function openControls() {
   if (!settingsUi.openControls()) return
   platform.gameplayStop()
-  setStatus('Paused')
+  setStatus(t('status.paused'))
   settingsUi.focusControlsClose()
 }
 
@@ -703,7 +718,7 @@ function closeControls() {
   if (!settingsUi.closeControls()) return
   if (!isPaused) {
     platform.gameplayStart()
-    setStatus('Pick a shape')
+    setStatus(t('status.idle'))
   }
   settingsUi.restoreControlsFocus()
 }
@@ -753,8 +768,8 @@ function undoItem() {
   renderItemBar()
   saveSession()
   playHaptic(8)
-  setStatus('Pick a shape')
-  showToast(undone.restored ? ITEM_COPY.restoredN(undone.restored) : 'Nothing to restore')
+  setStatus(t('status.idle'))
+  showToast(undone.restored ? ITEM_COPY.restoredN(undone.restored) : t('toast.nothingToRestore'))
   // Undoing back into the stuck board the clear had rescued is a real state, and the
   // only honest answer is the same check a placement runs: the run is over unless
   // something can still be played (07 §1.3).
@@ -785,8 +800,8 @@ function confirmItem(snapshot) {
     // A silent miss read as "the button is broken" (07 §3.1 A6), so the failure now
     // says so on the toast and buzzes as well as setting the status line. The input layer has
     // already refused an empty scope (§8.5.5), so reaching this is a genuine race, not a path.
-    setStatus('Nothing to clear there')
-    showToast('Nothing to clear there')
+    setStatus(t('status.nothingToClear'))
+    showToast(t('toast.nothingToClear'))
     playHaptic(24)
     return
   }
@@ -795,7 +810,7 @@ function confirmItem(snapshot) {
   setTimeout(renderItemBar, 450)
   emitItemBurst(removed, id)
   renderBoard()
-  setStatus('Pick a shape')
+  setStatus(t('status.idle'))
   renderItemBar()
   saveSession()
   clearItemUndo()
@@ -825,7 +840,7 @@ function rerollPieces() {
   if (!result.ok) {
     // §8.8 / v0.9.0 P1: deal first, spend only on success. A refresh that cannot produce a
     // playable batch must not cost the player a charge, and must not be silent about it either.
-    showToast('No room - clear a path')
+    showToast(t('toast.noRoomClearPath'))
     playHaptic(20)
     renderItemBar()
     return false
@@ -833,7 +848,7 @@ function rerollPieces() {
   spendItem('refresh')
   input.clearSelection()
   renderPieceSlots()
-  showToast('Refreshed')
+  showToast(t('toast.refreshed'))
   playHaptic(10)
   renderItemBar()
   saveSession()
@@ -850,13 +865,13 @@ function checkStuckAndPrompt() {
   if (isPaused) return
   const outcome = session.stuckOutcome()
   if (outcome === 'refresh') {
-    setStatus('No spot - use Refresh')
-    showToast('No spot - try Refresh')
+    setStatus(t('status.noSpotRefresh'))
+    showToast(t('toast.noSpotTryRefresh'))
     return
   }
   if (outcome === 'clear-path') {
-    setStatus('No spot - clear a path')
-    showToast('No spot - clear a path')
+    setStatus(t('status.noSpotClear'))
+    showToast(t('toast.noSpotClear'))
     return
   }
   if (outcome === 'end') endGame()
@@ -899,7 +914,11 @@ function onDrop({ piece, face, cells, origin }) {
   updateChainHud()
   updatePieceSlotSelection()
   if (lineCount) {
-    showToast(`${lineCount} LINE${lineCount === 1 ? '' : 'S'}  x${lineMultiplier(lineCount)}  +${score.total}`)
+    showToast(t('toast.clearScore', {
+      lines: lineCount,
+      multiplier: lineMultiplier(lineCount),
+      points: score.total,
+    }))
     showScorePop(score.total, { lines: lineCount, faces: result.facesHit, honor: honors.primary })
     showHonorBanner(honors, level)
     spawnClearEffects(lines, level)
@@ -908,13 +927,13 @@ function onDrop({ piece, face, cells, origin }) {
     triggerSlowMo(level)
     input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)
-    setStatus('Clear! Keep building')
+    setStatus(t('status.clearKeepBuilding'))
   } else {
     // §4.1: a building turn still pays, and still says so. A chain that was real
     // enough to be on screen must be seen breaking (§4.4).
     showScorePop(score.total, { quiet: true })
     if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
-    setStatus('Pick a shape')
+    setStatus(t('status.idle'))
   }
   if (getPieces().every((candidate) => candidate.used)) nextPieces()
   // The resume slot is written on the same beat as the board change, and BEFORE the
@@ -1019,7 +1038,7 @@ function openHome() {
   saveSession()
   if (!homeUi.showCover()) return
   platform.gameplayStop()
-  setStatus('Home')
+  setStatus(t('status.home'))
   // Last, exactly where it was: focus lands on the cover's primary button only once the
   // cover is up and the run has announced itself to the platform.
   homeUi.focusPrimary()
@@ -1030,7 +1049,7 @@ function leaveHome() {
   renderItemBar()
   if (!isPaused) {
     platform.gameplayStart()
-    setStatus('Pick a shape')
+    setStatus(t('status.idle'))
   }
   // Last, so the run has already announced itself to the platform before the wave
   // takes the input lock (syncPause() is the lock).
@@ -1121,7 +1140,7 @@ function applySession(saved) {
   updateChainHud()
   renderItemBar()
   syncPause()
-  setStatus('Pick a shape')
+  setStatus(t('status.idle'))
 }
 
 // slowMo and triggerSlowMo() live in rendering/effects.js (refactor P5); the frame loop reads
@@ -1153,6 +1172,7 @@ function endGame() {
   })
   bestScore = summary.bestScore
   updateHud()
+  lastSummary = summary
   gameOverUi.renderGameOver(summary)
   // The run is in the record book now, so the save slot goes: a finished game must
   // never come back as 继续游戏. Cleared unconditionally, including when the player
@@ -1195,7 +1215,7 @@ function resetGame() {
   nextPieces()
   renderBoard()
   updateChainHud()
-  setStatus('Pick a shape')
+  setStatus(t('status.idle'))
   syncPause()
   if (!isPaused) platform.gameplayStart()
 }
@@ -1261,9 +1281,9 @@ document.addEventListener('visibilitychange', () => {
   // settled here rather than left for the browser to resume mid-air.
   if (document.hidden) settleIntro()
   syncPause()
-  if (document.hidden) { platform.gameplayStop(); setStatus(homeUi.isOpen() ? 'Home' : 'Paused') }
+  if (document.hidden) { platform.gameplayStop(); setStatus(t(homeUi.isOpen() ? 'status.home' : 'status.paused')) }
   else if (session.isEnded() || settingsUi.isOpen() || homeUi.isOpen()) return
-  else { platform.gameplayStart(); setStatus('Pick a shape') }
+  else { platform.gameplayStart(); setStatus(t('status.idle')) }
 })
 // Settings panel, controls card and their entries (see ui/settings.js). Built and bound
 // once, here, after every orchestration function it calls exists. `bind()` returns a
@@ -1272,6 +1292,8 @@ const settingsUi = createSettings({
   settingsEl,
   settingsButtonEl,
   settingsCloseEl,
+  languageSettingEl,
+  languageSettingValueEl,
   soundSettingEl,
   hapticsSettingEl,
   dragTurnSettingEl,
@@ -1300,6 +1322,36 @@ settingsUi.bind({
   playHaptic,
 })
 settingsUi.updateSettingsUi()
+
+// ---- Locale switch (docs/Technical/LOCALIZATION.md) -------------------------
+// src/i18n already rewrote the STATIC markup (data-i18n nodes) by the time this runs; what is
+// left is the DYNAMIC text, which holds no key of its own and has to be repainted from the
+// state the game is in. Every repaint below reads live getters, so this is the same render
+// path an ordinary frame uses — no second implementation, and nothing here can invent a value.
+//
+// The status line is recomputed from the pause state rather than remembered: while the player
+// is in the settings panel flipping the language, `isPaused` is the only true answer.
+function refreshStatusLine() {
+  if (homeUi.isOpen()) setStatus(t('status.home'))
+  else if (isPaused || session.isEnded()) setStatus(t('status.paused'))
+  else setStatus(t('status.idle'))
+}
+
+onLocaleChange(() => {
+  updateHud()
+  updateChainHud()
+  renderItemBar()
+  renderAxisPick()
+  // The candidate slots carry a translated aria-label, and rebuilding them is the path a
+  // reroll already exercises every run. A language switch is a one-off user action, so the
+  // three preview renderers it recreates are not a cost worth a second label-only code path.
+  renderPieceSlots()
+  refreshHome()
+  homeUi.renderLeaderboard()
+  // Only ever set by endGame(), which is also the only path that shows the card.
+  if (session.isEnded() && lastSummary) gameOverUi.renderGameOver(lastSummary)
+  refreshStatusLine()
+})
 
 // The canvas is sized from the wrap's client box, but that box keeps changing
 // AFTER the boot-time resize(): resetGame() is what fills `#piece-slots` and
@@ -1332,7 +1384,7 @@ if (sessionStore.read()) {
 // measured it a moment ago; the ResizeObserver catches that, and the wave re-sorts itself
 // once if it armed before the new size landed (see updateIntro()).
 resize()
-platform.initialize().catch(() => showToast('Offline mode'))
+platform.initialize().catch(() => showToast(t('toast.offline')))
 
 const clock = new THREE.Clock()
 function animate() {

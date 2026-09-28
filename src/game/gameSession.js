@@ -230,11 +230,15 @@ export function createGameSession() {
   // ---- Items (refactor P6b-1) --------------------------------------------------
   // Plan §2 state table: the charges and the undo RECORD are game data, so they live here; the
   // targeting mode (itemActive/itemTap/itemBusyUntil) and everything the player sees are main's.
+  // NO DISPLAY NAME HERE (docs/Technical/LOCALIZATION.md): the strip's caption and the status
+  // bar's title come from the i18n catalogue by id (`item.name.hammer`). A `name` field here
+  // was a second copy that the language switch could never reach — it was never read, so it is
+  // gone rather than translated.
   const ITEM_TOOLS = Object.freeze([
-    { id: 'refresh', name: 'Refresh', icon: '↻', start: 2, cap: 3 },
-    { id: 'hammer', name: 'Hammer', icon: '🔨', start: 1, cap: 2 },
-    { id: 'rocket', name: 'Rocket', icon: '🚀', start: 1, cap: 2 },
-    { id: 'bomb', name: 'Bomb', icon: '💣', start: 1, cap: 2 },
+    { id: 'refresh', icon: '↻', start: 2, cap: 3 },
+    { id: 'hammer', icon: '🔨', start: 1, cap: 2 },
+    { id: 'rocket', icon: '🚀', start: 1, cap: 2 },
+    { id: 'bomb', icon: '💣', start: 1, cap: 2 },
   ])
   // Replaced wholesale by a reset or a resumed session, so it is read through getItemCounts().
   let itemCounts = Object.fromEntries(ITEM_TOOLS.map((tool) => [tool.id, tool.start]))
