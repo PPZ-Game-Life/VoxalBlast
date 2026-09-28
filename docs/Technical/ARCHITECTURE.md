@@ -41,7 +41,7 @@
 | src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位 |
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
 | src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写；v0.9.19 起 `hapticsSupported()` 为假时触感行 `disabled` 且小字换成 `settings.hapticsUnsupported`（偏好不被改写） |
-| src/styles.css / toy.css | 历史布局兼容 / 当前视觉覆盖 |
+| src/styles.css / toy.css / reference.css | 历史布局兼容 / 玩具皮肤 / **参考美术皮肤（最后导入，用 PNG 美术替掉 toy 的绘制层）**。三张表按导入顺序叠加，所以"谁拥有这一层"必须显式：v0.9.21 之前 `.item-button` 里的木刻 `<svg class="toy-icon">` 因为 `visibility` 继承（皮肤把 `.item-icon` 重新设回 visible）而叠在新 PNG 美术上一起画。参考皮肤只管 `.item-icon` 的 `background`，旧绘制层一律在它里面显式隐藏；`npm run shot` 的 `legacyArtHidden` 断言任何"宿主带参考美术但仍绘制"的旧图层 |
 | src/i18n/index.js | 本地化的唯一语言状态：`t()` / `formatNumber()` / `applyStatic()` / `setLocale()` 与 `onLocaleChange()`；解析顺序 `?lang=` → 存储偏好 → `DEFAULT_LOCALE='en'`，**不嗅探 `navigator.language`**（标准见 [LOCALIZATION.md](LOCALIZATION.md)） |
 | src/i18n/locales/*.js | 词条表（`en` 默认 / `zh-Hans`）；键集必须一致，由 `npm run test:i18n` 守着 |
 | src/ui/itemCopy.js | 道具子系统的取词门面：键 → getter，调用点因此不随语言切换而失效（**导入时捕获字符串就是 bug**） |

@@ -410,6 +410,20 @@ async function capture(browser, shot) {
               const c = canvas.getBoundingClientRect(), s = canvas.closest('.piece-slot').getBoundingClientRect()
               return c.left >= s.left && c.right <= s.right && c.top >= s.top && c.bottom <= s.bottom
             }),
+            // v0.9.21: the old skin's drawings must not survive underneath the reference skin's PNG
+            // art. Checking visibility on the svg itself is NOT enough -- visibility inherits, so a
+            // carving nested inside a host the skin turned back to visible ('.item-icon' on the item
+            // strip) paints again, and the real phone showed two icons at once. A legacy drawing that
+            // still paints inside a host carrying reference art is a failure, whatever hides it.
+            // (No backticks in this block: it is one big template literal.)
+            legacyArtHidden: [...document.querySelectorAll('svg.toy-icon')].every(svg => {
+              const host = svg.parentElement
+              const cs = getComputedStyle(svg)
+              const box = svg.getBoundingClientRect()
+              const hostHasArt = getComputedStyle(host).backgroundImage !== 'none'
+              const paints = cs.visibility !== 'hidden' && cs.display !== 'none' && box.width > 0 && box.height > 0
+              return !(hostHasArt && paints)
+            }),
             backdropZ: layer ? getComputedStyle(layer).zIndex : null,
             woodGrain: getComputedStyle(document.documentElement).getPropertyValue('--wood-grain').slice(0, 26),
             version: ${JSON.stringify(version)},
@@ -562,6 +576,8 @@ async function capture(browser, shot) {
         if (stuckItems.length) failures.push(`item buttons are left disabled although they have charges (${JSON.stringify(stuckItems)})`)
       }
       if (parsed.gameLayers.some(layer => layer.visibility !== (onHome ? 'hidden' : 'visible') || layer.inert !== onHome || !layer.width || !layer.height)) failures.push('game layer visibility, input isolation or preserved layout incorrect')
+      // Page-level invariant, so it runs for the cover shots too (a hidden host paints nothing).
+      if (!parsed.legacyArtHidden) failures.push('a legacy toy-icon still paints under the reference art')
       if (!onHome) {
         if (parsed.candidateFrames.length !== 3 || parsed.candidateFrames.some(frame => ![frame.minX, frame.maxX, frame.minY, frame.maxY].every(Number.isFinite) || frame.minX < -0.99 || frame.maxX > 0.99 || frame.minY < -0.99 || frame.maxY > 0.99)) failures.push('candidate volume clipped by camera')
         if (!parsed.candidateCanvasesContained) failures.push('candidate canvas clipped by slot')

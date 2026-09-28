@@ -12,7 +12,14 @@
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
-.topbar .icon-button .toy-icon, .item-button .item-icon { visibility: hidden; }
+/* The reference skin REPLACES the toy skin's drawings with its own PNG art (line 50 below puts
+   that art on `.item-icon` itself). Every `<svg class="toy-icon">` the old skin injects has to be
+   hidden, and the item strip's own is the trap: line 50 turns `.item-icon` back to
+   `visibility: visible`, and `visibility` INHERITS — so the legacy carving nested inside it came
+   back to life and painted on top of the new art (real device, v0.9.20: the flat brown hammer /
+   rocket / bomb sat on the painted ones, offset to the button's top-left). Hidden explicitly
+   here, and `npm run shot` now fails if any host carrying reference art still paints one. */
+.topbar .icon-button .toy-icon, .item-button .item-icon, .item-button .toy-icon { visibility: hidden; }
 /* v0.9.15/v0.9.16 — the buttons line up with the SCORE BOARD's top edge.
    The producer's call (2026-09-28): 「我期望的纵向，积分和按钮的上沿对齐，一个放在左上角，
    一个放在右上角，现在是中心啊对齐，不符合预期。」
