@@ -121,6 +121,23 @@ export const BOARD_STYLE = Object.freeze({
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0,
   targetYMobile: 0,
+  // v0.9.14 (producer, 2026-09-28): 「感觉下方拖拽翻面的区域太小，经常和 Cancel 区域重合了，
+  // 要不把备选区和 cancel 区域下挪一点，把方块上移一点。」
+  //
+  // The bottom turn dwell (v0.9.11/13) needs room BETWEEN the cube's bottom edge and the tray,
+  // and the tray sits directly under the cube. Moving the tray down is CSS (reference.css);
+  // moving the CUBE up cannot be, because the cube is centred in its canvas — growing
+  // `.board-section` downward moves it DOWN instead and cancels the tray's gain exactly
+  // (measured on 390×844: the band was 145px before a naive CSS-only attempt, 146px after).
+  //
+  // This is the lift, in CLIENT PIXELS, applied by gameScene's `liftCubeForTurnBand()`: pixels
+  // because a pixel of lift is exactly a pixel of extra turn band, which is the thing being
+  // bought. Portrait only, like `portraitCubeScale`. It is CLAMPED to the room actually
+  // available above the cube (minus a clearance), so the framing guard never has to pull the
+  // camera back to fit — a fixed world-unit offset did exactly that on a 360×640 phone and
+  // shrank the cube by 24%, which is not a trade this game makes.
+  cubeLiftPx: 96,
+  cubeLiftClearancePx: 14,
 })
 
 // v0.9.2: THE DOCK IS DERIVED FROM THE CAMERA, never typed in beside it.

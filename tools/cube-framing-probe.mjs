@@ -50,8 +50,14 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const APP_URL = 'http://127.0.0.1:5173/'
-const APP_PORT = 5173
+// v0.9.14: the target URL is overridable, like every other probe's. It was hard-coded to
+// 127.0.0.1:5173, but `vite` only binds `[::1]` by default (see the pitfalls in the project
+// skill), and on a machine where another session already holds 5173 that hard-coded URL is
+// unreachable — the probe then spent 40s failing to start a second server on a busy port.
+// `node tools/cube-framing-probe.mjs http://127.0.0.1:5175/ --quick` is the escape hatch.
+const URL_ARG = process.argv.slice(2).find((arg) => /^https?:\/\//.test(arg))
+const APP_URL = (URL_ARG || 'http://127.0.0.1:5173/').replace(/\/?$/, '/')
+const APP_PORT = Number(new URL(APP_URL).port || 80)
 // Composition targets — see the block at TARGET below for why they are what they are.
 const SETTLE_MS = 420 // longer than ROTATE_STYLE.snapDuration (220ms)
 const JSON_ONLY = process.argv.includes('--json')

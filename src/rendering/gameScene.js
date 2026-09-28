@@ -138,7 +138,42 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     // v0.9.1: the portrait shrink, applied where the resting size is decided.
     orbitDistance /= portraitScale()
     keepCubeInsideCanvas()
+    liftCubeForTurnBand()
     centreCubeHorizontally()
+  }
+
+  // v0.9.14 — LIFT THE CUBE, IN PIXELS, TO WIDEN THE BOTTOM TURN BAND.
+  //
+  // The bottom turn dwell (v0.9.11/13) fires when the carried piece's centre leaves the cube's
+  // silhouette, and the tray sits directly under the cube — so the room between them IS the
+  // gesture's whole travel (producer, 2026-09-28: 「感觉下方拖拽翻面的区域太小，经常和 Cancel
+  // 区域重合了……把方块上移一点」).
+  //
+  // Why pixels and not `targetYMobile`: a world-unit offset is a fixed fraction of the CUBE, so
+  // it grows with the cube — and on a short phone it walks the cube into the tool row, at which
+  // point `keepCubeInsideCanvas()` (which runs before this) has already pulled the camera back
+  // and the cube comes out 24% smaller. A pixel lift is exactly the number of pixels of turn band
+  // being bought, and it is CLAMPED to the room that actually exists above the cube, so the
+  // framing guard never has to fight it.
+  //
+  // Portrait and desktop both take the lift; the CLAMP is what makes that safe. On a phone there
+  // is room above the cube (96px of the 96 asked for on a 390×844), on a desktop the cube is
+  // vertically saturated and the clamp hands back whatever is left (~42px on a 1440×900) rather
+  // than shrinking the cube to buy more. The desktop band is 118px and a MOUSE carry only lifts
+  // the measured centre 10px, so it does not need the phone's headroom.
+  function liftCubeForTurnBand() {
+    if (style.cubeLiftPx <= 0) return
+    const rect = renderer.domElement.getBoundingClientRect()
+    const bounds = cubeScreenBounds()
+    const roomAbove = bounds.minY - rect.top - style.cubeLiftClearancePx
+    const lift = Math.max(0, Math.min(style.cubeLiftPx, roomAbove))
+    if (lift < 1) return
+    // Client pixels -> world units on the plane the cube lives on, taken from the real projection
+    // (never a hand-rolled tan(fov/2): that is the same disagreement v0.4.5 fixed for the ghost).
+    camera.updateMatrixWorld(true)
+    const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
+    cameraTarget.y -= lift * worldPerPx
+    fitCameraToPlaySpace()
   }
 
   // v0.9.1: the portrait shrink — the cube is drawn 10% smaller when the WINDOW is portrait

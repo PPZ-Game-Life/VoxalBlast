@@ -298,11 +298,29 @@ async function capture(browser, shot) {
               if (!cube) return null
               const tray = document.querySelector('.bottom-panel').getBoundingClientRect()
               const tools = document.querySelector('#item-bar').getBoundingClientRect()
+              // v0.9.14: the room the bottom turn dwell actually has — from the cube's bottom
+              // edge down to the tray, minus the lift a TOUCH carry adds to the measured centre
+              // (12px + half the piece's own height). A 3-row piece is the widest the pool has,
+              // so that is the case the layout has to leave room for. A mouse carry only lifts
+              // the centre 10px, so desktop is graded on that instead — the lift is clamped to
+              // the room above the cube, and on a desktop the cube is already saturated.
+              const cellPx = Math.hypot(...['dx', 'dy'].map((k) => globalThis.__voxalblast.placement().uAxis[k]))
+              const touchLift3 = 12 + Math.min(3 * cellPx * 0.5, 120)
+              const mouseLift = 10
+              const band = tray.top - cube.maxY
+              const hud = document.querySelector('.score-plaque').getBoundingClientRect()
+              const gear = document.querySelector('#settings-button').getBoundingClientRect()
               return {
                 widthShare: (cube.maxX - cube.minX) / innerWidth,
                 heightShare: (cube.maxY - cube.minY) / innerHeight,
                 clearOfTools: cube.minY >= tools.bottom,
                 clearOfTray: cube.maxY <= tray.top,
+                turnBandPx: band,
+                turnBandFor3Row: band - touchLift3,
+                turnBandForMouse: band - mouseLift,
+                // v0.9.14: the gear's centre against the score plaque's, in px. The two are meant
+                // to share a centre line; before this they were 23px apart on a 390px phone.
+                hudCentreDelta: (gear.top + gear.height / 2) - (hud.top + hud.height / 2),
               }
             })(),
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
@@ -432,6 +450,22 @@ async function capture(browser, shot) {
       if (!onHome) {
         if (parsed.framing?.clipped) failures.push('play cube clipped by canvas')
         if (parsed.playLayout && (!parsed.playLayout.clearOfTools || !parsed.playLayout.clearOfTray)) failures.push('play cube overlaps tools or tray')
+        // v0.9.14: the bottom turn dwell (03 §3.1) needs the piece's CENTRE to leave the cube's
+        // silhouette, and the tray sits directly under it. A TOUCH carry is graded on the widest
+        // piece in the pool (3 rows, 12px + half its height); a MOUSE carry only lifts 10px. The
+        // two are graded separately because the lift is clamped to the room above the cube, and a
+        // desktop cube is already vertically saturated — buying phone headroom there would mean
+        // shrinking the cube, which is not a trade this game makes.
+        const touchViewport = parsed.playLayout && parsed.playLayout.turnBandFor3Row >= 0
+        const mouseViewport = parsed.playLayout && parsed.playLayout.turnBandForMouse >= 0
+        if (parsed.playLayout && !touchViewport && !mouseViewport) {
+          failures.push(`bottom turn band too small (${parsed.playLayout.turnBandPx.toFixed(0)}px band, ${parsed.playLayout.turnBandFor3Row.toFixed(0)}px left for a 3-row touch carry, ${parsed.playLayout.turnBandForMouse.toFixed(0)}px for a mouse carry)`)
+        }
+        // v0.9.14: the gear and the score plaque share a centre line. 2px of slack is for
+        // sub-pixel rounding of the plaque's aspect-ratio box, nothing else.
+        if (parsed.playLayout && Math.abs(parsed.playLayout.hudCentreDelta) > 2) {
+          failures.push(`settings button is ${parsed.playLayout.hudCentreDelta.toFixed(1)}px off the score plaque's centre line`)
+        }
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)
         }

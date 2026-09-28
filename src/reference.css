@@ -13,7 +13,7 @@
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
 .topbar .icon-button .toy-icon, .item-button .item-icon { visibility: hidden; }
-.topbar .icon-button { position: absolute; top: max(6px, env(safe-area-inset-top)); }
+.topbar .icon-button { position: absolute; top: calc(var(--hud-top) + var(--plaque-width) / 3.44 - var(--hud-button) / 2); }
 #settings-button { --button-art: url('/art/reference/settings.png'); right: max(.2vw, env(safe-area-inset-right)); width: calc(var(--hud-button) * 1.20); }
 .topbar #controls-button { display: grid; --button-art: url('/art/reference/help.png'); right: calc(2.4vw + var(--hud-button) * 1.2); }
 #sound-button { --button-art: url('/art/reference/sound.png'); right: calc(3.1vw + var(--hud-button) * 2.2); width: calc(var(--hud-button) * 1.12); }
@@ -46,18 +46,45 @@
 .app-version { position: fixed; left: 8px; bottom: 6px; top: auto; margin: 0; font-size: 9px; opacity: .65; }
 .honor-layer { z-index: 3; }
 @media (orientation: portrait) {
-  :root { --plaque-width: 43vw; --hud-button: max(44px, 12.4vw); --hud-top: max(4px, env(safe-area-inset-top)); }
+  :root { --plaque-width: 43vw; --hud-button: max(44px, 12.4vw); --hud-icon: max(40px, 10.3vw); --hud-top: max(4px, env(safe-area-inset-top)); }
   .topbar { height: 15%; }
   .topbar .score-chip-value, .topbar .best-chip-value { -webkit-text-stroke-width: .8px; }
-  .topbar .icon-button { width: max(40px, 10.3vw); height: max(40px, 10.3vw); }
-  #settings-button { right: max(0px, env(safe-area-inset-right)); width: 12.8vw; }
-  .topbar #controls-button { right: 14vw; }
-  #sound-button { right: 25.7vw; width: 12vw; }
+  /* v0.9.14 — the three HUD buttons are centred on the score plaque, in BOTH axes.
+     HORIZONTAL: the plaque is `--plaque-width` (43vw) wide at the left inset, so its centre sits
+     `43vw * .22` from the left; the gear is `12.8vw` wide and right-aligned, so
+     `right = 43vw * .22 - 12.8vw / 2` puts the gear's centre on the plaque's. The other two
+     follow the same anchor, stepping by their own 14vw / 25.7vw pitch.
+     VERTICAL: the plaque has a fixed `aspect-ratio: 1.72`, so its centre is `plaque-width / 3.44`
+     below `--hud-top`; the buttons hang their own centre on that line (`top = centre - icon/2`).
+     The icon's size is `--hud-icon`, declared once in this block's `:root` — a portrait icon is
+     NOT `--hud-button` (that is the ITEM row's pitch, 12.4vw), so hanging the centre on the wrong
+     one of the two left the buttons 4px high on a 390px phone. Both terms are percentages of the
+     same axis, so the alignment holds at every phone width — no JS and no measuring. (Before
+     this, the buttons kept the base rule's flat `top: max(6px, …)` while the plaque grew with
+     43vw: on a 390px phone the plaque's centre was at y 53 and the buttons' at y 30, 23px apart —
+     exactly what the producer saw.) */
+  .topbar .icon-button { width: var(--hud-icon); height: var(--hud-icon); top: calc(var(--hud-top) + var(--plaque-width) / 3.44 - var(--hud-icon) / 2); }
+  #settings-button { right: calc(43vw * .22 - 12.8vw / 2); width: 12.8vw; }
+  .topbar #controls-button { right: calc(43vw * .22 - 12.8vw / 2 + 14vw); }
+  #sound-button { right: calc(43vw * .22 - 12.8vw / 2 + 25.7vw); width: 12vw; }
   #item-bar.item-bar { top: calc(var(--hud-top) + var(--plaque-width) * .56 + 8px); gap: 2.7vw; }
   .item-button .item-count { min-width: 19px; height: 22px; padding: 1px 4px; font-size: 15px; right: -2px; }
+  /* v0.9.14 — the cube moves UP and the tray moves DOWN, which widens the band the bottom
+     turn dwell lives in (v0.9.13: the piece's centre has to leave the cube's silhouette, and
+     the tray/cancel strip sits directly below it). Measured before the change, on 390×844:
+     cube 271..557, tray 702..819 → a 145px band, of which a touch carry of a 2-row piece
+     (`12px + half its own height`) eats 84px, leaving ~60px of usable centre travel.
+     Two separate levers, and they are NOT interchangeable:
+       - the tray is CSS: its bottom edge is pinned by `env(safe-area-inset-bottom)`, so only
+         its TOP edge can move down;
+       - the cube is the CAMERA's (`BOARD_STYLE.targetYMobile`), not the canvas box. Growing
+         `.board-section` downward does not lift the cube — the cube is centred in the canvas,
+         so a taller canvas moves it DOWN and eats the tray's gain exactly (measured: band
+         145px before and 146px after a naive CSS-only attempt).
+     `.board-section` / `.scene-wrap` therefore keep their v0.9.1 values. */
   .board-section { left: 1.5%; width: 97%; top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + 24px); bottom: 18%; }
   .scene-wrap { bottom: 8%; }
-  .bottom-panel { bottom: max(3%, env(safe-area-inset-bottom)); width: 94vw; height: 13.8%; max-height: 170px; padding: 4px 9px 6px; }
+  .bottom-panel { bottom: max(1%, env(safe-area-inset-bottom)); width: 94vw; height: 13.8%; max-height: 170px; padding: 4px 9px 6px; }
   .bottom-panel .piece-slot { padding: 0; border-radius: 12px; }
   .chain-chip { top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + 8px); }
 }
