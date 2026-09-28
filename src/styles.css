@@ -848,6 +848,17 @@ kbd.active {
 .item-button .item-empty {
   display: block;
   width: 100%;
+  /* v0.9.20 — the caption may never paint outside its own column. `.item-button` is a grid whose
+     implicit column is `auto`-sized, and a grid item's automatic minimum size is its min-content:
+     a nowrap caption therefore WIDENED the track past the button (320px phone: 71px of text in a
+     44px column) and drew straight over the neighbouring item. `min-width: 0` drops that floor so
+     the track honours the button's own width; `overflow: hidden` + ellipsis is the fail-safe for
+     any future over-long translation (the copy itself is kept inside the column on purpose —
+     tools/item-interaction-probe.mjs asserts the fit at 320×740, where ellipsis is NOT a pass). */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
   font-weight: 900;
   line-height: var(--item-caption);

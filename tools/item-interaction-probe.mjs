@@ -154,10 +154,14 @@ try {
   // is that a screenshot cannot PROVE the release timing — it can still show whether the scope,
   // the status bar and the cancel rectangle actually read the way the doc describes.
   const SHOT_DIR = join(process.cwd(), 'artifacts', 'visual')
+  // The file name carries the version it was actually taken at, read from the shipped manifest
+  // instead of typed here: these shots are what a report points at, and a hard-coded prefix makes
+  // the evidence unattributable the moment the game moves on.
+  const SHOT_VERSION = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version
   const shoot = async (name) => {
     try { mkdirSync(SHOT_DIR, { recursive: true }) } catch { /* already there */ }
     const shot = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png' })
-    const file = join(SHOT_DIR, `v0.9.17-${name}.png`)
+    const file = join(SHOT_DIR, `v${SHOT_VERSION}-${name}.png`)
     writeFileSync(file, Buffer.from(shot.data, 'base64'))
     console.log(`     shot ${file}`)
   }
@@ -213,8 +217,46 @@ try {
   await sleep(150)
   s = await state()
   const hammerIcon = s.icons.find((icon) => icon.id === 'hammer')
-  check('strip: an empty charge reads 本局已用完 rather than a fake grey', hammerIcon.empty === true && hammerIcon.disabled === false, JSON.stringify(hammerIcon))
+  check('strip: an empty charge shows the empty copy rather than a fake grey', hammerIcon.empty === true && hammerIcon.disabled === false, JSON.stringify(hammerIcon))
   check('strip: an empty charge is not "ready" either', s.icons.find((icon) => icon.id === 'rocket').disabled === false)
+  // v0.9.20 — the caption has to FIT its own column, measured at the NARROWEST shipped phone.
+  // A real device on v0.9.18 showed the empty copy spilling out of its column and colliding with
+  // the neighbour's: the caption is a nowrap grid item, so its max-content widened its own track
+  // past the button and painted over the next item. This probe's own viewport (430×900) happened
+  // to be wide enough for the shipped English string, which is why nothing here caught it — so the
+  // measurement runs at 320×740, where portrait gives `--hud-button: max(44px, 12.4vw)` = 44px.
+  // `scrollWidth > clientWidth` is the ink overflowing the box; `spill` is the box leaving the
+  // button. Ellipsis alone would satisfy neither, so a future over-long translation still fails.
+  await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 0, hammer: 0, rocket: 0, bomb: 0 })')
+  await send(ws, nextId++, 'Emulation.setDeviceMetricsOverride', { width: 320, height: 740, screenWidth: 320, screenHeight: 740, deviceScaleFactor: 1, mobile: false })
+  await sleep(400)
+  const captionRows = async () => JSON.parse(await evalJs(`JSON.stringify([...document.querySelectorAll('#item-bar .item-button')].map((button) => {
+    const name = button.querySelector('.item-name')
+    const empty = button.querySelector('.item-empty')
+    const el = getComputedStyle(empty).display === 'none' ? name : empty
+    const column = button.getBoundingClientRect()
+    const ink = el.getBoundingClientRect()
+    return {
+      id: button.dataset.item, text: el.textContent, column: Math.round(column.width),
+      fits: el.scrollWidth <= el.clientWidth + 1,
+      spillLeft: Math.round(column.left - ink.left), spillRight: Math.round(ink.right - column.right),
+    }
+  }))`))
+  const rowsToText = (rows) => rows.map((entry) => `${entry.id}:"${entry.text}" col=${entry.column} spill=${entry.spillLeft}/${entry.spillRight}`).join(' ')
+  const emptyRows = await captionRows()
+  check('strip: at 320x740 the empty captions fit their own column without spilling',
+    emptyRows.every((entry) => entry.fits && entry.spillLeft <= 1 && entry.spillRight <= 1), rowsToText(emptyRows))
+  // The "after" shot of the v0.9.20 report: the same state the producer photographed on his phone
+  // (all four charges gone, narrowest phone) — a still is the only thing that shows the four
+  // captions side by side.
+  await shoot('items-empty-320')
+  await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 1, hammer: 1, rocket: 1, bomb: 1 })')
+  await sleep(150)
+  const nameRows = await captionRows()
+  check('strip: at 320x740 the tool names fit their own column too',
+    nameRows.every((entry) => entry.fits && entry.spillLeft <= 1 && entry.spillRight <= 1), rowsToText(nameRows))
+  await send(ws, nextId++, 'Emulation.setDeviceMetricsOverride', { width: 430, height: 900, screenWidth: 430, screenHeight: 900, deviceScaleFactor: 1, mobile: false })
+  await sleep(400)
   await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 2, hammer: 1, rocket: 1, bomb: 1 })')
   await sleep(150)
 

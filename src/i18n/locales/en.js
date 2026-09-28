@@ -97,7 +97,7 @@ export default Object.freeze({
   'item.dragCancelNote': 'Release to cancel',
   'item.pieceCancelTitle': 'Cancel',
   'item.pieceCancelNote': 'placement',
-  'item.empty': 'None left this run',
+  'item.empty': 'None left',
   'item.lockedRotate': 'Cancel to turn the cube',
   'item.stale': 'Not used — aim again',
   'item.clearedN': ({ n }) => `Cleared ${n}`,

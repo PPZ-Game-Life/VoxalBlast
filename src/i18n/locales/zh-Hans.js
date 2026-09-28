@@ -93,7 +93,7 @@ export default Object.freeze({
   'item.dragCancelNote': '松手取消',
   'item.pieceCancelTitle': '取消',
   'item.pieceCancelNote': '放置',
-  'item.empty': '本局已用完',
+  'item.empty': '已用完',
   'item.lockedRotate': '需换面？取消后转动棋盘',
   'item.stale': '未使用，请重新瞄准',
   'item.clearedN': ({ n }) => `已清除 ${n} 格`,
