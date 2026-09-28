@@ -43,6 +43,35 @@ export function cubeEdge(point, bounds) {
   return best
 }
 
+// v0.9.13 — THE WAY IN IS NOT A WAY OUT. Every candidate is dragged UP out of the tray, and the
+// tray sits below the cube, so the piece's centre necessarily crosses the cube's BOTTOM edge on
+// its way in. That crossing used to arm the dwell immediately: the block would sit at the cube's
+// foot for 650ms on the way in and the cube would tip over before the player had placed anything
+// (producer, 2026-09-28: 「推动备选区方块都是从下方推上来，过程中必然会触发」).
+//
+// The fix is a latch, not a threshold: until the piece has been INSIDE the cube's silhouette,
+// nothing outside it can arm. The first crossing is the entry, and only a LATER exit counts.
+// `inside` is that latch — it must be true once before `cubeEdge()` is allowed to answer.
+//
+// It is deliberately tied to the piece's own centre rather than to `drag.face`: the centre is
+// what the whole rule is measured with, and a piece can be carried up past the bottom edge
+// without ever attaching (a full face, or a drag that entered through a corner), so "it has been
+// on a face" would leave those drags permanently unable to turn.
+export function createEntryLatch() {
+  let inside = false
+  return {
+    // Call with every new centre position, BEFORE asking `cubeEdge()`.
+    observe(point, bounds) {
+      if (!inside && point.x >= bounds.minX && point.x <= bounds.maxX
+        && point.y >= bounds.minY && point.y <= bounds.maxY) inside = true
+      return inside
+    },
+    // A new gesture starts outside the cube again: the piece is picked up from the tray.
+    reset() { inside = false },
+    get entered() { return inside },
+  }
+}
+
 // A frame clock also handles a motionless finger and pauses the repeat dwell
 // until the previous face has actually arrived. No timers survive cancel().
 //
@@ -58,6 +87,7 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
   let started = 0
   let phase = 'hold'
   let raf = null
+  const entry = createEntryLatch()
 
   function report(progress) {
     feedback({ edge, phase, progress, x: anchor.x, y: anchor.y })
@@ -72,6 +102,13 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
     feedback(null)
   }
 
+  // One reading of "which side is this centre past, if any". The latch comes first, so a piece
+  // that has never been inside the cube answers "none" however far out it is.
+  function armAt(nextPoint, boundsNow) {
+    if (!entry.observe(nextPoint, boundsNow)) return null
+    return cubeEdge(nextPoint, boundsNow)
+  }
+
   function tick() {
     raf = null
     if (blocked()) { cancel(); return }
@@ -83,7 +120,7 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
       // land, then re-measure against the settled silhouette: still past it re-arms with a FRESH
       // dwell (holding off the cube browses faces, one dwell each), back inside cancels.
       if (turning()) { raf = frame(tick); return }
-      const arrived = cubeEdge(point, bounds())
+      const arrived = armAt(point, bounds())
       if (!arrived) { cancel(); return }
       edge = arrived
       phase = 'hold'
@@ -96,7 +133,7 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
     // start a fresh dwell once it lands -- and do not measure the silhouette while it moves, for
     // the reason above.
     if (turning()) { started = now(); raf = frame(tick); return }
-    if (cubeEdge(point, bounds()) !== edge) { cancel(); return }
+    if (armAt(point, bounds()) !== edge) { cancel(); return }
     const progress = Math.min(1, (now() - started) / PIECE_SPIN.holdMs)
     report(progress)
     if (progress >= 1 && turn(DIRECTIONS[edge])) {
@@ -108,7 +145,7 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
   }
 
   function update(nextPoint) {
-    const nextEdge = blocked() ? null : cubeEdge(nextPoint, bounds())
+    const nextEdge = blocked() ? null : armAt(nextPoint, bounds())
     if (!nextEdge) { cancel(); return false }
     point = nextPoint
     if (nextEdge !== edge) {
@@ -123,6 +160,7 @@ export function createEdgeTurn({ bounds, blocked, turning, turn, feedback, hapti
     return true
   }
 
-  return { update, cancel, report: () => ({ edge, phase: edge ? phase : null,
-    axis: edge ? DIRECTIONS[edge].axis : null }) }
+  return { update, cancel, resetEntry: () => entry.reset(),
+    report: () => ({ edge, phase: edge ? phase : null, axis: edge ? DIRECTIONS[edge].axis : null,
+      entered: entry.entered }) }
 }

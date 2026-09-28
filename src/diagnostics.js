@@ -176,6 +176,10 @@ export function createDiagnostics({
         // `bounds()` to prove the arming condition rather than re-deriving it.
         roomless: d.roomless,
         centre: d.centre,
+        // v0.9.13: false until this gesture has carried the piece INSIDE the cube once. No edge
+        // can arm before that, which is what keeps the tray→cube entry (always through the
+        // bottom edge) from turning the cube on the way in.
+        entered: d.entered,
         armed: d.armed,
         armedAxis: d.armedAxis,
         edge: d.edge,

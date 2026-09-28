@@ -359,6 +359,11 @@ export function createGameInput({
     // for the first ~0.2s and the piece would swim away from the finger that just grabbed it.
     // The view gesture takes the same precaution, for the same reason.
     settleCubeSnap()
+    // v0.9.13: a new gesture starts OUTSIDE the cube — the piece is in the tray. Until it has
+    // been inside the silhouette once, nothing outside can arm the dwell, which is what keeps
+    // the tray→cube entry (always through the bottom edge) from turning the cube on the way in.
+    endTurns()
+    edgeTurn.resetEntry()
     drag = {
       piece,
       pointerId: event.pointerId,
@@ -837,6 +842,9 @@ export function createGameInput({
       // it has crossed. Together they are the whole trigger: the piece is more than half off
       // the cube. Read-only; no gameplay path reads them.
       centre: drag?.centre ? { x: drag.centre.x, y: drag.centre.y } : null,
+      // v0.9.13: whether this gesture has ever had the piece inside the cube. Until it has, no
+      // edge can arm — the tray→cube entry crosses the bottom edge by construction.
+      entered: edgeTurn.report().entered,
       armed: edgeTurn.report().phase === 'hold',
       armedAxis: edgeTurn.report().axis,
       edge: edgeTurn.report().edge,

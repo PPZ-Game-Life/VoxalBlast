@@ -36,6 +36,9 @@
 //   M the switch      the 拖块翻面 preference gates the dwell: OFF carries the piece but never
 //                     arms, background drags still turn the cube, ON arms again, and flipping it
 //                     OFF mid-drag drops a dwell that is already armed
+//   N the entry       pushing a piece UP out of the tray (which always crosses the cube's bottom
+//                     edge) never arms, however long it is held there; once the piece HAS been
+//                     inside the cube that same edge arms again, and the latch resets per drag
 //
 // Discipline, same as the other probes: real CDP input only, read-only `__voxalblast` handles for
 // observation, an isolated browser profile with an OS-assigned debug port, Browser.close before
@@ -982,6 +985,27 @@ async function caseOtherFace(client, input) {
 // lift the ghost is drawn with under a mouse (DRAG_GHOST.liftMousePx), i.e. how far above the
 // pointer the measured centre sits, so a target pointer position is the wanted centre plus it.
 const MOUSE_LIFT = 10
+
+// v0.9.13: a piece that has never been INSIDE the cube cannot arm the dwell, so a drag straight
+// from the tray to an edge is deliberately inert (that is the tray→cube entry, which crosses the
+// bottom edge by construction). Every case that wants an armed edge therefore has to make the
+// real gesture: pick up in the tray, carry the piece up INTO the cube, and only then out again.
+// `glideTo` is a multi-step move on purpose — a single jump would never put the centre inside, so
+// the latch would stay open and the case would fail for the wrong reason.
+async function glideTo(input, from, to, steps = MOVE_STEPS) {
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps
+    await input.move(Math.round(from.x + (to.x - from.x) * t), Math.round(from.y + (to.y - from.y) * t))
+    await sleep(16)
+  }
+}
+
+// The whole gesture: tray → inside the cube → out to a target point (client px of the POINTER).
+async function carryOutOfCube(input, slot, through, point) {
+  await input.pressAndHold(slot, through)
+  await glideTo(input, through, point)
+}
+
 async function waitForObservation(client, expression) {
   return client.evaluate(`new Promise((resolve, reject) => {
     const deadline = performance.now() + 10000;
@@ -1008,9 +1032,12 @@ async function caseScreenEdges(client, input) {
     // The piece's centre is lifted above the pointer, so aim the pointer that far BELOW the
     // wanted centre. (The measured centre is asserted back below, from `ghost.centre`.)
     const point = { x: centre.x, y: centre.y + MOUSE_LIFT }
+    // Enter through the middle of the cube first (see carryOutOfCube): the entry latch has to
+    // close before any edge can arm, exactly as it does in play.
+    const through = { x: midX, y: midY + MOUSE_LIFT }
     await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
     const before = await client.readJson(STATE)
-    await input.pressAndHold(before.slots[0], point)
+    await carryOutOfCube(input, before.slots[0], through, point)
     const armed = await client.readJson(STATE)
     // The trigger itself, asserted from the number the game used: the piece's own centre is
     // past the cube silhouette on the expected side, and NOWHERE near the viewport edge.
@@ -1027,6 +1054,7 @@ async function caseScreenEdges(client, input) {
       `centre ${JSON.stringify(armed.ghost.centre)} overshoot ${overshoot[edge].toFixed(1)}px, pointer ${JSON.stringify(point)}`)
     check(`J ${edge}: enters dwell with carried piece and no rotation`, armed.ghost.armed
       && armed.ghost.edge === edge && armed.ghost.armedAxis === axis
+      && armed.ghost.entered === true
       && armed.ghost.visible && JSON.stringify(armed.rotation.pose) === JSON.stringify(before.rotation.pose))
     const hint = await client.readJson(`(() => { const el = document.querySelector('.edge-turn-hint'); const card = el.querySelector('.edge-turn-card'); const box = card.getBoundingClientRect(); return { visible: !el.hidden, edge: el.dataset.edge, progress: Number(el.style.getPropertyValue('--turn-progress')), card: { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) } } })()`)
     check(`J ${edge}: visible directional progress`, hint.visible && hint.edge === edge && hint.progress < 1)
@@ -1073,10 +1101,10 @@ async function caseEdgeCancel(client, input) {
     await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
     const before = await client.readJson(STATE)
     const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+    const cube = cubeCentre(bounds)
     const point = { x: Math.round(bounds.maxX) + 24, y: Math.round((bounds.minY + bounds.maxY) / 2) + MOUSE_LIFT }
-    await input.pressAndHold(before.slots[0], point)
+    await carryOutOfCube(input, before.slots[0], { x: cube.x, y: cube.y + MOUSE_LIFT }, point)
     await sleep(100)
-    const cube = cubeCentre(await client.readJson('globalThis.__voxalblast.bounds()'))
     if (mode === 'retreat') await input.move(cube.x, cube.y)
     if (mode === 'release') await input.up(point.x, point.y)
     if (mode === 'escape') await pressEscape(client)
@@ -1113,12 +1141,20 @@ async function caseEdgeRepeatTouch(client, input, touchInput) {
   const cellPx = Math.hypot(step.dx, step.dy)
   const edgeCentre = { x: Math.round(bounds.maxX) + 24, y: cubeMid.y }
   const edgePoint = { x: edgeCentre.x, y: Math.round(edgeCentre.y + 12 + cellPx * 0.5) }
+  const throughPoint = { x: cubeMid.x, y: Math.round(cubeMid.y + 12 + cellPx * 0.5) }
+  // Enter the cube first (v0.9.13 entry latch), then carry the piece out to the right edge.
   await touchInput.start([{ ...fresh.slots[0], id: 1 }])
+  for (let i = 1; i <= MOVE_STEPS; i += 1) {
+    const t = i / MOVE_STEPS
+    await touchInput.move([{ x: Math.round(fresh.slots[0].x + (throughPoint.x - fresh.slots[0].x) * t), y: Math.round(fresh.slots[0].y + (throughPoint.y - fresh.slots[0].y) * t), id: 1 }])
+    await sleep(16)
+  }
   await touchInput.move([{ ...edgePoint, id: 1 }])
   await sleep(100)
   const armed = await client.readJson(STATE)
   check('L touch: edge arms and piece remains visible', armed.ghost.armed && armed.ghost.visible
-    && armed.ghost.edge === 'right', `centre ${JSON.stringify(armed.ghost.centre)} edge ${armed.ghost.edge}`)
+    && armed.ghost.edge === 'right' && armed.ghost.entered === true,
+    `centre ${JSON.stringify(armed.ghost.centre)} edge ${armed.ghost.edge} entered=${armed.ghost.entered}`)
   await sleep(PIECE_SPIN.holdMs + 220)
   const first = await client.readJson(STATE)
   check('L stationary touch turns first face', first.rotation.front === '-x',
@@ -1157,13 +1193,14 @@ async function caseDragTurnSwitch(client, input) {
   const centre = { x: Math.round(bounds.maxX) + 24, y: midY }
   const point = { x: centre.x, y: centre.y + MOUSE_LIFT }
   const cube = cubeCentre(bounds)
+  const through = { x: cube.x, y: cube.y + MOUSE_LIFT }
 
   if (!await setDragTurn(client, false)) { skip('M switch OFF', 'the settings row did not report the new state'); return }
   const off = await client.readJson('globalThis.__voxalblast.preferences()')
   check('M the switch reads OFF from the game, not just the DOM', off.dragTurn === false, JSON.stringify(off))
 
   const before = await client.readJson(STATE)
-  await input.pressAndHold(before.slots[0], point)
+  await carryOutOfCube(input, before.slots[0], through, point)
   await sleep(PIECE_SPIN.holdMs + 260)
   const held = await client.readJson(STATE)
   check('M OFF: the piece is still carried, but the dwell never arms',
@@ -1193,7 +1230,7 @@ async function caseDragTurnSwitch(client, input) {
   if (!await setDragTurn(client, true)) { skip('M switch back ON', 'the settings row did not report the new state'); return }
   await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
   const onBefore = await client.readJson(STATE)
-  await input.pressAndHold(onBefore.slots[0], point)
+  await carryOutOfCube(input, onBefore.slots[0], through, point)
   const armed = await client.readJson(STATE)
   check('M ON: the same carry arms the dwell again', armed.ghost.armed && armed.ghost.edge === 'right',
     `armed=${armed.ghost.armed} edge=${armed.ghost.edge}`)
@@ -1202,7 +1239,7 @@ async function caseDragTurnSwitch(client, input) {
   // Flipping the switch OFF mid-drag drops a dwell that is already armed.
   await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
   const live = await client.readJson(STATE)
-  await input.pressAndHold(live.slots[0], point)
+  await carryOutOfCube(input, live.slots[0], through, point)
   const wasArmed = await client.readJson(STATE)
   if (!wasArmed.ghost.armed) { skip('M switch OFF mid-drag', 'the dwell did not arm before the switch was flipped'); return }
   await setDragTurn(client, false)
@@ -1214,6 +1251,75 @@ async function caseDragTurnSwitch(client, input) {
     `armed=${dropped.ghost.armed} edge=${dropped.ghost.edge} front=${dropped.rotation.front}`)
   await releaseWithoutPlacing(client, input, cube)
   await setDragTurn(client, true)
+}
+
+// N. The tray→cube ENTRY never turns the cube (v0.9.13). Every candidate is pushed UP out of the
+// tray, and the tray sits below the cube, so the piece's centre necessarily crosses the bottom
+// edge on the way in. This case walks exactly that path with real pointer input and holds it
+// there for several dwells: the cube must not move, and the piece must still be placeable.
+//
+// It also pins the other half of the rule — once the piece HAS been inside, the bottom edge is an
+// exit again and does arm — so the latch cannot be "fixed" by simply never arming the bottom.
+async function caseEntryFromTray(client, input) {
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const before = await client.readJson(STATE)
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const midX = Math.round((bounds.minX + bounds.maxX) / 2)
+  // Just past the bottom edge, where the old rule armed within a frame of arriving.
+  const justBelow = { x: midX, y: Math.round(bounds.maxY) + 18 + MOUSE_LIFT }
+
+  // 1. Straight up from the tray to just below the cube — the ordinary way in.
+  await input.pressAndHold(before.slots[0], justBelow)
+  const arriving = await client.readJson(STATE)
+  check('N the tray→cube entry never arms the dwell',
+    !arriving.ghost.armed && arriving.ghost.edge === null && arriving.ghost.entered === false,
+    `armed=${arriving.ghost.armed} edge=${arriving.ghost.edge} entered=${arriving.ghost.entered}`)
+  check('N no hint card on the way in', await client.readJson("document.querySelector('.edge-turn-hint').hidden"))
+  // Hold it there for several dwells: the old behaviour turned the cube here.
+  await sleep(PIECE_SPIN.holdMs * 3 + 200)
+  const heldBelow = await client.readJson(STATE)
+  check('N holding at the cube foot on the way in still never turns',
+    !heldBelow.ghost.armed && heldBelow.rotation.front === before.rotation.front
+    && JSON.stringify(heldBelow.rotation.pose) === JSON.stringify(before.rotation.pose),
+    `front=${heldBelow.rotation.front} armed=${heldBelow.ghost.armed}`)
+
+  // 2. Up INTO the cube, then back out through the bottom edge: now it is an EXIT, so it arms.
+  const cube = cubeCentre(bounds)
+  await glideTo(input, justBelow, { x: cube.x, y: cube.y + MOUSE_LIFT })
+  const entered = await client.readJson(STATE)
+  check('N carrying the piece into the cube closes the latch',
+    entered.ghost.entered === true && !entered.ghost.armed,
+    `entered=${entered.ghost.entered} armed=${entered.ghost.armed}`)
+  await glideTo(input, { x: cube.x, y: cube.y + MOUSE_LIFT }, justBelow)
+  const backOut = await client.readJson(STATE)
+  check('N leaving through the bottom edge AFTER entering does arm it',
+    backOut.ghost.armed && backOut.ghost.edge === 'bottom' && backOut.ghost.armedAxis === 'pitch',
+    `armed=${backOut.ghost.armed} edge=${backOut.ghost.edge}`)
+  await waitForObservation(client, 'globalThis.__voxalblast.ghost().turned')
+  await waitForObservation(client, '!globalThis.__voxalblast.rotation().settling')
+  const turned = await client.readJson(STATE)
+  check('N and that turn is a real one', turned.rotation.front !== before.rotation.front,
+    `front ${before.rotation.front} -> ${turned.rotation.front}`)
+
+  // 3. A fresh gesture starts in the tray again: the latch is per drag, not per session.
+  await releaseWithoutPlacing(client, input, cube)
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const fresh = await client.readJson(STATE)
+  await input.pressAndHold(fresh.slots[0], justBelow)
+  await sleep(PIECE_SPIN.holdMs + 300)
+  const second = await client.readJson(STATE)
+  check('N the next drag has to enter the cube all over again',
+    second.ghost.entered === false && !second.ghost.armed
+    && second.rotation.front === fresh.rotation.front,
+    `entered=${second.ghost.entered} armed=${second.ghost.armed} front=${second.rotation.front}`)
+
+  // 4. The piece is still a normal piece: brought back over the cube it previews a placement.
+  await glideTo(input, justBelow, { x: cube.x, y: cube.y + MOUSE_LIFT })
+  const placeable = await readState(client, input, { x: cube.x, y: cube.y + MOUSE_LIFT })
+  check('N and it still previews a placement once it is over a face',
+    placeable.ghost.onFace && placeable.ghost.previewCells > 0,
+    `onFace=${placeable.ghost.onFace} cells=${placeable.ghost.previewCells}`)
+  await releaseWithoutPlacing(client, input, cube)
 }
 
 // --------------------------------------------------------------------------- driver
@@ -1387,6 +1493,9 @@ try {
 
   console.log('\n-- M. the 拖块翻面 switch gates the dwell --')
   if (wants('M')) await caseDragTurnSwitch(client, input)
+
+  console.log('\n-- N. the tray→cube entry never turns the cube --')
+  if (wants('N')) await caseEntryFromTray(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))
