@@ -497,9 +497,17 @@ export function dragGhostLiftPx(pointerType, rows, cellPx) {
 
 // Launcher-style page turning while carrying a piece. A new full dwell starts
 // after each animation, so holding at an edge can deliberately browse more faces.
+//
+// v0.9.11 — the ruler is the CUBE, not the screen. `armPx` is measured from the cube's screen
+// silhouette (`cubeScreenBounds()`), and the point that is measured is the CARRIED PIECE's own
+// bounding-box centre, so the condition reads "the block is more than half off the cube"
+// (producer, 2026-09-28). `armPx: 0` is deliberate — the moment the centre is past the
+// silhouette edge the dwell arms; the producer asked for no extra margin. Raise it to require a
+// further `armPx` px of overhang before the dwell starts. There is no inward hysteresis to tune
+// either: the side is re-chosen every frame, so carrying the piece back over the cube re-attaches
+// it immediately (see `cubeEdge()` in input/edgeTurn.js).
 export const PIECE_SPIN = Object.freeze({
-  edgePx: 36,
-  exitSlopPx: 8,
+  armPx: 0,
   holdMs: 650,
 })
 

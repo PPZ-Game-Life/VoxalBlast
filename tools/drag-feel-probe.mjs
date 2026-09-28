@@ -28,7 +28,9 @@
 //                      cell with a real touch pointer
 //   G other faces      after a real cube turn the piece still tracks the finger, one lattice unit
 //                      per lattice unit, measured on the FACE's own axes
-//   J screen edges    all four edges dwell before a 90-degree turn; feedback and placement survive
+//   J cube edges     carrying the piece until its own centre leaves the CUBE's silhouette arms
+//                    the dwell on that side (the screen edge plays no part since v0.9.11);
+//                    feedback and placement survive
 //   K cancellation    leaving an edge, release and Escape clear the pending dwell
 //   L repeat + touch  a stationary touch can browse faces; full faces never auto-spin
 //
@@ -971,7 +973,12 @@ async function caseOtherFace(client, input) {
   await releaseWithoutPlacing(client, input, cube)
 }
 
-// J. Four screen edges use exactly the same yaw/pitch steps as the view controls.
+// J. The turn arms where the CARRIED PIECE's centre leaves the CUBE's screen silhouette — the
+// v0.9.11 rule. The probe does not pick a screen corner any more: it reads the cube's own box
+// from `bounds()` and walks the piece's centre just past one side of it. `MOUSE_LIFT` is the
+// lift the ghost is drawn with under a mouse (DRAG_GHOST.liftMousePx), i.e. how far above the
+// pointer the measured centre sits, so a target pointer position is the wanted centre plus it.
+const MOUSE_LIFT = 10
 async function waitForObservation(client, expression) {
   return client.evaluate(`new Promise((resolve, reject) => {
     const deadline = performance.now() + 10000;
@@ -985,21 +992,48 @@ async function waitForObservation(client, expression) {
 }
 
 async function caseScreenEdges(client, input) {
-  for (const [edge, point, axis, expectedFace] of [
-    ['left', { x: 8, y: VIEWPORT.height / 2 }, 'yaw', '+x'],
-    ['right', { x: VIEWPORT.width - 8, y: VIEWPORT.height / 2 }, 'yaw', '-x'],
-    ['top', { x: VIEWPORT.width / 2, y: 8 }, 'pitch', '-y'],
-    ['bottom', { x: VIEWPORT.width / 2, y: VIEWPORT.height - 8 }, 'pitch', '+y'],
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const midX = Math.round((bounds.minX + bounds.maxX) / 2)
+  const midY = Math.round((bounds.minY + bounds.maxY) / 2)
+  for (const [edge, centre, axis, expectedFace] of [
+    ['left', { x: Math.round(bounds.minX) - 24, y: midY }, 'yaw', '+x'],
+    ['right', { x: Math.round(bounds.maxX) + 24, y: midY }, 'yaw', '-x'],
+    ['top', { x: midX, y: Math.round(bounds.minY) - 24 }, 'pitch', '-y'],
+    ['bottom', { x: midX, y: Math.round(bounds.maxY) + 24 }, 'pitch', '+y'],
   ]) {
+    // The piece's centre is lifted above the pointer, so aim the pointer that far BELOW the
+    // wanted centre. (The measured centre is asserted back below, from `ghost.centre`.)
+    const point = { x: centre.x, y: centre.y + MOUSE_LIFT }
     await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
     const before = await client.readJson(STATE)
     await input.pressAndHold(before.slots[0], point)
     const armed = await client.readJson(STATE)
+    // The trigger itself, asserted from the number the game used: the piece's own centre is
+    // past the cube silhouette on the expected side, and NOWHERE near the viewport edge.
+    const overshoot = {
+      left: bounds.minX - armed.ghost.centre.x,
+      right: armed.ghost.centre.x - bounds.maxX,
+      top: bounds.minY - armed.ghost.centre.y,
+      bottom: armed.ghost.centre.y - bounds.maxY,
+    }
+    check(`J ${edge}: the piece's centre is past the CUBE silhouette, not the screen edge`,
+      armed.ghost.centre !== null && overshoot[edge] > 0
+      && overshoot[edge] < 60 && point.x > 20 && point.x < VIEWPORT.width - 20
+      && point.y > 20 && point.y < VIEWPORT.height - 20,
+      `centre ${JSON.stringify(armed.ghost.centre)} overshoot ${overshoot[edge].toFixed(1)}px, pointer ${JSON.stringify(point)}`)
     check(`J ${edge}: enters dwell with carried piece and no rotation`, armed.ghost.armed
       && armed.ghost.edge === edge && armed.ghost.armedAxis === axis
       && armed.ghost.visible && JSON.stringify(armed.rotation.pose) === JSON.stringify(before.rotation.pose))
-    const hint = await client.readJson(`(() => { const el = document.querySelector('.edge-turn-hint'); return { visible: !el.hidden, edge: el.dataset.edge, progress: Number(el.style.getPropertyValue('--turn-progress')) } })()`)
+    const hint = await client.readJson(`(() => { const el = document.querySelector('.edge-turn-hint'); const card = el.querySelector('.edge-turn-card'); const box = card.getBoundingClientRect(); return { visible: !el.hidden, edge: el.dataset.edge, progress: Number(el.style.getPropertyValue('--turn-progress')), card: { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) } } })()`)
     check(`J ${edge}: visible directional progress`, hint.visible && hint.edge === edge && hint.progress < 1)
+    // The card follows the piece, not a screen corner: it is drawn beside the armed point and
+    // fully inside the viewport.
+    check(`J ${edge}: the card is drawn beside the piece and stays on screen`,
+      Math.abs(hint.card.x - armed.ghost.centre.x) < 140 && Math.abs(hint.card.y - armed.ghost.centre.y) < 140
+      && hint.card.x > 20 && hint.card.x < VIEWPORT.width - 20
+      && hint.card.y > 20 && hint.card.y < VIEWPORT.height - 20,
+      `card ${JSON.stringify(hint.card)} centre ${JSON.stringify(armed.ghost.centre)}`)
     const canvas = await client.readJson(`(() => { const r = document.querySelector('#scene-wrap canvas').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom } })()`)
     check(`J ${edge}: carried shape stays inside the rendered canvas`, armed.ghost.cells.every(p =>
       p.x - armed.ghost.cellPx / 2 >= canvas.left && p.x + armed.ghost.cellPx / 2 <= canvas.right
@@ -1035,17 +1069,20 @@ async function caseEdgeCancel(client, input) {
   for (const mode of ['retreat', 'release', 'escape']) {
     await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
     const before = await client.readJson(STATE)
-    await input.pressAndHold(before.slots[0], { x: 422, y: 450 })
+    const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+    const point = { x: Math.round(bounds.maxX) + 24, y: Math.round((bounds.minY + bounds.maxY) / 2) + MOUSE_LIFT }
+    await input.pressAndHold(before.slots[0], point)
     await sleep(100)
-    if (mode === 'retreat') await input.move(215, 450)
-    if (mode === 'release') await input.up(422, 450)
+    const cube = cubeCentre(await client.readJson('globalThis.__voxalblast.bounds()'))
+    if (mode === 'retreat') await input.move(cube.x, cube.y)
+    if (mode === 'release') await input.up(point.x, point.y)
     if (mode === 'escape') await pressEscape(client)
     await sleep(PIECE_SPIN.holdMs + 100)
     const after = await client.readJson(STATE)
     check(`K ${mode}: no delayed rotation`, JSON.stringify(after.rotation.pose) === JSON.stringify(before.rotation.pose))
     check(`K ${mode}: clears feedback`, !after.ghost.armed && await client.readJson("document.querySelector('.edge-turn-hint').hidden"))
-    if (mode === 'retreat') await releaseWithoutPlacing(client, input, { x: 215, y: 450 })
-    else await input.up(215, 450)
+    if (mode === 'retreat') await releaseWithoutPlacing(client, input, cube)
+    else await input.up(cube.x, cube.y)
   }
 }
 
@@ -1064,17 +1101,29 @@ async function caseEdgeRepeatTouch(client, input, touchInput) {
 
   await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
   const fresh = await client.readJson(STATE)
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const cubeMid = cubeCentre(bounds)
+  // The touch grab lifts the piece by 12px + half its own height, so the pointer target sits
+  // that far below the wanted centre. The cell pitch comes from the BOARD's own measured axis
+  // (an idle ghost reports a meaningless pitch: it has never been placed on the ghost plane).
+  const step = await client.readJson('globalThis.__voxalblast.placement().uAxis')
+  const cellPx = Math.hypot(step.dx, step.dy)
+  const edgeCentre = { x: Math.round(bounds.maxX) + 24, y: cubeMid.y }
+  const edgePoint = { x: edgeCentre.x, y: Math.round(edgeCentre.y + 12 + cellPx * 0.5) }
   await touchInput.start([{ ...fresh.slots[0], id: 1 }])
-  await touchInput.move([{ x: 422, y: 450, id: 1 }])
+  await touchInput.move([{ ...edgePoint, id: 1 }])
   await sleep(100)
   const armed = await client.readJson(STATE)
-  check('L touch: edge arms and piece remains visible', armed.ghost.armed && armed.ghost.visible)
+  check('L touch: edge arms and piece remains visible', armed.ghost.armed && armed.ghost.visible
+    && armed.ghost.edge === 'right', `centre ${JSON.stringify(armed.ghost.centre)} edge ${armed.ghost.edge}`)
   await sleep(PIECE_SPIN.holdMs + 220)
   const first = await client.readJson(STATE)
-  check('L stationary touch turns first face', first.rotation.front === '-x')
+  check('L stationary touch turns first face', first.rotation.front === '-x',
+    `front=${first.rotation.front} phase=${first.ghost.turnPhase}`)
   await sleep(PIECE_SPIN.holdMs + 400)
   const second = await client.readJson(STATE)
-  check('L continued hold turns another face after a fresh dwell', second.rotation.front === '-z')
+  check('L continued hold turns another face after a fresh dwell', second.rotation.front === '-z',
+    `front=${second.rotation.front}`)
   await touchInput.end([])
   await sleep(PIECE_SPIN.holdMs + 350)
   const ended = await client.readJson(STATE)
@@ -1242,7 +1291,7 @@ try {
   console.log('\n-- I. partial overflow is grey and returns without placement --')
   if (wants('I')) await caseOverflow(client, input)
 
-  console.log('\n-- J. four screen edges and visible dwell feedback --')
+  console.log('\n-- J. carrying the piece off the cube arms the dwell on that side --')
   if (wants('J')) await caseScreenEdges(client, input)
 
   console.log('\n-- K. pending edge turns cancel cleanly --')

@@ -5,7 +5,10 @@
   pointer-events: none;
   color: #fff9e7;
   --edge-angle: 90deg;
-  background: linear-gradient(var(--edge-angle), #efb45277, transparent 64px);
+  /* v0.9.11: a soft glow on the side the piece was carried off, so the screen still answers
+     "which way will it turn" — but the card itself follows the piece (edgeTurnHint.js), which
+     is why it no longer sits in a corner. */
+  background: linear-gradient(var(--edge-angle), #efb45255, transparent 84px);
 }
 .edge-turn-hint[hidden] { display: none; }
 .edge-turn-hint[data-edge="right"] { --edge-angle: 270deg; }
@@ -22,11 +25,8 @@
   background: #5b392aed;
   box-shadow: 0 4px 18px #39210c40;
   font: 700 12px/1.2 system-ui, sans-serif;
+  transform: translate(-50%, -50%);
 }
-.edge-turn-hint[data-edge="left"] .edge-turn-card { left: max(10px, env(safe-area-inset-left)); top: 28%; transform: translateY(-50%); }
-.edge-turn-hint[data-edge="right"] .edge-turn-card { right: max(10px, env(safe-area-inset-right)); top: 28%; transform: translateY(-50%); }
-.edge-turn-hint[data-edge="top"] .edge-turn-card { top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); }
-.edge-turn-hint[data-edge="bottom"] .edge-turn-card { bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }
 .edge-turn-arrow { font-size: 28px; line-height: 1; }
 .edge-turn-track { width: 60px; height: 4px; border-radius: 4px; background: #ffffff33; overflow: hidden; }
 .edge-turn-track i { display: block; height: 100%; background: #ffdb82; transform: scaleX(var(--turn-progress)); transform-origin: left; }

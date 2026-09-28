@@ -115,7 +115,11 @@ export function createGameInput({
   let drag = null
   let suppressPieceClickUntil = 0
   const edgeTurn = createEdgeTurn({
-    bounds: () => ({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }),
+    // v0.9.11: the ruler is the CUBE's own silhouette, not the viewport. The trigger point is
+    // the carried piece's centre, which `ghostCentre` below measures from the same lift the
+    // ghost is drawn with -- so "the block is more than half off the cube" is the exact
+    // condition, and the screen edge no longer plays any part in it.
+    bounds: cubeScreenBounds,
     blocked: () => !drag?.active || isPaused() || isEnded() || isHomeOpen()
       || isSettingsOpen() || isControlsOpen() || document.hidden,
     turning: () => cubeSnapAnim.active,
@@ -363,6 +367,10 @@ export function createGameInput({
       attached: false,
       active: false,
       inCancelZone: false,
+      // The carried piece's centre on screen, last frame — the point the turn trigger measures
+      // against the cube's silhouette (v0.9.11). Published through dragReport() so a check can
+      // see the same number the arming rule saw.
+      centre: null,
       startX: event.clientX,
       startY: event.clientY,
       // The grab reference: the contact point in client px and the piece's continuous
@@ -448,6 +456,20 @@ export function createGameInput({
     return {
       u: { x: stepU.x - base.x, y: stepU.y - base.y },
       v: { x: stepV.x - base.x, y: stepV.y - base.y },
+    }
+  }
+
+  // Where the piece in hand LOOKS like it is, in client pixels: the ghost's bounding-box centre.
+  // This is the very same point pieceView places the ghost with -- the pointer's own NDC lifted
+  // by `dragGhostLiftPx`, converted back with the canvas' own box -- which is why the turn
+  // trigger and the picture on screen can never disagree about "how far off the cube" it is.
+  // v0.9.11: this is the turn trigger's ruler (the pointer's client px used to be).
+  function ghostCentre(event, ndc, piece) {
+    const rect = canvas.getBoundingClientRect()
+    const point = grabPointNdc(event, ndc, piece)
+    return {
+      x: rect.left + (point.x * 0.5 + 0.5) * rect.width,
+      y: rect.top + (0.5 - point.y * 0.5) * rect.height,
     }
   }
 
@@ -539,7 +561,6 @@ export function createGameInput({
       if (!pointerPoint || !grabPoint) return false
       drag.face = face
       drag.cells = cells
-      // Availability affects the preview only; full faces use the same edge dwell.
       drag.roomless = !anyPlacementOn(face, cells)
       // The origin that puts the shape's bounding-box CENTRE where the ghost's centre was —
       // the one grab reference the hand and the face have in common.
@@ -606,20 +627,13 @@ export function createGameInput({
     }
     const ndc = eventNdc(event)
     drag.ndc = ndc
-    // The outer screen band wins over the tray, making the bottom edge reachable.
-    // The tray interior continues to be the release-to-cancel target.
-    if (edgeTurn.update({ x: event.clientX, y: event.clientY })) {
-      drag.inCancelZone = false
-      onCancelZone(true, false)
-      detachFace()
-      drag.attached = false
-      drag.origin = null
-      drag.valid = false
-      onClearLanding()
-      syncGhostFor(event, ndc, 'carry', true)
-      onStatus(edgeTurn.report().phase === 'turning' ? 'Turning to next face' : 'Hold at edge to turn')
-      return true
-    }
+    // v0.9.11 — the turn branch is driven by the CARRIED PIECE's centre against the CUBE's
+    // silhouette, not by the pointer against the viewport edge: the finger only has to carry
+    // the block until more than half of it hangs off the cube. That makes the branch reachable
+    // while the piece is still ATTACHED (its centre can sit past the silhouette with the piece's
+    // own body still covering a face), so it is asked AFTER the cancel strip below: "drag it back
+    // to the tray" is an explicit instruction and must win over a turn that the piece's own
+    // geometry happens to arm on the way there.
     drag.inCancelZone = isInsidePieceArea(event)
     onCancelZone(true, drag.inCancelZone)
     if (drag.inCancelZone) {
@@ -632,6 +646,22 @@ export function createGameInput({
       onClearLanding()
       syncGhostFor(event, eventNdc(event), 'cancel')
       onStatus('Release to cancel')
+      return true
+    }
+    const centre = selectedPiece ? ghostCentre(event, ndc, selectedPiece) : { x: event.clientX, y: event.clientY }
+    drag.centre = centre
+    if (edgeTurn.update(centre)) {
+      drag.inCancelZone = false
+      onCancelZone(true, false)
+      detachFace()
+      drag.attached = false
+      drag.origin = null
+      drag.valid = false
+      onClearLanding()
+      // 'turn' rather than 'carry': off the cube with the dwell armed, so the piece keeps its
+      // own colour (the grey tint means "you cannot drop it here", and here there is no drop).
+      syncGhostFor(event, ndc, 'turn', true)
+      onStatus(edgeTurn.report().phase === 'turning' ? 'Turning to next face' : 'Hold to turn')
       return true
     }
     // Keep the carried piece visible while a committed turn finishes.
@@ -647,7 +677,7 @@ export function createGameInput({
     // disappears; if the pointer is on the cube but this face has no room, the piece
     // stays in hand and turns grey instead of silently vanishing.
     syncGhostFor(event, ndc, attached ? 'snap' : isPointerOnCube(ndc) ? 'invalid' : 'carry')
-    if (attached) onStatus(drag.valid ? 'Release to place' : 'No room here — hold at screen edge to turn')
+    if (attached) onStatus(drag.valid ? 'Release to place' : 'Carry the block off the cube to turn')
     else onStatus(isPointerOnCube(ndc) ? 'No room on this face' : 'Drag to a face')
     return true
   }
@@ -785,6 +815,11 @@ export function createGameInput({
       anchor: drag?.anchor ? { x: drag.anchor.x, y: drag.anchor.y, u: drag.anchor.u, v: drag.anchor.v } : null,
       stepScreen: drag?.face ? faceStepScreen(drag.face) : null,
       roomless: drag?.roomless === true,
+      // v0.9.11: the arming ruler. `centre` is the carried piece's bounding-box centre in
+      // client px (the point the picture on screen shows) and `edge` the cube silhouette side
+      // it has crossed. Together they are the whole trigger: the piece is more than half off
+      // the cube. Read-only; no gameplay path reads them.
+      centre: drag?.centre ? { x: drag.centre.x, y: drag.centre.y } : null,
       armed: edgeTurn.report().phase === 'hold',
       armedAxis: edgeTurn.report().axis,
       edge: edgeTurn.report().edge,

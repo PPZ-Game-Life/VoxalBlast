@@ -387,10 +387,12 @@ export function createPieceView({
 
   // `mode` is the state the drag is in: 'carry' (in hand, off the cube), 'snap' (the
   // piece is on the board now — the ghost goes away, the landing preview is the
-  // piece), 'invalid' (on the cube but this face has no room) or 'cancel' (dragged
-  // back over the candidate/item strip).
+  // piece), 'invalid' (on the cube but this face has no room), 'cancel' (dragged
+  // back over the candidate/item strip) or 'turn' (carried off the cube: the turn dwell
+  // has armed, so the piece keeps its own colour instead of reading as "you cannot drop
+  // this here" — the tint is about the DROP, and there is no drop where it is now).
   function tintDragGhost(mode) {
-    const invalid = mode !== 'snap'
+    const invalid = mode !== 'snap' && mode !== 'turn'
     const opacity = mode === 'cancel' ? DRAG_GHOST.cancelOpacity
       : invalid ? DRAG_GHOST.invalidOpacity : DRAG_GHOST.opacity
     ghost.userData.mode = mode
@@ -458,8 +460,9 @@ export function createPieceView({
     ghost.position.set(ndc.x * halfWidth, ndc.y * halfHeight + liftPx * worldPerPx, -distance)
     if (keepInView) {
       // Viewport edges can lie outside this canvas (especially above the HUD and
-      // below the tray). Keep the held shape just inside the visible play area;
-      // only its display is clamped, never the pointer that drives edge dwell.
+      // below the tray). Keep the held shape just inside the visible play area; only its
+      // display is clamped, never the piece centre that drives the turn dwell (v0.9.11
+      // measures that centre from the ghost's own placement, not from this clamp).
       const insetX = ((ghost.userData.columns || 1) * cellPx / 2 + 8) * worldPerPx
       const insetY = (rows * cellPx / 2 + 8) * worldPerPx
       const limitX = Math.max(0, halfWidth - insetX)

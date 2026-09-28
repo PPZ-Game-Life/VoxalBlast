@@ -169,8 +169,13 @@ export function createDiagnostics({
         // solved in. Exposed so a check can reproduce the mapping exactly instead of
         // assuming it.
         stepScreen: d.stepScreen,
-        // Viewport-edge dwell while the piece remains in hand.
+        // v0.9.11 turning while carrying a piece: the trigger is the CARRIED PIECE's centre
+        // (`centre`, client px) crossing the CUBE's screen silhouette — not the pointer reaching
+        // a viewport edge. `edge` is the silhouette side it crossed, `armed` / `turnPhase` the
+        // dwell, `armedAxis` the axis it will turn on. A check reads `centre` together with
+        // `bounds()` to prove the arming condition rather than re-deriving it.
         roomless: d.roomless,
+        centre: d.centre,
         armed: d.armed,
         armedAxis: d.armedAxis,
         edge: d.edge,

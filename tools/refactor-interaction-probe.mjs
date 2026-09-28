@@ -384,7 +384,10 @@ const onFace = (state) => state.ghost.attached === true && state.ghost.mode === 
 // spot is the subject of the check has to ask for the legal one explicitly, or it would settle
 // on a red preview and fail the check it was meant to set up.
 const onLegalFace = (state) => onFace(state) && state.preview.valid === true
-const inHand = (state) => state.ghost.attached === true && state.ghost.mode === 'carry'
+// v0.9.11: 'turn' is the carried piece with the turn dwell armed (its centre is past the cube's
+// silhouette). It is still "in hand" — same ghost, same count, no landing marker — only the tint
+// differs, so the predicate accepts both modes.
+const inHand = (state) => state.ghost.attached === true && ['carry', 'turn'].includes(state.ghost.mode)
   && state.ghost.count > 0 && state.ghost.previewCells === 0
 // clearDragGhost() leaves `userData.mode` stale on purpose (nothing reads it while idle),
 // so "idle" has to be read off visible/count/marker rather than off the last mode string.
@@ -537,7 +540,10 @@ async function caseSlopAndMiss(client, input) {
     `attached=${tapped.ghost.attached} mode=${tapped.ghost.mode} carried=${tapped.ghost.count} marker=${tapped.ghost.previewCells}`)
 
   // Past the slop, ending off the cube and off the strip: nothing is spent, and the
-  // player is told to try elsewhere rather than silently losing the piece.
+  // player is told to try elsewhere rather than silently losing the piece. The point is the
+  // top of the VIEWPORT, which since v0.9.11 is also far past the cube's silhouette — the piece
+  // is carried ('turn' once the dwell arms, 'carry' before that), never on a face, and the
+  // release still spends nothing.
   const void_ = { x: Math.round(VIEWPORT.width / 2), y: 4 }
   await input.pressAndHold({ x: slot.x, y: slot.y }, void_)
   await sleep(80)
