@@ -44,13 +44,30 @@ export function collectDom(root = document) {
     toastEl: need('#toast'),
     honorLayerEl: need('#honor-layer'),
 
-    // Candidate strip, item bar and their shared cancel target.
+    // Candidate strip, item bar and the two cancel targets (07 §8.3: the tray and the item
+    // strip are two INDEPENDENT rectangles, so each has its own overlay and its own copy).
     slotsEl: need('#piece-slots'),
     piecesPanelEl: need('.bottom-panel'),
     cancelZoneEl: need('#cancel-zone'),
+    cancelZoneTitleEl: need('#cancel-zone-title'),
+    cancelZoneNoteEl: need('#cancel-zone-note'),
     itemBarEl: need('#item-bar'),
+    itemCancelZoneEl: need('#item-cancel-zone'),
     axisPickEl: need('#axis-pick'),
-    axisCancelEl: need('#axis-cancel'),
+    // The item status bar and its controls (07 §8.3), plus the undo window's bar (§8.9).
+    itemStatusEl: need('#item-status'),
+    itemStatusIconEl: need('#item-status-icon'),
+    itemStatusNameEl: need('#item-status-name'),
+    itemStatusHintEl: need('#item-status-hint'),
+    itemUseEl: need('#item-use'),
+    itemCancelEl: need('#item-cancel'),
+    undoBarEl: need('#undo-bar'),
+    undoBarTextEl: need('#undo-bar-text'),
+    undoButtonEl: need('#undo-button'),
+    refreshConfirmEl: need('#refresh-confirm'),
+    refreshConfirmCopyEl: need('#refresh-confirm-copy'),
+    refreshKeepEl: need('#refresh-keep'),
+    refreshGoEl: need('#refresh-go'),
 
     // Settings panel, controls card and their entries.
     settingsEl: need('#settings-modal'),

@@ -128,11 +128,18 @@ export function createBlockResources({ metrics }) {
 
   const edgeGeometry = new THREE.EdgesGeometry(blockGeometry)
 
+  // A plain unit box, scaled per bar by rendering/pieceView.js to draw an item's scope frame
+  // (07 §8.5.4/§8.6: 「细实线/低透明填充表示完整作用域」 and 「边框沿棋格画成方形/透视四边形，
+  // 并保留内部分格」). It is deliberately NOT `blockGeometry`: a frame drawn out of bevelled
+  // blocks at a 0.03-cell thickness reads as a row of pebbles instead of a ruled line. Like the
+  // block, it is shared and listed below, so tearing an overlay down never frees it.
+  const barGeometry = new THREE.BoxGeometry(1, 1, 1)
+
   // The resources a node may be holding WITHOUT owning. `disposeNode()` checks this list
   // before freeing a geometry, which is what stops a cleared candidate preview or drag
   // ghost from taking the board's blocks down with it. `cubeBody.geometry` is the board's
   // own hull and belongs to its creator, so it is listed here too.
-  const sharedGeometries = [blockGeometry, cubeBody.geometry]
+  const sharedGeometries = [blockGeometry, cubeBody.geometry, barGeometry]
 
   // Read-out for the moved introspection block (diagnostics only assembles): the triangle
   // count of THE shared block geometry, so a check can prove the block is still the same
@@ -144,6 +151,7 @@ export function createBlockResources({ metrics }) {
   return {
     blockGeometry,
     edgeGeometry,
+    barGeometry,
     // The shell mesh itself, for main to add to the cube group (see the note above).
     cubeBody,
     report,

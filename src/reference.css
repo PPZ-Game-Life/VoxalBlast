@@ -1,5 +1,5 @@
 /* Reference art skin. Generated RGBA slices; labels/counts remain live DOM. */
-:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; }
+:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; --item-caption: 15px; }
 .pastoral-backdrop-painting { filter: blur(1.5px) saturate(.86); transform: scale(1.015); }
 .topbar { position: absolute; inset: 0 0 auto; width: 100%; max-width: none; height: 18vh; padding: 0; overflow: visible; pointer-events: none; }
 .topbar > button { pointer-events: auto; }
@@ -39,12 +39,32 @@
 .item-button[data-item='hammer'] { --button-art: url('/art/reference/hammer.png'); }
 .item-button[data-item='rocket'] { --button-art: url('/art/reference/rocket.png'); }
 .item-button[data-item='bomb'] { --button-art: url('/art/reference/bomb.png'); }
+/* v1 (07 §8.3) — the strip carries NAMES now. The button becomes a two-row column: the art
+   square on top and an `--item-caption` caption under it. The art moves off the button's own
+   background and onto `.item-icon`, because a square PNG stretched into a taller box would
+   shrink; this way the icons keep their exact `--hud-button` size and still line up with the
+   HUD buttons, while the caption is pure addition. `--item-caption` is subtracted from the
+   board band in the same change (`.board-section` below), so the caption can never eat into the
+   cube. */
+.item-button { display: grid; grid-template-rows: var(--hud-button) var(--item-caption); background: none; width: var(--hud-button); height: calc(var(--hud-button) + var(--item-caption)); border-radius: 0; overflow: visible; }
+.item-button .item-icon { visibility: visible; width: var(--hud-button); height: var(--hud-button); background: var(--button-art) center / contain no-repeat; font-size: 0; color: transparent; }
 .item-button .item-count { top: 0; right: -1px; min-width: 26px; height: 30px; padding: 2px 6px; display: grid; place-items: center; background: linear-gradient(#ff628b, #f21c57); border: 1px solid #ffabc1; border-radius: 50%; color: white; font-size: 19px; box-shadow: 0 2px 3px #98244e66; }
-.item-button.active { outline: 3px solid #fff6ab; outline-offset: 1px; background: var(--button-art) center / contain no-repeat; filter: drop-shadow(0 0 7px #ffc400); }
+/* Armed: the art wears a glow ring. The old rule re-declared the button's background, which is
+   no longer where the art lives — `drop-shadow` on the icon does the same job and survives the
+   layout change. */
+.item-button.active .item-icon { filter: drop-shadow(0 0 7px #ffc400); }
+.item-button.active::before { content: ''; position: absolute; inset: -3px -3px calc(var(--item-caption) - 3px); border: 3px solid #fff6ab; border-radius: 50%; pointer-events: none; }
+.item-button.empty .item-icon { filter: grayscale(.85) brightness(1.08); }
+.item-button.disabled .item-icon { filter: grayscale(.9); }
 .topbar .icon-button:hover, .item-button:not(.disabled):hover { transform: translateY(-2px) scale(1.04); }
 .topbar .icon-button:active, .item-button:active:not(.disabled) { transform: translateY(2px); box-shadow: none; }
 .game-layout { position: absolute; inset: 0; width: 100%; max-width: none; padding: 0; margin: 0; display: block; }
 #item-bar.item-bar { position: absolute; z-index: 4; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: repeat(4, var(--hud-button)); gap: clamp(10px, 1.35vw, 24px); margin: 0; max-width: none; }
+/* 07 §8.3 — the action bars: the item status bar and the undo window's bar, stacked directly
+   under the strip. Fixed position, never following the finger: it is where the player reads
+   "what is this about to clear", so it has to be in the same place every time. `pointer-events`
+   belongs to the buttons alone, so the band never eats a gesture aimed at the board behind it. */
+.action-bars { top: calc(max(10px, env(safe-area-inset-top)) + var(--hud-button) + var(--item-caption) + 6px); }
 .board-section { position: absolute; top: 12%; bottom: 20%; left: 10%; width: 80%; }
 .scene-wrap { position: absolute; inset: 0 0 12%; height: auto; min-height: 0; z-index: 1; }
 .board-section::before, .board-section::after { display: none; }
@@ -83,6 +103,12 @@
   #sound-button { right: calc(43vw * .22 - 12.8vw / 2 + 25.7vw); width: 12vw; }
   #item-bar.item-bar { top: calc(var(--hud-top) + var(--plaque-width) * .56 + 8px); gap: 2.7vw; }
   .item-button .item-count { min-width: 19px; height: 22px; padding: 1px 4px; font-size: 15px; right: -2px; }
+  /* v1: the status bar hangs under the strip, and the board band is pushed down by the caption
+     the strip grew (`--item-caption`) plus the bar's own height only while it is VISIBLE — the
+     bar lives in the sky between the strip and the cube, which the framing probe already proves
+     is free on every phone size the game ships (390×844: strip ends at ~114px, cube starts at
+     ~271px). Reserving its height permanently would cost the cube more than the bar is worth. */
+  .action-bars { top: calc(var(--hud-top) + var(--plaque-width) * .56 + 8px + var(--hud-button) + var(--item-caption) + 6px); }
   /* v0.9.14 — the cube moves UP and the tray moves DOWN, which widens the band the bottom
      turn dwell lives in (v0.9.13: the piece's centre has to leave the cube's silhouette, and
      the tray/cancel strip sits directly below it). Measured before the change, on 390×844:
@@ -96,7 +122,7 @@
          so a taller canvas moves it DOWN and eats the tray's gain exactly (measured: band
          145px before and 146px after a naive CSS-only attempt).
      `.board-section` / `.scene-wrap` therefore keep their v0.9.1 values. */
-  .board-section { left: 1.5%; width: 97%; top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + 24px); bottom: 18%; }
+  .board-section { left: 1.5%; width: 97%; top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + var(--item-caption) + 24px); bottom: 18%; }
   .scene-wrap { bottom: 8%; }
   .bottom-panel { bottom: max(1%, env(safe-area-inset-bottom)); width: 94vw; height: 13.8%; max-height: 170px; padding: 4px 9px 6px; }
   .bottom-panel .piece-slot { padding: 0; border-radius: 12px; }
@@ -132,10 +158,17 @@ html, body { overscroll-behavior: none; }
 .board-section, .bottom-panel, #item-bar { touch-action: none; }
 
 @media (orientation: landscape) and (max-height: 600px) {
-  :root { --plaque-width: 190px; --hud-button: 50px; }
+  :root { --plaque-width: 190px; --hud-button: 50px; --item-caption: 13px; }
   #item-bar.item-bar { top: 2%; gap: 10px; }
   .item-button .item-count { min-width: 19px; height: 22px; font-size: 14px; }
-  .board-section { top: 14%; bottom: 22%; }
-  .scene-wrap { bottom: 6%; }
+  /* The one breakpoint where the sky above the cube is too thin to host the action bars: the
+     strip already ends at ~63px while the board band starts at 14% (≈55px on 390px height), so
+     a bar under the strip would sit ON the cube's top row — the row a player is aiming at. The
+     bars move to the gap directly above the tray instead and the board band gives up the room
+     they need (`bottom: 30%`), which is the honest price: this orientation is a phone held
+     sideways, and a cube 8% smaller beats a status bar covering the target cells. */
+  .action-bars { top: auto; bottom: calc(23% + 2px); }
+  .board-section { top: 14%; bottom: 30%; }
+  .scene-wrap { bottom: 4%; }
   .bottom-panel { width: 48vw; height: 21%; bottom: max(1%, env(safe-area-inset-bottom)); padding: 2px 9px 5px; }
 }

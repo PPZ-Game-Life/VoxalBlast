@@ -30,6 +30,7 @@ import { createEffects } from './rendering/effects.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
+import { ITEM_COPY } from './ui/itemCopy.js'
 import { createGameOver } from './ui/gameOver.js'
 import { createHud } from './ui/hud.js'
 import { createHome } from './ui/home.js'
@@ -54,10 +55,9 @@ const {
   getRunId,
   getItemCounts,
   setItemCharge,
-  itemTool,
   resetItemCounts,
   spendItem,
-  toolScopeCells,
+  toolScopeFaceCells,
   applyItem,
   openUndo,
   clearUndo,
@@ -87,7 +87,18 @@ const {
   cancelZoneEl,
   itemBarEl,
   axisPickEl,
-  axisCancelEl,
+  itemStatusEl,
+  itemStatusIconEl,
+  itemStatusNameEl,
+  itemStatusHintEl,
+  itemUseEl,
+  undoBarEl,
+  undoBarTextEl,
+  undoButtonEl,
+  refreshConfirmEl,
+  refreshConfirmCopyEl,
+  cancelZoneTitleEl,
+  cancelZoneNoteEl,
   settingsEl,
   settingsButtonEl,
   soundSettingEl,
@@ -159,6 +170,8 @@ const hud = createHud({
   els: {
     statusEl, toastEl, scoreEl, bestEl, chainEl, chainValueEl, chainBarEl,
     sceneWrap, honorLayerEl, itemBarEl, axisPickEl, slotsEl,
+    itemStatusEl, itemStatusIconEl, itemStatusNameEl, itemStatusHintEl, itemUseEl,
+    refreshConfirmEl, refreshConfirmCopyEl, undoBarEl, undoBarTextEl,
   },
   getScore: () => board.score,
   getBest: () => bestScore,
@@ -190,6 +203,9 @@ const {
   clearHonorLayer,
   renderItemBar,
   renderAxisPick,
+  renderItemStatus,
+  renderRefreshConfirm,
+  renderUndoBar,
   renderPieceSlots,
 } = hud
 
@@ -355,8 +371,9 @@ const input = createGameInput({
   // Availability is diagnostic; all piece turns use the viewport-edge dwell.
   anyPlacementOn: (face, cells) => board.anyPlacementOn(face, cells),
   currentCells: (piece) => currentCells(piece),
-  toolScope: (id, face, u, v, orientation) => toolScopeCells(id, face, u, v, orientation),
+  toolScopeFace: (id, face, u, v, orientation) => toolScopeFaceCells(id, face, u, v, orientation),
   isOccupied: (cell) => board.has(cell[0], cell[1], cell[2]),
+  getItemCounts: () => getItemCounts(),
   cancelZones: () => [piecesPanelEl, itemBarEl],
   onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
   onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
@@ -376,13 +393,26 @@ const input = createGameInput({
   onAxisPick: () => renderAxisPick(),
   onAxisPickVisibility: (hidden) => axisPickEl.classList.toggle('hidden', hidden),
   onClearOverlay: () => clearItemOverlay(),
-  onShowOverlay: (params) => showItemOverlay(params),
-  onConfirmItem: () => confirmItem(),
+  onShowOverlay: (scope) => showItemScope(scope),
+  onConfirmItem: (snapshot) => confirmItem(snapshot),
+  // 07 §8's own callbacks. The status bar's repaint, the batch question, the refusal of an empty
+  // charge, the undo window a re-armed tool closes (§8.9) and the one hint the mode owes a player
+  // who tries to turn the cube while holding a tool (§8.4).
+  onItemStatus: () => renderItemStatus(input.itemReport()),
+  onRefreshConfirm: (open) => renderRefreshConfirm(open),
+  onConfirmRefresh: () => { rerollPieces() },
+  onEmptyItem: (id) => {
+    showToast(ITEM_COPY.empty)
+    playHaptic(20)
+    renderItemBar()
+  },
+  onRearm: () => clearItemUndo(),
+  onItemLockedRotate: () => showLockedRotateHint(),
   onStatus: (text) => setStatus(text),
   onToast: (text) => showToast(text),
   onHaptic: (pattern) => playHaptic(pattern),
   onEdgeTurn: createEdgeTurnHint(),
-  onCancelZone: (active, highlighted) => setCancelZone(active, highlighted),
+  onCancelZone: (mode, active, highlighted) => setCancelZone(mode, active, highlighted),
   onSelectionChanged: () => updatePieceSlotSelection(),
   onBuildGhost: (piece) => buildDragGhost(piece),
   onSyncGhost: (params) => syncDragGhost(params),
@@ -475,10 +505,12 @@ const {
   clearDragGhost,
   syncDragGhost,
   ghostReport,
-  // Item target overlay (P4c): main still decides which cells a tool covers and which of them are
-  // already taken; the module draws the markers for the list it is handed.
+  // Item scope overlay (P4c, redesigned for 07 §8.5/§8.6): main still decides which cells a tool
+  // reaches and which of them are taken; the module draws the frame, the floors, the cleared
+  // blocks and the anchor from the finished snapshot it is handed.
   clearItemOverlay,
-  showItemOverlay,
+  showItemScope,
+  pulseItemScope,
 } = pieceView
 
 // ============================================================
@@ -587,10 +619,20 @@ function nextPieces() {
 // itself -- the buttons, the chip colour, the thumbnail canvases and the pointer wiring --
 // moved to ui/hud.js in P9; the previews themselves stay in pieceView.
 
-function setCancelZone(active, highlighted = false) {
+// 07 §8.3: the cancel affordance is TWO independent rectangles — the candidate tray and the item
+// strip — because they are separated by the board on every layout the game ships. `mode` decides
+// which copy they wear: 'piece' is the placement drag's own cancel ("Cancel / placement"), the
+// item mode's is the doc's 「拖到这里取消 / 松手取消」. `highlighted` is the "the finger is in
+// here right now" state, which is what turns 拖到这里取消 into 松手取消.
+function setCancelZone(mode, active = false, highlighted = false) {
+  const item = mode === 'item' || mode === 'item-hot'
   piecesPanelEl.classList.toggle('cancel-mode', active)
   piecesPanelEl.classList.toggle('cancel-hot', active && highlighted)
+  itemBarEl.classList.toggle('cancel-mode', item && active)
+  itemBarEl.classList.toggle('cancel-hot', item && active && highlighted)
   cancelZoneEl.setAttribute('aria-hidden', String(!active))
+  cancelZoneTitleEl.textContent = item ? ITEM_COPY.dragCancelTitle : ITEM_COPY.pieceCancelTitle
+  cancelZoneNoteEl.textContent = item ? ITEM_COPY.dragCancelNote : ITEM_COPY.pieceCancelNote
 }
 
 // isInsidePieceArea() and cancelActiveDrag() moved to input/gameInput.js (refactor P7b); the
@@ -677,13 +719,26 @@ function closeControls() {
 // mode, the tap slop, the hover, the rocket's Row/Col and the busy gate moved to
 // input/gameInput.js (refactor P7c); what USING a tool does to the board stays here.
 
-// Closing the undo window also un-arms the toast, so a stale window can never keep a
-// clickable "Undo" on screen after a placement or a new clear.
-// The session owns the window (data + timer); this file owns the toast that shows it. Clearing
+// Closing the undo window also drops the undo BAR, so a stale window can never keep a clickable
+// 撤销 on screen after a placement or a new clear.
+// The session owns the window (data + timer); this file owns the bar that shows it. Clearing
 // always goes through here, so the UI can never look undoable while the session cannot undo.
 function clearItemUndo() {
   clearUndo()
   toastEl.classList.remove('undoable')
+  renderUndoBar(null)
+}
+
+// 07 §8.4: the mode takes the cube's rotation away on purpose, so this is the sentence that
+// explains the refusal. Rate-limited on purpose: a player dragging the board around would
+// otherwise toast on every frame.
+let lockedRotateHintUntil = 0
+function showLockedRotateHint() {
+  const now = performance.now()
+  if (now < lockedRotateHintUntil) return
+  lockedRotateHintUntil = now + 1600
+  showToast(ITEM_COPY.lockedRotate)
+  playHaptic(12)
 }
 
 // v0.6 (07 §3.1 A9): a clear is the one irreversible thing a mis-tap can do — the
@@ -693,14 +748,13 @@ function undoItem() {
   const undone = undoLast()
   if (!undone) return
   clearItemUndo()
-  toastEl.classList.remove('visible')
   input.releaseItems()
   renderBoard()
   renderItemBar()
   saveSession()
   playHaptic(8)
   setStatus('Pick a shape')
-  showToast(undone.restored ? `${undone.restored} restored` : 'Nothing to restore')
+  showToast(undone.restored ? ITEM_COPY.restoredN(undone.restored) : 'Nothing to restore')
   // Undoing back into the stuck board the clear had rescued is a real state, and the
   // only honest answer is the same check a placement runs: the run is over unless
   // something can still be played (07 §1.3).
@@ -716,17 +770,21 @@ function resetItems() {
   renderItemBar()
 }
 
-// The item targeting (the hover, the tap, the overlay it draws) moved to input/gameInput.js
-// (refactor P7c), together with the pointer coordinates it measured. What stays here is the
-// business of USING a tool: confirmItem() below and activateItem() after it.
-
-function confirmItem() {
-  const { id, face, u, v, orientation } = input.getItemActive()
-  if (u === undefined || v === undefined) return
+// The item targeting moved to input/gameInput.js (refactor P7c, redesigned for 07 §8): the mode,
+// the two paths, the cancel rectangles and the snapshot rule are the input layer's. What stays
+// here is the business of USING a tool — confirmItem() below, driven by the snapshot the input
+// layer hands over, and rerollPieces() behind the batch question.
+//
+// v1 passes the SNAPSHOT rather than letting this file re-read the live mode: §8.5.7 requires the
+// commit to be the exact object the input layer drew, and the input layer has already cleared its
+// mode by the time this runs (which is what makes a double-tapped 使用 harmless).
+function confirmItem(snapshot) {
+  const { id, face, u, v, orientation } = snapshot
   const { records, removed } = applyItem(id, face, u, v, orientation)
   if (!removed.length) {
     // A silent miss read as "the button is broken" (07 §3.1 A6), so the failure now
-    // says so on the toast and buzzes as well as setting the status line.
+    // says so on the toast and buzzes as well as setting the status line. The input layer has
+    // already refused an empty scope (§8.5.5), so reaching this is a genuine race, not a path.
     setStatus('Nothing to clear there')
     showToast('Nothing to clear there')
     playHaptic(24)
@@ -737,65 +795,26 @@ function confirmItem() {
   setTimeout(renderItemBar, 450)
   emitItemBurst(removed, id)
   renderBoard()
-  input.cancelItemSelection(true)
   setStatus('Pick a shape')
   renderItemBar()
   saveSession()
   clearItemUndo()
-  // The window arms a couple of statements earlier than it used to (before the toast, not
-  // after): at a 3000ms window that is not observable, and it keeps the data and the timer
-  // in one place (plan section 2).
+  // The window arms a couple of statements earlier than it used to: at a 3000ms window that is
+  // not observable, and it keeps the data and the timer in one place (plan section 2).
   openUndo({ id, records }, 3000, () => {
     clearItemUndo()
-    toastEl.classList.remove('visible')
   })
-  showToast(`Cleared ${removed.length} - Undo`, 3000)
-  toastEl.classList.add('undoable')
+  // §8.9: 取消 ≠ 撤销. The window gets a real bar with a 44px button instead of a clickable
+  // toast, because the toast can be painted over by the next ordinary message while the charge
+  // is still refundable.
+  renderUndoBar({ text: ITEM_COPY.clearedN(removed.length) })
   playHaptic(12)
   checkStuckAndPrompt()
 }
 
-function activateItem(id) {
-  // Tapping the armed tool again puts it away (07 §3.1 A3). Before v0.6 the same tap
-  // cancelled and immediately re-armed, so a phone player — who has no Esc — could
-  // not leave the mode without spending the item.
-  if (input.getItemActive()?.id === id) {
-    input.cancelItemSelection()
-    return
-  }
-  if (input.hasItemActive()) input.cancelItemSelection(true)
-  if (!input.canUseItemsNow()) {
-    renderItemBar()
-    return
-  }
-  if (getItemCounts()[id] <= 0) {
-    // Silence here is what made an empty slot feel broken (07 §3.1 A4).
-    showToast(`No ${itemTool(id)?.name ?? id} left`)
-    playHaptic(20)
-    renderItemBar()
-    return
-  }
-  if (id === 'refresh') {
-    // v0.9.0 P1: deal first, spend only on success (§10.1). A refresh that cannot produce a
-    // playable batch — the cube is full for every shape the dealer may use — must not cost the
-    // player a charge, and must not be silent about it either.
-    if (!rerollPieces()) {
-      showToast('No room - clear a path')
-      playHaptic(20)
-      renderItemBar()
-    }
-    return
-  }
-  // The mode, its panel and the status line are the input layer's; the undo window closes
-  // here because it is the toast's (07 §3.1 A9: a live undo toast must not stay clickable
-  // underneath the targeting mode that is about to replace it).
-  input.armItem(id)
-  clearItemUndo()
-  renderItemBar()
-}
-
 function rerollPieces() {
-  // A refresh replaces the batch the undo was recorded against, so the window closes.
+  // A refresh replaces the batch the undo was recorded against, so the window closes — this is
+  // also §8.9's 实际确认换批时才关闭撤销, which is why the confirm bar itself closes nothing.
   clearItemUndo()
   // The batch comes from the same dealing service as a natural one (v0.9.0 P1, spec §10.1):
   // relief target, Block 9 excluded, and it does NOT advance the natural batch counter or
@@ -803,7 +822,14 @@ function rerollPieces() {
   // because the dealer's proposal step already guarantees a different combination, and because
   // "different" was never the property that mattered — "playable" is.
   const result = session.refreshDeal()
-  if (!result.ok) return false
+  if (!result.ok) {
+    // §8.8 / v0.9.0 P1: deal first, spend only on success. A refresh that cannot produce a
+    // playable batch must not cost the player a charge, and must not be silent about it either.
+    showToast('No room - clear a path')
+    playHaptic(20)
+    renderItemBar()
+    return false
+  }
   spendItem('refresh')
   input.clearSelection()
   renderPieceSlots()
@@ -839,7 +865,10 @@ function checkStuckAndPrompt() {
 // emitItemBurst() lives in rendering/effects.js (refactor P5): it is a particle system, and the
 // module is handed the cells and asks boardView for the front face itself.
 
-toastEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
+// §8.9: 撤销 is a BUTTON on its own bar, not a clickable toast. The toast is for ordinary
+// messages; the undo window is a refundable transaction, and a message that can be painted over
+// is not a safe place to put one. Both the bar and its 44px button route here.
+undoButtonEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 
 // The piece placement drag (beginDrag / updatePreview / updateDrag / finishDrag /
 // cancelActiveDrag) and the pointer-to-lattice helpers moved to input/gameInput.js
@@ -1052,7 +1081,7 @@ function applySession(saved) {
   clearDragGhost()
   input.clearSelection()
   session.setEnded(false)
-  setCancelZone(false)
+  setCancelZone('piece', false, false)
   // The board, the run record, the hand and the charges (refactor P6b-2). The order around it is
   // unchanged: the pose below still comes after the hand, and the item strip after that.
   session.applySnapshot(saved)
@@ -1161,7 +1190,7 @@ function resetGame() {
   input.clearSelection()
   input.resetDrag()
   clearDragGhost()
-  setCancelZone(false)
+  setCancelZone('piece', false, false)
   resetCubeRotation()
   nextPieces()
   renderBoard()
@@ -1183,9 +1212,9 @@ function resetGame() {
 // it stays below, calling the module's separate methods rather than one blanket cancelAll().
 input.bind({
   itemBar: itemBarEl,
+  itemStatus: itemStatusEl,
+  refreshConfirm: refreshConfirmEl,
   axisPick: axisPickEl,
-  axisCancel: axisCancelEl,
-  onActivateItem: (id) => activateItem(id),
 })
 
 leaderboardButtonEl.addEventListener('click', () => {
@@ -1334,6 +1363,10 @@ function animate() {
   // repainted under it.
   if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
   updatePiecePreviews()
+  // 07 §8.5.4: the quiet pulse on the cells that will actually disappear. It rides the same
+  // frame loop as everything else (the plan's "只有一个时钟" rule) and is a no-op with no scope
+  // on screen, so an ordinary frame pays nothing for it.
+  if (input.hasItemActive()) pulseItemScope(clock.elapsedTime)
   // The camera's resting position, restored every frame by its owner (gameScene owns the orbit
   // distance, the zoom and the direction); effects returns only the shake offset added on top.
   camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())

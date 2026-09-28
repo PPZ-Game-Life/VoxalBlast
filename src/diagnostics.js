@@ -228,6 +228,11 @@ export function createDiagnostics({
     home: () => ({ ...homeUi.report(), persistent: sessionStore.persistent }),
     intro: () => boardView.introReport(),
     candidateFrames: () => pieceView.candidateFrames(),
+    // v0.9.17 (07 §8): the armed tool's live state — phase, target, scope area/N and whether the
+    // release is committable. The v1 interaction lives entirely in pointers, which a screenshot
+    // cannot show and a DOM read cannot prove (「单张截图不能证明释放时机正确」), so the probe
+    // reads the very report the status bar renders rather than re-deriving it from the DOM.
+    item: () => input.itemReport(),
     // v0.8.23 (P5): what the effects layer is holding right now. Particle systems are not
     // board meshes, so no other read-out can prove they were released on a restart; the shake
     // and the slow-motion dip are otherwise invisible too. Read-only; no gameplay path reads it.

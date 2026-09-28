@@ -824,3 +824,213 @@ kbd.active {
   .controls-card { padding: 20px 16px; }
   .ctrl-row { grid-template-columns: 56px 68px minmax(0, 1fr); gap: 8px; padding: 9px 10px; }
 }
+
+/* ============================================================
+   07 §8 — 道具交互 v1（2026-09-29）
+   ------------------------------------------------------------
+   这四块是「道具条 / 状态条 / 撤销条 / 换批确认」的公共外观，布局偏移放在
+   reference.css（最后导入的皮肤）里，因为只有它知道各个断点下道具条的绝对位置。
+   三条不可动摇的约束：
+     * 44px：状态条的每个按钮、撤销按钮、换批确认的两个按钮都不低于 --item-hit；
+     * 取消区是两个矩形：候选托盘一个、道具条一个，中间棋盘不属于任何一个；
+     * 状态条与撤销条各自占位、互不遮挡，任一时刻也不会盖住棋盘（偏移见皮肤文件）。
+   ============================================================ */
+:root { --item-hit: 44px; --item-caption: 15px; }
+
+/* 道具条上的名称（§8.3：不让玩家仅凭 emoji 猜功能）。名称占的是按钮框内的第二行，
+   高度由 --item-caption 计入布局，所以它不会挤到棋盘。 */
+.item-button .item-name,
+.item-button .item-empty {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: var(--item-caption);
+  letter-spacing: -.02em;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--navy-deep);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .7);
+}
+.item-button .item-empty { display: none; font-size: 9px; color: #8a6242; }
+/* 次数为 0 时用「本局已用完」替换名称：一句话，而不是一个假灰按钮（§8.3）。 */
+.item-button.empty .item-name { display: none; }
+.item-button.empty .item-empty { display: block; }
+.item-button.empty { opacity: .72; }
+
+/* ---- 道具状态条（§8.3） ---- */
+.action-bars {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(94vw, 620px);
+  pointer-events: none;
+}
+.action-bars > * { pointer-events: none; }
+.action-bars button { pointer-events: auto; }
+.item-status, .undo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: calc(var(--item-hit) + 4px);
+  padding: 2px 6px 2px 12px;
+  border: 2px solid #e3c9a0;
+  border-radius: 999px;
+  background: rgba(255, 252, 243, .95);
+  box-shadow: 0 6px 16px rgba(70, 45, 20, .22);
+  color: #4a3218;
+  font-size: 13px;
+  font-weight: 800;
+}
+.item-status.hidden, .undo-bar.hidden { display: none; }
+.item-status-tool { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.item-status-icon { font-size: 16px; line-height: 1; }
+.item-status-name { font-weight: 900; white-space: nowrap; }
+.item-status-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7a5a30;
+}
+.item-status-hint.warn { color: #c2531f; }
+.item-status .axis-pick,
+.axis-pick {
+  position: static;
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 0;
+  border-radius: 999px;
+  background: none;
+  box-shadow: none;
+}
+.axis-pick.hidden { display: none; }
+.axis-pick button {
+  width: auto;
+  min-width: 52px;
+  height: var(--item-hit);
+  min-height: var(--item-hit);
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  opacity: .55;
+}
+.axis-pick button:nth-child(1) { background: var(--coral, #f2506e); }
+.axis-pick button:nth-child(2) { background: var(--green, #3fae4a); }
+.axis-pick button.active { opacity: 1; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .95); }
+.item-use {
+  flex: none;
+  min-width: 92px;
+  min-height: var(--item-hit);
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(#5fc46a, #2f9a3f);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 3px 0 rgba(24, 90, 35, .35);
+}
+.item-use.hidden { display: none; }
+.item-use:disabled { opacity: .4; box-shadow: none; }
+.item-cancel {
+  flex: none;
+  min-width: var(--item-hit);
+  min-height: var(--item-hit);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #f0e2c8;
+  color: #6b4a26;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+/* ---- 撤销条（§8.9）。取消 ≠ 撤销，两者各自占位 ---- */
+.undo-bar-text { flex: 1 1 auto; color: #4a3218; }
+.undo-button {
+  flex: none;
+  min-width: 84px;
+  min-height: var(--item-hit);
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(#ffb347, #ef8a17);
+  color: #4a2a06;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: 0 3px 0 rgba(120, 62, 4, .32);
+}
+
+/* ---- 换批确认（§8.8）：弹在候选托盘内部，确认按钮远离换批图标 ---- */
+.refresh-confirm {
+  position: absolute;
+  z-index: 6;
+  inset: 6% 6% 8% 6%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border: 2px solid #e3c9a0;
+  border-radius: 18px;
+  background: rgba(255, 250, 238, .97);
+  box-shadow: 0 10px 24px rgba(70, 45, 20, .3);
+}
+.refresh-confirm.hidden { display: none; }
+.refresh-confirm-copy { flex: 1 1 auto; min-width: 0; color: #6b4a26; font-size: 12px; font-weight: 700; line-height: 1.3; }
+.refresh-confirm button {
+  flex: none;
+  min-height: var(--item-hit);
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.refresh-keep { background: #f0e2c8; color: #6b4a26; }
+.refresh-go { background: linear-gradient(#ff628b, #f21c57); color: #fff; }
+
+/* ---- 道具条 = 第二个取消区（§8.3） ---- */
+.item-bar { position: relative; }
+.item-cancel-zone {
+  inset: -8px -6px -6px -6px;
+  min-height: 0;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  padding: 0 12px;
+  border: 3px dashed #d59a5a;
+  border-radius: 20px;
+  background: rgba(255, 248, 232, .94);
+  color: #8a5a2b;
+  font-weight: 900;
+}
+#item-bar.cancel-mode .item-cancel-zone { opacity: .94; visibility: visible; transform: scale(1); }
+#item-bar.cancel-hot .item-cancel-zone { opacity: 1; background: rgba(255, 226, 168, .97); border-color: #ef8a17; color: #b4592a; }
+/* 拖道具时道具条自己是取消区，所以它不能像候选托盘那样被压暗——只有四个图标弱化。 */
+#item-bar.cancel-mode .item-button { opacity: .12; }
+.bottom-panel.cancel-mode ~ #item-bar.cancel-mode { opacity: 1; filter: none; }
+.item-cancel-zone .cancel-icon { width: 34px; height: 34px; font-size: 1.4rem; border-width: 2px; }
+.item-cancel-zone .cancel-copy small { font-size: 10px; }
+
+@media (max-width: 460px) {
+  .item-status, .undo-bar { gap: 6px; padding: 2px 4px 2px 10px; font-size: 12px; }
+  .item-status-hint { font-size: 11px; }
+  .item-use, .undo-button { min-width: 76px; font-size: 12px; }
+  .refresh-confirm { flex-wrap: wrap; gap: 6px; padding: 4px 8px; }
+  .refresh-confirm-copy { flex-basis: 100%; font-size: 11px; }
+  .refresh-confirm button { flex: 1 1 auto; padding: 0 10px; }
+}

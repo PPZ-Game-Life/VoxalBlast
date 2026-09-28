@@ -275,25 +275,36 @@ export function createGameSession() {
     itemCounts[id] = Math.min(tool ? tool.cap : itemCounts[id] + 1, itemCounts[id] + 1)
   }
 
-  // Which lattice cells a tool covers from a face cell (07 §3.1 A5). The rocket's row/column is
-  // the one thing the player can still change while aiming, so it arrives as a parameter: the
-  // aiming state is main's (P7), the shape of the tool's reach is the rule and lives here.
-  function toolScopeCells(id, face, u, v, orientation) {
-    if (id === 'hammer') return [faceLattice(face, u, v)]
+  // Which FACE cells a tool covers from an anchor (07 §8.5.4). This is the tool's reach in the
+  // coordinates the preview draws in — the frame, the internal ruling and the per-cell empty/
+  // occupied split are all per face cell — while `toolScopeCells()` below is the same list
+  // resolved to lattice coordinates, which is what removal and the undo record need. One
+  // definition, two projections: if the frame and the clear could disagree about where a bomb
+  // reaches, §8.5.7's 「所见即所得」 would be unenforceable.
+  //
+  // The rocket's row/column is the one thing the player can still change while aiming, so the
+  // orientation arrives as a parameter: the aiming state is the input layer's (P7), the SHAPE of
+  // the reach is a rule and lives here. §8.6's clipping is kept exactly as shipped — the bomb
+  // grows toward +u/+v and is cut by the face edge rather than slid inwards to fit.
+  function toolScopeFaceCells(id, face, u, v, orientation) {
+    if (id === 'hammer') return [{ u, v }]
     if (id === 'rocket') {
       const cells = []
-      if (orientation === 'col') for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, u, i))
-      else for (let i = 0; i < SH; i += 1) cells.push(faceLattice(face, i, v))
+      if (orientation === 'col') for (let i = 0; i < SH; i += 1) cells.push({ u, v: i })
+      else for (let i = 0; i < SH; i += 1) cells.push({ u: i, v })
       return cells
     }
-    // bomb: 2×2 square on the face, growing toward +u/+v, trimmed to bounds
     const cells = []
     for (let du = 0; du <= 1; du += 1) for (let dv = 0; dv <= 1; dv += 1) {
       const cu = u + du
       const cv = v + dv
-      if (cu < SH && cv < SH) cells.push(faceLattice(face, cu, cv))
+      if (cu < SH && cv < SH) cells.push({ u: cu, v: cv })
     }
     return cells
+  }
+
+  function toolScopeCells(id, face, u, v, orientation) {
+    return toolScopeFaceCells(id, face, u, v, orientation).map((cell) => faceLattice(face, cell.u, cell.v))
   }
 
   // A tool's whole effect on the board, in the order it has always run: read the records BEFORE
@@ -523,6 +534,7 @@ export function createGameSession() {
     spendItem,
     refundItem,
     toolScopeCells,
+    toolScopeFaceCells,
     applyItem,
     openUndo,
     clearUndo,

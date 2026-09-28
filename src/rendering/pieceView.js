@@ -517,30 +517,180 @@ export function createPieceView({
     }
   }
 
-  // ---- Item target overlay (refactor P4c) -------------------------------------
+  // ---- Item scope overlay (refactor P4c, redesigned for 07 §8.5/§8.6) -----------
   // Cube-local, like the landing marker and for the same reason: these cells are positioned in
-  // cube-local coordinates, so the highlight a tool paints has to turn with the cube it is
-  // pointing at. Which cells a tool covers is the tool's RULE and whether a cell is already
-  // taken is the board's (gameSession, P6) — both arrive here as data (plan §6 P4.3).
+  // cube-local coordinates, so the scope a tool paints has to turn with the cube it is pointing
+  // at. The input layer decides WHICH cells a tool reaches and which of them hold a block; this
+  // module is handed the finished list and only draws it.
+  //
+  // v1 draws FOUR things, and they answer four different questions the old single-opacity ghost
+  // could not (07 §8.1: 「炸弹也不该让玩家猜盲盒」):
+  //   * the frame + internal ruling  — where the scope is, spaces included;
+  //   * a faint floor plate          — a cell that is EMPTY, explicitly not a doomed one;
+  //   * the full-size ghost + edge   — a cell that WILL be cleared (the block itself, outlined);
+  //   * the shared marker            — a cell an edge/corner hands to the neighbouring face.
+  // Plus the anchor pip and, when the face edge cut the scope, the clipped-side ticks.
   const itemOverlay = new THREE.Group()
   cubeGroup.add(itemOverlay)
+  // Materials are created once per rebuild and shared by every bar/dot in it, then disposed
+  // together — `clearGroup` would dispose a shared material once per mesh that referenced it,
+  // so the overlay owns its own teardown instead of reusing the landing marker's.
+  let itemMaterials = []
+  let itemPulse = []
+  const itemFrameLift = style.blockSize * 0.5 + style.blockSize * 0.06
 
   function clearItemOverlay() {
-    clearGroup(itemOverlay)
+    while (itemOverlay.children.length) {
+      const child = itemOverlay.children.pop()
+      if (child) child.traverse((node) => {
+        if (node.geometry && !blocks.sharedGeometries.includes(node.geometry)) node.geometry.dispose()
+      })
+    }
+    itemMaterials.forEach((material) => material.dispose())
+    itemMaterials = []
+    itemPulse = []
   }
 
-  // One marker per targeted cell: an occupied cell gets the full-size, more opaque ghost of the
-  // block already sitting there, an empty one a smaller, fainter marker.
-  function showItemOverlay({ face, cells }) {
-    const normal = cubeVector(face, 'n')
-    cells.forEach(({ cell: [x, y, z], occupied }) => {
-      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.valid, occupied ? 0.55 : 0.22))
-      mesh.scale.setScalar(occupied ? 1 : 0.72)
-      // The marker is a ghost of the BLOCK that would sit in this cell, lifted just
-      // clear of the one already there so the two cannot z-fight.
-      mesh.position.copy(cellToWorld(x, y, z)).addScaledVector(normal, previewLift)
-      itemOverlay.add(mesh)
+  function flatMaterial(color, opacity) {
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      toneMapped: false,
     })
+    itemMaterials.push(material)
+    return material
+  }
+
+  // One prism between two cube-local points. The face basis is ±x/±y/±z in cube-local space, so
+  // a scope edge is always axis-aligned there and the scale can be written per axis — no
+  // per-bar quaternion, and no second copy of the face basis.
+  function addBar(group, from, to, thickness, material) {
+    const delta = to.clone().sub(from)
+    const length = delta.length()
+    if (!(length > 1e-6)) return
+    const mesh = new THREE.Mesh(blocks.barGeometry, material)
+    const scale = new THREE.Vector3(thickness, thickness, thickness)
+    const ax = Math.abs(delta.x)
+    const ay = Math.abs(delta.y)
+    const az = Math.abs(delta.z)
+    if (ax >= ay && ax >= az) scale.x = length
+    else if (ay >= az) scale.y = length
+    else scale.z = length
+    mesh.scale.copy(scale)
+    mesh.position.copy(from).add(to).multiplyScalar(0.5)
+    group.add(mesh)
+  }
+
+  const itemOverlayGroup = itemOverlay
+
+  // `scope` is the input layer's snapshot (07 §8.5.7 "所见即所得"): the SAME object the release
+  // will commit, so the frame on screen and the cells that disappear cannot be two answers.
+  function showItemScope({
+    face,
+    anchor,
+    cells,
+    span,
+    single = false,
+    clipped = 'none',
+    sharedCells = [],
+    empty = false,
+  }) {
+    clearItemOverlay()
+    if (!cells.length) return
+    const normal = cubeVector(face, 'n')
+    const uStep = cellToWorld(...faceLattice(face, 1, 0)).sub(cellToWorld(...faceLattice(face, 0, 0)))
+    const vStep = cellToWorld(...faceLattice(face, 0, 1)).sub(cellToWorld(...faceLattice(face, 0, 0)))
+    const base = cellToWorld(...faceLattice(face, 0, 0))
+    const lift = normal.clone().multiplyScalar(itemFrameLift)
+    const at = (u, v) => base.clone().addScaledVector(uStep, u).addScaledVector(vStep, v).add(lift)
+
+    const scopeColor = empty ? palette.invalid : palette.itemScope
+    const frameMaterial = flatMaterial(scopeColor, empty ? 0.42 : 0.9)
+    const ruleMaterial = flatMaterial(scopeColor, empty ? 0.18 : 0.32)
+    const clearMaterial = flatMaterial(palette.itemClear, 0.95)
+    const floorMaterial = flatMaterial(scopeColor, empty ? 0.1 : 0.16)
+    const sharedMaterial = flatMaterial(palette.itemShared, 0.9)
+
+    const thickness = style.blockSize * 0.035
+    const ruleThickness = style.blockSize * 0.02
+    const u0 = span.u0 - 0.5
+    const u1 = span.u1 + 0.5
+    const v0 = span.v0 - 0.5
+    const v1 = span.v1 + 0.5
+
+    // 1. The scope's own rectangle, drawn on the cell boundaries.
+    addBar(itemOverlayGroup, at(u0, v0), at(u1, v0), thickness, frameMaterial)
+    addBar(itemOverlayGroup, at(u0, v1), at(u1, v1), thickness, frameMaterial)
+    addBar(itemOverlayGroup, at(u0, v0), at(u0, v1), thickness, frameMaterial)
+    addBar(itemOverlayGroup, at(u1, v0), at(u1, v1), thickness, frameMaterial)
+    // 2. The internal ruling, so a 2×2 is visibly four cells and a 5-cell line visibly five.
+    for (let u = span.u0; u < span.u1; u += 1) addBar(itemOverlayGroup, at(u + 0.5, v0), at(u + 0.5, v1), ruleThickness, ruleMaterial)
+    for (let v = span.v0; v < span.v1; v += 1) addBar(itemOverlayGroup, at(u0, v + 0.5), at(u1, v + 0.5), ruleThickness, ruleMaterial)
+
+    // 3. Each cell: a floor plate if empty, the block itself + its outline if taken.
+    const shared = new Set(sharedCells.map((cell) => cell.join(',')))
+    cells.forEach(({ u, v, cell, occupied }) => {
+      const centre = cellToWorld(cell[0], cell[1], cell[2]).addScaledVector(normal, style.blockSize * 0.5 + style.blockSize * 0.02)
+      if (!occupied) {
+        const plate = new THREE.Mesh(blocks.barGeometry, floorMaterial)
+        plate.scale.set(style.blockSize * 0.72, style.blockSize * 0.72, Math.max(style.blockSize * 0.012, 0.004))
+        plate.position.copy(centre)
+        // Lay the plate flat on THIS face: the face basis is axis-aligned, so the thin axis is
+        // whichever one the normal points along.
+        if (Math.abs(normal.x) > 0.5) plate.scale.set(Math.max(style.blockSize * 0.012, 0.004), style.blockSize * 0.72, style.blockSize * 0.72)
+        else if (Math.abs(normal.y) > 0.5) plate.scale.set(style.blockSize * 0.72, Math.max(style.blockSize * 0.012, 0.004), style.blockSize * 0.72)
+        itemOverlayGroup.add(plate)
+        return
+      }
+      const ghost = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.itemClear, 0.34))
+      ghost.scale.setScalar(0.94)
+      ghost.position.copy(cellToWorld(cell[0], cell[1], cell[2])).addScaledVector(normal, previewLift)
+      ghost.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
+        color: palette.itemClear, transparent: true, opacity: 0.98, depthWrite: false, toneMapped: false,
+      })))
+      itemOverlayGroup.add(ghost)
+      itemPulse.push(ghost)
+      if (shared.has(cell.join(','))) {
+        const pip = new THREE.Mesh(blocks.barGeometry, sharedMaterial)
+        pip.scale.setScalar(style.blockSize * 0.16)
+        pip.position.copy(centre).addScaledVector(normal, style.blockSize * 0.06)
+        itemOverlayGroup.add(pip)
+      }
+    })
+
+    // 4. The anchor: the cell the scope grows FROM (07 §8.6 「靶心标出当前锚点格」). The bomb
+    //    and the rocket start here; the hammer's whole scope is this one cell, so it draws the
+    //    same pip and nothing else pretends to be a target.
+    if (anchor) {
+      const pip = new THREE.Mesh(blocks.barGeometry, clearMaterial)
+      // The hammer's whole scope IS this cell, so its pip is drawn big enough to read as the
+      // target rather than as a marker inside a bigger one.
+      pip.scale.setScalar(style.blockSize * (single ? 0.5 : 0.26))
+      pip.position.copy(at(anchor.u, anchor.v)).addScaledVector(normal, style.blockSize * 0.05)
+      itemOverlayGroup.add(pip)
+    }
+
+    // 5. Clipped sides (07 §8.6): two short ticks across the cut edge, so "the scope was cut
+    //    here" cannot be misread as "the scope moved inwards to fit".
+    const tick = style.blockSize * 0.22
+    if (clipped === 'u' || clipped === 'uv') {
+      addBar(itemOverlayGroup, at(u1, v0).addScaledVector(vStep, tick), at(u1, v1).addScaledVector(vStep, -tick), thickness * 1.6, clearMaterial)
+    }
+    if (clipped === 'v' || clipped === 'uv') {
+      addBar(itemOverlayGroup, at(u0, v1).addScaledVector(uStep, tick), at(u1, v1).addScaledVector(uStep, -tick), thickness * 1.6, clearMaterial)
+    }
+  }
+
+  // A quiet pulse on the cells that will actually disappear (07 §8.5.4). Driven from the game's
+  // own frame loop; with nothing to pulse it is a no-op, so it costs the common frame nothing.
+  const ITEM_PULSE_BASE = 0.94
+  const ITEM_PULSE_DEPTH = 0.035
+  function pulseItemScope(elapsed) {
+    if (!itemPulse.length) return
+    const scale = ITEM_PULSE_BASE * (1 + ITEM_PULSE_DEPTH * Math.sin(elapsed * 5.2))
+    itemPulse.forEach((marker) => marker.scale.setScalar(scale))
   }
 
   return {
@@ -559,6 +709,7 @@ export function createPieceView({
     returnPiece,
     ghostReport,
     clearItemOverlay,
-    showItemOverlay,
+    showItemScope,
+    pulseItemScope,
   }
 }

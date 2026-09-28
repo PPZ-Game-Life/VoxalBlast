@@ -57,11 +57,6 @@
           <!-- Honor broadcast layer (08 §6): lives in the info band above the cube,
                never covers the board, never takes a pointer event. -->
           <div id="honor-layer" class="honor-layer" aria-live="polite"></div>
-          <div id="axis-pick" class="axis-pick hidden" aria-label="Rocket line">
-            <button type="button" data-axis="row">Row</button>
-            <button type="button" data-axis="col">Col</button>
-            <button type="button" id="axis-cancel" class="axis-cancel" aria-label="Cancel item">✕</button>
-          </div>
           <!-- Transient "which axis just turned" badge for the keyboard (03 §13.3):
                a keycap plus the same axis ring the controls card draws, so a PC
                player learns W/S vs Q/E without reading a list. Fades on its own and
@@ -77,20 +72,71 @@
           <div id="piece-slots" class="piece-slots"></div>
           <div id="cancel-zone" class="cancel-zone" aria-hidden="true">
             <span class="cancel-icon" aria-hidden="true">×</span>
-            <span class="cancel-copy"><strong>Cancel</strong><small>placement</small></span>
+            <span class="cancel-copy"><strong id="cancel-zone-title">Cancel</strong><small id="cancel-zone-note">placement</small></span>
             <span class="cancel-arrow" aria-hidden="true">↩</span>
+          </div>
+          <!-- Refresh's inline confirmation (07 §8.8). It lives INSIDE the tray on purpose: a
+               refresh acts on the candidates, not on the board, so "replace this whole batch?"
+               is asked where the batch is. It is absolutely positioned over the slots so nothing
+               moves when it opens — 「不提前 reroll」 needs the slots to stay exactly where the
+               player was already looking. -->
+          <div id="refresh-confirm" class="refresh-confirm hidden" role="group" aria-label="换批确认">
+            <span id="refresh-confirm-copy" class="refresh-confirm-copy"></span>
+            <button id="refresh-keep" class="refresh-keep" type="button">保留当前</button>
+            <button id="refresh-go" class="refresh-go" type="button">换一批 · −1</button>
           </div>
         </section>
         <!-- The item strip is a SIBLING of the board, not a child of the candidate panel
              (v0.4.3). On a phone the three blocks have to be able to sit in the order
              items → cube → candidates for one-handed play, and CSS `order` can only
              arrange siblings. Desktop keeps the Block Blast reading (cube, candidates,
-             items) with the same DOM. -->
+             items) with the same DOM.
+
+             v1 (07 §8.3): every icon now carries its NAME as well as its count — four pictograms
+             and a number is not something a new player can read. The name lives INSIDE the
+             button, so the strip grows by `--item-caption` and the board band is offset by the
+             same amount (see reference.css) instead of the caption eating into the cube. -->
         <div id="item-bar" class="item-bar" aria-label="Items">
-          <button class="item-button" type="button" data-item="refresh" title="Reroll the three pieces" aria-label="Reroll pieces"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="hammer" title="Remove one block from a face" aria-label="Hammer one block"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="rocket" title="Clear a full row or column on the face" aria-label="Rocket clears a line"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
-          <button class="item-button" type="button" data-item="bomb" title="Blast a 2x2 area on the face" aria-label="Bomb blasts an area"><span class="item-icon" aria-hidden="true"></span><span class="item-count">0</span></button>
+          <button class="item-button" type="button" data-item="refresh" title="丢弃当前整批候选并重抽三块" aria-label="换批"><span class="item-icon" aria-hidden="true">↻</span><span class="item-count">0</span><span class="item-name">换批</span><span class="item-empty">本局已用完</span></button>
+          <button class="item-button" type="button" data-item="hammer" title="敲掉正面的一格方块" aria-label="锤子"><span class="item-icon" aria-hidden="true">🔨</span><span class="item-count">0</span><span class="item-name">锤子</span><span class="item-empty">本局已用完</span></button>
+          <button class="item-button" type="button" data-item="rocket" title="清掉正面的一整行或一整列" aria-label="火箭"><span class="item-icon" aria-hidden="true">🚀</span><span class="item-count">0</span><span class="item-name">火箭</span><span class="item-empty">本局已用完</span></button>
+          <button class="item-button" type="button" data-item="bomb" title="炸掉正面的 2×2 区域" aria-label="炸弹"><span class="item-icon" aria-hidden="true">💣</span><span class="item-count">0</span><span class="item-name">炸弹</span><span class="item-empty">本局已用完</span></button>
+          <!-- The strip IS the second cancel zone while a tool is dragged out of an icon
+               (07 §8.3): it and the candidate tray are TWO independent rectangles, never one
+               big box that swallows the board between them. `pointer-events:none` — the hit
+               test is a rect test in the input layer, the same one the tray uses, so returning
+               the finger here is judged by exactly the same rule. -->
+          <div id="item-cancel-zone" class="cancel-zone item-cancel-zone" aria-hidden="true">
+            <span class="cancel-icon" aria-hidden="true">×</span>
+            <span class="cancel-copy"><strong>拖到这里取消</strong><small>松手取消</small></span>
+          </div>
+        </div>
+        <!-- The item status bar (07 §8.3): [图标 名称] [操作提示/目标数量] [× 取消], with the
+             rocket's ↔/↕ switch and the tap path's 使用 · −1 appended when they apply. It is a
+             SIBLING of the strip rather than the strip itself: the four icons stay the picker
+             (and the cancel target), while this bar is the single place that says what the armed
+             tool is about to do. Fixed under the strip — it never follows the finger.
+
+             The undo window's bar (07 §8.9) shares this column: 取消 ≠ 撤销, and a clear's 撤销
+             must be a real button with a 44px target that an ordinary toast can never paint over. -->
+        <div id="action-bars" class="action-bars">
+          <div id="item-status" class="item-status hidden" role="status" aria-live="polite">
+            <span class="item-status-tool">
+              <span id="item-status-icon" class="item-status-icon" aria-hidden="true"></span>
+              <span id="item-status-name" class="item-status-name"></span>
+            </span>
+            <span id="item-status-hint" class="item-status-hint"></span>
+            <span id="axis-pick" class="axis-pick hidden" aria-label="火箭方向">
+              <button type="button" data-axis="row">↔ 横向</button>
+              <button type="button" data-axis="col">↕ 纵向</button>
+            </span>
+            <button id="item-use" class="item-use hidden" type="button">使用 · −1</button>
+            <button id="item-cancel" class="item-cancel" type="button" aria-label="取消当前道具">✕ 取消</button>
+          </div>
+          <div id="undo-bar" class="undo-bar hidden" role="status" aria-live="polite">
+            <span id="undo-bar-text" class="undo-bar-text"></span>
+            <button id="undo-button" class="undo-button" type="button">撤销</button>
+          </div>
         </div>
       </main>
       <!-- Home screen (v0.4, 03 §「主页与断点续玩」): the game opens here instead of on

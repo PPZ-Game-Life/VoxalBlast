@@ -17,6 +17,13 @@
 // Three.js use below is a colour formatter, not a renderer.
 import * as THREE from 'three'
 import { FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
+import { ITEM_COPY, ITEM_NAME } from './itemCopy.js'
+
+// The four icons exactly as index.html draws them. The status bar repeats the icon of whatever is
+// armed so the bar can never be read as belonging to a different tool than the highlighted one.
+const ITEM_ICON = Object.freeze({
+  refresh: '↻', hammer: '🔨', rocket: '🚀', bomb: '💣',
+})
 
 // The one Three.js use in this module: a colour integer -> the CSS custom property a candidate
 // slot paints its chip with. It is a formatter, not a renderer — the candidate PREVIEWS are
@@ -57,6 +64,16 @@ export function createHud({
     itemBarEl,
     axisPickEl,
     slotsEl,
+    // 07 §8.3/§8.8/§8.9: the status bar, the batch question and the undo window's bar.
+    itemStatusEl,
+    itemStatusIconEl,
+    itemStatusNameEl,
+    itemStatusHintEl,
+    itemUseEl,
+    refreshConfirmEl,
+    refreshConfirmCopyEl,
+    undoBarEl,
+    undoBarTextEl,
   } = els
 
   // The toast's own timer, moved with the function that owns it.
@@ -169,21 +186,93 @@ export function createHud({
   }
 
   // The item strip is rebuilt in place: the buttons are static in index.html and only their
-  // class/aria/count are written, so no node is ever replaced mid-gesture (that is what
-  // used to lose pointer capture).
+  // class/aria/count are written, so no node is ever replaced mid-gesture (that is what used
+  // to lose pointer capture).
+  //
+  // v1 (07 §8.3): three states, and they must be told apart at a glance —
+  //   ready    (has charges, operable)   normal
+  //   empty    (0 charges)               `.empty`, and it SAYS 本局已用完 instead of only dimming
+  //   not now  (paused / cooling down)   `.disabled`
+  // The strip of a run in progress may never be left looking grey while it still has charges;
+  // tools/screenshot.mjs asserts exactly that, because v0.8.21 shipped that bug.
   function renderItemBar() {
     const counts = getItemCounts()
     const active = getItemActive()
     itemBarEl.querySelectorAll('.item-button').forEach((button) => {
       const id = button.dataset.item
       const count = counts[id]
-      const ready = canUseItems() && count > 0
-      button.classList.toggle('disabled', !ready)
+      const empty = count <= 0
+      const ready = canUseItems() && !empty
+      button.classList.toggle('disabled', !ready && !empty)
+      button.classList.toggle('empty', empty)
       button.classList.toggle('active', active?.id === id)
       button.setAttribute('aria-pressed', String(active?.id === id))
       const countEl = button.querySelector('.item-count')
       if (countEl) countEl.textContent = String(count)
+      const emptyEl = button.querySelector('.item-empty')
+      if (emptyEl) emptyEl.textContent = ITEM_COPY.empty
+      const nameEl = button.querySelector('.item-name')
+      if (nameEl) nameEl.textContent = ITEM_NAME[id]
     })
+  }
+
+  // 07 §8.3/§8.5: the ONE place that says what the armed tool is about to do. It reads the input
+  // layer's report and never invents a number of its own — the N on screen is the N the release
+  // will clear, because both come from the same buildItemScope() snapshot.
+  function renderItemStatus(report) {
+    const visible = Boolean(report)
+    itemStatusEl.classList.toggle('hidden', !visible)
+    itemStatusEl.setAttribute('aria-hidden', String(!visible))
+    if (!visible) {
+      itemStatusEl.removeAttribute('data-item')
+      itemStatusEl.removeAttribute('data-phase')
+      return
+    }
+    itemStatusEl.dataset.item = report.id
+    itemStatusEl.dataset.phase = report.phase
+    itemStatusEl.dataset.clipped = report.clipped
+    itemStatusIconEl.textContent = ITEM_ICON[report.id] || ''
+    itemStatusNameEl.textContent = ITEM_NAME[report.id] || report.id
+    itemStatusHintEl.textContent = itemStatusHint(report)
+    itemStatusHintEl.classList.toggle('warn', report.phase === 'dragging' && !report.hasTarget)
+    const usable = report.canUse === true
+    itemUseEl.classList.toggle('hidden', !usable)
+    itemUseEl.disabled = !usable
+    itemUseEl.textContent = ITEM_COPY.use(1)
+  }
+
+  // The hint is the tool's state read out loud, in the doc's own words (§8.10's copy table):
+  // which path is live, whether the scope can be submitted, and — when the face edge cut it —
+  // the area/N pair that §8.6 demands instead of an apologetic silence.
+  function itemStatusHint(report) {
+    if (report.phase === 'refresh-confirm') return ITEM_COPY.refreshConfirm
+    if (!report.hasTarget) {
+      return report.phase === 'dragging' ? ITEM_COPY.offFace : ITEM_COPY.tapHint
+    }
+    if (report.clear <= 0) return ITEM_COPY.noTarget
+    const parts = [report.phase === 'dragging' ? ITEM_COPY.clearRelease(report.clear) : ITEM_COPY.clearN(report.clear)]
+    if (report.clipped !== 'none') parts.unshift(ITEM_COPY.clipped(report.area, report.clear))
+    if (report.shared) parts.push(ITEM_COPY.shared)
+    return parts.join(' · ')
+  }
+
+  // §8.8: the batch question, asked where the batch is. The copy is set once (it is static text
+  // from the planning table) and only its visibility changes.
+  function renderRefreshConfirm(open) {
+    refreshConfirmEl.classList.toggle('hidden', !open)
+    refreshConfirmEl.setAttribute('aria-hidden', String(!open))
+    refreshConfirmCopyEl.textContent = ITEM_COPY.refreshConfirm
+  }
+
+  // §8.9: 取消 ≠ 撤销. The undo window gets a real bar with a real button (≥44px) instead of a
+  // clickable toast, because a toast can be painted over by the next ordinary message while the
+  // charge is still refundable.
+  function renderUndoBar(state) {
+    const visible = Boolean(state)
+    undoBarEl.classList.toggle('hidden', !visible)
+    undoBarEl.setAttribute('aria-hidden', String(!visible))
+    if (!visible) return
+    undoBarTextEl.textContent = state.text
   }
 
   // The Row/Col panel doubles as the readout for the line the pointer auto-picked
@@ -239,6 +328,9 @@ export function createHud({
     clearHonorLayer,
     renderItemBar,
     renderAxisPick,
+    renderItemStatus,
+    renderRefreshConfirm,
+    renderUndoBar,
     renderPieceSlots,
   }
 }

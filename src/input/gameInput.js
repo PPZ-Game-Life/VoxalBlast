@@ -17,8 +17,9 @@
 import * as THREE from 'three'
 import { gestureAxisReady, pickGestureAxis, screenBand, swipeAngle } from '../rendering/swipe.js'
 import { axisForKey } from '../rendering/keyboard.js'
-import { DRAG_GHOST, dragGhostLiftPx, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
-import { SH } from '../game/board.js'
+import { DRAG_GHOST, dragGhostLiftPx, ITEM_STYLE, ROTATE_STYLE as rotateStyle } from '../rendering/config.js'
+import { faceLattice, SH } from '../game/board.js'
+import { ITEM_COPY } from '../ui/itemCopy.js'
 import { createEdgeTurn } from './edgeTurn.js'
 
 export function createGameInput({
@@ -67,9 +68,15 @@ export function createGameInput({
   anyPlacementOn,
   currentCells,
   // A tool's reach is the session's rule (P6b-1) and whether a cell is taken is the board's; the
-  // overlay that draws the answer is pieceView's. Both are read through here.
-  toolScope,
+  // overlay that draws the answer is pieceView's. Both are read through here. The FACE-cell form
+  // is what the new scope needs (07 §8.5.4 draws the frame per cell, spaces included), and it is
+  // the session's own single definition of the reach — `toolScopeCells` is now derived from it,
+  // so the frame and the clear cannot disagree about where a tool reaches.
+  toolScopeFace,
   isOccupied,
+  // The charges are game data (P6b-1) and the strip is hud's, but the two questions "may this be
+  // picked up at all" and "is it empty" are the mode's, so they are asked here.
+  getItemCounts,
   // The two DOM strips a release over means "put it back". ui/dom owns the elements; the input
   // layer only measures them, which is why it gets them as a list rather than as selectors.
   cancelZones,
@@ -98,6 +105,15 @@ export function createGameInput({
   onClearOverlay,
   onShowOverlay,
   onConfirmItem,
+  // 07 §8's own callbacks: the status bar's repaint, the batch question's bar, the refusal of an
+  // empty charge, the undo window that a re-armed tool has to close (§8.9), and the one hint the
+  // mode owes a player who tries to turn the cube while holding a tool.
+  onItemStatus,
+  onRefreshConfirm,
+  onConfirmRefresh,
+  onEmptyItem,
+  onRearm,
+  onItemLockedRotate,
   onBuildGhost,
   onSyncGhost,
   onClearGhost,
@@ -146,19 +162,43 @@ export function createGameInput({
     },
   })
 
-  // The armed tool (P7c). `itemActive` is the targeting mode, `itemTap` the press that may or may
-  // not become a target, `itemBusyUntil` the short window after a clear in which the strip is not
-  // accepting input, and `lastItemHoverKey` the cache that keeps the overlay from being rebuilt on
-  // every pointermove.
-  let itemActive = null // { id, face, u, v, orientation }
-  let itemTap = null
+  // The armed tool (07 §8, 交互 v1). ONE state object for the whole interaction, because the
+  // doc's §8.9 table is one table: 普通态 / 已选中态 / 拖拽态 / 待确认态 / 换批确认态 are phases
+  // of the same thing, and §8.4 is entirely about which transitions are legal. The shipped
+  // version split it into three variables (itemActive / itemTap / a 6px tap test) and that is
+  // exactly what let "aim at a cell" and "turn the cube" share one gesture with neither of them
+  // owning it — the doc's first listed 痛点.
+  //
+  //   null                           普通态：没有拿起的道具，棋盘手势照旧
+  //   { phase: 'selected' }          轻点选中，还没有目标
+  //   { phase: 'locked' }            目标已固定，"使用 · −1" 可用（轻点备用路径的待确认态）
+  //   { phase: 'dragging' }          从图标拖出，跟手瞄准（主路径）
+  //   { phase: 'refresh-confirm' }   换批确认条已弹出，等待 换一批 / 保留当前
+  let itemMode = null
+  // The scope the player is LOOKING AT right now. §8.5.7 makes this load-bearing rather than a
+  // convenience: the release may only commit this object, so "what the preview showed" and
+  // "what actually lands" cannot be two different answers.
+  let itemScope = null
+  let itemScopeKey = null
+  // The short hold after a committed use (§8.9: 约 420ms). It gates the NEXT pickup, which is
+  // what stops a double tap from spending two charges on one clear.
   let itemBusyUntil = 0
-  let lastItemHoverKey = null
-  // Same 6px slop the candidate drag uses to tell a tap from a gesture.
-  const ITEM_TAP_SLOP = 6
+  // The click the browser synthesises after a drag must never be read as a fresh tap (§8.4:
+  // 「生成的后续 click 必须吞掉」). Same idea as the candidate strip's suppressPieceClickUntil.
+  let suppressItemClickUntil = 0
+  // The press on an icon that has not decided yet whether it is a tap or a drag (§8.4's slop).
+  let itemPickup = null
+  // §8.7: the rocket's direction is the player's last ACTIVE choice, remembered for the loaded
+  // run only — cancelling, undoing, blurring or opening the settings panel must not reset it, but
+  // a new run and a resume do (see resetItemTargeting).
+  let rocketOrientation = 'row'
 
   function hasItemActive() {
-    return Boolean(itemActive)
+    return Boolean(itemMode)
+  }
+
+  function getItemActive() {
+    return itemMode
   }
 
   // A pointer event in NDC against the canvas box. The input layer's own ruler: the view
@@ -212,11 +252,10 @@ export function createGameInput({
   function updateViewGesture(event) {
     if (!viewDrag || event.pointerId !== viewDrag.pointerId) return false
     event.preventDefault()
-    // Keep the armed target under the pointer, including while the cube turns to
-    // bring another face round (07 §3.1 A1). The rocket only re-reads its Row/Col
-    // from the cell offset while the gesture is still a tap: during a committed turn
-    // the offsets change for reasons that have nothing to do with what was aimed at.
-    if (hasItemActive()) onItemHover(eventNdc(event), !viewDrag.axis)
+    // 07 §8.4: an armed tool no longer shares this gesture at all. The shipped version kept the
+    // target under the pointer while the cube turned ("瞄准态还能转面"); the redesign removes that
+    // trade outright — 一次手势只有一种含义 — and `onPointerDown` never starts a view gesture
+    // while a tool is armed. The old `onItemHover()` call that used to live here is gone with it.
     const dx = event.clientX - viewDrag.startX
     const dy = event.clientY - viewDrag.startY
     if (!viewDrag.axis) {
@@ -326,7 +365,13 @@ export function createGameInput({
     // (§3). A held key that spun the cube would be the only input in the game that can
     // outrun what the player sees.
     if (event.repeat) return true
-    if (isPaused() || hasDrag() || hasItemActive() || isHomeOpen() || isSettingsOpen()) return false
+    // 07 §8.4: the item mode takes the cube's rotation away on purpose, so the key is refused
+    // AND explained — 「需换面？取消后转动棋盘」. Returning true consumes the key either way.
+    if (hasItemActive()) {
+      if (!isPaused() && !isHomeOpen() && !isSettingsOpen()) onItemLockedRotate()
+      return true
+    }
+    if (isPaused() || hasDrag() || isHomeOpen() || isSettingsOpen()) return false
     if (!rotateByKey(binding.axis, binding.direction)) return true
     onAxisHint(event.key, binding.axis)
     return true
@@ -636,7 +681,7 @@ export function createGameInput({
     if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return true
     if (!drag.active) {
       drag.active = true
-      onCancelZone(true)
+      onCancelZone('piece', true, false)
     }
     const ndc = eventNdc(event)
     drag.ndc = ndc
@@ -648,7 +693,7 @@ export function createGameInput({
     // to the tray" is an explicit instruction and must win over a turn that the piece's own
     // geometry happens to arm on the way there.
     drag.inCancelZone = isInsidePieceArea(event)
-    onCancelZone(true, drag.inCancelZone)
+    onCancelZone('piece', true, drag.inCancelZone)
     if (drag.inCancelZone) {
       drag.valid = false
       drag.origin = null
@@ -665,7 +710,7 @@ export function createGameInput({
     drag.centre = centre
     if (edgeTurn.update(centre)) {
       drag.inCancelZone = false
-      onCancelZone(true, false)
+      onCancelZone('piece', true, false)
       detachFace()
       drag.attached = false
       drag.origin = null
@@ -710,7 +755,7 @@ export function createGameInput({
     onClearGhost({ keepReturn: returning })
     selectedPiece = null
     suppressPieceClickUntil = performance.now() + 260
-    onCancelZone(false)
+    onCancelZone(null, false, false)
     onSelectionChanged()
     onStatus('Pick a shape')
     if (showFeedback) {
@@ -757,7 +802,7 @@ export function createGameInput({
     if (returning) onReturnPiece(currentDrag.piece)
     onClearLanding()
     onClearGhost({ keepReturn: returning })
-    onCancelZone(false)
+    onCancelZone(null, false, false)
     if (!currentDrag.active) {
       selectedPiece = currentDrag.piece
       onSelectionChanged()
@@ -853,19 +898,38 @@ export function createGameInput({
     }
   }
 
-  // ---- The armed tool (P7c) ------------------------------------------------------
-  // Plan section 4.1 splits the item area three ways and this is the input third: the targeting
-  // mode, the 6px tap-vs-turn decision, the hover, the rocket's Row/Col and the busy gate. The
-  // charges and the reach of each tool are the session's; the strip, the panel and the overlay are
-  // hud's and pieceView's; what USING a tool does to the board is main's.
-  function clampCellIndex(value) {
-    return THREE.MathUtils.clamp(value, 0, SH - 1)
+  // ---- The armed tool (07 §8, 交互 v1) -------------------------------------------
+  // The charges and each tool's reach are the session's; the strip, the status bar and the scope
+  // are hud's and pieceView's; what USING a tool does to the board is main's. What lives here is
+  // the arbitration §8 spends most of its length on: which gesture owns the pointer, when, and
+  // what a release is allowed to mean.
+  //
+  //   §8.4  the two paths, told apart by where the gesture STARTED (icon vs board)
+  //   §8.3  the two cancel rectangles and the status bar
+  //   §8.5  what a target is (front face only) and how it is committed (what was shown)
+  //   §8.9  the phase table and what every interrupt does to it
+  function itemSlopPx(pointerType) {
+    return pointerType === 'mouse' ? ITEM_STYLE.dragSlopMousePx : ITEM_STYLE.dragSlopTouchPx
   }
 
   // The item strip's only "not yet" state: the board is live, no gesture owns the pointer, no
   // panel is up, and the short hold after a clear has expired.
+  //
+  // The cube being mid-turn is deliberately NOT part of this gate even though §8.4 refuses a
+  // pickup while the snap is running. `renderItemBar()` derives `.disabled` from this function,
+  // and a gate that depends on an animation would leave the strip grey after the animation had
+  // ended — v0.8.21's 假灰 bug, which tools/screenshot.mjs asserts against. The settle is checked
+  // at the PICKUP instead (see itemPickupRefused()).
   function canUseItemsNow() {
     return !isEnded() && !isPaused() && !drag && !isSettingsOpen() && performance.now() >= itemBusyUntil
+  }
+
+  // §8.4: 转动/吸附动画未停稳时道具暂不可拿起 — refused, and said out loud, but never reflected in
+  // the strip's styling.
+  function itemPickupRefused() {
+    if (!cubeSnapAnim.active) return false
+    onStatus(ITEM_COPY.lockedRotate)
+    return true
   }
 
   // The two writes main's business paths make to the busy gate. `performance.now()` stays here,
@@ -878,149 +942,465 @@ export function createGameInput({
     itemBusyUntil = 0
   }
 
-  function getItemActive() {
-    return itemActive
+  // 8.5.6: a cell with TWO boundary coordinates sits on an edge/corner and is shared with the
+  // neighbouring face. Read-only — the doc forbids this growing the scope (「不高亮邻面的其他
+  // 格，也不按可见面重复算 N」), so it is a read-out and one pip and nothing else.
+  function isSharedCell(x, y, z) {
+    let boundary = 0
+    if (x === 0 || x === SH - 1) boundary += 1
+    if (y === 0 || y === SH - 1) boundary += 1
+    if (z === 0 || z === SH - 1) boundary += 1
+    return boundary >= 2
   }
 
-  function setRocketOrientation(axis) {
-    if (itemActive?.id !== 'rocket') return
-    itemActive.orientation = axis === 'col' ? 'col' : 'row'
-    lastItemHoverKey = null
-    if (itemActive.u !== undefined) rebuildItemOverlay()
-    onAxisPick()
-    onStatus(`Rocket line: ${itemActive.orientation === 'col' ? 'Column' : 'Row'}`)
+  // The front face's own (u, v) cell under a client point, or null when the point is not on that
+  // face's grid (§8.5.1/§8.5.3). Two deliberate differences from the shipped ruler:
+  //   * the ruler is the front FACE's quad, not the cube's screen silhouette. A point on a side
+  //     face used to be clamped onto the nearest corner cell of the front one; now it is 移到正面
+  //     棋格, which is what §8.5.1 asks for (「两侧可见面的内部不是合法靶区」). `round()` outside
+  //     0..SH-1 means the ray landed off the quad, and that test is exact — no polygon needed.
+  //   * nothing is snapped and nothing is clamped, so 「连续拖动只吸附格子，不吸附收益」 holds by
+  //     construction: the scope is built for exactly the cell the pointer resolves to.
+  const aimPoint = new THREE.Vector2()
+  function aimAt(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width < 1 || rect.height < 1) return null
+    aimPoint.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    const face = findFrontFace()
+    const cellAt = ndcToCell(face, aimPoint)
+    if (!cellAt) return null
+    if (cellAt.u < 0 || cellAt.u > SH - 1 || cellAt.v < 0 || cellAt.v > SH - 1) return null
+    return { face, u: cellAt.u, v: cellAt.v }
   }
 
-  function cancelItemSelection(silent = false) {
-    itemTap = null
-    if (!itemActive) {
-      onAxisPickVisibility(true)
-      onClearOverlay()
-      return
+  // Where the aiming point actually is. On a touch DRAG the thumb is lifted, so the target rides
+  // `touchAimLiftPx` above the contact point (§8.5.2). Preview and commit both read this one
+  // function, which is the whole reason it exists — 「不得预览抬升而落点仍按指腹」 is a bug about
+  // two call sites disagreeing, not about the number. The tap path (a finger on the board, no
+  // icon in hand) deliberately gets no lift: there the player is pointing AT what they mean.
+  function itemAimClient(event) {
+    const lift = itemMode?.phase === 'dragging' && event.pointerType !== 'mouse'
+      ? ITEM_STYLE.touchAimLiftPx : 0
+    return { x: event.clientX, y: event.clientY - lift }
+  }
+
+  function scopeKeyFor(target, orientation) {
+    return `${itemMode?.id}:${target.face}:${target.u},${target.v}:${orientation}`
+  }
+
+  // The scope the player is looking at, built from the session's own reach (§8.5.4: the count N is
+  // the number of OCCUPIED unique lattice cells; `area` is how many the tool reaches on this face,
+  // which is what §8.6 prints when the edge clipped a 2×2).
+  function buildItemScope(target, orientation) {
+    const faceCells = toolScopeFace(itemMode.id, target.face, target.u, target.v, orientation)
+    const cells = faceCells.map(({ u, v }) => {
+      const cell = faceLattice(target.face, u, v)
+      return { u, v, cell, occupied: isOccupied(cell), shared: isSharedCell(cell[0], cell[1], cell[2]) }
+    })
+    const us = faceCells.map((cell) => cell.u)
+    const vs = faceCells.map((cell) => cell.v)
+    // §8.6: only the bomb can be clipped, and only by the +u/+v growth running off the face. The
+    // shipped clipping is kept exactly as-is (「始终完整 2×2」 is explicitly out of scope), so the
+    // preview's job is to SHOW the cut rather than to hide it.
+    const clippedU = itemMode.id === 'bomb' && target.u === SH - 1
+    const clippedV = itemMode.id === 'bomb' && target.v === SH - 1
+    return {
+      id: itemMode.id,
+      face: target.face,
+      anchor: { u: target.u, v: target.v },
+      orientation,
+      single: itemMode.id === 'hammer',
+      clipped: clippedU && clippedV ? 'uv' : clippedU ? 'u' : clippedV ? 'v' : 'none',
+      span: {
+        u0: Math.min(...us), u1: Math.max(...us), v0: Math.min(...vs), v1: Math.max(...vs),
+      },
+      cells,
+      area: cells.length,
+      clear: cells.filter((cell) => cell.occupied).length,
     }
-    itemActive = null
-    lastItemHoverKey = null
+  }
+
+  function publishScope(scope) {
+    itemScope = scope
+    itemScopeKey = scope ? scopeKeyFor({ face: scope.face, u: scope.anchor.u, v: scope.anchor.v }, scope.orientation) : null
+    if (scope) onShowOverlay(scope)
+    else onClearOverlay()
+    onItemStatus()
+  }
+
+  // Move the scope to a target (or to nothing). Returns true when the picture changed, which the
+  // release path reads to decide whether the frame it is committing was ever on screen.
+  function aimTo(target) {
+    if (!itemMode || itemMode.id === 'refresh') return false
+    if (!target) {
+      // §8.5.2: leaving the front grid removes the committable scope AT ONCE (no stale hover, no
+      // "nearest occupied cell"), but the mode stays on so the player can simply move back.
+      if (!itemScope && itemMode.face === null) return false
+      itemMode.face = null
+      itemMode.u = undefined
+      itemMode.v = undefined
+      publishScope(null)
+      return true
+    }
+    if (scopeKeyFor(target, itemMode.orientation) === itemScopeKey) return false
+    itemMode.face = target.face
+    itemMode.u = target.u
+    itemMode.v = target.v
+    publishScope(buildItemScope(target, itemMode.orientation))
+    return true
+  }
+
+  // §8.9: every uncommitted state exits through here, and cancelling changes NOTHING — not the
+  // board, not the candidates, not the charges. `silent` is for the callers that are replacing the
+  // mode with something else (a modal, a new run) and would have their own status overwritten.
+  function cancelItemSelection(silent = false) {
+    const had = Boolean(itemMode)
+    itemMode = null
+    itemScope = null
+    itemScopeKey = null
+    itemPickup = null
+    onCancelZone(null, false, false)
     onClearOverlay()
     onAxisPickVisibility(true)
-    if (!silent) onStatus('Pick a shape')
+    onRefreshConfirm(false)
+    onItemStatus()
     onItemBar()
+    if (had && !silent) onStatus('Pick a shape')
   }
 
-  // The state half of a new run: no armed tool, no pending press, no hold, no cached hover key.
-  // main keeps the charges (session) and the undo window's DOM around this.
+  // The state half of a new run. main keeps the charges (session) and the undo window's DOM.
   function resetItemTargeting() {
-    itemActive = null
-    itemTap = null
+    itemMode = null
+    itemScope = null
+    itemScopeKey = null
+    itemPickup = null
     itemBusyUntil = 0
-    lastItemHoverKey = null
+    // §8.7: 新局、页面刷新或重新载入续玩快照均恢复横向. The rocket's remembered direction is
+    // in-memory run state, so a reset is exactly the event that clears it.
+    rocketOrientation = 'row'
+    onCancelZone(null, false, false)
     onClearOverlay()
     onAxisPickVisibility(true)
+    onRefreshConfirm(false)
+    onItemStatus()
   }
 
-  // Arm a tool that is not the refresh: the mode, its Row/Col panel and the status line. Spending
-  // the charge and closing the undo window stay with the caller, which is what orders them.
-  function armItem(id) {
-    itemActive = { id, face: null, u: undefined, v: undefined, orientation: id === 'bomb' ? '2x2' : 'row' }
-    itemTap = null
-    lastItemHoverKey = null
+  function enterItemMode(id, phase, event) {
+    itemMode = {
+      id,
+      phase,
+      pointerId: event ? event.pointerId : null,
+      startX: event ? event.clientX : 0,
+      startY: event ? event.clientY : 0,
+      pointerType: event ? event.pointerType : 'mouse',
+      aiming: false,
+      inCancelZone: false,
+      face: null,
+      u: undefined,
+      v: undefined,
+      orientation: id === 'rocket' ? rocketOrientation : id === 'bomb' ? '2x2' : 'row',
+    }
+    itemScope = null
+    itemScopeKey = null
+    onClearOverlay()
     onAxisPickVisibility(id !== 'rocket')
     onAxisPick()
-    onStatus(id === 'hammer' ? 'Tap a block to remove' : id === 'rocket' ? 'Tap a line to clear' : 'Tap a 2x2 area')
+    onItemStatus()
+    onItemBar()
+    return itemMode
   }
 
-  function rebuildItemOverlay() {
-    onClearOverlay()
-    if (!itemActive || itemActive.u === undefined || itemActive.v === undefined) return
-    const scope = toolScope(itemActive.id, itemActive.face, itemActive.u, itemActive.v, itemActive.orientation)
-    // The overlay itself is pieceView's (P4c): which cells a tool covers is the tool's rule, and
-    // whether a cell already holds a block is the board's — both are read here, so the module is
-    // handed the finished list.
-    onShowOverlay({
-      face: itemActive.face,
-      cells: scope.map((cell) => ({ cell, occupied: isOccupied(cell) })),
+  // §8.7: the direction is the player's, never the pointer's. The shipped version read the
+  // pointer's own offset inside the cell and flipped Row/Col by itself, which is the 痛点 the doc
+  // lists third. R/C and the ↔/↕ buttons land here; a change rebuilds the preview immediately so
+  // 「改变方向须更新预览后才可提交」 is a property of this function, not of the caller.
+  function setRocketOrientation(axis) {
+    if (itemMode?.id !== 'rocket') return
+    const next = axis === 'col' ? 'col' : 'row'
+    rocketOrientation = next
+    if (next === itemMode.orientation && itemScope) return
+    itemMode.orientation = next
+    if (itemMode.u !== undefined) {
+      publishScope(buildItemScope({ face: itemMode.face, u: itemMode.u, v: itemMode.v }, next))
+    } else {
+      onItemStatus()
+    }
+    onAxisPick()
+  }
+
+  // ---- The two cancel rectangles (§8.3) ------------------------------------------
+  // The tray and the strip are TWO INDEPENDENT rectangles, never the box between them: the doc is
+  // explicit that the union must not swallow the board. The hit test is a rect test on the RAW
+  // contact point, so 「原始指器命中取消区的优先级高于抬升后的瞄准点」 is structural — the aim lift
+  // never enters this function.
+  function pointInCancelZone(x, y) {
+    return cancelZones().some((element) => {
+      if (!element) return false
+      const rect = element.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0
+        && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
     })
   }
 
-  // v0.6 (07 §3.1 A1/A2/A5/A8). Two fixes live here. The pointer only counts as a
-  // target when it is actually over the cube's screen silhouette — v0.5 intersected
-  // the front face's infinite plane instead, so aiming past the cube dragged the
-  // highlight onto a corner cell the player never pointed at. And the rocket picks
-  // Row/Col from where inside the cell the pointer sits (on the vertical centreline it
-  // reads as a column), with the panel left in place as the manual override.
-  function updateItemHover(ndc, allowOrientation = true) {
-    if (!itemActive || itemActive.id === 'refresh') return
-    const frontFace = findFrontFace()
-    const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
-    if (!cellAt) return
-    itemActive.face = frontFace
-    itemActive.u = clampCellIndex(cellAt.u)
-    itemActive.v = clampCellIndex(cellAt.v)
-    if (allowOrientation && itemActive.id === 'rocket') {
-      const du = cellAt.fu - cellAt.u
-      const dv = cellAt.fv - cellAt.v
-      const want = Math.abs(du) < Math.abs(dv) ? 'col' : 'row'
-      if (want !== itemActive.orientation) {
-        itemActive.orientation = want
-        onAxisPick()
-      }
-    }
-    const key = `${itemActive.id}:${frontFace}:${itemActive.u},${itemActive.v}:${itemActive.orientation || ''}`
-    if (key !== lastItemHoverKey) {
-      lastItemHoverKey = key
-      rebuildItemOverlay()
-    }
+  function setCancelHighlight(hot) {
+    onCancelZone(hot ? 'item-hot' : 'item', true, hot)
   }
 
-  // The press that may become a target. An armed tool fires on RELEASE, not on press, so a
-  // mis-touch can still be turned into a rotation by moving the finger instead of spending the
-  // item; the undo window in gameSession is the second safety net for everything the slop cannot
-  // catch (07 §3.1 A1/A2). The press aims at once, so a touch player — who has no hover — sees
-  // the highlight under their finger before committing.
-  function beginItemPress(event) {
-    itemTap = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
-    updateItemHover(eventNdc(event))
-  }
-
-  // The release, in the two halves the pointerup listener needs: the pending press is taken out of
-  // the way first, the view gesture and the drag are ended, and only then is the tap judged. That
-  // is the order the listener always ran in.
-  let pendingItemTap = null
-
-  function beginItemRelease() {
-    pendingItemTap = itemTap
-    itemTap = null
-  }
-
-  function endItemRelease(event) {
-    const tap = pendingItemTap
-    pendingItemTap = null
-    if (!tap || event.pointerId !== tap.pointerId || !itemActive) return
-    // Beyond the slop the gesture was a cube turn, not a target: nothing is spent.
-    if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) >= ITEM_TAP_SLOP) return
-    selectItemAt(event)
-  }
-
-  function clearItemPress() {
-    itemTap = null
-    pendingItemTap = null
-  }
-
-  function selectItemAt(event) {
-    const ndc = eventNdc(event)
-    const frontFace = findFrontFace()
-    const cellAt = isPointerOnCube(ndc) ? ndcToCell(frontFace, ndc) : null
-    if (!cellAt) {
-      // Releasing off the cube is a miss, not a confirmation on some corner cell.
-      onStatus('Tap a face cell')
-      onToast('Tap a face cell')
+  // ---- The icon path (§8.4 主流程 / §8.2 换批) ------------------------------------
+  // `itemPickup` is the press on an icon that has not yet decided what it is. Below the slop it
+  // stays a tap; past it the gesture is LOCKED as a drag and never falls back (「一旦锁定，即使返
+  // 回起点也不再降回点击」).
+  function beginItemPickup(event, id) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (performance.now() < suppressItemClickUntil) return
+    if (!canUseItemsNow()) return
+    if (itemPickupRefused()) return
+    if ((getItemCounts()[id] ?? 0) <= 0) {
+      // §8.3: a zero is not a dead button — it says 本局已用完 rather than doing nothing. main owns
+      // the copy and the buzz.
+      onEmptyItem(id)
       return
     }
-    itemActive.face = frontFace
-    itemActive.u = clampCellIndex(cellAt.u)
-    itemActive.v = clampCellIndex(cellAt.v)
-    // Using the tool is main's: it spends the charge, clears the cells, presents it and arms the
-    // undo window.
-    onConfirmItem()
+    event.preventDefault()
+    itemPickup = {
+      id,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      source: event.currentTarget,
+    }
+  }
+
+  function promoteItemPickup(event) {
+    const pickup = itemPickup
+    if (!pickup) return
+    pickup.moved = true
+    try { pickup.source?.setPointerCapture?.(pickup.pointerId) } catch { /* embedded browsers refuse */ }
+    if (pickup.id === 'refresh') {
+      // §8.2: 换批 is a batch question, not a board target, so its icon deliberately has no drag.
+      // The gesture is still consumed (the tap must not also fire), which is the whole point of
+      // marking it moved.
+      return
+    }
+    enterItemMode(pickup.id, 'dragging', event)
+    // §8.9: 重新武装 = 图标手势首次越阈值进入拖拽态, and THAT is the moment the previous clear's
+    // undo window closes — not when a valid target appears, and not at the commit.
+    onRearm()
+    onCancelZone('item-hot', true, true)
+    updateDragAim(event)
+  }
+
+  function updateDragAim(event) {
+    if (!itemMode || itemMode.phase !== 'dragging') return
+    if (event.pointerId !== itemMode.pointerId) return
+    const inZone = pointInCancelZone(event.clientX, event.clientY)
+    if (inZone !== itemMode.inCancelZone) {
+      itemMode.inCancelZone = inZone
+      setCancelHighlight(inZone)
+    }
+    if (inZone) { aimTo(null); return }
+    const point = itemAimClient(event)
+    aimTo(aimAt(point.x, point.y))
+  }
+
+  function finishItemDrag(event) {
+    const inZone = pointInCancelZone(event.clientX, event.clientY)
+    onCancelZone(null, false, false)
+    if (inZone) {
+      // §8.3: releasing inside a cancel rectangle IS the cancel. Passing through one on the way
+      // here never locked the intent, so nothing about the mode is confused by the trip.
+      cancelItemSelection()
+      return
+    }
+    const point = itemAimClient(event)
+    const target = aimAt(point.x, point.y)
+    if (!target || !itemScope || itemScope.clear <= 0) {
+      // §8.2/§8.5.5: an invalid or empty release exits and costs nothing. A scope with N = 0 is
+      // previewable but never submittable.
+      cancelItemSelection()
+      return
+    }
+    // §8.5.7: commit the frame that was actually drawn. The release coordinate is only used to
+    // CHECK the target is unchanged; if the finger moved to another cell whose preview never
+    // reached the screen, the honest answer is to exit rather than to clear a range nobody saw.
+    if (scopeKeyFor(target, itemMode.orientation) !== itemScopeKey) {
+      cancelItemSelection(true)
+      onToast(ITEM_COPY.stale)
+      onStatus('Pick a shape')
+      return
+    }
+    commitItem()
+  }
+
+  // ---- The tap path (§8.4 轻点备用路径) -------------------------------------------
+  // A tap on an icon selects it and NOTHING else: no target, no charge, no commit. From there the
+  // board only ever aims, and the commit is the explicit 使用 button.
+  function tapItemIcon(id) {
+    if (itemMode?.id === id && itemMode.phase !== 'dragging') { cancelItemSelection(); return }
+    if (!canUseItemsNow()) return
+    if (itemPickupRefused()) return
+    if ((getItemCounts()[id] ?? 0) <= 0) { onEmptyItem(id); return }
+    if (id === 'refresh') {
+      // §8.8: the confirm bar is the whole interaction — no reroll, no charge, not even a random
+      // number is drawn until 换一批 is pressed.
+      if (itemMode) cancelItemSelection(true)
+      enterItemMode('refresh', 'refresh-confirm', null)
+      onRefreshConfirm(true)
+      onStatus(ITEM_COPY.refreshConfirm)
+      return
+    }
+    // §8.3: 点另一有库存道具可无成本替换当前选择.
+    if (itemMode) cancelItemSelection(true)
+    enterItemMode(id, 'selected', null)
+    onRearm()
+    onStatus(ITEM_COPY.tapHint)
+  }
+
+  function beginItemAim(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    if (!itemMode || itemMode.id === 'refresh') return
+    itemMode.pointerId = event.pointerId
+    itemMode.pointerType = event.pointerType
+    itemMode.aiming = true
+    itemMode.startX = event.clientX
+    itemMode.startY = event.clientY
+    // §8.4: 已固定轻点预览，重新点/滑动棋盘 replaces the preview. The lock is released on the
+    // PRESS, so the release that follows re-fixes whatever the finger ends on.
+    if (itemMode.phase === 'locked') itemMode.phase = 'selected'
+    updateAimFromEvent(event, true)
+  }
+
+  function updateAimFromEvent(event, fresh = false) {
+    if (!itemMode || itemMode.id === 'refresh' || !itemMode.aiming) return
+    if (event.pointerId !== itemMode.pointerId) return
+    const target = aimAt(event.clientX, event.clientY)
+    if (!target && !fresh) {
+      // §8.4: 提示 需换面？取消后转动棋盘 — the mode has taken the cube's rotation away, so a
+      // player dragging the board sideways to turn it has to be told why nothing is happening.
+      const travel = Math.hypot(event.clientX - itemMode.startX, event.clientY - itemMode.startY)
+      if (travel > 24) onItemLockedRotate()
+    }
+    aimTo(target)
+  }
+
+  function endItemAim(event) {
+    if (!itemMode || itemMode.id === 'refresh' || !itemMode.aiming) return false
+    if (event.pointerId !== itemMode.pointerId) return false
+    itemMode.aiming = false
+    itemMode.pointerId = null
+    if (!itemScope || itemScope.clear <= 0) {
+      // §8.4/§8.5.5: an invalid or empty target clears the preview and DISABLES 使用, but the mode
+      // stays on — 「仍保持已选中态，可重新选」. Nothing here touches the charges.
+      itemMode.face = null
+      itemMode.u = undefined
+      itemMode.v = undefined
+      itemMode.phase = 'selected'
+      publishScope(null)
+      return true
+    }
+    // §8.4: 抬起只固定预览，显示"使用"，不自动扣次数，不转面.
+    itemMode.phase = 'locked'
+    onItemStatus()
+    return true
+  }
+
+  // §8.5.7: the snapshot is only valid while the board and the pose it was built against still
+  // hold. The lattice cells are the same by construction, so the question is whether the SAME
+  // cells are still occupied — if the board moved under the preview, that preview is a lie.
+  function verifyScope(scope) {
+    if (!scope || scope.face !== findFrontFace()) return false
+    const fresh = buildItemScope({ face: scope.face, u: scope.anchor.u, v: scope.anchor.v }, scope.orientation)
+    return fresh.clear === scope.clear
+      && fresh.cells.length === scope.cells.length
+      && fresh.cells.every((cell, index) => cell.occupied === scope.cells[index].occupied)
+  }
+
+  function useLockedItem() {
+    if (!itemMode || itemMode.phase !== 'locked' || !itemScope || itemScope.clear <= 0) return false
+    // The button validates the LOCKED snapshot and never re-aims with its own screen position —
+    // 「不按按钮所在屏幕坐标重新瞄准」. Moving the mouse to the button is not a target change.
+    if (!verifyScope(itemScope)) {
+      cancelItemSelection(true)
+      onToast(ITEM_COPY.stale)
+      onStatus('Pick a shape')
+      return false
+    }
+    return commitItem()
+  }
+
+  // §8.9: 一次成功结算 → 普通态. The mode is dropped BEFORE main is told, so a repeated pointerup,
+  // a synthesised click or a double-tapped button all find nothing to spend — the commit is
+  // idempotent by construction instead of by a flag.
+  function commitItem() {
+    if (!itemMode || itemMode.id === 'refresh' || !itemScope || itemScope.clear <= 0) return false
+    const snapshot = {
+      id: itemMode.id,
+      face: itemScope.face,
+      u: itemScope.anchor.u,
+      v: itemScope.anchor.v,
+      orientation: itemScope.orientation,
+      clear: itemScope.clear,
+    }
+    itemMode = null
+    itemScope = null
+    itemScopeKey = null
+    itemPickup = null
+    onCancelZone(null, false, false)
+    onClearOverlay()
+    onAxisPickVisibility(true)
+    onItemStatus()
+    onItemBar()
+    onConfirmItem(snapshot)
+    return true
+  }
+
+  // §8.8: the two buttons of the batch question. 保留当前 and ✕/Esc both mean "nothing happened";
+  // 换一批 spends the charge and only main may do that.
+  function keepRefreshBatch() {
+    if (itemMode?.id !== 'refresh') return
+    cancelItemSelection()
+  }
+
+  function confirmRefreshBatch() {
+    if (itemMode?.id !== 'refresh') return
+    if (!canUseItemsNow()) return
+    const id = 'refresh'
+    itemMode = null
+    itemScope = null
+    itemScopeKey = null
+    onRefreshConfirm(false)
+    onItemStatus()
+    onItemBar()
+    onConfirmRefresh(id)
+  }
+
+  // The status bar's read-only input (§8.3). A COPY — nothing outside this module can mutate the
+  // live mode, and the headless checks read exactly what the bar renders.
+  function itemReport() {
+    if (!itemMode) return null
+    return {
+      id: itemMode.id,
+      phase: itemMode.phase,
+      orientation: itemMode.orientation,
+      face: itemMode.face,
+      anchor: itemMode.u === undefined ? null : { u: itemMode.u, v: itemMode.v },
+      area: itemScope?.area ?? 0,
+      clear: itemScope?.clear ?? 0,
+      clipped: itemScope?.clipped ?? 'none',
+      // The scope's own rectangle in face cell indices. Published because the frame the player
+      // sees IS this rectangle (07 §8.6), so a check can prove a 横向 rocket is five cells wide
+      // and one tall without reading the 3D scene.
+      span: itemScope?.span ?? null,
+      shared: itemScope ? itemScope.cells.some((cell) => cell.occupied && cell.shared) : false,
+      hasTarget: Boolean(itemScope),
+      canUse: itemMode.phase === 'locked' && (itemScope?.clear ?? 0) > 0,
+      inCancelZone: Boolean(itemMode.inCancelZone),
+    }
   }
 
   // ---- Listener wiring (P7d) ------------------------------------------------------
@@ -1035,43 +1415,51 @@ export function createGameInput({
   // single keydown listener always had, instead of inventing a priority scheme.
   let unbind = null
 
-  function bind({ itemBar, axisPick, axisCancel, onActivateItem }) {
+  function bind({ itemBar, itemStatus, refreshConfirm, axisPick }) {
     if (unbind) return unbind
 
     function onPointerDown(event) {
-      if (itemActive) {
-        if (event.pointerType === 'mouse' && event.button !== 0) return
-        // Armed tool (v0.6, 07 §3.1 A1/A2). The press now does two things at once: it
-        // aims (so a touch player, who has no hover, sees the highlight under their
-        // finger before committing) and it hands the gesture to the view drag, so the
-        // cube can still be turned to reach the face they want. Nothing fires here — the
-        // release decides, and only if the pointer stayed inside ITEM_TAP_SLOP.
-        beginItemPress(event)
-        // beginViewGesture() prevents the default itself, but it bails out early while paused
-        // or mid-drag — the item branch used to prevent unconditionally, so keep that.
+      if (itemMode) {
+        // 07 §8.4: 道具模式期间一律锁定画布转面. This is the one line that removes the redesign's
+        // first 痛点 — the shipped version handed the SAME press to the aiming code and to the
+        // view drag, and then used a 6px slop to decide which of them the player had meant.
         event.preventDefault()
-        beginViewGesture(event)
+        beginItemAim(event)
         return
       }
       beginViewGesture(event)
     }
 
     function onPointerMove(event) {
+      // The icon press that has not yet become a tap or a drag (its own slop, §8.4).
+      if (itemPickup && !itemPickup.moved) {
+        if (event.pointerId !== itemPickup.pointerId) return
+        const travel = Math.hypot(event.clientX - itemPickup.startX, event.clientY - itemPickup.startY)
+        if (travel < itemSlopPx(itemPickup.pointerType)) return
+        promoteItemPickup(event)
+      }
+      if (itemMode) {
+        if (itemMode.phase === 'dragging') { updateDragAim(event); return }
+        updateAimFromEvent(event)
+        return
+      }
       // The view gesture owns the pointer while it is live, and it says so -- the same early
       // return the inline branch used to do, including the one that waits for a decisive
       // direction before the pose may move at all.
       if (updateViewGesture(event)) return
-      if (itemActive) {
-        updateItemHover(eventNdc(event))
-        return
-      }
       updateDrag(event)
     }
 
     function onPointerUp(event) {
-      // The pending item press is taken out of the way first, then the two gestures are ended, and
-      // only then is the tap judged -- the order this listener always ran in.
-      beginItemRelease()
+      if (itemPickup && event.pointerId === itemPickup.pointerId) { endItemPickup(event); return }
+      if (itemMode) {
+        if (itemMode.phase === 'dragging') {
+          if (event.pointerId === itemMode.pointerId) finishItemDrag(event)
+          return
+        }
+        if (itemMode.aiming) endItemAim(event)
+        return
+      }
       finishViewGesture(event)
       // The release is judged on the FINAL pointer coordinates, through the very same rule that
       // drew the last frame of the preview (v0.8.27): browsers do not always deliver a
@@ -1080,17 +1468,25 @@ export function createGameInput({
       // for a gesture that never left the slot, and it checks the pointer id itself.
       updateDrag(event)
       finishDrag(event)
-      endItemRelease(event)
     }
 
     function onPointerCancel(event) {
-      clearItemPress()
+      // 07 §8.9: 未提交动作一律取消. A cancelled pointer is the least ambiguous interrupt there is.
+      itemPickup = null
+      if (itemMode) cancelItemSelection(true)
       finishViewGesture(event)
       if (!drag || event.pointerId !== drag.pointerId) return
       cancelActiveDrag(false)
     }
 
     function onWheel(event) {
+      if (itemMode) {
+        // §8.4: 锁定…滚轮缩放. Swallowing the event matters as much as ignoring it: an un-prevented
+        // wheel scrolls the page under the fixed stage.
+        event.preventDefault()
+        onItemLockedRotate()
+        return
+      }
       event.preventDefault()
       zoomBy(event.deltaY > 0 ? 0.92 : 1.08)
       fitCameraToPlaySpace()
@@ -1098,26 +1494,32 @@ export function createGameInput({
 
     function onKeyDown(event) {
       if (event.key === 'Escape' && onEscapeBeforeGestures(event)) return
-      if (event.key === 'Escape' && itemActive) { event.preventDefault(); cancelItemSelection(); return }
+      if (event.key === 'Escape' && itemMode) { event.preventDefault(); cancelItemSelection(); return }
       if (event.key === 'Escape' && drag) { event.preventDefault(); cancelActiveDrag(); return }
       if (event.key === 'Escape' && onEscapeAfterGestures(event)) return
       // W/S = X, A/D = Y, Q/E = Z (03 §13). Handled before the modal guard so the legend
       // can be learned while it is open, and before the rocket keys so nothing steals them.
       if (handleRotateKey(event)) { event.preventDefault(); return }
       if (isModalOpen()) return
-      if (itemActive?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
+      // §8.7: R/C stay as the PC's explicit direction switch. They must UPDATE the preview, which
+      // setRocketOrientation() does itself, so a release can only ever commit the line on screen.
+      if (itemMode?.id === 'rocket' && ['r', 'c'].includes(event.key.toLowerCase())) {
         setRocketOrientation(event.key.toLowerCase() === 'c' ? 'col' : 'row')
       }
     }
 
     function onContextMenu(event) {
-      if (itemActive) { event.preventDefault(); cancelItemSelection(); return }
+      if (itemMode) { event.preventDefault(); cancelItemSelection(); return }
       if (!drag) return
       event.preventDefault()
       cancelActiveDrag()
     }
 
     function onBlur() {
+      // §8.9: 失焦/隐藏 cancels 已选中、拖拽、待确认、换批确认 — all four — and only the
+      // UNCOMMITTED ones: a clear that already landed keeps its board, its charge and its undo.
+      itemPickup = null
+      if (itemMode) cancelItemSelection(true)
       cancelViewGesture()
       cancelActiveDrag(false)
     }
@@ -1127,16 +1529,54 @@ export function createGameInput({
     }
 
     function onLostPointerCapture(event) {
+      if (itemMode && itemMode.pointerId === event.pointerId && itemMode.phase === 'dragging') {
+        // The capture can be lost without a pointerup (an embedded browser stealing the gesture).
+        // Without this the mode would sit in 拖拽态 with a scope on screen and no finger.
+        itemPickup = null
+        cancelItemSelection(true)
+        return
+      }
       if (drag?.pointerId === event.pointerId) cancelActiveDrag(false)
+    }
+
+    // §8.9: 视口尺寸或设备方向变化 also cancels every uncommitted state — the aim was measured in
+    // pixels that no longer mean the same cell.
+    function onResize() {
+      if (itemMode || itemPickup) { itemPickup = null; cancelItemSelection(true) }
+    }
+
+    function endItemPickup(event) {
+      const pickup = itemPickup
+      itemPickup = null
+      if (!pickup || event.pointerId !== pickup.pointerId) return
+      if (pickup.source) releasePointerCapture(pickup.source, pickup.pointerId)
+      // Whatever this press turns out to be, the click the browser synthesises after it must not
+      // be read a second time (§8.4). The click handler below stays only as the fallback for
+      // environments that deliver `click` without pointer events at all.
+      suppressItemClickUntil = performance.now() + 320
+      if (pickup.moved) {
+        if (itemMode?.phase === 'dragging') finishItemDrag(event)
+        return
+      }
+      tapItemIcon(pickup.id)
     }
 
     // The strip's buttons are static (renderItemBar only toggles their classes), so they are
     // bound once here -- and kept in a list so dispose() can really unbind them.
     const itemButtons = []
     for (const button of itemBar.querySelectorAll('.item-button')) {
-      const handler = () => onActivateItem(button.dataset.item)
-      itemButtons.push([button, handler])
-      button.addEventListener('click', handler)
+      const id = button.dataset.item
+      const down = (event) => beginItemPickup(event, id)
+      const click = () => {
+        // Fallback only: everything normally arrives through pointerdown/pointerup above, and the
+        // suppression window is what keeps a completed drag from being replayed as a tap.
+        if (performance.now() < suppressItemClickUntil) return
+        suppressItemClickUntil = performance.now() + 320
+        tapItemIcon(id)
+      }
+      itemButtons.push([button, down, click])
+      button.addEventListener('pointerdown', down)
+      button.addEventListener('click', click)
     }
     const axisButtons = []
     for (const button of axisPick.querySelectorAll('button[data-axis]')) {
@@ -1144,9 +1584,11 @@ export function createGameInput({
       axisButtons.push([button, handler])
       button.addEventListener('click', handler)
     }
-    function onAxisCancelClick() {
-      cancelItemSelection()
-    }
+    // §8.3: the status bar's two buttons and §8.8's two answers. All four are static markup.
+    function onUseClick() { useLockedItem() }
+    function onCancelClick() { cancelItemSelection() }
+    function onKeepClick() { keepRefreshBatch() }
+    function onRefreshGoClick() { confirmRefreshBatch() }
 
     canvas.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove, { passive: false })
@@ -1158,7 +1600,16 @@ export function createGameInput({
     window.addEventListener('blur', onBlur)
     window.addEventListener('lostpointercapture', onLostPointerCapture)
     document.addEventListener('visibilitychange', onVisibilityChange)
-    axisCancel.addEventListener('click', onAxisCancelClick)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    if (itemStatus) {
+      itemStatus.querySelector('#item-use')?.addEventListener('click', onUseClick)
+      itemStatus.querySelector('#item-cancel')?.addEventListener('click', onCancelClick)
+    }
+    if (refreshConfirm) {
+      refreshConfirm.querySelector('#refresh-keep')?.addEventListener('click', onKeepClick)
+      refreshConfirm.querySelector('#refresh-go')?.addEventListener('click', onRefreshGoClick)
+    }
 
     function dispose() {
       canvas.removeEventListener('pointerdown', onPointerDown)
@@ -1171,9 +1622,17 @@ export function createGameInput({
       window.removeEventListener('blur', onBlur)
       window.removeEventListener('lostpointercapture', onLostPointerCapture)
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
       cancelActiveDrag(false)
-      axisCancel.removeEventListener('click', onAxisCancelClick)
-      itemButtons.forEach(([button, handler]) => button.removeEventListener('click', handler))
+      itemStatus?.querySelector('#item-use')?.removeEventListener('click', onUseClick)
+      itemStatus?.querySelector('#item-cancel')?.removeEventListener('click', onCancelClick)
+      refreshConfirm?.querySelector('#refresh-keep')?.removeEventListener('click', onKeepClick)
+      refreshConfirm?.querySelector('#refresh-go')?.removeEventListener('click', onRefreshGoClick)
+      itemButtons.forEach(([button, down, click]) => {
+        button.removeEventListener('pointerdown', down)
+        button.removeEventListener('click', click)
+      })
       axisButtons.forEach(([button, handler]) => button.removeEventListener('click', handler))
       // A stale disposer must not affect a later, explicitly rebound instance.
       if (unbind === dispose) unbind = null
@@ -1211,19 +1670,20 @@ export function createGameInput({
     clearSelection,
     hasDrag,
     dragReport,
-    // The armed tool.
+    // The armed tool (07 §8). The mode, its report, the two gesture entries and the two explicit
+    // buttons of the tap path.
     hasItemActive,
     getItemActive,
+    itemReport,
     canUseItemsNow,
     holdItemsFor,
     releaseItems,
-    armItem,
     setRocketOrientation,
     cancelItemSelection,
     resetItemTargeting,
-    beginItemPress,
-    beginItemRelease,
-    endItemRelease,
-    clearItemPress,
+    beginItemPickup,
+    useLockedItem,
+    keepRefreshBatch,
+    confirmRefreshBatch,
   }
 }

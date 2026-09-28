@@ -9,6 +9,14 @@ export const RENDER_PALETTE = Object.freeze({
   candidate: 0xf7c13c,
   valid: 0x7ed957, // fresh leaf green: "it fits here"
   invalid: 0x9299a2, // neutral grey: colour is reserved for a legal placement
+  // Item scope (07 §8.5.4). Three separate signals, because the doc forbids smuggling the
+  // message through one of them: the SCOPE draws the complete reach (frame + the faint floor
+  // of a cell that is already empty), CLEAR outlines the cells that will actually disappear,
+  // and SHARED marks the cells an edge/corner hands to a neighbouring face. An empty cell is
+  // never allowed to look like a doomed one.
+  itemScope: 0x6fce4a, // fresh leaf green: "this is the tool's reach" (same family as valid)
+  itemClear: 0xffd24a, // the line-clear gold already used by the x-axis: "this one goes"
+  itemShared: 0xff8ac2, // blossom pink: "this cell also shows on the next face"
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
@@ -511,6 +519,41 @@ export function dragGhostLiftPx(pointerType, rows, cellPx) {
     ? DRAG_GHOST.liftMousePx
     : DRAG_GHOST.liftTouchPx + Math.min(rows * cellPx * DRAG_GHOST.liftRatio, DRAG_GHOST.liftMaxPx)
 }
+
+// ============================================================
+// Item interaction v1 (07-道具系统设计.md §8, 2026-09-29)
+// ============================================================
+// The redesign splits ONE rule across two gestures that must never fight: a gesture that
+// starts on an item icon may become a DRAG (release on the board uses the tool) and a
+// gesture that starts on the canvas while a tool is selected only ever AIMS (release fixes
+// the preview; committing is the explicit 使用 button). Everything below is the arbitration
+// between them, plus the aiming offset a thumb needs.
+//
+// The numbers are the doc's own starting values; §8.4 calls them "建议起始值、需真机调优",
+// so they live here rather than being sprinkled through the input module.
+export const ITEM_STYLE = Object.freeze({
+  // 8.4: accumulated travel from the ICON that locks the gesture as a drag. Once locked it
+  // never falls back to a tap, even if the pointer returns to where it started — otherwise a
+  // wobbling thumb would turn a deliberate drag into a "select" and the visible ghost would
+  // contradict the release rule.
+  dragSlopMousePx: 6,
+  dragSlopTouchPx: 10,
+  // 8.5.2: the aiming point a thumb needs. On touch the carried target is lifted ABOVE the
+  // contact point so the finger does not cover the cell it is about to clear; the preview and
+  // the commit both read this same point (a preview that lifted while the commit did not is
+  // the one bug the doc names outright: 「不得预览抬升而落点仍按指腹」).
+  touchAimLiftPx: 48,
+  // 8.9: the cooldown after a committed use, unchanged from the shipped 420ms — it exists so
+  // a double-tap cannot spend two charges on one clear.
+  busyMs: 420,
+  // 8.3: the smallest hit target for every item-mode button (使用 / × 取消 / 横纵). 44 is the
+  // doc's floor, 48 the recommendation; the CSS uses this as its `--item-hit` default.
+  hitPx: 44,
+  // 8.5.1: how far outside the front face's own grid (in cells) a pointer may still resolve to
+  // an edge cell before the target is dropped entirely. 0 = 「棱线归当前正面边界」: a pointer
+  // outside the grid is not a target, it is 移到正面棋格.
+  faceSlackCells: 0,
+})
 
 // Launcher-style page turning while carrying a piece. A new full dwell starts
 // after each animation, so holding at an edge can deliberately browse more faces.

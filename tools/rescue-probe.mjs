@@ -83,7 +83,8 @@ const STATE = `(() => {
     gameOver: shown(card),
     gameOverLive: !!card && getComputedStyle(card).display !== 'none',
     items: globalThis.__voxalblastDev.items(),
-    armed: document.querySelector('.item-button.armed')?.dataset.item ?? null,
+    armed: document.querySelector('.item-button.active')?.dataset.item ?? null,
+    item: globalThis.__voxalblast.item(),
     itemBarCounts: [...document.querySelectorAll('.item-button .item-count')].map((el) => el.textContent),
   })
 })()`
@@ -176,12 +177,18 @@ try {
   check('B1: prompt says clear a path', s.status === 'No spot - clear a path' && s.toast === 'No spot - clear a path', `status="${s.status}" toast="${s.toast}"`)
 
   // The rescue has to be reachable, not just announced: arm the hammer through the UI.
+  //
+  // v0.9.17 (07 §8): a tap on the icon now only SELECTS the tool — it does not point it at
+  // anything and it spends nothing. The status line therefore reads the tap path's own copy
+  // (点选目标，再点使用) and `__voxalblast.item()` must show phase 'selected' with no target.
   await clickSel('.item-button[data-item="hammer"]')
   s = await state()
-  check('B1: hammer arms while the board is jammed', s.status === 'Tap a block to remove', `status="${s.status}"`)
+  check('B1: hammer arms while the board is jammed', s.status === '点选目标，再点使用', `status="${s.status}"`)
+  check('B1: the armed tool reports selected/no-target', s.item?.id === 'hammer' && s.item.phase === 'selected' && s.item.hasTarget === false, JSON.stringify(s.item))
   await clickSel('.item-button[data-item="hammer"]') // tapping the armed tool puts it away
   s = await state()
   check('B1: tap again disarms, no charge spent', s.items.hammer === 1, `hammer=${s.items.hammer}`)
+  check('B1: no tool is armed after disarming', s.item === null, JSON.stringify(s.item))
 
   // Branch 3 — every charge spent: the run may end now, and only now.
   await evalJs('globalThis.__voxalblastDev.setItems({ refresh: 0, hammer: 0, rocket: 0, bomb: 0 })')

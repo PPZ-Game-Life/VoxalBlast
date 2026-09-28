@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.9.16",
+  "version": "0.9.17",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "probe:fragility": "node tools/face-fragility.mjs",
     "probe:shapes": "node tools/shape-geometry.mjs",
     "probe:rescue": "node tools/rescue-probe.mjs",
+    "probe:item": "node tools/item-interaction-probe.mjs",
     "probe:interaction": "node tools/refactor-interaction-probe.mjs",
     "probe:drag": "node tools/drag-feel-probe.mjs",
     "probe:ui": "node tools/refactor-ui-probe.mjs",
