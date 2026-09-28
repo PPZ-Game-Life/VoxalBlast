@@ -1,7 +1,7 @@
 // Settings and keyboard-legend presentation. Main keeps the business actions and
 // inserts these UI steps at their original positions in each orchestration flow.
 //
-// The two preferences are the only thing this module persists. Since refactor P8 they go
+// The three preferences are the only thing this module persists. Since refactor P8 they go
 // through platform/storage.js instead of touching localStorage here: same keys, same
 // 'on'/'off' strings, same default ON when the key is absent, and deliberately the same
 // unguarded behaviour (a throwing storage still throws — see the facade's header).
@@ -13,6 +13,7 @@ export function createSettings({
   settingsCloseEl,
   soundSettingEl,
   hapticsSettingEl,
+  dragTurnSettingEl,
   restartSettingEl,
   controlsButtonEl,
   controlsSettingEl,
@@ -24,12 +25,17 @@ export function createSettings({
   controlRows,
   onOpen,
   onClose,
+  // v0.9.12: switching 拖块翻面 OFF has to take effect NOW, not at the next gesture — the
+  // dwell may already be armed on a live drag, so main clears it (the same `endTurns()` every
+  // other cancellation path uses). Optional, so a caller that does not care can omit it.
+  onDragTurnChanged = () => {},
 }) {
   let settingsOpen = false
   let controlsOpen = false
   const controlSpin = { pitch: 0, yaw: 0, roll: 0 }
   let soundOn = readPreferenceOn('sound')
   let hapticsOn = readPreferenceOn('haptics')
+  let dragTurnOn = readPreferenceOn('dragTurn')
   let axisHintTimer
   let controlsOpener = null
   let unbind = null
@@ -41,6 +47,8 @@ export function createSettings({
     soundButton?.setAttribute('aria-pressed', String(soundOn))
     hapticsSettingEl.classList.toggle('enabled', hapticsOn)
     hapticsSettingEl.setAttribute('aria-pressed', String(hapticsOn))
+    dragTurnSettingEl.classList.toggle('enabled', dragTurnOn)
+    dragTurnSettingEl.setAttribute('aria-pressed', String(dragTurnOn))
   }
 
   // Opening settings sets its pause source BEFORE main cancels active gestures.
@@ -153,6 +161,15 @@ export function createSettings({
       if (hapticsOn) playHaptic(18)
     }
     function onRestartSettingClick(event) { beginRun(event) }
+    function onDragTurnSettingClick() {
+      dragTurnOn = !dragTurnOn
+      writePreferenceOn('dragTurn', dragTurnOn)
+      updateSettingsUi()
+      // Switching it OFF must drop any dwell that is already armed on a live drag; switching it
+      // back ON needs nothing (the next pointermove re-arms it). The callback is main's.
+      onDragTurnChanged(dragTurnOn)
+      if (dragTurnOn) playHaptic(12)
+    }
 
     controlsButtonEl.addEventListener('click', onControlsButtonClick)
     controlsSettingEl.addEventListener('click', onControlsSettingClick)
@@ -164,6 +181,7 @@ export function createSettings({
     soundSettingEl.addEventListener('click', onSoundSettingClick)
     soundButton?.addEventListener('click', onSoundSettingClick)
     hapticsSettingEl.addEventListener('click', onHapticsSettingClick)
+    dragTurnSettingEl.addEventListener('click', onDragTurnSettingClick)
     restartSettingEl.addEventListener('click', onRestartSettingClick)
 
     function dispose() {
@@ -177,6 +195,7 @@ export function createSettings({
       soundSettingEl.removeEventListener('click', onSoundSettingClick)
       soundButton?.removeEventListener('click', onSoundSettingClick)
       hapticsSettingEl.removeEventListener('click', onHapticsSettingClick)
+      dragTurnSettingEl.removeEventListener('click', onDragTurnSettingClick)
       restartSettingEl.removeEventListener('click', onRestartSettingClick)
       // A stale disposer must not affect a later, explicitly rebound instance.
       if (unbind === dispose) unbind = null
@@ -201,6 +220,9 @@ export function createSettings({
     isControlsOpen: () => controlsOpen,
     getSoundOn: () => soundOn,
     getHapticsOn: () => hapticsOn,
+    // v0.9.12: read live by gameInput's drag gate, never captured (the same rule the sound
+    // switch follows — a switch flipped mid-run has to apply to the very next gesture).
+    getDragTurnOn: () => dragTurnOn,
     getControlSpin: () => ({ ...controlSpin }),
     report,
     setSettingsOpen,

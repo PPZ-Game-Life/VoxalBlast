@@ -234,6 +234,13 @@ export function createDiagnostics({
     // advertise a key that does nothing (and vice versa).
     keys: () => KEY_BINDINGS.map((binding) => ({ axis: binding.axis, keys: [...binding.keys] })),
     controls: () => settingsUi.report(),
+    // v0.9.12: the three settings preferences as the game actually reads them, so a check can
+    // assert the 拖块翻面 switch gates the turn dwell without reaching into the DOM or storage.
+    preferences: () => ({
+      sound: settingsUi.getSoundOn(),
+      haptics: settingsUi.getHapticsOn(),
+      dragTurn: settingsUi.getDragTurnOn(),
+    }),
     // The candidate pool itself: name, color and cell count per type.
     shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
     // v0.9.0 P1: where the run is on the difficulty ladder, and what the LAST batch was made

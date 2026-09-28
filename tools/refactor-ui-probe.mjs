@@ -246,6 +246,11 @@ const STATE = `(() => {
     soundPressed: sound ? sound.getAttribute('aria-pressed') : null,
     soundEnabled: sound ? sound.classList.contains('enabled') : null,
     hapticsPressed: document.querySelector('#haptics-setting')?.getAttribute('aria-pressed') ?? null,
+    // v0.9.12: the 拖块翻面 switch, read from the row AND from the accessor the input gate uses.
+    dragTurnPressed: document.querySelector('#drag-turn-setting')?.getAttribute('aria-pressed') ?? null,
+    dragTurnEnabled: document.querySelector('#drag-turn-setting')?.classList.contains('enabled') ?? null,
+    dragTurnPref: globalThis.__voxalblast.preferences?.().dragTurn ?? null,
+    storedDragTurn: localStorage.getItem('voxalblast-drag-turn'),
     homePrimaryLabel: document.querySelector('#home-primary-label')?.textContent ?? null,
     board: globalThis.__voxalblast.board(),
     homeState: globalThis.__voxalblast.home(),
@@ -352,6 +357,27 @@ async function caseSettings(client, input) {
   const restored = await client.readJson(STATE)
   check('A a second click restores the original switch state',
     restored.soundPressed === startPressed, `aria-pressed=${restored.soundPressed}`)
+
+  // v0.9.12: the 拖块翻面 switch. Same three-way contract as the sound switch: one click flips
+  // it once, the DOM state and the accessor the input gate reads agree, and the preference is
+  // written under its own shipped key.
+  const dragTurnStart = restored.dragTurnPressed
+  await input.click('#drag-turn-setting', { label: 'the drag-turn switch' })
+  const dragTurnFlipped = await client.readJson(STATE)
+  check('A one click on the drag-turn switch flips it exactly once',
+    dragTurnFlipped.dragTurnPressed !== dragTurnStart,
+    `aria-pressed ${dragTurnStart} -> ${dragTurnFlipped.dragTurnPressed}`)
+  check('A the drag-turn switch keeps aria-pressed, .enabled and the live accessor in step',
+    String(dragTurnFlipped.dragTurnEnabled) === dragTurnFlipped.dragTurnPressed
+    && String(dragTurnFlipped.dragTurnPref) === dragTurnFlipped.dragTurnPressed,
+    `aria-pressed=${dragTurnFlipped.dragTurnPressed} .enabled=${dragTurnFlipped.dragTurnEnabled} preferences().dragTurn=${dragTurnFlipped.dragTurnPref}`)
+  check('A the drag-turn switch writes its preference to storage',
+    dragTurnFlipped.storedDragTurn === (dragTurnFlipped.dragTurnPressed === 'true' ? 'on' : 'off'),
+    `localStorage=${dragTurnFlipped.storedDragTurn}`)
+  await input.click('#drag-turn-setting', { label: 'the drag-turn switch' })
+  const dragTurnRestored = await client.readJson(STATE)
+  check('A a second click restores the drag-turn switch',
+    dragTurnRestored.dragTurnPressed === dragTurnStart, `aria-pressed=${dragTurnRestored.dragTurnPressed}`)
 
   await input.click('#settings-close', { label: 'the settings close button' })
   const shut = await client.readJson(STATE)
@@ -569,6 +595,9 @@ async function caseChurn(client, input) {
   check('G the sound preference survives a reload',
     reloaded.soundPressed === before.soundPressed && reloaded.storedSound === before.storedSound,
     `aria-pressed ${before.soundPressed} -> ${reloaded.soundPressed}, storage=${reloaded.storedSound}`)
+  check('G the drag-turn preference survives a reload',
+    reloaded.dragTurnPressed === before.dragTurnPressed && reloaded.dragTurnPref === (before.dragTurnPressed === 'true'),
+    `aria-pressed ${before.dragTurnPressed} -> ${reloaded.dragTurnPressed}, preferences().dragTurn=${reloaded.dragTurnPref}`)
   // refactor P8: the record book is the other half of the storage boundary, and unlike the
   // preference it is rewritten only by endGame(). The raw string has to come back byte for
   // byte — a facade that read through a different key would show up right here.

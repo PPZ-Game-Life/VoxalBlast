@@ -57,6 +57,7 @@ export function collectDom(root = document) {
     settingsButtonEl: need('#settings-button'),
     soundSettingEl: need('#sound-setting'),
     hapticsSettingEl: need('#haptics-setting'),
+    dragTurnSettingEl: need('#drag-turn-setting'),
     controlsEl: need('#controls-modal'),
     controlsButtonEl: need('#controls-button'),
     controlsSettingEl: need('#controls-setting'),

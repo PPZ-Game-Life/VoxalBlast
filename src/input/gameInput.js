@@ -30,6 +30,10 @@ export function createGameInput({
   isHomeOpen,
   isSettingsOpen,
   isControlsOpen,
+  // v0.9.12: the 拖块翻面 preference (settings panel). Read live on every frame the dwell could
+  // arm — never captured — so flipping the switch applies to the gesture in progress rather than
+  // to the next run.
+  isDragTurnOn,
   // gameScene: the cube's screen box, the angle ruler a claimed axis is measured on, and the two
   // camera commands the wheel drives (P7d).
   cubeScreenBounds,
@@ -120,7 +124,11 @@ export function createGameInput({
     // ghost is drawn with -- so "the block is more than half off the cube" is the exact
     // condition, and the screen edge no longer plays any part in it.
     bounds: cubeScreenBounds,
-    blocked: () => !drag?.active || isPaused() || isEnded() || isHomeOpen()
+    // v0.9.12: the 拖块翻面 switch is a gate of the dwell, not of the gesture. With it OFF the
+    // piece is carried exactly as before — `updateDrag()` simply never enters the turn branch,
+    // so the whole "carried off the cube" path is unreachable and nothing else about the drag
+    // changes (the cube is still turned by the keyboard and by dragging the background).
+    blocked: () => !drag?.active || !isDragTurnOn() || isPaused() || isEnded() || isHomeOpen()
       || isSettingsOpen() || isControlsOpen() || document.hidden,
     turning: () => cubeSnapAnim.active,
     feedback: onEdgeTurn,
@@ -714,6 +722,15 @@ export function createGameInput({
     drag = null
   }
 
+  // v0.9.12: the 拖块翻面 switch was just flipped OFF. `blocked()` already stops the dwell from
+  // arming again, but a dwell that is armed RIGHT NOW (or a turn already in flight) has to go at
+  // once, or the switch would only take effect on the next pointermove. The gesture itself is
+  // untouched: the piece stays in hand, and the next move re-attaches it wherever it is.
+  function clearTurnDwell() {
+    endTurns()
+    if (drag) drag.centre = null
+  }
+
   // The release. The caller (onPointerUp) has already fed the FINAL pointer coordinates through
   // updateDrag(), i.e. through the same rule that drew the last frame — so what is committed here
   // is exactly the preview the player was looking at, and nothing is re-derived or searched for
@@ -1180,6 +1197,7 @@ export function createGameInput({
     finishDrag,
     cancelActiveDrag,
     resetDrag,
+    clearTurnDwell,
     bindSlot,
     getSelectedPiece,
     clearSelection,

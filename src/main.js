@@ -92,6 +92,7 @@ const {
   settingsButtonEl,
   soundSettingEl,
   hapticsSettingEl,
+  dragTurnSettingEl,
   controlsEl,
   controlsButtonEl,
   controlsSettingEl,
@@ -329,6 +330,8 @@ const input = createGameInput({
   isHomeOpen: () => homeUi.isOpen(),
   isSettingsOpen: () => settingsUi.isOpen(),
   isControlsOpen: () => settingsUi.isControlsOpen(),
+  // v0.9.12: the 拖块翻面 switch gates the turn dwell (03 §3.1). Read live, never captured.
+  isDragTurnOn: () => settingsUi.getDragTurnOn(),
   cubeScreenBounds,
   gestureSpan,
   zoomBy,
@@ -1242,6 +1245,7 @@ const settingsUi = createSettings({
   settingsCloseEl,
   soundSettingEl,
   hapticsSettingEl,
+  dragTurnSettingEl,
   restartSettingEl,
   controlsButtonEl,
   controlsSettingEl,
@@ -1253,6 +1257,9 @@ const settingsUi = createSettings({
   controlRows,
   onOpen: () => syncPause(),
   onClose: () => syncPause(),
+  // v0.9.12: 拖块翻面 flipped OFF has to drop a dwell that is already armed (03 §3.1). It
+  // routes to the input layer's own cancellation, the same one every other path calls.
+  onDragTurnChanged: (on) => { if (!on) input.clearTurnDwell() },
 })
 settingsUi.bind({
   openSettings,

@@ -33,6 +33,9 @@
 //                    feedback and placement survive
 //   K cancellation    leaving an edge, release and Escape clear the pending dwell
 //   L repeat + touch  a stationary touch can browse faces; full faces never auto-spin
+//   M the switch      the 拖块翻面 preference gates the dwell: OFF carries the piece but never
+//                     arms, background drags still turn the cube, ON arms again, and flipping it
+//                     OFF mid-drag drops a dwell that is already armed
 //
 // Discipline, same as the other probes: real CDP input only, read-only `__voxalblast` handles for
 // observation, an isolated browser profile with an OS-assigned debug port, Browser.close before
@@ -1131,6 +1134,88 @@ async function caseEdgeRepeatTouch(client, input, touchInput) {
     && !ended.slots[0].used && ended.rotation.front === second.rotation.front)
 }
 
+// M. The 拖块翻面 switch (v0.9.12). With it OFF the piece is carried exactly as before, the
+// dwell never arms however far off the cube the piece goes, and the cube can still be turned by
+// dragging the background. With it back ON the very same drag arms again.
+//
+// The switch is flipped the way a player flips it — a real click on the settings row — and read
+// back from `preferences()`, the same accessor the input gate reads.
+async function setDragTurn(client, on) {
+  await client.evaluate(`(() => {
+    const el = document.querySelector('#drag-turn-setting')
+    if (el.getAttribute('aria-pressed') !== '${on}') el.click()
+  })()`)
+  await sleep(120)
+  const prefs = await client.readJson('globalThis.__voxalblast.preferences()')
+  return prefs.dragTurn === on
+}
+
+async function caseDragTurnSwitch(client, input) {
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const bounds = await client.readJson('globalThis.__voxalblast.bounds()')
+  const midY = Math.round((bounds.minY + bounds.maxY) / 2)
+  const centre = { x: Math.round(bounds.maxX) + 24, y: midY }
+  const point = { x: centre.x, y: centre.y + MOUSE_LIFT }
+  const cube = cubeCentre(bounds)
+
+  if (!await setDragTurn(client, false)) { skip('M switch OFF', 'the settings row did not report the new state'); return }
+  const off = await client.readJson('globalThis.__voxalblast.preferences()')
+  check('M the switch reads OFF from the game, not just the DOM', off.dragTurn === false, JSON.stringify(off))
+
+  const before = await client.readJson(STATE)
+  await input.pressAndHold(before.slots[0], point)
+  await sleep(PIECE_SPIN.holdMs + 260)
+  const held = await client.readJson(STATE)
+  check('M OFF: the piece is still carried, but the dwell never arms',
+    held.ghost.attached && !held.ghost.armed && held.ghost.edge === null && held.ghost.turnPhase === null,
+    `attached=${held.ghost.attached} armed=${held.ghost.armed} edge=${held.ghost.edge}`)
+  check('M OFF: no hint card is drawn', await client.readJson("document.querySelector('.edge-turn-hint').hidden"))
+  check('M OFF: the cube did not move', JSON.stringify(held.rotation.pose) === JSON.stringify(before.rotation.pose),
+    `front=${held.rotation.front}`)
+  // A held piece that never arms must still be releasable without spending anything.
+  await input.move(cube.x, cube.y)
+  const back = await readState(client, input, cube)
+  check('M OFF: bringing the piece back still previews a placement', back.ghost.onFace && back.ghost.previewCells > 0,
+    `onFace=${back.ghost.onFace} cells=${back.ghost.previewCells}`)
+  await releaseWithoutPlacing(client, input, cube)
+
+  // The background drag is a different gesture and is NOT gated by this switch.
+  const turnable = await client.readJson(STATE)
+  await input.pressAndHold(cube, { x: cube.x, y: cube.y - Math.round((bounds.maxY - bounds.minY) * 0.45) }, 8)
+  await input.up(cube.x, cube.y - Math.round((bounds.maxY - bounds.minY) * 0.45))
+  await waitForObservation(client, '!globalThis.__voxalblast.rotation().settling')
+  const turned = await client.readJson(STATE)
+  check('M OFF: dragging the background still turns the cube',
+    turned.rotation.front !== turnable.rotation.front,
+    `front ${turnable.rotation.front} -> ${turned.rotation.front}`)
+
+  // Back ON: the identical carry arms the dwell again.
+  if (!await setDragTurn(client, true)) { skip('M switch back ON', 'the settings row did not report the new state'); return }
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const onBefore = await client.readJson(STATE)
+  await input.pressAndHold(onBefore.slots[0], point)
+  const armed = await client.readJson(STATE)
+  check('M ON: the same carry arms the dwell again', armed.ghost.armed && armed.ghost.edge === 'right',
+    `armed=${armed.ghost.armed} edge=${armed.ghost.edge}`)
+  await releaseWithoutPlacing(client, input, cube)
+
+  // Flipping the switch OFF mid-drag drops a dwell that is already armed.
+  await reloadWithHand(client, ['Dot', 'Square', 'Line 3'])
+  const live = await client.readJson(STATE)
+  await input.pressAndHold(live.slots[0], point)
+  const wasArmed = await client.readJson(STATE)
+  if (!wasArmed.ghost.armed) { skip('M switch OFF mid-drag', 'the dwell did not arm before the switch was flipped'); return }
+  await setDragTurn(client, false)
+  await sleep(PIECE_SPIN.holdMs + 260)
+  const dropped = await client.readJson(STATE)
+  check('M flipping the switch OFF mid-drag drops the armed dwell and never turns',
+    !dropped.ghost.armed && dropped.ghost.edge === null
+    && JSON.stringify(dropped.rotation.pose) === JSON.stringify(live.rotation.pose),
+    `armed=${dropped.ghost.armed} edge=${dropped.ghost.edge} front=${dropped.rotation.front}`)
+  await releaseWithoutPlacing(client, input, cube)
+  await setDragTurn(client, true)
+}
+
 // --------------------------------------------------------------------------- driver
 
 const browserPath = findBrowser()
@@ -1299,6 +1384,9 @@ try {
 
   console.log('\n-- L. full faces and stationary touch repeats --')
   if (wants('L')) await caseEdgeRepeatTouch(client, input, touchInput)
+
+  console.log('\n-- M. the 拖块翻面 switch gates the dwell --')
+  if (wants('M')) await caseDragTurnSwitch(client, input)
 
   console.log('')
   check('no browser console errors', errors.length === 0, errors.join(' | '))

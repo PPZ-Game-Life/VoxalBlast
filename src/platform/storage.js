@@ -29,6 +29,10 @@ const PROBE_KEY = 'voxalblast.storage.probe'
 const PREFERENCE_KEYS = Object.freeze({
   sound: 'voxalblast-sound',
   haptics: 'voxalblast-haptics',
+  // v0.9.12: carrying a piece off the cube turns the cube (03 §3.1). Default ON, like the
+  // other two — the key's absence means "the shipped behaviour", so an existing player who
+  // has never opened settings keeps the feature.
+  dragTurn: 'voxalblast-drag-turn',
 })
 
 // The global storage, or null when there is none or it throws on access: Safari private
