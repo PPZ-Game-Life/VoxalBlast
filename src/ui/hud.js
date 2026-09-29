@@ -26,6 +26,28 @@ const ITEM_ICON = Object.freeze({
   refresh: '↻', hammer: '🔨', rocket: '🚀', bomb: '💣',
 })
 
+// The score ROLL (v0.9.29). The pill's number counts up to the value the board already holds
+// instead of snapping to it: a jump from 120 to 168 is a number the player has to RE-READ,
+// while a number that runs up is a reward they watch land. The producer's report was exactly
+// this — 加分的反馈太弱.
+//
+// Presentation only: nothing here decides a score, it decides how the one `getScore()`
+// already reports gets painted on the way there. The length is proportional to the points
+// because the roll IS the receipt — a 12-point placement that takes half a second lies about
+// what it earned, and a 600-point one that takes three seconds is a wait. minMs covers the
+// smallest build, maxMs caps a big clear, tickMs rate-limits the counting click so a long
+// roll cannot machine-gun the audio (the same reason playChainSound caps its pitch), and
+// settleMs is how long the landing bump stays on the number (styles.css repeats the number;
+// CSS cannot read this file).
+const SCORE_ROLL = Object.freeze({
+  minMs: 260,
+  maxMs: 900,
+  perPoint: 1.5,
+  tickMs: 48,
+  tickMax: 14,
+  settleMs: 420,
+})
+
 // The one Three.js use in this module: a colour integer -> the CSS custom property a candidate
 // slot paints its chip with. It is a formatter, not a renderer — the candidate PREVIEWS are
 // rendering/pieceView.js's and never enter this module (P9).
@@ -51,6 +73,13 @@ export function createHud({
   disposePiecePreviews,
   createPiecePreview,
   onChainBreak,
+  // The score roll's two noises (v0.9.29). Same rule as onChainBreak: the sound is not this
+  // module's to make, so it arrives as a callback and hud.js decides only WHEN a tick is owed
+  // (the counting click, with how far the roll has run) and when the number is DONE (the
+  // landing chord, with how many points it just landed). Whether anything is heard at all is
+  // effects' and the sound switch's business.
+  onScoreTick,
+  onScoreSettle,
 }) {
   const {
     statusEl,
@@ -99,6 +128,98 @@ export function createHud({
   scoreResize.observe(scoreEl.parentElement)
   scoreResize.observe(bestEl.parentElement)
 
+  // ---- the score roll (v0.9.29, SCORE_ROLL above) --------------------------------
+  // `shownScore` is what the pill is PAINTING, which for the few hundred ms a roll lasts is
+  // deliberately not what the board holds. Every other reader of the score reads the board
+  // through getScore(), so nothing downstream can ever see this number.
+  let shownScore = getScore()
+  let roll = null
+  let rollFrame = 0
+  let settleTimer
+
+  function paintScore(value) {
+    scoreEl.textContent = String(value).padStart(4, '0')
+  }
+
+  function endRoll() {
+    cancelAnimationFrame(rollFrame)
+    rollFrame = 0
+    roll = null
+  }
+
+  function startRoll(target) {
+    endRoll()
+    const distance = target - shownScore
+    roll = {
+      from: shownScore,
+      target,
+      distance,
+      startedAt: null, // stamped by the first frame — see stepRoll
+      ms: Math.min(SCORE_ROLL.maxMs, SCORE_ROLL.minMs + distance * SCORE_ROLL.perPoint),
+      ticks: 0,
+      lastTickAt: -Infinity,
+    }
+    scoreEl.classList.remove('settled')
+    scoreEl.classList.add('rolling')
+    fitScores()
+    rollFrame = requestAnimationFrame(stepRoll)
+  }
+
+  // easeOutCubic: fast off the line, soft on the landing. A linear count reads as a timer.
+  //
+  // The clock is the rAF clock and ONLY the rAF clock: `startedAt` is stamped by the first
+  // frame, not by performance.now() at the release. A callback scheduled during a frame is
+  // handed that frame's START time, which can be EARLIER than the performance.now() the
+  // release ran at — the first step then comes out negative and the pill paints a number like
+  // `00-2`, i.e. a NaN frame (tools/score-roll-probe.mjs caught exactly that on the first
+  // run). Math.max(0) is cheap insurance against any browser handing back a stamp from before
+  // the frame; a backgrounded tab is what the Math.min(1, ...) is for.
+  function stepRoll(now) {
+    rollFrame = 0
+    if (!roll) return
+    if (roll.startedAt === null) roll.startedAt = now
+    const k = Math.min(1, Math.max(0, (now - roll.startedAt) / roll.ms))
+    const value = Math.round(roll.from + roll.distance * (1 - (1 - k) ** 3))
+    if (value !== shownScore) {
+      shownScore = value
+      paintScore(value)
+      // The click rides the counter but never at frame rate: a speaker that ticks sixty
+      // times a second is noise, not a reward. `k < 1` keeps the last frame for the landing.
+      if (k < 1 && roll.ticks < SCORE_ROLL.tickMax && now - roll.lastTickAt >= SCORE_ROLL.tickMs) {
+        roll.ticks += 1
+        roll.lastTickAt = now
+        onScoreTick?.(k)
+      }
+    }
+    if (k < 1) rollFrame = requestAnimationFrame(stepRoll)
+    else landRoll()
+  }
+
+  function landRoll() {
+    if (!roll) return
+    const { target, distance } = roll
+    endRoll()
+    shownScore = target
+    paintScore(target)
+    scoreEl.classList.remove('rolling')
+    // The landing is the frame the player is meant to remember: the number is already exact,
+    // and the bump (CSS) plus the chord (effects) are what say "that was the total".
+    scoreEl.classList.add('settled')
+    clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => scoreEl.classList.remove('settled'), SCORE_ROLL.settleMs)
+    fitScores()
+    onScoreSettle?.(distance)
+  }
+
+  // Snap — never roll — when the number goes DOWN, and when the caller says so. A downward
+  // count is a new run or a restored save, and a score that counts backwards reads as a bug.
+  function snapScore() {
+    endRoll()
+    shownScore = getScore()
+    paintScore(shownScore)
+    scoreEl.classList.remove('rolling', 'settled')
+  }
+
   function setStatus(text) { statusEl.textContent = text }
 
   function showToast(text, duration = 1500) {
@@ -108,12 +229,22 @@ export function createHud({
     toastTimer = setTimeout(() => toastEl.classList.remove('visible'), duration)
   }
 
-  function updateHud() {
-    scoreEl.textContent = String(getScore()).padStart(4, '0')
+  // Every caller that is not a placement passes `{ snap: true }` — a restored save has to
+  // come back on the number it was saved at, and counting up to it would be a lie about a
+  // move the player never made.
+  function updateHud({ snap = false } = {}) {
+    const target = getScore()
+    if (snap || target < shownScore) snapScore()
+    // A roll already running to the same number is left alone: one placement calls updateHud
+    // more than once (renderBoard, then the record write at game over), and those extra calls
+    // must not restart its clock.
+    else if (target > shownScore && roll?.target !== target) startRoll(target)
     // BEST is a secondary pill: same chip language, smaller type (04「UI 与发布」修订条款).
     // Grouped per locale: the same number is 12,340 in English and 12 340 in some others, and
     // a hard-coded 'en-US' is exactly the kind of bug a second language exposes.
     bestEl.textContent = formatNumber(getBest())
+    // Outside a roll the number is already right, so this only re-fits after a resize, a
+    // locale change or a four-digit number becoming five (the roll re-fits when it lands).
     fitScores()
   }
 

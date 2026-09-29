@@ -37,7 +37,7 @@
 | src/rendering/threeCompat.js | three.quarks / postprocessing 与 Three.js 的兼容桥，须先于粒子导入 |
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
 | src/ui/dom.js | 静态 DOM 句柄一次性收集（缺失必需节点直接报选择器；动态节点不缓存） |
-| src/ui/hud.js | HUD 展示（分数/连击/状态/toast/荣誉/道具条/轴选择）与候选槽 DOM 模板；预览的建与释放经回调交给 pieceView |
+| src/ui/hud.js | HUD 展示（分数/连击/状态/toast/荣誉/道具条/轴选择）与候选槽 DOM 模板；分数滚动（`SCORE_ROLL` 与 `#score` 的 `.rolling` / `.settled`，08 §4.1）连同它的两个音效回调都在这里接；预览的建与释放经回调交给 pieceView |
 | src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位 |
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
 | src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写；v0.9.19 起 `hapticsSupported()` 为假时触感行 `disabled` 且小字换成 `settings.hapticsUnsupported`（偏好不被改写） |

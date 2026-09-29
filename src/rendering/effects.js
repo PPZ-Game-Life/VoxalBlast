@@ -356,6 +356,27 @@ export function createEffects({
     } else playTone(330, 0.075, 0.036)
   }
 
+  // The score roll's voice (v0.9.29, ui/hud.js SCORE_ROLL). The counting click is deliberately
+  // DRY and short — it is the sound of a number being counted, not a melody — and it climbs
+  // with the roll, so a big clear audibly travels further than a small one. The landing is one
+  // bright two-tone: the number has stopped, and this is what says so.
+  //
+  // Whether the number rolls at all is hud.js's business; this module only makes the noises it
+  // asks for, and every one of them is gated by the sound switch exactly like the rest (playTone
+  // reads it live, so a roll that started with sound on stops ticking the moment it is switched
+  // off).
+  function playScoreTick(progress = 0) {
+    playTone(660 + Math.min(1, Math.max(0, progress)) * 520, 0.032, 0.024)
+  }
+
+  function playScoreSettle(points = 0) {
+    // Volume tracks the SIZE of the landing, not the size of the run: a 12-point build still
+    // gets the same interval, just quieter, so the reward never sounds broken.
+    const weight = points >= 300 ? 0.05 : points >= 80 ? 0.042 : 0.032
+    playTone(990, 0.1, weight)
+    playTone(1480, 0.18, weight * 0.78, 0.06)
+  }
+
   // Feedback ladder (08 §6 / 03 §7): the level comes from honors.js, these are the
   // noises that go with it. L1/L2 are still just chords — the banner is earned at L3.
   function playHonorSound(level) {
@@ -453,6 +474,8 @@ export function createEffects({
     playTone,
     playHaptic,
     playPlaceSound,
+    playScoreTick,
+    playScoreSettle,
     playHonorSound,
     playChainSound,
     playChainBreakSound,

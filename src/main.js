@@ -205,6 +205,11 @@ const hud = createHud({
   disposePiecePreviews: () => pieceView.disposePiecePreviews(),
   createPiecePreview: (piece, canvas, slot) => pieceView.createPiecePreview(piece, canvas, slot),
   onChainBreak: (chain) => playChainBreakSound(chain),
+  // The score roll's two noises (v0.9.29). `playScoreTick` / `playScoreSettle` come from the
+  // effects factory below, which is built AFTER this call — hence the arrow, exactly like
+  // onChainBreak above: a roll can only start on a settled placement, long after both exist.
+  onScoreTick: (progress) => playScoreTick(progress),
+  onScoreSettle: (points) => playScoreSettle(points),
 })
 
 // Bound to the module's own names so every existing call site below reads exactly as it
@@ -475,9 +480,12 @@ boardView.attachTiles()
 
 // The board's own single source of truth hands the painted cells to the view, which repaints
 // the tiles from them; the HUD follows, in the order it always did.
-function renderBoard() {
+//
+// `snap` is for the callers that are not a placement — a restored save has to come back on the
+// number it was saved at (v0.9.29 score roll, ui/hud.js). Everything else lets the HUD roll.
+function renderBoard(snap = false) {
   syncBoard(board.occupied())
-  updateHud()
+  updateHud({ snap })
 }
 
 // The piece view (refactor P4a/P4b) owns the candidate renderers, the landing marker and the
@@ -568,6 +576,8 @@ const {
   playTone,
   playHaptic,
   playPlaceSound,
+  playScoreTick,
+  playScoreSettle,
   playHonorSound,
   playChainSound,
   playChainBreakSound,
@@ -1159,7 +1169,9 @@ function applySession(saved) {
     resetCubeRotation()
   }
   renderPieceSlots()
-  renderBoard()
+  // Restore, not a move: the pill comes back ON the saved number instead of counting up to it
+  // (v0.9.29 score roll).
+  renderBoard(true)
   updateChainHud()
   renderItemBar()
   syncPause()
