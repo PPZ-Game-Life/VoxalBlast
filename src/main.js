@@ -58,7 +58,6 @@ const board = session.board
 const run = session.run
 const {
   resetRun,
-  deal,
   currentCells,
   settlePlacement,
   getPieces,
@@ -397,6 +396,10 @@ const input = createGameInput({
   isOccupied: (cell) => board.has(cell[0], cell[1], cell[2]),
   getItemCounts: () => getItemCounts(),
   cancelZones: () => [piecesPanelEl, itemBarEl],
+  // v0.9.31: a hand that is still being computed in the deal worker. The input layer closes the
+  // tray's and the item strip's gates on it, so the used-up hand on screen cannot be dragged (or
+  // re-refreshed) out from under the batch that is on its way.
+  isDealing: () => session.isDealing(),
   onControlsSpin: (axis, direction, key) => settingsUi.spinControlCube(axis, direction, key),
   onAxisHint: (key, axis) => settingsUi.showAxisHint(key, axis),
   // The Escape chain, split where the gesture branches sit inside it: the two panels that
@@ -634,11 +637,21 @@ function armIntroIfVisible() {
 // — when the cube has no legal placement left for any shape, the session leaves the used batch
 // in place rather than emptying the hand, because an empty hand reads as `idle` and would skip
 // the stuck flow that is supposed to handle exactly this position.
-function nextPieces() {
-  const result = deal()
+//
+// v0.9.31: the hand is computed in the deal worker, so this returns a PROMISE and the caller
+// decides what waits on it. The search used to run right here, inside the frame the player
+// released a piece on (p50 40.6ms on this desktop, several times that on a phone — the producer's
+// 「放置上去会卡顿一下」) — onDrop() therefore waits for this before saving and before the stuck
+// check, both of which describe the hand that is about to exist rather than the used-up one.
+function nextPieces(reason = 'natural') {
   input.clearSelection()
-  renderPieceSlots()
-  return result
+  return session.dealAsync(reason).then((result) => {
+    // A batch that arrived for a run which has since been replaced (a new game, a resume) is
+    // dropped: whatever replaced the run owns the tray now.
+    if (result.stale) return result
+    renderPieceSlots()
+    return result
+  })
 }
 
 // The three candidate previews (refactor P4a) live in rendering/pieceView.js: each slot owns
@@ -852,24 +865,30 @@ function rerollPieces() {
   // Block 9's cooldown. The old local "re-draw up to 24 times until it differs" loop is gone
   // because the dealer's proposal step already guarantees a different combination, and because
   // "different" was never the property that mattered — "playable" is.
-  const result = session.refreshDeal()
-  if (!result.ok) {
-    // §8.8 / v0.9.0 P1: deal first, spend only on success. A refresh that cannot produce a
-    // playable batch must not cost the player a charge, and must not be silent about it either.
-    showToast(t('toast.noRoomClearPath'))
-    playHaptic(20)
+  //
+  // v0.9.31: computed in the deal worker, so the charge is spent when the batch ARRIVES. That is
+  // the same rule as before ("deal first, spend only on success"), one message later; until it
+  // arrives the input layer refuses pickups (session.isDealing), so the hand on screen cannot be
+  // dragged out from under the batch that is replacing it.
+  return session.dealAsync('refresh').then((result) => {
+    if (!result.ok) {
+      // §8.8 / v0.9.0 P1: deal first, spend only on success. A refresh that cannot produce a
+      // playable batch must not cost the player a charge, and must not be silent about it either.
+      showToast(t('toast.noRoomClearPath'))
+      playHaptic(20)
+      renderItemBar()
+      return false
+    }
+    spendItem('refresh')
+    input.clearSelection()
+    renderPieceSlots()
+    showToast(t('toast.refreshed'))
+    playHaptic(10)
     renderItemBar()
-    return false
-  }
-  spendItem('refresh')
-  input.clearSelection()
-  renderPieceSlots()
-  showToast(t('toast.refreshed'))
-  playHaptic(10)
-  renderItemBar()
-  saveSession()
-  checkStuckAndPrompt()
-  return true
+    saveSession()
+    checkStuckAndPrompt()
+    return true
+  })
 }
 
 // The judgement itself (hasPlaceablePiece / hasBlockingClearTool / the three branches) lives in
@@ -951,12 +970,24 @@ function onDrop({ piece, face, cells, origin }) {
     if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
     setStatus(t('status.idle'))
   }
-  if (getPieces().every((candidate) => candidate.used)) nextPieces()
   // The resume slot is written on the same beat as the board change, and BEFORE the
   // stuck check: checkStuckAndPrompt() may end the run, and a snapshot written after
   // that would be a save of a finished game (saveSession refuses those anyway).
-  saveSession()
-  checkStuckAndPrompt()
+  //
+  // v0.9.31: when this placement spent the LAST candidate, the replacement hand is being computed
+  // in the deal worker, and both of these beats describe the hand that is about to exist rather
+  // than the used-up one on screen — a save written now would be refused by the store (its
+  // migration drops a hand with nothing left to play) and the stuck check would read "no playable
+  // candidate" on a hand that is one message away from being replaced. So they wait for it.
+  if (getPieces().every((candidate) => candidate.used)) {
+    nextPieces().then(() => {
+      saveSession()
+      checkStuckAndPrompt()
+    })
+  } else {
+    saveSession()
+    checkStuckAndPrompt()
+  }
 }
 
 // ============================================================

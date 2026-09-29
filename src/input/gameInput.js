@@ -29,6 +29,10 @@ export function createGameInput({
   // nothing here is written).
   isPaused,
   isEnded,
+  // v0.9.31: the deal worker is computing a hand. The piece and item gates below read it while a
+  // batch is in flight — the hand on screen is the used-up one it is replacing, so neither may be
+  // acted on until it lands.
+  isDealing,
   isHomeOpen,
   isSettingsOpen,
   isControlsOpen,
@@ -396,7 +400,10 @@ export function createGameInput({
   //     applying a delta across the gap.
   //   - `origin`: the quantised target cell the preview is drawn at. Legality never moves it.
   function beginDrag(event, piece) {
-    if (piece.used || isPaused() || drag || hasItemActive()) return
+    // A hand on its way in (v0.9.31) refuses pickups for the same reason a used-up one does: the
+    // piece under the finger belongs to the hand that is being replaced, and the drop would settle
+    // against a board the arriving batch was never computed for.
+    if (piece.used || isPaused() || isDealing() || drag || hasItemActive()) return
     if (event.pointerType === 'mouse' && event.button !== 0) return
     event.preventDefault()
     selectedPiece = piece
@@ -922,7 +929,7 @@ export function createGameInput({
   // ended — v0.8.21's 假灰 bug, which tools/screenshot.mjs asserts against. The settle is checked
   // at the PICKUP instead (see itemPickupRefused()).
   function canUseItemsNow() {
-    return !isEnded() && !isPaused() && !drag && !isSettingsOpen() && performance.now() >= itemBusyUntil
+    return !isEnded() && !isPaused() && !isDealing() && !drag && !isSettingsOpen() && performance.now() >= itemBusyUntil
   }
 
   // §8.4: 转动/吸附动画未停稳时道具暂不可拿起 — refused, and said out loud, but never reflected in

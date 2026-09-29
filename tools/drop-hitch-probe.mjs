@@ -173,8 +173,8 @@ try {
   await send(ws, 3, 'Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 2, mobile: true })
 
   const evaluate = (expression, awaitPromise) => send(ws, nextId++, 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise: Boolean(awaitPromise) })
-  const evalJs = async (expression) => {
-    const result = await evaluate(expression)
+  const evalJs = async (expression, awaitPromise) => {
+    const result = await evaluate(expression, awaitPromise)
     if (result.exceptionDetails) throw new Error(`evaluate threw: ${result.exceptionDetails.exception?.description || result.exceptionDetails.text}`)
     return result.result?.value
   }
@@ -288,6 +288,19 @@ try {
   const profileResult = profiling ? await send(ws, nextId++, 'Profiler.stop') : null
   const longTasks = await evalJs('globalThis.__hitch.long.map((e) => ({ start: Math.round(e.start), dur: Math.round(e.dur) }))')
 
+  // v0.9.31: the search is supposed to run in the deal worker. A probe that only timed the drop
+  // would pass just as happily on the SILENT FALLBACK (gameSession deals on the main thread when
+  // the worker cannot be reached), so the thread that did the work is read out by name.
+  let workers = 'unavailable'
+  try {
+    const targets = await send(ws, nextId++, 'Target.getTargets')
+    workers = (targets.targetInfos || [])
+      .filter((info) => info.type === 'worker' || info.type === 'service_worker')
+      .map((info) => `${info.type} ${info.url.split('/').slice(-1)[0]}`)
+  } catch (error) {
+    workers = `unavailable (${error.message})`
+  }
+
   // Self-time per function: the share of samples whose TOP frame is that function. The profile's
   // timestamps are microseconds, so the per-sample weight is derived from the interval the browser
   // used rather than from the span (which includes the idle gaps between samples).
@@ -316,6 +329,7 @@ try {
   console.log(`drop-hitch: ${HANDS} hands, ${drops.length} drops  (viewport ${VIEWPORT.width}x${VIEWPORT.height})`)
   console.log(`webgl renderer: ${renderer}`)
   console.log(`idle frame gaps here: p50 ${frames.p50}ms  p95 ${frames.p95}ms  max ${frames.max}ms`)
+  console.log(`deal workers alive: ${Array.isArray(workers) ? (workers.join(', ') || 'NONE — the deal fell back to this thread') : workers}`)
   console.log(`longtask observer: ${await evalJs('globalThis.__hitch.unsupported || "ok"')}`)
   console.log('\nper drop (openBefore = candidates still in hand when the piece was released):')
   for (const drop of drops) {

@@ -13,13 +13,15 @@
 | src/game/shapes.js | 十五类平面形状与权重（唯一真源）、`OPENING_SHAPES`（冻结的开局成员）、归一化和辅助旋转 |
 | src/game/scoring.js / honors.js | 纯计分、荣誉及反馈等级 |
 | src/game/records.js / session.js | 已结束局纪录 / 单个未完成局，版本化校验与降级；session 存档 v2 另带发牌导演与随机流 |
-| src/game/gameSession.js | 一局的唯一数据真源：棋盘、手牌、run 账本、runId、道具次数与工具规则、撤销窗口、救场判定、局终标志、**发牌导演与随机流**与存档数据半边（零 DOM / 零 Three） |
+| src/game/gameSession.js | 一局的唯一数据真源：棋盘、手牌、run 账本、runId、道具次数与工具规则、撤销窗口、救场判定、局终标志、**发牌导演与随机流**与存档数据半边（零 DOM / 零 Three）。**v0.9.31 起发牌走 `dealAsync()`（Worker）**，`deal()` 保留为同步回落与存档补牌路径；`isDealing()` 是输入闸门读的"牌在路上" |
 | src/game/placementModel.js | 位棋盘（`Uint8Array(125)`）落点枚举与六面消除的快速镜像；与 `Board` 由对照测试逐值锁定（v0.9.0） |
 | src/game/boardPressure.js | 固定参考池（含 `Line 4`、不含 `Block 9`）与空间压力 `R`（v0.9.0） |
 | src/game/handSolver.js | 整批有解搜索（`SOLVABLE`/`UNSOLVABLE`/`UNKNOWN` + 可回放 witness）与首步容错采样（v0.9.0） |
 | src/game/dealConfig.js | 发牌与难度参数、`configVersion`、P2 开关、兜底原因枚举（v0.9.0） |
 | src/game/dealDirector.js | 步数/等级/阶段状态机、`Block 9` 冷却、成本函数、候选挑选与序列化（v0.9.0） |
 | src/game/dealer.js | 提议 → 证明 → 分阶段分析 → 挑选 → 兜底；自然发牌与道具换批走同一条路（v0.9.0） |
+| src/game/dealRun.js | **一次发牌事务**（v0.9.31）：盘面（`[x,y,z,color]` 行）/ 导演（`serialize`）/ 随机流（`snapshot`）进出都是数据，不碰 session、DOM、Three。**主线程的同步路径与 Worker 跑的是同一个 `runDeal()`** —— 这是"两条路发出同一手牌"的结构性保证，不是靠测试兜住的结论 |
+| src/game/dealWorker.js | `runDeal()` 的消息壳（v0.9.31）：`{id, request}` → `{id, ok, result\|error}`。**批次发不出来不算 worker 失败**（那是 `ok:true` + `result.ok:false`，因为"盘面没地方放"是关于局面的事实）；`self` 有守卫，Node 下可直接 import 测试 |
 | src/game/rng.js | 分离的确定性随机流（`deal`/`search`/`director`），状态可序列化进存档（v0.9.0） |
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
@@ -214,7 +216,7 @@ npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 
 **不该改哪些模块 / 禁区**
 
 - `src/game/board.js` 与 `shapes.js` / `scoring.js` / `honors.js` / `tiers.js`：纯规则，**不得新增 DOM / Three / storage 依赖**。
-- `src/game/gameSession.js` 必须保持能纯 Node 跑（`npm run test:session`）：不得引入 DOM、Three、`window`、`localStorage`。
+- `src/game/gameSession.js` 必须保持能纯 Node 跑（`npm run test:session`）：不得引入 DOM、Three、`window`、`localStorage`。v0.9.31 的 `new Worker(new URL('./dealWorker.js', import.meta.url), { type: 'module' })` **有 `typeof Worker === 'undefined'` 守卫**（Node 下直接走同步发牌），这条约束仍然成立，`tools/deal-worker-tests.mjs` 就是在 Node 里跑这条路径；也不要把它改成变量拼出来的地址——Vite 靠这个字面量模式才能把 worker 打成一个单独的 chunk（`dist/assets/dealWorker-*.js`）。
 - 存档键与 schema 版本：`voxalblast.records.v1`（`RECORDS_VERSION = 1`）、`voxalblast.session.v1`（`SESSION_VERSION = 1`）、`voxalblast-sound` / `voxalblast-haptics`。改键名或版本就是丢玩家数据，必须单独立项；`src/platform/storage.js` 对两个偏好**刻意不做防护**，别顺手「补全」成静默降级。
 - `src/rendering/blockResources.js` 的单一共享几何/材质缓存：棋盘 98 格、候选预览、拖拽幽灵、落点标记、道具覆盖层与主页缩影引用同一实例，预览或主页路径**绝不允许** dispose 共享资源。
 - `index.html` 的 `#app-version` 留在 `.topbar` 内（v0.2.20 回归与 v0.8.21 的手机反馈）；main 只写它的 `textContent`，不按 `import.meta.env.DEV` 隐藏、也不给它加 `hidden`（`toy.css` 里 `.app-version[hidden]` 那条会真的把它藏掉），窄屏只缩到 `.5rem`。

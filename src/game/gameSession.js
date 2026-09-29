@@ -22,10 +22,10 @@ import { SHAPES, normalizeCells } from './shapes.js'
 import { moveScore, nextChain } from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
 import { createStreams } from './rng.js'
-import { dealBatch } from './dealer.js'
+import { runDeal } from './dealRun.js'
 import {
-  beginNaturalBatch, batchConstraints, createDirectorState, currentIntent, noteDealt,
-  notePlacement, refreshIntent, revive as reviveDirector, serialize as serializeDirector, tierOf,
+  createDirectorState, notePlacement, revive as reviveDirector, serialize as serializeDirector,
+  tierOf,
 } from './dealDirector.js'
 import { FALLBACK_REASONS } from './dealConfig.js'
 
@@ -87,6 +87,7 @@ export function createGameSession() {
     // A new run is a new difficulty run: back to step 0, warmup, a fresh seed. Without this a
     // restart would inherit the previous run's tier and hand the player a level-3 deal on an
     // empty board (and the same random stream, which would deal the same opening hands).
+    dealEpoch += 1 // a batch in flight belongs to the run that has just been thrown away
     resetDirector()
   }
 
@@ -107,60 +108,145 @@ export function createGameSession() {
     return piece
   }
 
+  // ---- The deal (v0.9.0 P1; the search left this thread in v0.9.31) ------------
+  // The hand is no longer three blind draws: the dealer proposes up to 36 batches, proves what
+  // each can do on THIS board and picks one against the director's intent — see dealer.js for why.
+  // Since v0.9.31 that transaction also runs in a worker (dealRun.js): it used to run inside the
+  // frame the player released a piece on, at 40ms+ on a desktop and several times that on a phone,
+  // which the producer reported as 「放置上去会卡顿一下」. What is left here is WHEN a returned
+  // batch becomes the hand — and the one rule that keeps the game honest is unchanged: a batch that
+  // cannot be dealt at all (the cube has no legal placement for any shape) leaves the PREVIOUS hand
+  // in place rather than emptying it. An empty hand would read as `idle` in stuckOutcome() and
+  // silently skip the stuck flow; a fully-used hand is exactly the state the flow exists for.
+  let dealEpoch = 0 // bumped by anything that replaces the run's state under an in-flight deal
+  let inFlight = null // { id, resolve } while the worker is answering
+  let worker = null
+  let workerUnavailable = false
+  let dealRequestId = 0
+
+  // Everything the deal needs, as data the worker can be handed: the board's occupancy in the same
+  // [x, y, z, color] rows the resume slot stores, the director's save state, the random streams'
+  // save state and the reason. The worker therefore never has to know what a Board is.
+  function dealInput(reason) {
+    return {
+      cells: board.occupied().map((cell) => [cell.x, cell.y, cell.z, cell.color]),
+      director: serializeDirector(director),
+      streams: streams.snapshot(),
+      reason: reason === 'refresh' ? 'refresh' : 'natural',
+    }
+  }
+
+  // A returned batch becomes the hand HERE and nowhere else, and it takes the director and the
+  // random streams with it: the worker ran on copies, so committing means adopting that copy's next
+  // state. It is the same state the synchronous path reaches, because it is the same function that
+  // produced it (dealRun.runDeal) — that is what makes the worker safe to put a run behind.
+  function commitDeal(result) {
+    lastDealMetrics = result.metrics
+    if (!result.ok) {
+      // Nothing is committed and nothing is spent: the caller keeps the hand it had, and main shows
+      // the player what the stuck flow already says (§7.2).
+      return { ok: false, pieces: null, metrics: result.metrics, reason: result.reason ?? result.metrics?.fallback }
+    }
+    director = reviveDirector(result.director)
+    streams.restore(result.streams)
+    pieces = result.names.map((name) => shapeByName.get(name)).filter(Boolean).map(makePiece)
+    return { ok: true, pieces, metrics: result.metrics, names: result.names, witness: result.witness }
+  }
+
   // A new hand. The caller clears the selection and repaints the slots: that is UI, and it is
   // main's (main.nextPieces() is the wrapper every existing call site still calls).
   //
-  // v0.9.0 P1: the hand is no longer three blind draws. The dealer proposes up to 48 batches,
-  // proves what each can do on THIS board and picks one against the director's intent — see
-  // dealer.js for why. The one rule that keeps the game honest is here: a batch that cannot be
-  // dealt at all (the cube has no legal placement for any shape) leaves the PREVIOUS hand in
-  // place rather than emptying it. An empty hand would read as `idle` in stuckOutcome() and
-  // silently skip the stuck flow; a fully-used hand is exactly the state that flow exists for.
+  // The historical contract is "deal() hands back the hand", and every existing call site and test
+  // relies on it. It is now also the FALLBACK: a resumed run completing a short hand, and any
+  // environment without a worker, come through here rather than through the async path.
   function deal(options = {}) {
     const result = dealFor(options.reason === 'refresh' ? 'refresh' : 'natural')
-    // The historical contract is "deal() hands back the hand", and every existing call site
-    // (and test) relies on it. A refused deal hands back the batch that is already on the
-    // board — used up, which is the state the stuck flow reads — and the reason is available
-    // through getDealMetrics() for the run report.
+    // A refused deal hands back the batch that is already on the board — used up, which is the
+    // state the stuck flow reads — and the reason is available through getDealMetrics().
     return result.ok ? result.pieces : pieces
   }
 
   function dealFor(reason) {
-    const isRefresh = reason === 'refresh'
-    // The natural counter advances BEFORE the intent is read: the batch being generated is the
-    // one whose phase is being decided (a refresh deliberately skips this — it must not move
-    // the run forward or shorten Block 9's cooldown).
-    if (!isRefresh) beginNaturalBatch(director, streams.director())
-    const intent = isRefresh ? refreshIntent(director) : currentIntent(director)
-    const constraints = batchConstraints(director, { natural: !isRefresh })
-    const result = dealBatch({
-      board,
-      director,
-      intent,
-      constraints,
-      rng: streams.deal(),
-      searchRng: streams.search(),
-      beforeHands: director.recentHands,
-    })
-    lastDealMetrics = result.metrics
-    if (!result.hand) {
-      // Nowhere to play at all. Nothing is committed and nothing is spent; main shows the
-      // player what the stuck flow already says.
-      return { ok: false, pieces: null, metrics: result.metrics, reason: result.metrics.fallback }
-    }
-    pieces = result.hand.map(makePiece)
-    noteDealt(director, result.names, { natural: !isRefresh })
-    return { ok: true, pieces, metrics: result.metrics, names: result.names, witness: result.witness }
+    return commitDeal(runDeal(dealInput(reason)))
   }
 
   // The item Refresh (07 §2.1) goes through the same service, on the relief target and with
-  // Block 9 excluded. It reports success so the caller can refuse to spend the charge: the
-  // spec's rule is that the inventory moves only after a new batch exists (§10.1).
+  // Block 9 excluded. It reports success so the caller can refuse to spend the charge: the spec's
+  // rule is that the inventory moves only after a new batch exists (§10.1).
   function refreshDeal() {
     return dealFor('refresh')
   }
 
+  function ensureWorker() {
+    if (worker || workerUnavailable) return worker
+    if (typeof Worker === 'undefined') {
+      // No worker to be had: the synchronous path is the whole deal, exactly as it was before
+      // v0.9.31. Slower on the drop frame, identical in what it deals.
+      workerUnavailable = true
+      return null
+    }
+    try {
+      worker = new Worker(new URL('./dealWorker.js', import.meta.url), { type: 'module' })
+      worker.onmessage = (event) => {
+        const waiter = inFlight
+        inFlight = null
+        if (waiter && waiter.id === event.data?.id) waiter.resolve(event.data)
+      }
+      // A worker that failed to load, or that threw outside the request handler, can answer
+      // nothing: mark it broken and resolve the pending request as a FAILURE so the caller falls
+      // back, rather than leaving the player's turn waiting on a message that will never come.
+      worker.onerror = () => {
+        workerUnavailable = true
+        worker = null
+        const waiter = inFlight
+        inFlight = null
+        if (waiter) waiter.resolve({ id: waiter.id, ok: false, error: 'worker-error' })
+      }
+    } catch {
+      workerUnavailable = true
+      worker = null
+    }
+    return worker
+  }
+
+  // The same deal, off this thread. It resolves with exactly what dealFor() returns, so a caller
+  // never has to branch on which one it got — and a worker that cannot answer degrades to the
+  // synchronous path instead of failing the player's turn.
+  function dealAsync(reason = 'natural') {
+    const wanted = reason === 'refresh' ? 'refresh' : 'natural'
+    const active = ensureWorker()
+    if (!active) return Promise.resolve(dealFor(wanted))
+    const epoch = dealEpoch
+    const id = (dealRequestId += 1)
+    const request = dealInput(wanted)
+    return new Promise((resolve) => {
+      inFlight = { id, resolve }
+      try {
+        active.postMessage({ id, request })
+      } catch {
+        workerUnavailable = true
+        worker = null
+        inFlight = null
+        resolve({ id, ok: false, error: 'postMessage-failed' })
+      }
+    }).then((reply) => {
+      if (!reply || !reply.ok) return dealFor(wanted)
+      // The run was replaced while the worker was thinking (a new game, a resume, a reset): the
+      // batch answers a board that no longer exists, so it is dropped rather than committed.
+      if (epoch !== dealEpoch) return { ok: false, stale: true, pieces, metrics: lastDealMetrics }
+      return commitDeal(reply.result)
+    })
+  }
+
+  // "A hand is on its way." The input layer closes the tray's and the item strip's gates on this,
+  // so a second deal cannot be asked for while the first is still being computed, and the used-up
+  // hand on screen cannot be dragged while its replacement is in flight.
+  function isDealing() {
+    return inFlight !== null
+  }
+
   function resetDirector(seed = null) {
+    dealEpoch += 1
     director = createDirectorState()
     streams = createStreams(seed === null ? Math.floor(Math.random() * 0xffffffff) : seed)
     lastDealMetrics = null
@@ -490,6 +576,9 @@ export function createGameSession() {
     director = reviveDirector(saved.director)
     if (saved.streams) streams.restore(saved.streams)
     lastDealMetrics = null
+    // A batch dealt for the run that was on screen a moment ago answers the wrong board: the
+    // in-flight request is invalidated here, and its reply is dropped when it arrives.
+    dealEpoch += 1
     // A retired shape can leave fewer than three candidates; deal the missing slots
     // instead of resuming with a short strip (the layout is a fixed row of three).
     // v0.9.0 P1: those slots come from the same dealer, on the relief target, because a
@@ -520,6 +609,10 @@ export function createGameSession() {
     resetRun,
     deal,
     refreshDeal,
+    // v0.9.31: the same deal, off the main thread, plus the "one is on its way" state the input
+    // gates read. `deal()` stays for the resume fill, the tools and the worker-less fallback.
+    dealAsync,
+    isDealing,
     resetDirector,
     getDirector,
     progress,
