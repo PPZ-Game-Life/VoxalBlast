@@ -41,9 +41,12 @@ export function createPieceView({
   getSelectedPiece,
   onClearForecast,
 }) {
-  // One entry per candidate slot: the piece, the slot button, that slot's renderer / scene /
-  // camera / meshes, and the frame size the last projection was fitted to.
-  const previews = new Map()
+  // One entry per CANDIDATE SLOT, not per piece: the piece, the slot button, that slot's
+  // renderer / scene / camera / meshes, and the frame size the last projection was fitted to.
+  // Keyed by slot index (an array, holes included) because a slot OUTLIVES the piece it is
+  // showing, and that is the whole point -- see createPiecePreview().
+  const previews = []
+  const entryFor = (piece) => previews.find((entry) => entry && entry.piece === piece) || null
   let draggedPiece = null
   let returnFlight = null
 
@@ -72,7 +75,7 @@ export function createPieceView({
 
   function returnPiece(piece) {
     cancelReturn()
-    const preview = previews.get(piece)
+    const preview = entryFor(piece)
     const source = landing.children.length ? landing : ghost.visible ? ghost : null
     if (!preview || !source) return
     const rect = getCanvasRect()
@@ -135,20 +138,71 @@ export function createPieceView({
     return cells.map(([u, v]) => new THREE.Vector3((u - cx) * pitch, (cy - v) * pitch, 0))
   }
 
-  function disposePiecePreviews() {
+  // `fromIndex` is the first slot to tear down; the default (0) is a full teardown. A new deal
+  // passes the length of the new hand instead, so the slots it still has keep their contexts.
+  function disposePiecePreviews(fromIndex = 0) {
     cancelReturn()
-    previews.forEach((preview) => {
+    for (let index = fromIndex; index < previews.length; index += 1) {
+      const preview = previews[index]
+      if (!preview) continue
       preview.meshes.forEach((mesh) => {
         mesh.material.dispose()
         mesh.children.forEach((child) => child.material?.dispose())
       })
       preview.renderer.dispose()
       preview.renderer.forceContextLoss?.()
-    })
-    previews.clear()
+      previews[index] = null
+    }
+    if (fromIndex === 0) previews.length = 0
   }
 
-  function createPiecePreview(piece, canvas, slot) {
+  // The voxels a slot is drawing right now, dropped without touching the shared geometry or the
+  // shared material factory (plan §5.3): only the per-mesh materials this module created.
+  function clearPreviewRoot(root) {
+    while (root.children.length) {
+      const child = root.children.pop()
+      child.material?.dispose()
+      child.children.forEach((line) => line.material?.dispose())
+    }
+  }
+
+  // A cell has one visual size across the entire hand. Do not inflate a dot or a two-cell shape
+  // to fill the same box as a nine-cell shape.
+  function buildPreviewMeshes(root, piece) {
+    const outlineColor = new THREE.Color(referencePaintColor(piece.shape.color)).multiplyScalar(0.58)
+    return flatPreviewPositions(getCells(piece)).map((position) => {
+      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
+      mesh.scale.setScalar(0.8)
+      mesh.position.copy(position)
+      mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
+      root.add(mesh)
+      return mesh
+    })
+  }
+
+  // The candidate strip is a FIXED ROW OF THREE SLOTS, so a new hand does not have to build three
+  // new renderers — and it must not, because that is what made the third placement stutter
+  // (v0.9.30). A WebGLRenderer means a new WebGL CONTEXT, and every shader program in a fresh
+  // context is compiled from scratch: measured at ~19ms per context on a desktop GPU with a real
+  // D3D11 backend (tools/drop-hitch-probe.mjs), i.e. ~56ms of the refill frame, and multi-channel
+  // shader compilation is exactly the kind of cost that grows on a phone. The slot's canvas comes
+  // back in as a parameter because the slot DOM around it is rebuilt; the context lives on the
+  // canvas, so moving the canvas keeps the renderer alive.
+  function createPiecePreview(piece, canvas, slot, index = previews.length) {
+    const existing = previews[index]
+    const reused = existing && existing.renderer.domElement === canvas ? existing : null
+    if (reused) {
+      clearPreviewRoot(reused.root)
+      reused.piece = piece
+      reused.slot = slot
+      reused.meshes = buildPreviewMeshes(reused.root, piece)
+      // The camera fit is measured from the shape's own projected volume, so a different shape has
+      // to be fitted again on the next frame.
+      reused.frameWidth = 0
+      reused.frameHeight = 0
+      return reused
+    }
+
     const previewRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' })
     previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
     previewRenderer.outputColorSpace = THREE.SRGBColorSpace
@@ -164,30 +218,32 @@ export function createPieceView({
     previewCamera.lookAt(0, 0, 0)
     const root = new THREE.Group()
     previewScene.add(root)
-    const positions = flatPreviewPositions(getCells(piece))
-    // A cell has one visual size across the entire hand. Do not inflate a dot
-    // or a two-cell shape to fill the same box as a nine-cell shape.
-    const outlineColor = new THREE.Color(referencePaintColor(piece.shape.color)).multiplyScalar(0.58)
-    const meshes = positions.map((position) => {
-      const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
-      mesh.scale.setScalar(0.8)
-      mesh.position.copy(position)
-      mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
-      root.add(mesh)
-      return mesh
-    })
-    previews.set(piece, { piece, slot, renderer: previewRenderer, scene: previewScene, camera: previewCamera, root, meshes, frameWidth: 0, frameHeight: 0 })
+    const entry = {
+      piece,
+      slot,
+      renderer: previewRenderer,
+      scene: previewScene,
+      camera: previewCamera,
+      root,
+      meshes: buildPreviewMeshes(root, piece),
+      frameWidth: 0,
+      frameHeight: 0,
+    }
+    previews[index] = entry
+    return entry
   }
 
   function updatePieceSlotSelection() {
-    previews.forEach((preview, piece) => {
-      preview.slot.classList.toggle('selected', getSelectedPiece() === piece)
-      preview.slot.classList.toggle('used', piece.used)
+    previews.forEach((preview) => {
+      if (!preview) return
+      preview.slot.classList.toggle('selected', getSelectedPiece() === preview.piece)
+      preview.slot.classList.toggle('used', preview.piece.used)
     })
   }
 
   function updatePiecePreviews() {
     previews.forEach((preview) => {
+      if (!preview) return
       const width = Math.max(preview.renderer.domElement.clientWidth, 1)
       const height = Math.max(preview.renderer.domElement.clientHeight, 1)
       if (preview.frameWidth !== width || preview.frameHeight !== height) {
@@ -223,7 +279,7 @@ export function createPieceView({
   // NDC, so a slot can be proven not to crop its shape. Same fields the hook has always exposed
   // (refactor P4a; P9 only assembles it).
   function candidateFrames() {
-    return [...previews.values()].map(preview => {
+    return previews.filter(Boolean).map(preview => {
       preview.root.updateMatrixWorld(true)
       const bounds = new THREE.Box3().setFromObject(preview.root)
       const points = []
@@ -337,7 +393,7 @@ export function createPieceView({
   // on every pointermove, tint it by the drop state, drop it when the gesture ends.
   function clearDragGhost({ keepReturn = false } = {}) {
     if (!keepReturn) cancelReturn()
-    previews.forEach(preview => preview.slot.classList.remove('piece-dragging'))
+    previews.forEach(preview => preview?.slot.classList.remove('piece-dragging'))
     ghost.visible = false
     clearGroup(ghost)
   }
@@ -422,7 +478,7 @@ export function createPieceView({
 
   function syncDragGhost({ ndc, canvasHeight, cellPx, pointerType, mode, keepInView = false }) {
     if (!ghost.children.length) return
-    previews.get(draggedPiece)?.slot.classList.add('piece-dragging')
+    entryFor(draggedPiece)?.slot.classList.add('piece-dragging')
     // v0.4.5: ONE piece per turn. The moment the piece attaches to a face the board
     // draws it, and the one in hand must not be there as well — the player read the
     // pair as "two blocks", which is exactly what it was.

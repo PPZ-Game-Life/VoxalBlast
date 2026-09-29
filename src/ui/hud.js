@@ -432,9 +432,15 @@ export function createHud({
   // injected dispose/create callbacks (plan §4: 把建 preview 的调用交给 pieceView，不把
   // renderer 放进 UI 状态).
   function renderPieceSlots() {
-    disposePiecePreviews()
+    const pieces = getPieces()
+    // The canvases are CARRIED OVER, not rebuilt: each one owns the WebGL context its preview
+    // renderer draws through, and a fresh context means every shader program in it compiles
+    // again — measured at ~56ms for the three slots on a desktop GPU, on the very frame the third
+    // piece is placed (v0.9.30, tools/drop-hitch-probe.mjs). The buttons around them are still
+    // rebuilt, because each carries the pointer handlers for the piece it holds.
+    const canvases = [...slotsEl.children].map((slot) => slot.querySelector('canvas'))
     slotsEl.innerHTML = ''
-    getPieces().forEach((piece, index) => {
+    pieces.forEach((piece, index) => {
       const slot = document.createElement('button')
       slot.className = `piece-slot${piece.used ? ' used' : ''}${getSelectedPiece() === piece ? ' selected' : ''}`
       slot.type = 'button'
@@ -447,7 +453,7 @@ export function createHud({
 
       const thumb = document.createElement('span')
       thumb.className = 'piece-thumb'
-      const canvas = document.createElement('canvas')
+      const canvas = canvases[index] || document.createElement('canvas')
       canvas.className = 'piece-preview-canvas'
       canvas.setAttribute('aria-hidden', 'true')
       thumb.appendChild(canvas)
@@ -455,8 +461,11 @@ export function createHud({
       slot.append(thumb)
       bindSlot(slot, piece)
       slotsEl.appendChild(slot)
-      createPiecePreview(piece, canvas, slot)
+      createPiecePreview(piece, canvas, slot, index)
     })
+    // A shorter hand (a save that could not be completed) leaves its surplus slots behind: those
+    // previews have no canvas in the strip any more and must release their context.
+    disposePiecePreviews(pieces.length)
   }
 
   return {

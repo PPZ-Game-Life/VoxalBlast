@@ -202,8 +202,8 @@ const hud = createHud({
   getPieces: () => getPieces(),
   getSelectedPiece: () => input.getSelectedPiece(),
   bindSlot: (slot, piece) => input.bindSlot(slot, piece),
-  disposePiecePreviews: () => pieceView.disposePiecePreviews(),
-  createPiecePreview: (piece, canvas, slot) => pieceView.createPiecePreview(piece, canvas, slot),
+  disposePiecePreviews: (fromIndex) => pieceView.disposePiecePreviews(fromIndex),
+  createPiecePreview: (piece, canvas, slot, index) => pieceView.createPiecePreview(piece, canvas, slot, index),
   onChainBreak: (chain) => playChainBreakSound(chain),
   // The score roll's two noises (v0.9.29). `playScoreTick` / `playScoreSettle` come from the
   // effects factory below, which is built AFTER this call — hence the arrow, exactly like
