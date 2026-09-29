@@ -149,6 +149,6 @@
 - §4.1 的"补绘被挡住的结构"没做——不需要：合成模块后皇冠底沿"被底板挡住"就是终稿本来的样子，不存在缺失像素。
 - 卡片右列与左上角的**镜像补丁**仍在（包里没有干净源像素可换），只把硬接缝摊平了；补丁区带的是另一侧的光照，诚实的修法仍是另出角饰素材。已记入 `public/art/ui-redesign/README.md` 与 `docs/Technical/KNOWN_GAPS.md`。
 - §7 的短屏滚动：`dvh` / 地址栏 / `visualViewport` 仍未在真机测量；本轮只跑了既有的 `probe:dialog`（15/15）与 `probe:scroll`（30/30）。
-- §8 验收矩阵里的**中英双语**只跑了英文（默认语言）截图；中文 UI 有 i18n 门禁（161/161）但没有中文截图。
+- §8 验收矩阵里的**中英双语**：英文（默认语言）四档全跑；中文只补了**主页**桌面 + 手机两张（`artifacts/visual-zh/`，标签「最高分」与数字在内凹里居中、不换行不裁切），设置面板的中文截图未跑——中文文案更长，设置卡那七行值得下一轮补一张。
 
 **回归**：`tools/ui-skin-fringe-audit.py` 报"无 ornament-free 面板带绿簇"；`node tools/screenshot.mjs` 14 张全 OK、零 `errors`；`probe:dialog` 15/15、`probe:scroll` 30/30、`test:i18n` 161/161。重切流程已写进 `public/art/ui-redesign/README.md`（顺序：切图 → 两个修复工具 → mask-clean → fringe-audit）。
