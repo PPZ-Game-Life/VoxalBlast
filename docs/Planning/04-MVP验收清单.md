@@ -18,7 +18,8 @@
 - [x] CDP 场景探针（`.tmp` 临时脚本，不入库）五组全绿：**A** 局内设置→主页（封面开、设置关、焦点 `home-primary`）；**B** 主页内开设置→主页（同上；焦点由修复前的 `BODY` 变 `home-primary`）；**C** 点 `#home-new`（封面关、槽被新空局覆盖 `hasSavedRun:true`）；**D** **跑完一局** → 设置 → 主页（`#game-over` 由 `open` 变 **`hidden`**，修复前此处仍是 `open`）；**E** 封面主按钮正常开新局。
 - [x] `#home-new` 可见性随槽位切换：有快照 `newBtnShown:true` / 无快照 `false`；竖屏 390×844 目视证据 `artifacts/visual/home-new-btn.png`。
 - [x] `npm test` 全过（i18n 157/157、rule 347/347、session 145/145、deal 四套 335 项、gem material）；`npm run probe:ui` **93 ok / 0 failed**；`npm run shot` 14 张 `OK`、0 FAIL、exit 0（`artifacts/visual/v0.9.24-*.png`）。
-- [ ] **未验证**：真机（Chrome Android / 微信内嵌）观感；`#home-new` 在短横屏（高度 ≤430px 且宽度 ≥600px）双列主页里的排布只由 `grid-column: 2` 保证，未单独截图。
+- [x] 短横屏双列主页（844×390，触发「高度 ≤430px 且宽度 ≥600px」断点）实测盒子：`.home-inner` 620 宽双列，`#home-primary` x 436..732、`#home-new` x 436..732（落在 `grid-column: 2` 且占满整列），三个元素纵向 90..345 全在 390 高以内、无溢出。
+- [ ] **未验证**：真机（Chrome Android / 微信内嵌）观感。
 
 ## v0.9.23 左上角两行居中到凹槽 + SCORE 标签顶到皇冠列（2026-09-29）
 
