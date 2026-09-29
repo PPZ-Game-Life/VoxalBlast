@@ -737,12 +737,27 @@ export function createBoardView({
   // each tile keeps ONE clone for its whole lifetime, created once and re-filled by
   // copy() on every wave — the maps and the physical parameters come over by
   // reference, so a wave costs no GPU upload and no per-run allocation.
+  //
+  // v0.9.25 — the clone lives in a WeakMap keyed by tile, NOT in `tile.userData`.
+  // `userData` is for JSON data only, and three enforces that the hard way: `Object3D.copy()`
+  // does `this.userData = JSON.parse(JSON.stringify(source.userData))`, so a THREE object
+  // parked there makes EVERY `.clone()` of that node run the object's `toJSON()` — for a
+  // material that means serialising its textures through `ImageUtils.getDataURL()` →
+  // `canvas.toDataURL()`, i.e. a PNG encode per map. The home cover clones the whole grid on
+  // every visit (`ui/home.js`), so 「点了 home 要卡很久」 measured as 1.65–2.0 s of blocked main
+  // thread on every single open: profile = renderHomeBoard → clone → Object3D.copy 0.75 s,
+  // inside it Material.toJSON → Texture.toJSON → serializeImage → toDataURL 0.95 s. With the
+  // material out of userData the same clone costs under a millisecond.
+  const introMaterials = new WeakMap()
+
   function introMaterialFor(tile) {
-    if (!tile.userData.introMaterial) {
-      tile.userData.introMaterial = new THREE.MeshPhysicalMaterial()
-      tile.userData.introMaterial.needsUpdate = true
+    let material = introMaterials.get(tile)
+    if (!material) {
+      material = new THREE.MeshPhysicalMaterial()
+      material.needsUpdate = true
+      introMaterials.set(tile, material)
     }
-    return tile.userData.introMaterial
+    return material
   }
 
   function buildIntroEntries(reduced) {
@@ -998,8 +1013,9 @@ export function createBoardView({
       const positionErr = tile.position.distanceTo(cellToWorld(...tile.userData.cell))
       if (scaleErr > 1e-9) integrity.scaleOff += 1
       if (positionErr > 1e-6) integrity.positionOff += 1
-      // The tile must NOT still be holding the per-block wave clone.
-      if (tile.material === tile.userData.introMaterial) integrity.materialOff += 1
+      // The tile must NOT still be holding the per-block wave clone (kept in the
+      // `introMaterials` WeakMap, never in `userData` — see introMaterialFor).
+      if (tile.material === introMaterials.get(tile)) integrity.materialOff += 1
       if (tile.material.opacity !== 1) integrity.opacityOff += 1
       if (!tile.castShadow) integrity.shadowOff += 1
       integrity.maxScaleErr = Math.max(integrity.maxScaleErr, scaleErr)

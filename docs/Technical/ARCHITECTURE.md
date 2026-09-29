@@ -25,7 +25,7 @@
 | src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
 | src/rendering/blockResources.js | 共享几何与材质缓存的唯一属主（`blockGeometry` / `edgeGeometry` / `paintMaterial` / `toneIndexFor` 与 `sharedGeometries` 释放清单） |
 | src/rendering/gameScene.js | 主场景：scene/camera/renderer/composer 与整条后处理链、取景解算、resize 与 ResizeObserver，以及 `cameraZoom` / `orbitDistance` / `appliedCanvasSize` |
-| src/rendering/boardView.js | 立方体坐标系（`cubeVector` / `cellWorld`）、姿态模型（`cubeBase` / `cubeQuat` / 方位 / 吸附）、98 格与材质、开场两阶段波次 |
+| src/rendering/boardView.js | 立方体坐标系（`cubeVector` / `cellWorld`）、姿态模型（`cubeBase` / `cubeQuat` / 方位 / 吸附）、98 格与材质、开场两阶段波次。**每格的波次材质存在模块内 `WeakMap`（`introMaterials`），绝不进 `userData`**：`Object3D.copy()` 会对 `userData` 做 `JSON.parse(JSON.stringify(...))`，把 THREE 对象放进去等于让每一次 `.clone()` 去序列化整套贴图——v0.9.25 主页卡顿的病根，见 [04 v0.9.25](../Planning/04-MVP验收清单.md) |
 | src/rendering/pieceView.js | 三个候选预览（各自 renderer/scene/camera）、落点标记、拖拽幽灵（挂相机）、道具覆盖层 |
 | src/rendering/effects.js | 粒子/线束/星星、`cameraShake`、慢放 dip 与音调/触感输出；相机静止位置归 gameScene，这里只出偏移 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光与程序化线性 HDR 环境纹理 |
