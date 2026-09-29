@@ -477,3 +477,16 @@ html, body { overscroll-behavior: none; }
   .settings-list { gap: 8px; }
   .setting-row, .setting-action { min-height: 52px; }
 }
+/* The v0.7 reduced-motion rule lists `.home-primary` and `.setting-switch i` only. The controls
+   THIS skin adds transitions to (新游戏, the two nav plates, the settings rows, the close button)
+   are not on that list, so without this block the new skin would keep animating under
+   `prefers-reduced-motion` exactly where the old one stopped. Same policy, same set of controls.
+   `.topbar .icon-button` / `.item-button` are here for the same reason even though they are not
+   part of the redesign: v0.7 DID list `.item-button`, and line 28 of this file re-declared its
+   `transition` without repeating the exception, so the HUD strip has been animating under
+   reduced-motion since v0.8.27 — measured, not assumed (`transition: transform .15s` with the
+   feature forced on). Restoring the stated intent, not adding a new one. */
+@media (prefers-reduced-motion: reduce) {
+  .home-primary, .home-new, .home-secondary, .setting-row, .setting-action, #settings-close,
+  .topbar .icon-button, .item-button { transition: none; }
+}
