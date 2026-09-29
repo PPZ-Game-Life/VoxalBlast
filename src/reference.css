@@ -7,7 +7,15 @@
 .topbar .score-chip, .topbar .best-chip { position: absolute; left: calc(var(--hud-left) + var(--plaque-width) * .16); width: calc(var(--plaque-width) * .66); min-width: 0; min-height: 0; height: calc(var(--plaque-width) * .16); padding: 0 0 0 calc(var(--plaque-width) * .12); margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); align-items: center; gap: 5px; }
 .topbar .best-chip { top: calc(var(--hud-top) + var(--plaque-width) * .135); }
 .topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .315); }
-.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
+/* v0.9.22 — the crown belongs to BEST alone. Since v0.8.27 both rows of the plaque
+   drew the same `crown.png` through this pseudo-element; the producer's call
+   (2026-09-29): 「左上角 best 那里保留那个皇冠的 icon，SCORE 把左边那个 icon 去掉」.
+   BEST is the row that is about a record, so it keeps the mark; SCORE reads as
+   label + number only.
+   The chips' `.12` LEFT PADDING is deliberately NOT removed with it — that padding
+   is what holds SCORE's label in the same column as BEST's, so the two rows still
+   read as one plaque instead of SCORE hanging out of the alignment. */
+.best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
 .topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
