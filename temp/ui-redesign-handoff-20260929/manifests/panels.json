@@ -1,0 +1,511 @@
+{
+  "schemaVersion": 1,
+  "generator": "tools/slice_panels.py",
+  "assets": [
+    {
+      "name": "home-nav.png",
+      "file": "assets/panels/home-nav.png",
+      "source": "references/home.png",
+      "sourceBounds": [
+        435,
+        1578,
+        793,
+        1734
+      ],
+      "size": [
+        358,
+        156
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        358,
+        156
+      ],
+      "method": "source crop + clean vertical band + antialiased silhouette",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Unlettered navigation shell; crown/gear and localized label are separate elements.",
+      "sha256": "1eafd4ea46c03c3a7222ec2677d8a33aea749179a2be79ecfd2e674a80538207",
+      "contentInsetsTRBL": [
+        22,
+        34,
+        25,
+        34
+      ],
+      "nineSliceTRBL": [
+        62,
+        70,
+        62,
+        70
+      ]
+    },
+    {
+      "name": "home-secondary.png",
+      "file": "assets/panels/home-secondary.png",
+      "source": "references/home.png",
+      "sourceBounds": [
+        90,
+        1410,
+        764,
+        1565
+      ],
+      "size": [
+        674,
+        155
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        674,
+        155
+      ],
+      "method": "source crop + clean band + matching clean endcap reconstruction",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "New Game background; no plus/label; floral trim omitted from stretchable base. Endcaps/frame are resampled from the clean home-nav source (home bbox 435,1578,793,1734), not recovered hidden pixels.",
+      "sha256": "b45d3ae252097f7b3b4af50daa7b825c1886bf8da40eec02a40b42be83b48acd",
+      "sourceDependencies": [
+        "assets/panels/home-nav.png"
+      ],
+      "contentInsetsTRBL": [
+        22,
+        38,
+        25,
+        38
+      ],
+      "nineSliceTRBL": [
+        65,
+        80,
+        65,
+        80
+      ]
+    },
+    {
+      "name": "home-primary.png",
+      "file": "assets/panels/home-primary.png",
+      "source": "references/home.png",
+      "sourceBounds": [
+        90,
+        1150,
+        765,
+        1344
+      ],
+      "size": [
+        675,
+        194
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        675,
+        194
+      ],
+      "method": "source gold-face crop + clean band + matching endcaps",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Continue background. No arrow or text. Endcaps are reconstructed; not pixel-identical to flower-covered concept. Endcaps/frame are resampled from the clean home-nav source (home bbox 435,1578,793,1734), not recovered hidden pixels.",
+      "sha256": "a4afa06b35fe8710963244a28d627d73af4775c763d665c9f64b7f9861c26ca4",
+      "sourceDependencies": [
+        "assets/panels/home-nav.png"
+      ],
+      "contentInsetsTRBL": [
+        28,
+        42,
+        29,
+        42
+      ],
+      "nineSliceTRBL": [
+        78,
+        82,
+        78,
+        82
+      ]
+    },
+    {
+      "name": "home-record.png",
+      "file": "assets/panels/home-record.png",
+      "source": "references/home.png",
+      "sourceBounds": [
+        206,
+        716,
+        647,
+        936
+      ],
+      "size": [
+        441,
+        220
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        441,
+        220
+      ],
+      "method": "source body crop + label/number removal with clean band",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Body-only high-score panel. Render large crown separately; use fixed aspect ratio, not nine-slice (internal number recess).",
+      "sha256": "ec5a59c5761ac5669f721ba5e93d7c92b8a310e8678107fc95d71065f119f622",
+      "contentInsetsTRBL": [
+        35,
+        45,
+        32,
+        45
+      ]
+    },
+    {
+      "name": "settings-modal.png",
+      "file": "assets/panels/settings-modal.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        55,
+        302,
+        831,
+        1450
+      ],
+      "size": [
+        776,
+        1148
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        776,
+        1148
+      ],
+      "method": "source frame + clean interior-band reconstruction + undecorated corner restoration",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Empty scalable modal shell. Header, close, six/seven rows and corner ornaments are separate; never display this as a whole settings screenshot.",
+      "sha256": "5411918ecd7db37ade1f57665955a4af009ad2d72b84e0c621f0c9174a33dda7",
+      "contentInsetsTRBL": [
+        50,
+        45,
+        48,
+        45
+      ],
+      "nineSliceTRBL": [
+        76,
+        76,
+        76,
+        76
+      ]
+    },
+    {
+      "name": "settings-row.png",
+      "file": "assets/panels/settings-row.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        104,
+        489,
+        786,
+        628
+      ],
+      "size": [
+        682,
+        139
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        682,
+        139
+      ],
+      "method": "source row crop + clean-band restoration",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Reusable empty row for sound/haptics/drag-turn/help/home and any existing language row.",
+      "sha256": "b8e65f617de897e53a103fc6a34f4ff0c9aeaf946ebf502feec1aea072d5e256",
+      "contentInsetsTRBL": [
+        20,
+        24,
+        23,
+        24
+      ],
+      "nineSliceTRBL": [
+        43,
+        48,
+        43,
+        48
+      ]
+    },
+    {
+      "name": "settings-danger.png",
+      "file": "assets/panels/settings-danger.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        104,
+        1231,
+        786,
+        1370
+      ],
+      "size": [
+        682,
+        139
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        682,
+        139
+      ],
+      "method": "source coral action crop + clean-band restoration",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Restart background; render restart glyph and localized label separately.",
+      "sha256": "ff1b8aa5bd320f77e4875c73265da20e93cf08ca1cf6fa6824620093a00b863a",
+      "contentInsetsTRBL": [
+        20,
+        24,
+        24,
+        24
+      ],
+      "nineSliceTRBL": [
+        43,
+        48,
+        43,
+        48
+      ]
+    },
+    {
+      "name": "toggle-on.png",
+      "file": "assets/panels/toggle-on.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        634,
+        519,
+        755,
+        590
+      ],
+      "size": [
+        121,
+        71
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        121,
+        71
+      ],
+      "method": "source crop + antialiased rounded silhouette",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Entire ON toggle; scale uniformly, do not nine-slice. State remains controlled by real DOM button.",
+      "sha256": "4078494b40854b24845e9b272992960e5f63eb85bb9df48f526552b497b6225c",
+      "contentInsetsTRBL": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "toggle-thumb.png",
+      "file": "assets/panels/toggle-thumb.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        691,
+        523,
+        749,
+        583
+      ],
+      "size": [
+        58,
+        60
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        58,
+        60
+      ],
+      "method": "source thumb crop + elliptical alpha",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Optional separate thumb; do not mirror it, preserve light direction.",
+      "sha256": "d009623ddf47932f464dde52bf25676f32606dfdccbf3f23e9e10b594ed30023"
+    },
+    {
+      "name": "toggle-off.png",
+      "file": "assets/panels/toggle-off.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        634,
+        519,
+        755,
+        590
+      ],
+      "size": [
+        121,
+        71
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        121,
+        71
+      ],
+      "method": "derived OFF: desaturated source track + same unmirrored thumb moved left",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "OFF is reconstructed, not present in approved all-ON concept. Use muted track + left thumb so state is not encoded only by color.",
+      "sha256": "92c0f5e5cb207ca6ffbf53cd87e81c5bca62e3b0d23dbeac834f1ac1ed028723"
+    },
+    {
+      "name": "keyboard-hint.png",
+      "file": "assets/panels/keyboard-hint.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        580,
+        973,
+        763,
+        1023
+      ],
+      "size": [
+        183,
+        50
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        183,
+        50
+      ],
+      "method": "source capsule + glyph removal",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "No WASDQE letters baked in; use real DOM kbd/text.",
+      "sha256": "b5f8c0158a0a8484eedb8518bc538ab5e38555987eaad5abc34dc6aa1152a7e7",
+      "contentInsetsTRBL": [
+        8,
+        14,
+        9,
+        14
+      ],
+      "nineSliceTRBL": [
+        20,
+        25,
+        20,
+        25
+      ]
+    },
+    {
+      "name": "close-button.png",
+      "file": "assets/panels/close-button.png",
+      "source": "references/settings.png",
+      "sourceBounds": [
+        689,
+        355,
+        790,
+        464
+      ],
+      "size": [
+        101,
+        109
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        100,
+        108
+      ],
+      "method": "source crop + antialiased silhouette",
+      "containsDynamicText": false,
+      "containsStaticGlyph": true,
+      "notes": "Includes fixed X glyph. Button needs localized aria-label. Do not overlay a second X.",
+      "sha256": "8809df857b0e03b9c2cb189e0223a8d11ab410dd444e199d2963d781658a6a72"
+    },
+    {
+      "name": "score-panel.png",
+      "file": "assets/panels/score-panel.png",
+      "source": "references/score.png",
+      "sourceBounds": [
+        37,
+        313,
+        1218,
+        932
+      ],
+      "size": [
+        1181,
+        619
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        1181,
+        619
+      ],
+      "method": "source plaque + two clean-band restorations + pale-blue chroma matte",
+      "containsDynamicText": false,
+      "containsStaticGlyph": false,
+      "notes": "Fixed-aspect decorated plaque, NOT nine-slice. Both icons/labels/numbers are removed. BEST=crown, SCORE=trophy via separate DOM layers.",
+      "sha256": "579e3aa4380e9e843cbe1b1e2fe50dbea54c31d95a135059ff74fd971831e5e0"
+    }
+  ]
+}

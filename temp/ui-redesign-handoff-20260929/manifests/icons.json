@@ -1,0 +1,1308 @@
+{
+  "package": "temp/ui-redesign-handoff-20260929",
+  "produced_by": "tools/slice_icons.py",
+  "purpose": "Transparent icon / logo cut-outs sliced from approved flattened design renders.",
+  "method_summary": "Per-pixel colour-class score -> soft alpha ramp (antialiased silhouette) -> 8-connected component filtering (speck removal) -> enclosed-hole analysis against the window border background colour. Hole-filled pixels are forced fully opaque at the source RGB, so gold highlights cannot punch through. No generative model, no content regeneration: RGB is copied verbatim from the source render at 1:1 scale.",
+  "review_fixes": [
+    "Round-2 fix: enclosed holes used to be re-multiplied by the threshold ramp, so interior gold highlights below the binarisation threshold ended up at alpha 0 (checkerboard perforation). Hole-filled pixels are now forced opaque.",
+    "Round-3 fix: mask pixels fully surrounded by mask were still carrying the antialias ramp value (0.6-1.0), so a faint checkerboard bled through the middle of solid gold bodies (measured before: 343 px logo, 162 home-crown-large, 48 nav-crown-small, 44 hud-crown-best, 21 hud-trophy-score). Interior pixels (all four neighbours inside the mask) are now forced to alpha 255; the ramp only survives on the silhouette.",
+    "Round-3 verification: --spotcheck samples the delivered PNG over the exact pixels of each source highlight. home-crown-large central vertical shine (1062 px), nav-crown-small right highlight (108 px), hud-trophy-score cup-body shines (273 px and 240 px): alpha min=mean=max=255, 0 px below 255. The trophy's two handle openings measure alpha exactly 0. --audit reports 0 enclosed transparent regions and 0 interior translucent pixels for every asset except the four deliberate openings.",
+    "home-crown-large window=(272,524,582,706) hole_rule='all' + alpha fix: the central vertical shine (window bbox 162,56,250,146, 1062 px) and 9 smaller highlights are now opaque. Readiness downgraded to assembly-only-not-standalone-ready.",
+    "nav-crown-small window=(100,1601,212,1705) hole_rule='all': the right-side highlight (window bbox 58,33,72,63, 108 px, only 23/255 away from the button cream) and 6 more highlights are now opaque.",
+    "hud-crown-best hole_rule='all': 6 interior highlights now opaque.",
+    "hud-trophy-score hole_rule='gold_highlight': the cup-body shine and 7 pale-gold interiors are now opaque; only the two genuine handle openings (window bboxes 30,43,39,58 and 121,43,131,58) remain transparent.",
+    "gear-purple hole policy set to 'none' so the centre hole stays transparent now that hole filling is always opaque."
+  ],
+  "sources": {
+    "home": {
+      "path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "resolve": "package-reference",
+      "width": 853,
+      "height": 1844,
+      "sha256": "1816e9f0bc2e4229c03b90bc7335f4f72a0dfb9f1bb59a0db7384b22f05bfec8"
+    },
+    "settings": {
+      "path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "resolve": "package-reference",
+      "width": 887,
+      "height": 1774,
+      "sha256": "4b8ec5744a9694ddfa8a11d52f16880142ba38c6d8035b13889ee0827ebc4959"
+    },
+    "score": {
+      "path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\score.png",
+      "resolve": "package-reference",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "98e5c66fabc09a2165a704bd0b6228ff492bf19a6638a2a4d5287b1657f0bb0f"
+    }
+  },
+  "naming": {
+    "canonical": [
+      "logo-voxalblast",
+      "home-crown-large",
+      "nav-crown-small",
+      "gear-purple",
+      "play-triangle",
+      "plus-gold",
+      "hud-crown-best",
+      "hud-trophy-score",
+      "settings-speaker",
+      "settings-vibration",
+      "settings-turn",
+      "settings-book",
+      "settings-home",
+      "settings-restart",
+      "settings-close-x"
+    ],
+    "deprecated_aliases": {}
+  },
+  "assets": [
+    {
+      "name": "logo-voxalblast",
+      "file": "assets/icons/logo-voxalblast.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "Home title lockup: wordmark + leaf/daisy decoration (subtitle excluded)",
+      "readiness": "production-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        44,
+        206,
+        852,
+        419
+      ],
+      "size": [
+        775,
+        210
+      ],
+      "method": "warm/green chroma score max(R-B, G-max(R,B)) -> soft alpha ramp (antialiased silhouette) -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        44,
+        206,
+        852,
+        419
+      ],
+      "source_bbox_in_source": [
+        44,
+        211,
+        817,
+        419
+      ],
+      "source_bbox_in_window": [
+        0,
+        5,
+        773,
+        213
+      ],
+      "output_size": [
+        775,
+        210
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [
+        "left",
+        "bottom"
+      ],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.6701,
+        "antialiased_edge_fraction": 0.0009
+      },
+      "masking": {
+        "method": "warm_chroma",
+        "ramp": [
+          -2.8,
+          18
+        ],
+        "binarise_threshold": 5,
+        "connectivity": 8,
+        "min_component_area": 30,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [
+          [
+            44,
+            206,
+            96,
+            312
+          ],
+          [
+            796,
+            206,
+            852,
+            236
+          ],
+          [
+            44,
+            390,
+            57,
+            419
+          ]
+        ],
+        "components_kept": 1,
+        "components_dropped_as_specks": 1,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 158,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          81,
+          171,
+          252
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Subtitle band (CJK tagline, top row measured at source y=420) deliberately excluded.",
+        "Three exclusion rects remove non-logo background that overlaps the window corners: tree foliage top-left, a branch top-right, and a tan scene object bottom-left; see 'exclude_rects_in_source'.",
+        "Near-white daisy petals rely on their warm shading plus enclosed-interior fill; the outermost petal tips that sit against the blue sky may be a little soft."
+      ]
+    },
+    {
+      "name": "home-crown-large",
+      "file": "assets/icons/home-crown-large.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "Home high-score crown (large)",
+      "readiness": "assembly-only-not-standalone-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        272,
+        524,
+        582,
+        706
+      ],
+      "size": [
+        267,
+        173
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        272,
+        524,
+        582,
+        706
+      ],
+      "source_bbox_in_source": [
+        295,
+        535,
+        558,
+        706
+      ],
+      "source_bbox_in_window": [
+        23,
+        11,
+        286,
+        182
+      ],
+      "output_size": [
+        267,
+        173
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [
+        "bottom"
+      ],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.4852,
+        "antialiased_edge_fraction": 0.0011
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 120,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 1,
+        "hole_policy": "smart",
+        "hole_rule": "all",
+        "holes_filled_as_art": 15,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          114,
+          187,
+          252
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Panel text (top-score label / value) excluded - only the gold crown glyph is kept.",
+        "All enclosed interior holes (the central vertical shine and the smaller highlights) are filled OPAQUE with the source RGB; the gold body contains no transparent speckling.",
+        "Readiness: assembly-only, NOT standalone-ready. The lower edge is occluded in the flattened render by the score panel and its daisy/leaf trim, so that edge is irregular. Play it over the score panel (or any cover) so the bottom trim hides the edge; on a bare background the 'kept' lower edge is visible. A flat cut was tried and rejected: it truncated the crown mid-body at source y=670 and read clearly worse."
+      ]
+    },
+    {
+      "name": "nav-crown-small",
+      "file": "assets/icons/nav-crown-small.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "Leaderboard button crown (small)",
+      "readiness": "production-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        100,
+        1601,
+        212,
+        1705
+      ],
+      "size": [
+        107,
+        86
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        100,
+        1601,
+        212,
+        1705
+      ],
+      "source_bbox_in_source": [
+        103,
+        1613,
+        206,
+        1695
+      ],
+      "source_bbox_in_window": [
+        3,
+        12,
+        106,
+        94
+      ],
+      "output_size": [
+        107,
+        86
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.4946,
+        "antialiased_edge_fraction": 0.0087
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 60,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "all",
+        "holes_filled_as_art": 7,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          252,
+          228,
+          192
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Cut from the cream button face; button border/plate intentionally not included.",
+        "All enclosed interior highlights are filled opaque from the source RGB - the crown must have no transparent speckling inside the gold."
+      ]
+    },
+    {
+      "name": "gear-purple",
+      "file": "assets/icons/gear-purple.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "Settings gear glyph (purple)",
+      "readiness": "production-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        488,
+        1592,
+        598,
+        1718
+      ],
+      "size": [
+        79,
+        80
+      ],
+      "method": "violet score max(0, B-max(R,G)) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        488,
+        1592,
+        598,
+        1718
+      ],
+      "source_bbox_in_source": [
+        506,
+        1616,
+        581,
+        1692
+      ],
+      "source_bbox_in_window": [
+        18,
+        24,
+        93,
+        100
+      ],
+      "output_size": [
+        79,
+        80
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.531,
+        "antialiased_edge_fraction": 0.0032
+      },
+      "masking": {
+        "method": "purple",
+        "ramp": [
+          6.0,
+          70
+        ],
+        "binarise_threshold": 30,
+        "connectivity": 8,
+        "min_component_area": 60,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "none",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 0,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          252,
+          207,
+          114
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": 1,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Gear centre hole intentionally transparent (hole policy 'none'; the purple body has no other enclosed holes), so the button face shows through as designed."
+      ]
+    },
+    {
+      "name": "play-triangle",
+      "file": "assets/icons/play-triangle.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "Continue-game play triangle",
+      "readiness": "production-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        205,
+        1192,
+        308,
+        1296
+      ],
+      "size": [
+        87,
+        91
+      ],
+      "method": "per-row background-difference score (max channel delta to that row's edge colour) -> soft alpha ramp -> 8-connected component filtering",
+      "source_window": [
+        205,
+        1192,
+        308,
+        1296
+      ],
+      "source_bbox_in_source": [
+        215,
+        1202,
+        298,
+        1289
+      ],
+      "source_bbox_in_window": [
+        10,
+        10,
+        93,
+        97
+      ],
+      "output_size": [
+        87,
+        91
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.6141,
+        "antialiased_edge_fraction": 0.0077
+      },
+      "masking": {
+        "method": "bgdiff_row",
+        "ramp": [
+          -0.8000000000000007,
+          60
+        ],
+        "binarise_threshold": 22,
+        "connectivity": 8,
+        "min_component_area": 200,
+        "keep_largest_components": 1,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "all",
+        "holes_filled_as_art": 11,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          253,
+          240,
+          149
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Lowest-contrast cut in the set: glyph sits on the gold pill, so the mask is a per-row background-difference rather than a colour class.",
+        "Enclosed regions are filled opaque from the source RGB, so the solid gold triangle carries no transparent pinholes."
+      ]
+    },
+    {
+      "name": "plus-gold",
+      "file": "assets/icons/plus-gold.png",
+      "source": "home",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\home.png",
+      "source_resolve": "package-reference",
+      "role": "New-game plus glyph",
+      "readiness": "production-ready",
+      "source_file": "references/home.png",
+      "sourceBounds": [
+        258,
+        1436,
+        360,
+        1532
+      ],
+      "size": [
+        85,
+        87
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        258,
+        1436,
+        360,
+        1532
+      ],
+      "source_bbox_in_source": [
+        268,
+        1444,
+        349,
+        1527
+      ],
+      "source_bbox_in_window": [
+        10,
+        8,
+        91,
+        91
+      ],
+      "output_size": [
+        85,
+        87
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.5406,
+        "antialiased_edge_fraction": 0.0116
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 60,
+        "keep_largest_components": 1,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "all",
+        "holes_filled_as_art": 3,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          253,
+          231,
+          193
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Cut from the cream button face."
+      ]
+    },
+    {
+      "name": "hud-crown-best",
+      "file": "assets/icons/hud-crown-best.png",
+      "source": "score",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\score.png",
+      "source_resolve": "package-reference",
+      "role": "HUD BEST row crown",
+      "readiness": "production-ready",
+      "source_file": "references/score.png",
+      "sourceBounds": [
+        210,
+        466,
+        356,
+        596
+      ],
+      "size": [
+        130,
+        113
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        210,
+        466,
+        356,
+        596
+      ],
+      "source_bbox_in_source": [
+        217,
+        476,
+        343,
+        585
+      ],
+      "source_bbox_in_window": [
+        7,
+        10,
+        133,
+        119
+      ],
+      "output_size": [
+        130,
+        113
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.5721,
+        "antialiased_edge_fraction": 0.0077
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          155.0,
+          235
+        ],
+        "binarise_threshold": 185,
+        "connectivity": 8,
+        "min_component_area": 60,
+        "keep_largest_components": 1,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "all",
+        "holes_filled_as_art": 6,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          254,
+          217,
+          158
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Row plate / label text excluded.",
+        "All enclosed interior highlights are filled opaque from the source RGB."
+      ]
+    },
+    {
+      "name": "hud-trophy-score",
+      "file": "assets/icons/hud-trophy-score.png",
+      "source": "score",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\score.png",
+      "source_resolve": "package-reference",
+      "role": "HUD SCORE row trophy",
+      "readiness": "production-ready",
+      "source_file": "references/score.png",
+      "sourceBounds": [
+        200,
+        676,
+        362,
+        818
+      ],
+      "size": [
+        140,
+        118
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        200,
+        676,
+        362,
+        818
+      ],
+      "source_bbox_in_source": [
+        212,
+        688,
+        348,
+        802
+      ],
+      "source_bbox_in_window": [
+        12,
+        12,
+        148,
+        126
+      ],
+      "output_size": [
+        140,
+        118
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.6077,
+        "antialiased_edge_fraction": 0.0047
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          155.0,
+          235
+        ],
+        "binarise_threshold": 185,
+        "connectivity": 8,
+        "min_component_area": 60,
+        "keep_largest_components": 1,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 3,
+        "hole_policy": "smart",
+        "hole_rule": "gold_highlight",
+        "holes_filled_as_art": 10,
+        "holes_kept_transparent": 2,
+        "window_border_bg_rgb": [
+          254,
+          216,
+          153
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": 2,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Row plate / numeral text excluded.",
+        "Hole policy: the two genuine handle openings stay transparent (they show the plate's shadowed tan); the cup-body shine and every pale-gold interior region are filled opaque from the source RGB."
+      ]
+    },
+    {
+      "name": "settings-speaker",
+      "file": "assets/icons/settings-speaker.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: sound / speaker",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        130,
+        510,
+        232,
+        596
+      ],
+      "size": [
+        83,
+        77
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        130,
+        510,
+        232,
+        596
+      ],
+      "source_bbox_in_source": [
+        140,
+        518,
+        219,
+        591
+      ],
+      "source_bbox_in_window": [
+        10,
+        8,
+        89,
+        81
+      ],
+      "output_size": [
+        83,
+        77
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.4766,
+        "antialiased_edge_fraction": 0.0033
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 40,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 3,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 2,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          252,
+          240,
+          217
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Speaker body plus two sound-wave arcs are separate components; all are kept (min_area 40). No row plate or label text included."
+      ]
+    },
+    {
+      "name": "settings-vibration",
+      "file": "assets/icons/settings-vibration.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: haptics / vibrating phone",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        132,
+        650,
+        228,
+        762
+      ],
+      "size": [
+        83,
+        80
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        132,
+        650,
+        228,
+        762
+      ],
+      "source_bbox_in_source": [
+        139,
+        663,
+        218,
+        739
+      ],
+      "source_bbox_in_window": [
+        7,
+        13,
+        86,
+        89
+      ],
+      "output_size": [
+        83,
+        80
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.5818,
+        "antialiased_edge_fraction": 0.0032
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 20,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 3,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 2,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          252,
+          240,
+          217
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Side motion arcs are separate small components and are kept (low min_area)."
+      ]
+    },
+    {
+      "name": "settings-turn",
+      "file": "assets/icons/settings-turn.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: block turn / flip",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        134,
+        805,
+        230,
+        905
+      ],
+      "size": [
+        78,
+        79
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        134,
+        805,
+        230,
+        905
+      ],
+      "source_bbox_in_source": [
+        143,
+        812,
+        217,
+        887
+      ],
+      "source_bbox_in_window": [
+        9,
+        7,
+        83,
+        82
+      ],
+      "output_size": [
+        78,
+        79
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.4284,
+        "antialiased_edge_fraction": 0.0045
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 40,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 2,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          251,
+          239,
+          216
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Curved block-turn arrow cut from the flat cream row; no row plate or label text."
+      ]
+    },
+    {
+      "name": "settings-book",
+      "file": "assets/icons/settings-book.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: how to play / open book",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        128,
+        955,
+        232,
+        1043
+      ],
+      "size": [
+        84,
+        71
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        128,
+        955,
+        232,
+        1043
+      ],
+      "source_bbox_in_source": [
+        139,
+        965,
+        219,
+        1032
+      ],
+      "source_bbox_in_window": [
+        11,
+        10,
+        91,
+        77
+      ],
+      "output_size": [
+        84,
+        71
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.7721,
+        "antialiased_edge_fraction": 0.004
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 40,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 5,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          252,
+          240,
+          217
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Page gutter of the book is kept opaque (enclosed interior fill)."
+      ]
+    },
+    {
+      "name": "settings-home",
+      "file": "assets/icons/settings-home.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: back to home",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        130,
+        1096,
+        232,
+        1190
+      ],
+      "size": [
+        83,
+        79
+      ],
+      "method": "warm-hue gated saturation score 255*(max-min)/max (kept only where R>=G>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        130,
+        1096,
+        232,
+        1190
+      ],
+      "source_bbox_in_source": [
+        139,
+        1107,
+        218,
+        1182
+      ],
+      "source_bbox_in_window": [
+        9,
+        11,
+        88,
+        86
+      ],
+      "output_size": [
+        83,
+        79
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.5618,
+        "antialiased_edge_fraction": 0.0069
+      },
+      "masking": {
+        "method": "gold_sat",
+        "ramp": [
+          71.0,
+          175
+        ],
+        "binarise_threshold": 110,
+        "connectivity": 8,
+        "min_component_area": 40,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 1,
+        "holes_kept_transparent": 1,
+        "window_border_bg_rgb": [
+          252,
+          240,
+          217
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": 1,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "House glyph; recessed areas follow the source shading (one enclosed hole kept transparent). No row plate or label text."
+      ]
+    },
+    {
+      "name": "settings-restart",
+      "file": "assets/icons/settings-restart.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings row glyph: restart (white on red plate)",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        136,
+        1248,
+        230,
+        1346
+      ],
+      "size": [
+        57,
+        62
+      ],
+      "method": "whiteness score 255-(max-min) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        136,
+        1248,
+        230,
+        1346
+      ],
+      "source_bbox_in_source": [
+        154,
+        1266,
+        207,
+        1324
+      ],
+      "source_bbox_in_window": [
+        18,
+        18,
+        71,
+        76
+      ],
+      "output_size": [
+        57,
+        62
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.3121,
+        "antialiased_edge_fraction": 0.0057
+      },
+      "masking": {
+        "method": "white_glyph",
+        "ramp": [
+          178.4,
+          236
+        ],
+        "binarise_threshold": 200,
+        "connectivity": 8,
+        "min_component_area": 40,
+        "keep_largest_components": null,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 0,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 0,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          227,
+          106,
+          64
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "White glyph on the saturated red plate; plate is not included."
+      ]
+    },
+    {
+      "name": "settings-close-x",
+      "file": "assets/icons/settings-close-x.png",
+      "source": "settings",
+      "source_path": "E:\\WorkSpace\\MiniGame\\VoxalBlast\\temp\\ui-redesign-handoff-20260929\\references\\settings.png",
+      "source_resolve": "package-reference",
+      "role": "Settings close X glyph (optional static glyph)",
+      "readiness": "production-ready",
+      "source_file": "references/settings.png",
+      "sourceBounds": [
+        710,
+        380,
+        762,
+        426
+      ],
+      "size": [
+        35,
+        36
+      ],
+      "method": "darkness score 255-max for warm pixels (R>=B) -> soft alpha ramp -> 8-connected component filtering -> enclosed-hole fill",
+      "source_window": [
+        710,
+        380,
+        762,
+        426
+      ],
+      "source_bbox_in_source": [
+        722,
+        389,
+        753,
+        421
+      ],
+      "source_bbox_in_window": [
+        12,
+        9,
+        43,
+        41
+      ],
+      "output_size": [
+        35,
+        36
+      ],
+      "scale": 1.0,
+      "content_touches_window_edge": [],
+      "alpha": {
+        "mode": "RGBA",
+        "has_alpha": true,
+        "opaque_fraction": 0.4825,
+        "antialiased_edge_fraction": 0.0048
+      },
+      "masking": {
+        "method": "dark_glyph",
+        "ramp": [
+          23.0,
+          95
+        ],
+        "binarise_threshold": 50,
+        "connectivity": 8,
+        "min_component_area": 20,
+        "keep_largest_components": 1,
+        "exclude_rects_in_source": [],
+        "components_kept": 1,
+        "components_dropped_as_specks": 1,
+        "hole_policy": "smart",
+        "hole_rule": "bg_dist",
+        "holes_filled_as_art": 0,
+        "holes_kept_transparent": 0,
+        "window_border_bg_rgb": [
+          253,
+          233,
+          177
+        ]
+      },
+      "aliases": [],
+      "deprecated_alias_of": null,
+      "expected_enclosed_transparent": null,
+      "flat_bottom_cut_source_y": null,
+      "notes": [
+        "Cut from the gold disc only; the cream ring and the leaf trim behind the disc are excluded."
+      ]
+    }
+  ]
+}

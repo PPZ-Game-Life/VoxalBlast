@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "checkedAt": "2026-09-29T14:36:17.724079+08:00",
+  "checks": [
+    "decoded every runtime image",
+    "verified PNG RGBA and real transparent/opaque pixels",
+    "recorded fractional-alpha edges",
+    "verified nine-slice centres",
+    "checked declared source coordinates",
+    "compiled helper scripts without writing pycache",
+    "verified package-relative Markdown links",
+    "recorded SHA-256 and sizes"
+  ],
+  "counts": {
+    "allRuntimeImages": 30,
+    "transparentPNG": 28,
+    "reusedBackgrounds": 2,
+    "references": 3,
+    "runtimeBytes": 1787575
+  },
+  "errors": [],
+  "warnings": [],
+  "notTested": [
+    "gameplay",
+    "browser UI integration",
+    "mobile touch/keyboard",
+    "English layout",
+    "real-device alpha appearance"
+  ],
+  "visualInspection": "Contact sheets reviewed separately; not a claim that the game has integrated this package."
+}
