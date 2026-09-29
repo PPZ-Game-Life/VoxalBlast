@@ -5,8 +5,20 @@
 .topbar > button { pointer-events: auto; }
 .score-plaque { position: absolute; left: var(--hud-left); top: var(--hud-top); width: var(--plaque-width); aspect-ratio: 1.72; background: url('/art/reference/score-panel.png') center / 100% 100% no-repeat; }
 .topbar .score-chip, .topbar .best-chip { position: absolute; left: calc(var(--hud-left) + var(--plaque-width) * .16); width: calc(var(--plaque-width) * .66); min-width: 0; min-height: 0; height: calc(var(--plaque-width) * .16); padding: 0 0 0 calc(var(--plaque-width) * .12); margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); align-items: center; gap: 5px; }
-.topbar .best-chip { top: calc(var(--hud-top) + var(--plaque-width) * .135); }
-.topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .315); }
+/* v0.9.22/v0.9.23 — each row is CENTRED on one of the plaque's two bands, and the bands are
+   visible geometry rather than hand-typed offsets. Measured on the RENDERED plaque (a 3x
+   `Page.captureScreenshot` clip of the HUD at 390×844, where the plaque starts at y 4 and is
+   167.69 wide): the dark inner edges sit at y 24.0 / 50.3 for the BEST band and 55.7 / 80.7 for
+   the SCORE band, so the band centres are 37.2 and 68.2. Both rows used to sit ~2.5px low in
+   their band (.135 / .315); .118 and .303 put the chip centre — which is also the crown's centre
+   and both texts' centre — on the band centre. `tools/art-alpha-box.mjs` agrees on the art
+   itself: the bands run 63..140 and 156..232 of 295, the same 34.5% / 65.9% of the slice height. */
+.topbar .best-chip { top: calc(var(--hud-top) + var(--plaque-width) * .118); }
+.topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .303); }
+/* SCORE lost its icon, so its label stands on the crown's own column — the plaque's left inner
+   edge, which is exactly where the chip starts (`--plaque-width * .16`). Only SCORE drops the
+   `.12` inset; BEST still needs it to clear the crown in front of it. */
+.topbar .score-chip { padding-left: 0; }
 /* v0.9.22 — the crown belongs to BEST alone. Since v0.8.27 both rows of the plaque
    drew the same `crown.png` through this pseudo-element; the producer's call
    (2026-09-29): 「左上角 best 那里保留那个皇冠的 icon，SCORE 把左边那个 icon 去掉」.
