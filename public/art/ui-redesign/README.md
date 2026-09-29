@@ -16,7 +16,8 @@ otherwise:
 - **Text-free panels / buttons** — the original border and material are kept; where a label
   or icon covered the fill, that band was repaired from a clean band of the same component.
   Stretchable end caps that were hidden behind flower decoration were rebuilt in the same
-  style.
+  style. (The shipped `settings-modal.png` no longer uses the pack's band repair, or its
+  two-piece home record either — see **Post-slice repairs** below.)
 - **Derived states** — `toggle-off.png` is derived from the ON track and knob.
 - **Backgrounds** — this pack ships copies of the two `valley-*.webp` paintings that already
   live in `public/art/reference/` (byte-identical, verified by SHA-256). The runtime keeps
@@ -33,9 +34,13 @@ a second copy of the numbers, labels and buttons on top of the live DOM ones.
   overlap the frames, so they cannot be separated into reusable pieces.
   `settings-modal.png` is the clean, ornament-free stretchable version. Four ornamented
   corners need newly drawn art or separate ornament source files.
-- **`home-crown-large.png` is assembly-only**, not a standalone prop: its bottom edge was
-  covered by the record board, so that cut edge must stay joined to / slightly overlapping
-  the top edge of `home-record.png`.
+- **The home high-score decoration is ONE module, not a crown plus a plate.**
+  `panels/home-record.png` is the crown, the frame and all four flower clusters cut as a single
+  transparent piece (481×415) by `tools/ui-skin-home-record.py`. The pack's two separate cuts
+  could not be re-joined: the concept puts the crown's base *behind* the frame, so
+  `icons/home-crown-large.png` ends in a flat cut that only stays hidden while something else
+  overlaps it, and a regular rounded mask chops the flowers that stick out past the frame. The
+  crown file is still shipped (it is the pack's approved cut) but **nothing draws it**.
 - `score-panel.png` (1181×619) from the pack is **not** adopted yet — see KNOWN_GAPS.
 
 ## Files
@@ -45,7 +50,7 @@ a second copy of the numbers, labels and buttons on top of the live DOM ones.
 | file | used by |
 |---|---|
 | `logo-voxalblast.png` | home brand lockup (`#home-title` keeps the accessible name) |
-| `home-crown-large.png` | home best-score crown (assembly-only, see above) |
+| `home-crown-large.png` | retained from the pack (approved cut) but **not drawn by anything**: the home crown ships inside `panels/home-record.png`, see above |
 | `nav-crown-small.png` | home leaderboard button |
 | `hud-crown-best.png` | `.best-chip::before` (BEST) |
 | `hud-trophy-score.png` | `.score-chip::before` (SCORE) |
@@ -69,7 +74,7 @@ the radius. Treat the manifest values as the pack's recommendation, not as shipp
 | `home-primary.png` | 675×194 | nine-slice **65** all sides, `border-width: 1em` | `#home-primary` |
 | `home-secondary.png` | 674×155 | nine-slice **51** all sides, `border-width: 1em` | `#home-new` (the second run action — NOT the `.home-secondary` class) |
 | `home-nav.png` | 358×156 | nine-slice **51** all sides, `border-width: 1em` | `#home-leaderboard`, `#home-settings` |
-| `home-record.png` | 441×220 | not sliced: `aspect-ratio: 441 / 220`, background `100% 100%` | home best-score plate |
+| `home-record.png` | 481×415 | not sliced: the whole module is drawn at `aspect-ratio: 481 / 415`, with `Best` / the live number as DOM text over its face (`.home-record-face`) | home best-score crown + frame + flowers (ONE module) |
 | `settings-modal.png` | 776×1148 | nine-slice **56**, `border-width: 1.2em` / `border-image-width: 1.35em` | `.settings-card` frame |
 | `settings-row.png` | 682×139 | nine-slice **38**, `border-width: .55em` / `border-image-width: .95em` | `.setting-row` |
 | `settings-danger.png` | 682×139 | same rule as `settings-row` (shares the selector) | `#restart-setting` |
@@ -82,29 +87,30 @@ Not copied from the pack, because nothing uses them: `panels/toggle-thumb.png` (
 for a hand-built track animation) and `icons/settings-close-x.png` (mutually exclusive with
 the complete `close-button.png` that was chosen).
 
-### Post-slice mask cleanup (not part of the pack)
+### Post-slice repairs (not part of the pack)
 
-Two files are **the pack's slice plus a background-removal pass**, applied by the committed
-`tools/ui-skin-mask-clean.py`. Nothing was painted and no occluded pixel was "restored" —
-the pack's outline mask had simply kept slivers of the *concept render's own background*:
+Three committed tools turn the pack's slices into what this directory ships. Two of them are
+**background removal / reconstruction of the pack's own repair work** — nothing was painted and no
+occluded pixel was "restored":
 
-| file | what was removed |
+| tool | what it does |
 |---|---|
-| `close-button.png` | 258 px of the render's green foliage, welded to the outside of the medallion's gold ring at its lower-right. Visible on a real phone as a green smudge, and it also deformed the button's `drop-shadow` (a CSS drop shadow is traced from the alpha channel). The pass now keeps only the connected component containing the medallion. |
-| `settings-modal.png` | 839 px of green along the frame's outer edge (a 1-px-tall strip on the bottom border). The horizontal `stretch` then smears that along the entire bottom edge of the card. Only pixels within 8 px of the canvas edge are touched. |
+| `tools/ui-skin-mask-clean.py` | removes concept-render background the pack's outline mask left welded to two panels: 258 px of green foliage outside `close-button.png`'s gold ring (visible on a phone as a green smudge, and it also deformed the button's `drop-shadow`, which CSS traces from the alpha channel — the pass keeps only the component containing the medallion), and 839 px of green along `settings-modal.png`'s outer edge, cleared only within 8 px of the canvas edge. |
+| `tools/ui-skin-home-record.py` | rebuilds `panels/home-record.png` as one crown+frame+flowers module from the concept's real silhouette (handoff §4), instead of a rounded-mask plate plus a flat-cut crown. |
+| `tools/ui-skin-settings-face.py` | repairs `settings-modal.png`'s inner face (handoff §5). The pack filled it with a per-row colour sampled from an 8px strip at window x 32..40 — a strip that sits **inside the frame's own gold band** wherever the band is thick, i.e. at the top and bottom of the card, which printed a gold stripe across both ends and left rectangular patch edges. This re-derives the face colour per row from the concept (a median across the face, so the concept's own title, rows and red button cannot win), composites it through a feathered inner-face mask that never touches the band, and spreads the pack's 155×56 mirror joint at x=155 (a 24-luminance step on the top band) into a ramp. |
 
-**If the pack is ever re-sliced, re-run that tool** or both fringes come back. Verify with
-`python tools/ui-skin-fringe-audit.py`; it must report no green clusters on any panel listed
-as ornament-free.
+**If the pack is ever re-sliced, re-run all three** or the fringes, the two-piece crown and the
+gold stripes come back. Verify with `python tools/ui-skin-fringe-audit.py`; it must report no
+green clusters on any panel listed as ornament-free.
 
 ### Known remaining artifacts (measured, not fixed)
 
-- **Repair seam in the frame's top band.** `settings-modal.png`'s top stretch band was
-  rebuilt from a clean band of the same component. There is one isolated ~8.5-luminance step
-  at source **x ≈ 154**; every neighbouring column moves ≤0.2. The never-repaired bottom band
-  shows no such step, so this is a real seam rather than noise, and the horizontal stretch
-  carries it across the card's top edge. It is subtle (~4% on a ~213-luminance band).
-  Blending it out means repainting art, so it is reported rather than silently patched.
+- **Lighting asymmetry around the card's mirror patches.** The pack took the concept's daisy off
+  the card's top-left corner by pasting a mirrored 155×56 block from the top-right, and took the
+  foliage off the right column by pasting a mirrored 44px-wide strip of the left column. The
+  hard joints are gone (see above), but the pasted regions still carry the *other side's*
+  lighting: the frame's band gradient on the right is the left band's, mirrored. The pack had no
+  clean source for those pixels, so the honest fix is newly drawn corner art, not a filter.
 - **A ~2 px notch** on the medallion's lower-right arc, where the foliage that was removed had
   been drawn *over* the gold edge. At the button's rendered 41×44 px this is under a pixel.
   Filling it would mean inventing gold that the concept render never showed.
@@ -122,7 +128,15 @@ outputs:
 python temp/ui-redesign-handoff-20260929/tools/slice_icons.py
 python temp/ui-redesign-handoff-20260929/tools/slice_panels.py
 python temp/ui-redesign-handoff-20260929/tools/validate_package.py
+
+# ...then the two repairs this directory owns, in this order:
+python tools/ui-skin-home-record.py --proof     # panels/home-record.png becomes one module
+python tools/ui-skin-settings-face.py --proof   # settings-modal.png's inner face
+python tools/ui-skin-mask-clean.py --write      # green fringes on close-button / settings-modal
+python tools/ui-skin-fringe-audit.py            # must report no green on clean panels
 ```
 
-Then copy the files this directory actually lists. The pack is `.gitignore`d, so treat it as a
-build input, not as the shipped source of truth.
+Then copy the files this directory actually lists. `slice_icons.py` / `slice_panels.py` overwrite
+`home-record.png` and `settings-modal.png` with the pack's old cuts, so the repairs are not
+optional: without them the home crown is a separate flat-cut prop again and the card gets its gold
+stripes back.

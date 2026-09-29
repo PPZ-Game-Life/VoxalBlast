@@ -272,12 +272,24 @@ html, body { overscroll-behavior: none; }
 .home-logo { display: block; width: 88%; max-width: 340px; height: auto; margin: 2px auto 0; filter: drop-shadow(0 5px 9px #3c270a30); }
 .home-tagline { color: #6b4a1b; text-shadow: 0 1px 0 #fff9e9d9; }
 
-/* Highest score: crown + empty plate as one assembly (the crown's lower edge was covered by
-   the board in the concept render, so it must stay joined to the plate's top edge — floating
-   it free would expose that flat cut). `#home-best` keeps printing the live number. */
-.home-record { display: block; position: relative; width: min(298px, 78vw); padding-top: 30%; margin-top: 1px; color: #8a5a19; font-size: .74rem; }
-.home-record-crown { position: absolute; top: 0; left: 50%; width: 57%; height: auto; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 3px 4px #40280a38); }
-.home-record-plate { display: grid; justify-items: center; align-content: center; aspect-ratio: 441 / 220; padding: 17% 14% 5%; background: url('/art/ui-redesign/panels/home-record.png') center / 100% 100% no-repeat; }
+/* Highest score: ONE decoration module, not a crown prop stacked on a plate prop. The concept
+   covers the crown's base with the frame and lets the flower clusters stick out past the frame's
+   rounded silhouette, so two slices can never be re-joined: the crown's cut-out ends in the flat
+   cut the frame was hiding, and a regular rounded mask chops the flowers (that is exactly what
+   the handoff's §3/§4 diagnose as a width-reference bug plus a slicing bug — see
+   `tools/ui-skin-home-record.py`). `panels/home-record.png` is now the whole crown + frame +
+   foliage cut-out (481×415) and the live number is DOM text over it.
+   The BOX IS THE MODULE, so every offset below is a percentage of the same box: the assembly
+   cannot drift apart at any width, in any media query, on any device.
+   `.home-record-face` reproduces the inner recess the number is centred in. Its four numbers look
+   unrelated to the picture because they are a composition resolved once, from the module's own
+   geometry: the plate area is 441/481 × 220/415 of the box, shrunk by the plate's old
+   17% / 14% / 5% padding (→ 62.403% 18.865% 7.964% 15.123%). Keep them as percentages; a
+   `padding` in percent on this node would resolve against the BOX width, i.e. against a different
+   reference, and reintroduce the drift this replaced. */
+.home-record { display: block; position: relative; width: min(325px, 85vw); aspect-ratio: 481 / 415; margin-top: 1px; color: #8a5a19; font-size: .74rem; }
+.home-record-art { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.home-record-face { position: absolute; inset: 62.402% 18.865% 7.964% 15.123%; display: grid; justify-items: center; align-content: center; }
 .home-record-label { color: #8a5a19; font-weight: 900; letter-spacing: .03em; text-shadow: 0 1px 0 #fff7e2; }
 .home-record strong { color: #7d4c0d; font-size: 1.95rem; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 #ffeaba; }
 
@@ -339,7 +351,7 @@ html, body { overscroll-behavior: none; }
 @media (max-height: 600px) {
   .home-inner { gap: 8px; }
   .home-logo { width: 74%; }
-  .home-record { width: min(240px, 62vw); }
+  .home-record { width: min(262px, 67.6vw); }
   .home-primary { min-height: 50px; font-size: 1.02rem; padding: 0 24px; }
   .home-new { min-height: 44px; font-size: .92rem; padding: 0 20px; }
   .home-secondary { min-height: 46px; font-size: .82rem; }
@@ -348,14 +360,16 @@ html, body { overscroll-behavior: none; }
   /* Two columns, brand on the left: a phone turned sideways has no vertical room for a
      centred stack, and the concept's 853-wide column is not a fixed pixel layout.
      The numbers below are the budget — 390px minus the cover's own 42px of safe padding
-     leaves 348, and the right-hand stack is crown+plate (190px wide → 152 tall) + primary
-     46 + note 16 + new 44 + nav row 44 + four 6px gaps = 326. It fits without scrolling and
-     WITHOUT touching the type sizes: a 44px hit target is a floor, not a preference. */
+     leaves 348, and the right-hand stack is the best-score module (196px wide → 169 tall) +
+     primary 46 + note 16 + new 44 + nav row 44 + four 4px gaps = 335. It fits without
+     scrolling and WITHOUT touching the type sizes: a 44px hit target is a floor, not a
+     preference. (The module replaced a crown prop stacked on a plate prop, so this row is
+     ~13px taller than the v0.9.31 budget and is still the tightest case.) */
   .home-inner { width: min(720px, 100%); grid-template-columns: 1fr 1fr; column-gap: 24px; gap: 4px; align-content: center; }
   .home-brand { grid-column: 1; grid-row: 1 / 6; align-self: center; }
   .home-record, .home-primary, .home-resume-note, .home-new, .home-secondary-row { grid-column: 2; }
   .home-logo { width: 76%; }
-  .home-record { width: min(180px, 47vw); }
+  .home-record { width: min(196px, 51.2vw); }
   .home-primary { min-height: 46px; }
   .home-new { min-height: 44px; }
   .home-secondary { min-height: 44px; }
@@ -442,7 +456,13 @@ html, body { overscroll-behavior: none; }
 .setting-row small { color: #9a7a4c; font-size: .68rem; font-weight: 800; }
 /* 回到主页 keeps the neutral cream row; only 重新开始 wears the red one. */
 .setting-action { grid-template-columns: 28px minmax(0, 1fr); }
-#restart-setting { border-image-source: url('/art/ui-redesign/panels/settings-danger.png'); color: #fff7ec; }
+/* 重新开始 wears the red plate. `#restart-setting` also carries `.danger`, and
+   `.setting-action.danger` (toy.css) paints a gradient BACKGROUND under the new art: with a
+   transparent-cornered `settings-danger.png` the old red rectangle showed through those corners
+   as square red ears. Out-specify it with the id and clear the background — the border-image
+   itself and its layout `border-width` must stay (a blanket `border: 0` would take the skin with
+   it). The danger semantics and the accessible name are unchanged: this is paint only. */
+#restart-setting { background: none; border-color: transparent; box-shadow: none; border-image-source: url('/art/ui-redesign/panels/settings-danger.png'); color: #fff7ec; }
 #restart-setting strong { color: #fff7ec; text-shadow: 0 1px 1px #8f2f12; }
 /* The row is inert on a device with no vibrator (settings.js disables it); the disabled look
    has to survive the new art, and the READER state is the disabled attribute, not the colour. */

@@ -161,13 +161,15 @@
             <img class="home-logo" src="./art/ui-redesign/icons/logo-voxalblast.png" alt="" aria-hidden="true" draggable="false" />
             <p class="home-tagline" data-i18n="home.tagline">Stack · Align · Blast all six faces</p>
           </div>
-          <!-- Highest score (handoff §3.3): the crown and the empty plate are TWO pieces of art
-               — the crown's lower edge was covered by the board in the concept render, so it is
-               an assembly-only cut that must stay joined to the plate's top edge, not a prop that
-               can be floated anywhere. `#home-best` keeps formatting the live number. -->
+          <!-- Highest score (handoff §3.3 / §4.4): crown, frame and flowers ship as ONE module —
+               `panels/home-record.png`, cut from the concept as a single transparent decoration
+               by `tools/ui-skin-home-record.py`. Two separate props cannot be re-joined: the
+               concept hides the crown's base behind the frame, so the crown slice ends in a flat
+               cut, and the flower clusters stick out past the frame's rounded silhouette, so a
+               regular rounded mask chops them. `#home-best` keeps formatting the live number. -->
           <div class="home-record">
-            <img class="home-record-crown" src="./art/ui-redesign/icons/home-crown-large.png" alt="" aria-hidden="true" draggable="false" />
-            <div class="home-record-plate">
+            <img class="home-record-art" src="./art/ui-redesign/panels/home-record.png" alt="" aria-hidden="true" draggable="false" />
+            <div class="home-record-face">
               <span class="home-record-label" data-i18n="home.best">Best</span>
               <strong id="home-best">0</strong>
             </div>
