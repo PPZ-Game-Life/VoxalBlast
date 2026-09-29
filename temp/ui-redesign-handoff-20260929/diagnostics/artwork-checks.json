@@ -1,0 +1,171 @@
+{
+  "baseline": "v0.9.29 screenshots and current unchanged UI code; concurrent rendering edits not inspected as UI fixes",
+  "method": "source image inspection + current screenshots + byte comparison; no new browser capture",
+  "assets": [
+    {
+      "asset": "icons/logo-voxalblast.png",
+      "size": [
+        775,
+        210
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        2,
+        773,
+        210
+      ],
+      "deployedSha256": "c5e6c2746e70c628b8adf9e64ce8d6f0804aa5bb0e8d58ba4316bac8c5b73040",
+      "handoffSha256": "c5e6c2746e70c628b8adf9e64ce8d6f0804aa5bb0e8d58ba4316bac8c5b73040",
+      "sameAsOriginalHandoff": true
+    },
+    {
+      "asset": "icons/home-crown-large.png",
+      "size": [
+        267,
+        173
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        2,
+        2,
+        265,
+        173
+      ],
+      "deployedSha256": "c0cb8293a6e95fb03ad7bf3a6fd305a3c9835270fe2c980d0d0a187ceeb0ca74",
+      "handoffSha256": "c0cb8293a6e95fb03ad7bf3a6fd305a3c9835270fe2c980d0d0a187ceeb0ca74",
+      "sameAsOriginalHandoff": true
+    },
+    {
+      "asset": "panels/home-record.png",
+      "size": [
+        441,
+        220
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        441,
+        220
+      ],
+      "deployedSha256": "ec5a59c5761ac5669f721ba5e93d7c92b8a310e8678107fc95d71065f119f622",
+      "handoffSha256": "ec5a59c5761ac5669f721ba5e93d7c92b8a310e8678107fc95d71065f119f622",
+      "sameAsOriginalHandoff": true
+    },
+    {
+      "asset": "panels/settings-modal.png",
+      "size": [
+        776,
+        1148
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        776,
+        1148
+      ],
+      "deployedSha256": "0b155832c3ff7d73c486aef74fb06e725b2c8f2bde291e53d7cf6ffef9bc435e",
+      "handoffSha256": "5411918ecd7db37ade1f57665955a4af009ad2d72b84e0c621f0c9174a33dda7",
+      "sameAsOriginalHandoff": false
+    },
+    {
+      "asset": "panels/settings-row.png",
+      "size": [
+        682,
+        139
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        682,
+        139
+      ],
+      "deployedSha256": "b8e65f617de897e53a103fc6a34f4ff0c9aeaf946ebf502feec1aea072d5e256",
+      "handoffSha256": "b8e65f617de897e53a103fc6a34f4ff0c9aeaf946ebf502feec1aea072d5e256",
+      "sameAsOriginalHandoff": true
+    },
+    {
+      "asset": "panels/settings-danger.png",
+      "size": [
+        682,
+        139
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        682,
+        139
+      ],
+      "deployedSha256": "ff1b8aa5bd320f77e4875c73265da20e93cf08ca1cf6fa6824620093a00b863a",
+      "handoffSha256": "ff1b8aa5bd320f77e4875c73265da20e93cf08ca1cf6fa6824620093a00b863a",
+      "sameAsOriginalHandoff": true
+    },
+    {
+      "asset": "panels/close-button.png",
+      "size": [
+        101,
+        109
+      ],
+      "mode": "RGBA",
+      "alphaExtrema": [
+        0,
+        255
+      ],
+      "alphaBounds": [
+        0,
+        0,
+        100,
+        108
+      ],
+      "deployedSha256": "67367985d1295212e676ad6b49a6af5a6167a31129224958189fd74b2fd0b83c",
+      "handoffSha256": "8809df857b0e03b9c2cb189e0223a8d11ab410dd444e199d2963d781658a6a72",
+      "sameAsOriginalHandoff": false
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "artifacts/visual/v0.9.29-desktop-home.png",
+      "sha256": "32927d1979ab03fd3327b6812a016d215e4548b615b2ca7cafadb05a7b2a0346"
+    },
+    {
+      "file": "artifacts/visual/v0.9.29-mobile-home.png",
+      "sha256": "7295e11974a1d7d83924efec0eeede5d775e3eb471e7d5fbb2375d90da77a0d9"
+    },
+    {
+      "file": "artifacts/visual/v0.9.29-desktop-settings.png",
+      "sha256": "4c8eccc7d3c8c406225f26446ac3ec0752080f5322da4e2bb58bd5a87ceb3752"
+    },
+    {
+      "file": "artifacts/visual/v0.9.29-mobile-settings.png",
+      "sha256": "b081bf5c54ec3c0c31443587b681a7d549aba4295b33a76d0f728f841d90ec63"
+    }
+  ]
+}
