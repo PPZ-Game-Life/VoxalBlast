@@ -17,6 +17,8 @@ export function installToyIcons() {
     '[data-item="bomb"] .item-icon': 'bomb',
     '#settings-button span, #home-settings span': 'settings',
     '#home-leaderboard span': 'trophy',
+    // v0.9.24: 新游戏 on the cover — the same circular arrow the item strip uses for "again".
+    '#home-new span': 'refresh',
     '#controls-button span': 'keyboard',
   }
   let iconIndex = 0

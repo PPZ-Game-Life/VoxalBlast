@@ -117,6 +117,7 @@ export function collectDom(root = document) {
     homePrimaryLabelEl: need('#home-primary-label'),
     homeBestEl: need('#home-best'),
     homeResumeNoteEl: need('#home-resume-note'),
+    homeNewEl: need('#home-new'),
     homeLeaderboardEl: need('#home-leaderboard'),
     homeSettingsEl: need('#home-settings'),
     homeSettingEl: need('#home-setting'),

@@ -15,19 +15,14 @@
    itself: the bands run 63..140 and 156..232 of 295, the same 34.5% / 65.9% of the slice height. */
 .topbar .best-chip { top: calc(var(--hud-top) + var(--plaque-width) * .118); }
 .topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .303); }
-/* SCORE lost its icon, so its label stands on the crown's own column — the plaque's left inner
-   edge, which is exactly where the chip starts (`--plaque-width * .16`). Only SCORE drops the
-   `.12` inset; BEST still needs it to clear the crown in front of it. */
-.topbar .score-chip { padding-left: 0; }
-/* v0.9.22 — the crown belongs to BEST alone. Since v0.8.27 both rows of the plaque
-   drew the same `crown.png` through this pseudo-element; the producer's call
-   (2026-09-29): 「左上角 best 那里保留那个皇冠的 icon，SCORE 把左边那个 icon 去掉」.
-   BEST is the row that is about a record, so it keeps the mark; SCORE reads as
-   label + number only.
-   The chips' `.12` LEFT PADDING is deliberately NOT removed with it — that padding
-   is what holds SCORE's label in the same column as BEST's, so the two rows still
-   read as one plaque instead of SCORE hanging out of the alignment. */
-.best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
+/* SCORE keeps the crown (v0.9.24 restored it), so both rows still share the `.12` left inset
+   from the rule above — nothing here overrides the padding. */
+/* v0.8.27 → v0.9.22 → v0.9.24 — the crown ends up on BOTH rows.
+   It has been shared since v0.8.27; v0.9.22 dropped it from SCORE on the producer's call
+   (「SCORE 把左边那个 icon 去掉」), and the same day the producer reversed it
+   (2026-09-29: 「还原成 Score 左边也有 icon 的版本」). The shared selector is the honest
+   expression of that. */
+.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
 .topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }

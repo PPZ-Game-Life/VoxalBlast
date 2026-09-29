@@ -145,6 +145,9 @@ export default Object.freeze({
   'home.best': 'Best',
   'home.play': 'New game',
   'home.resume': 'Continue',
+  // v0.9.24: the cover's second run action, shown only while the primary reads Continue —
+  // starting over has to be possible without spending the waiting run through the settings panel.
+  'home.newGame': 'New game',
   'home.resumeNote': ({ score, cells }) => `Game in progress: ${score} points · ${cells} blocks`,
   'home.leaderboard': 'Leaderboard',
   'home.settings': 'Settings',

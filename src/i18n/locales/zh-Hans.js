@@ -141,6 +141,8 @@ export default Object.freeze({
   'home.best': '最高分',
   'home.play': '新游戏',
   'home.resume': '继续游戏',
+  // v0.9.24：主页第二个开局动作，只在主按钮是「继续游戏」时出现——想重开不必先绕过设置面板。
+  'home.newGame': '新游戏',
   'home.resumeNote': ({ score, cells }) => `未完成的一局：${score} 分 · ${cells} 格`,
   'home.leaderboard': '排行榜',
   'home.settings': '设置',

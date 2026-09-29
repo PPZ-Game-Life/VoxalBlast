@@ -43,6 +43,7 @@ export function createHome({
     homePrimaryLabelEl,
     homeBestEl,
     homeResumeNoteEl,
+    homeNewEl,
     leaderboardEl,
     leaderboardBodyEl,
     leaderboardCloseEl,
@@ -100,6 +101,9 @@ export function createHome({
     const saved = getSavedRun()
     homePrimaryEl.classList.toggle('resume', Boolean(saved))
     homePrimaryLabelEl.textContent = saved ? t('home.resume') : t('home.play')
+    // v0.9.24: 新游戏 is the way out of 继续游戏, so it is offered exactly when a run is
+    // waiting — with an empty slot the primary button already IS the new game.
+    homeNewEl.classList.toggle('hidden', !saved)
     homeBestEl.textContent = formatNumber(getBest())
     homeResumeNoteEl.textContent = saved
       ? t('home.resumeNote', {
@@ -223,6 +227,8 @@ export function createHome({
       label: homePrimaryLabelEl.textContent,
       note: homeResumeNoteEl.textContent,
       hasSavedRun: Boolean(getSavedRun()),
+      // v0.9.24: the second run action is offered only while the first one says 继续游戏.
+      newGameOffered: !homeNewEl.classList.contains('hidden'),
     }
   }
 

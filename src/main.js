@@ -142,6 +142,7 @@ const {
   homePrimaryLabelEl,
   homeBestEl,
   homeResumeNoteEl,
+  homeNewEl,
   homeLeaderboardEl,
   homeSettingsEl,
   homeSettingEl,
@@ -700,7 +701,11 @@ function closeSettings() {
     platform.gameplayStart()
     setStatus(t('status.idle'))
   }
-  settingsUi.focusSettingsButton()
+  // v0.9.24: focus goes back to whoever is actually on screen. The gear lives in `.topbar`,
+  // which the cover makes inert — focusing it from the cover silently did nothing and left
+  // focus on `<body>` (measured: the settings Home row over the cover ended on BODY).
+  if (homeUi.isOpen()) homeUi.focusPrimary()
+  else settingsUi.focusSettingsButton()
 }
 
 // ============================================================
@@ -997,6 +1002,7 @@ const homeUi = createHome({
     homePrimaryLabelEl,
     homeBestEl,
     homeResumeNoteEl,
+    homeNewEl,
     leaderboardEl,
     leaderboardBodyEl,
     leaderboardCloseEl,
@@ -1034,6 +1040,14 @@ function openHome() {
   // be open (and still holding the socket) the next time the player opens it.
   settingsUi.setSettingsOpen(false)
   settingsUi.hideSettingsSilently()
+  // v0.9.24 — the Game Over card has to go with it, or the cover opens UNDERNEATH it and
+  // 「返回主页」 looks like a dead button. `.home-screen` is `z-index: 9` and `.modal` is
+  // `z-index: 10`, so a run that ended left its result card painted over the cover: the
+  // producer's report (「修复设置界面返回主页」) was exactly this case — going home from the
+  // settings panel after a game over changed nothing on screen. The run is already in the
+  // record book and its slot is cleared (endGame), so dismissing the card costs nothing;
+  // PLAY AGAIN builds a fresh run through beginRun(), which hides it too.
+  gameOverEl.classList.add('hidden')
   // Snapshot before the board stops being visible, so whatever was built is still
   // there behind the 继续游戏 button.
   saveSession()
@@ -1090,6 +1104,16 @@ function startFromHome() {
     beginRun()
     leaveHome()
   }
+}
+
+// v0.9.24 — 新游戏 on the cover. It ignores the slot ON PURPOSE: this is the escape hatch from
+// 继续游戏, so it must start a fresh run even though a snapshot is sitting there. `beginRun()`
+// resets the board and immediately writes the new (empty) run into the slot, which is what
+// discards the old one — the same trade the settings panel's RESTART row makes, and the reason
+// this button is offered only next to 继续游戏 (ui/home.js hides it otherwise).
+function startNewRunFromHome() {
+  beginRun()
+  leaveHome()
 }
 
 function applySession(saved) {
@@ -1255,6 +1279,7 @@ leaderboardEl.addEventListener('click', (event) => {
 // (the 总榜 reading of the board: 单局最高分 + 最近十局 + 荣誉收集), plus the platform
 // entry at the bottom of the card.
 homePrimaryEl.addEventListener('click', startFromHome)
+homeNewEl.addEventListener('click', startNewRunFromHome)
 homeLeaderboardEl.addEventListener('click', () => openLeaderboard())
 homeSettingsEl.addEventListener('click', () => openSettings())
 homeSettingEl.addEventListener('click', () => {

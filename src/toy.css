@@ -63,6 +63,15 @@ body::before, body::after { display: none; }
 .home-primary-icon { font-size: 1.05rem; }
 .home-resume-note { color: #526f96; min-height: 1em; font-size: .72rem; margin: 1px 0 0; }
 .home-secondary-row { display: flex; gap: 14px; width: 100%; }
+/* v0.9.24 — the cover's second run action (新游戏 while the primary offers 继续游戏).
+   A full-width PAPER action: it sits right under the wooden primary, so it has to read as the
+   quieter of the two without becoming a third copy of the wooden card the row below uses. */
+.home-new { width: 100%; justify-content: center; gap: 9px; padding: 12px 10px; }
+.home-new.hidden { display: none; }
+.home-action { display: flex; align-items: center; color: #6b3a14; background: linear-gradient(150deg, #fffaf0, #f4e3c6); border: 2px solid #c69a63; border-bottom: 4px solid #b8874d; border-radius: 17px; box-shadow: inset 0 2px 0 #fff, 0 3px 0 #8a5a2a55, 0 10px 18px #4b3a1a24; font-size: .92rem; font-weight: 900; text-shadow: 0 1px 0 #fff; transition: transform .12s, box-shadow .12s; }
+.home-action > span { display: grid; place-items: center; width: 22px; height: 22px; }
+.home-action > span .toy-icon { width: 20px; height: 20px; }
+.home-action:active { transform: translateY(3px); box-shadow: inset 0 2px 0 #fff, 0 1px 0 #8a5a2a55; }
 .home-secondary { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 8px; border: 0; border-radius: 17px; background: #fff; color: var(--toy-ink); box-shadow: var(--toy-shadow); font-size: .86rem; font-weight: 900; }
 button:focus-visible { outline: 3px solid #3463a4; outline-offset: 4px; }
 @media (max-width: 700px) {
@@ -99,7 +108,7 @@ button:focus-visible { outline: 3px solid #3463a4; outline-offset: 4px; }
   .home-inner { width: min(620px, 100%); grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .home-brand { grid-column: 1; grid-row: 1 / 5; }
   .home-hero { height: 180px; }
-  .home-record, .home-primary, .home-resume-note, .home-secondary-row { grid-column: 2; }
+  .home-record, .home-primary, .home-resume-note, .home-new, .home-secondary-row { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) {
   .home-primary, .piece-slot, .item-button, .setting-switch, .setting-switch i { transition: none; }
