@@ -152,27 +152,40 @@
       <div id="home" class="home-screen" role="dialog" aria-modal="true" aria-labelledby="home-title">
         <div class="home-inner">
           <div class="home-brand">
-            <div id="home-hero" class="home-hero" aria-hidden="true"></div>
-            <h1 id="home-title">VoxalBlast</h1>
+            <!-- v0.9.26 (temp/ui-redesign-handoff-20260929 §4): the brand lockup is a cut-out of
+                 the approved art and the live WebGL cube that used to sit above it is gone — the
+                 concept's figure area is empty on purpose. `#home-title` survives as the
+                 visually hidden heading the dialog is labelled by (`aria-labelledby`), so the
+                 cover keeps a real accessible name instead of being named by an <img>. -->
+            <h1 id="home-title" class="sr-only">VoxalBlast</h1>
+            <img class="home-logo" src="./art/ui-redesign/icons/logo-voxalblast.png" alt="" aria-hidden="true" draggable="false" />
             <p class="home-tagline" data-i18n="home.tagline">Stack · Align · Blast all six faces</p>
           </div>
+          <!-- Highest score (handoff §3.3): the crown and the empty plate are TWO pieces of art
+               — the crown's lower edge was covered by the board in the concept render, so it is
+               an assembly-only cut that must stay joined to the plate's top edge, not a prop that
+               can be floated anywhere. `#home-best` keeps formatting the live number. -->
           <div class="home-record">
-            <span class="home-record-label" data-i18n="home.best">Best</span>
-            <strong id="home-best">0</strong>
+            <img class="home-record-crown" src="./art/ui-redesign/icons/home-crown-large.png" alt="" aria-hidden="true" draggable="false" />
+            <div class="home-record-plate">
+              <span class="home-record-label" data-i18n="home.best">Best</span>
+              <strong id="home-best">0</strong>
+            </div>
           </div>
           <button id="home-primary" class="home-primary" type="button">
-            <span class="home-primary-icon" aria-hidden="true">▶</span>
+            <img class="home-primary-icon" src="./art/ui-redesign/icons/play-triangle.png" alt="" aria-hidden="true" draggable="false" />
             <span id="home-primary-label" data-i18n="home.play">New game</span>
           </button>
           <p id="home-resume-note" class="home-resume-note" aria-live="polite"></p>
           <!-- v0.9.24: an explicit way to start over while a run is waiting behind the primary
                button. It STAYS hidden when the slot is empty (src/ui/home.js refreshes it with
                the cover), because the primary already reads New game then and two buttons
-               saying the same thing is worse than one. -->
-          <button id="home-new" class="home-action home-new hidden" type="button" data-i18n-text="home.newGame"><span aria-hidden="true"></span>New game</button>
+               saying the same thing is worse than one. v0.9.26 gives it the concept's cream
+               secondary plate and the PLUS glyph — it starts a run, it does not replay one. -->
+          <button id="home-new" class="home-action home-new hidden" type="button" data-i18n-text="home.newGame"><img class="home-new-icon" src="./art/ui-redesign/icons/plus-gold.png" alt="" aria-hidden="true" draggable="false" />New game</button>
           <div class="home-secondary-row">
-            <button id="home-leaderboard" class="home-secondary" type="button" data-i18n-text="home.leaderboard"><span aria-hidden="true"></span>Leaderboard</button>
-            <button id="home-settings" class="home-secondary" type="button" data-i18n-text="home.settings"><span aria-hidden="true"></span>Settings</button>
+            <button id="home-leaderboard" class="home-secondary" type="button" data-i18n-text="home.leaderboard"><img class="home-nav-icon" src="./art/ui-redesign/icons/nav-crown-small.png" alt="" aria-hidden="true" draggable="false" />Leaderboard</button>
+            <button id="home-settings" class="home-secondary" type="button" data-i18n-text="home.settings"><img class="home-nav-icon" src="./art/ui-redesign/icons/gear-purple.png" alt="" aria-hidden="true" draggable="false" />Settings</button>
           </div>
         </div>
       </div>
@@ -224,23 +237,29 @@
             <div><h1 id="settings-title" data-i18n="settings.title">Settings</h1></div>
             <button id="settings-close" class="modal-close" type="button" aria-label="Close settings" data-i18n-aria-label="a11y.closeSettings">×</button>
           </div>
+          <!-- v0.9.26 (handoff §5): the concept render shows six rows; the shipped panel has had
+               SEVEN since v0.9.22 and the language row is a FEATURE, not decoration — it stays, in
+               its original place, on the same `settings-row.png`. It is deliberately the one row
+               with an EMPTY glyph slot: the handoff pack does not contain a language icon and
+               this file will not invent one. The slot is kept so every row's text starts on the
+               same x — an icon-less row that also loses its indent reads as a broken row. -->
           <div class="settings-list">
             <!-- Language row (i18n standard). Tapping it advances to the next shipped locale
                  (src/i18n/index.js LOCALES); the hint shows the CURRENT language spelled in its
                  own script, which src/ui/settings.js writes on every change. -->
-            <button id="language-setting" class="setting-row" type="button" aria-label="Language" data-i18n-aria-label="settings.language"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.languageNote">Takes effect immediately</small></span><span id="language-setting-value" class="setting-hint" aria-hidden="true"></span></button>
-            <button id="sound-setting" class="setting-row" type="button"><span><strong data-i18n="settings.sound">Sound</strong><small data-i18n="settings.soundNote">Placement and clear SFX</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="haptics-setting" class="setting-row" type="button"><span><strong data-i18n="settings.haptics">Haptics</strong><small id="haptics-note" data-i18n="settings.hapticsNote">Vibration feedback</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="language-setting" class="setting-row" type="button" aria-label="Language" data-i18n-aria-label="settings.language"><span class="setting-icon" aria-hidden="true"></span><span class="setting-text"><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.languageNote">Takes effect immediately</small></span><span id="language-setting-value" class="setting-hint" aria-hidden="true"></span></button>
+            <button id="sound-setting" class="setting-row" type="button"><span class="setting-icon" aria-hidden="true"></span><span class="setting-text"><strong data-i18n="settings.sound">Sound</strong><small data-i18n="settings.soundNote">Placement and clear SFX</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="haptics-setting" class="setting-row" type="button"><span class="setting-icon" aria-hidden="true"></span><span class="setting-text"><strong data-i18n="settings.haptics">Haptics</strong><small id="haptics-note" data-i18n="settings.hapticsNote">Vibration feedback</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
             <!-- v0.9.12: the drag-turn switch (03 §3.1). ON = carrying a piece until its own
                  centre leaves the cube's outline turns the cube; OFF = that gesture only ever
                  moves the piece, and faces are turned with the keyboard or by dragging the
                  background. -->
-            <button id="drag-turn-setting" class="setting-row" type="button"><span><strong data-i18n="settings.dragTurn">Drag to turn</strong><small data-i18n="settings.dragTurnNote">Carrying a piece off the cube turns it</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
-            <button id="controls-setting" class="setting-row" type="button"><span><strong data-i18n="settings.controls">Controls</strong><small data-i18n="settings.controlsNote">Keyboard and rotation</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
+            <button id="drag-turn-setting" class="setting-row" type="button"><span class="setting-icon" aria-hidden="true"></span><span class="setting-text"><strong data-i18n="settings.dragTurn">Drag to turn</strong><small data-i18n="settings.dragTurnNote">Carrying a piece off the cube turns it</small></span><span class="setting-switch" aria-hidden="true"><i></i></span></button>
+            <button id="controls-setting" class="setting-row" type="button"><span class="setting-icon" aria-hidden="true"></span><span class="setting-text"><strong data-i18n="settings.controls">Controls</strong><small data-i18n="settings.controlsNote">Keyboard and rotation</small></span><span class="setting-hint" aria-hidden="true">W A S D Q E</span></button>
             <!-- v0.4: the way home from anywhere, including the Game Over panel. The
                  run in progress is snapshotted first, so this never costs progress. -->
-            <button id="home-setting" class="setting-action" type="button"><span aria-hidden="true">⌂</span><strong data-i18n="settings.home">Home</strong></button>
-            <button id="restart-setting" class="setting-action danger" type="button"><span>↻</span><strong data-i18n="settings.restart">Restart</strong></button>
+            <button id="home-setting" class="setting-action" type="button"><span class="setting-icon" aria-hidden="true"></span><strong data-i18n="settings.home">Home</strong></button>
+            <button id="restart-setting" class="setting-action danger" type="button"><span class="setting-icon" aria-hidden="true"></span><strong data-i18n="settings.restart">Restart</strong></button>
           </div>
         </div>
       </div>

@@ -78,8 +78,9 @@ const platform = createCrazyGamesAdapter()
 // Static DOM handles (refactor P1). The names are kept EXACTLY as they were when this file
 // queried the document itself, so every use site below still reads the identifier it
 // always did — this is a change of owner, not a change of behaviour. The panel-scoped
-// `#settings-close` / `#home-hero` / `#app` / `.topbar, .game-layout` queries this file used to
+// `#settings-close` / `#app` / `.topbar, .game-layout` queries this file used to
 // scatter further down are collected by ui/dom.js too (P1b-2), next to the handles above.
+// `#home-hero` used to be one of them; v0.9.26 deleted the node with the cover's live cube.
 const {
   sceneWrap,
   app: appEl,
@@ -137,7 +138,6 @@ const {
   leaderboardCloseEl,
   leaderboardPlatformEl,
   homeEl,
-  homeHeroEl,
   homePrimaryEl,
   homePrimaryLabelEl,
   homeBestEl,
@@ -997,7 +997,6 @@ const homeUi = createHome({
   els: {
     app: appEl,
     homeEl,
-    homeHeroEl,
     homePrimaryEl,
     homePrimaryLabelEl,
     homeBestEl,
@@ -1013,7 +1012,6 @@ const homeUi = createHome({
   getBest: () => bestScore,
   getRecords: () => recordStore.all(),
   platform,
-  cloneSources: { cubeBody: blocks.cubeBody, gridGroup },
   // Whoever changes the open state recomputes the pause lock — one place decides.
   onOpen: () => syncPause(),
   onClose: () => syncPause(),

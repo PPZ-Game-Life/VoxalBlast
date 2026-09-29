@@ -2,6 +2,8 @@
 
 Current gameplay skin: [v0.8.27 reference garden assets](reference/README.md), including generated UI cutouts, two background compositions, and the transparent stone pedestal. The older assets below remain available for fallback/legacy surfaces.
 
+The home cover, the settings panel and the BEST / SCORE glyphs were re-skinned in v0.9.26 from the approved concept art. Those runtime files live in [ui-redesign/](ui-redesign/README.md), which also records what is a cut-out, what is a derived state, and what the handoff pack did **not** deliver — read it before describing that skin as "the original layered art".
+
 ## Block pigment surface — v0.8.18
 
 - Runtime asset: `block-pigment.webp`, 768 × 768, 26,764 bytes.

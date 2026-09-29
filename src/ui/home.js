@@ -5,8 +5,8 @@
 // panel reachable from it and from the Game Over card.
 //
 // What this module OWNS: the cover's DOM (the `#app.home-open` flag, the `inert` game
-// layers, `#home` visibility, the primary button's label/note, focus), the home hero's
-// renderer, and the leaderboard's body markup + per-opener focus restore.
+// layers, `#home` visibility, the primary button's label/note, focus), and the leaderboard's
+// body markup + per-opener focus restore.
 //
 // What it does NOT own: `openHome()` / `leaveHome()` remain orchestration in main, because
 // they settle the intro wave, cancel a live drag, drop the item selection and write the
@@ -16,14 +16,18 @@
 //
 // The cover's open flag lives here (plan §3 state table: homeOpen → 对应 UI 模块, exposed as
 // `isOpen()`) and is never written from outside.
-import * as THREE from 'three'
+//
+// v0.9.26: the cover no longer renders anything. It used to own a second WebGLRenderer that
+// drew a CLONE of the live cube as the hero; the approved redesign has an empty figure area
+// (temp/ui-redesign-handoff-20260929 §1), so the renderer, its scene/camera, the clone and the
+// `blockSurfaceArtReady` re-render hook are all deleted rather than left running behind a
+// hidden div. Nothing here was ever shared with the game — but the clone borrowed the board's
+// geometry and materials, and the reason this file used to say "never dispose those" is exactly
+// why the whole path is better gone than disabled.
 import { HONORS } from '../game/honors.js'
 import { RECORD_FIELDS, weekKey } from '../game/records.js'
 import { TIER_CUTS, tierForScore, tiersReady } from '../game/tiers.js'
 import { formatNumber, t } from '../i18n/index.js'
-import { BOARD_STYLE as style } from '../rendering/config.js'
-import { addToyLights } from '../rendering/toyLights.js'
-import { blockSurfaceArtReady } from '../rendering/woodTexture.js'
 
 export function createHome({
   els,
@@ -31,14 +35,12 @@ export function createHome({
   getBest,
   getRecords,
   platform,
-  cloneSources,
   onOpen,
   onClose,
 }) {
   const {
     app,
     homeEl,
-    homeHeroEl,
     homePrimaryEl,
     homePrimaryLabelEl,
     homeBestEl,
@@ -54,50 +56,7 @@ export function createHome({
   let homeOpen = false
   let leaderboardOpener = null
 
-  // The hero's own renderer, scene and camera: on-demand, never part of the main loop.
-  let homeRenderer
-  let homeScene
-  let homeCamera
-  let homeModel
-
-  // The hero is rendered on demand; refresh it if its first frame used the fallback surface
-  // while the art asset was still in flight. Registered here rather than at module scope so
-  // it closes over this instance's renderer.
-  blockSurfaceArtReady.then(() => {
-    if (homeOpen && homeRenderer) homeRenderer.render(homeScene, homeCamera)
-  })
-
-  // The hero is a CLONE of the live board, so its geometry and materials are shared: they
-  // are borrowed from `cloneSources` and must never be disposed here.
-  function renderHomeBoard() {
-    if (!homeHeroEl.clientWidth || !homeHeroEl.clientHeight) return
-    if (!homeRenderer) {
-      homeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
-      homeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
-      homeRenderer.outputColorSpace = THREE.SRGBColorSpace
-      homeRenderer.toneMapping = THREE.NeutralToneMapping
-      homeRenderer.toneMappingExposure = style.exposure
-      homeHeroEl.appendChild(homeRenderer.domElement)
-      homeScene = new THREE.Scene()
-      addToyLights(homeScene)
-      homeCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
-      homeCamera.position.set(9, 7, 12)
-      homeCamera.lookAt(0, 0, 0)
-      new ResizeObserver(renderHomeBoard).observe(homeHeroEl)
-    }
-    if (homeModel) homeScene.remove(homeModel)
-    homeModel = new THREE.Group()
-    // Clones share owned geometry/materials; do not dispose shared resources here.
-    homeModel.add(cloneSources.cubeBody.clone(), cloneSources.gridGroup.clone(true))
-    homeScene.add(homeModel)
-    homeRenderer.setSize(homeHeroEl.clientWidth, homeHeroEl.clientHeight, false)
-    homeCamera.aspect = homeHeroEl.clientWidth / homeHeroEl.clientHeight
-    homeCamera.updateProjectionMatrix()
-    homeRenderer.render(homeScene, homeCamera)
-  }
-
   function refreshHome() {
-    requestAnimationFrame(renderHomeBoard)
     const saved = getSavedRun()
     homePrimaryEl.classList.toggle('resume', Boolean(saved))
     homePrimaryLabelEl.textContent = saved ? t('home.resume') : t('home.play')
@@ -238,7 +197,6 @@ export function createHome({
     hideCover,
     focusPrimary,
     refreshHome,
-    renderHomeBoard,
     openLeaderboard,
     closeLeaderboard,
     renderLeaderboard,

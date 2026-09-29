@@ -106,7 +106,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .modal-close { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; padding: 0; color: var(--navy-deep); border: 1px solid rgba(23,40,79,.14); border-radius: 12px; background: rgba(255,255,255,.55); font-size: 1.6rem; line-height: 1; }
 .settings-list { display: grid; gap: 10px; }
 .setting-row, .setting-action { width: 100%; min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; color: var(--navy-deep); border: 1px solid rgba(23,40,79,.12); border-radius: 14px; background: rgba(255,255,255,.62); text-align: left; }
-.setting-row > span:first-child { display: grid; gap: 3px; }
+/* v0.9.26: the text block of a settings row has its own class now that every row starts with a
+   glyph slot — `span:first-child` would have styled the ICON once the redesign added one. */
+.setting-text { display: grid; gap: 3px; min-width: 0; }
 .setting-row strong, .setting-action strong { font-size: .78rem; letter-spacing: .08em; }
 .setting-row small { color: #61789b; font-size: .68rem; }
 .setting-switch { position: relative; flex: 0 0 auto; width: 46px; height: 26px; border-radius: 999px; background: #9cabc0; transition: .2s; }

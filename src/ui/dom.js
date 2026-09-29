@@ -112,7 +112,6 @@ export function collectDom(root = document) {
 
     // Home cover.
     homeEl: need('#home'),
-    homeHeroEl: need('#home-hero'),
     homePrimaryEl: need('#home-primary'),
     homePrimaryLabelEl: need('#home-primary-label'),
     homeBestEl: need('#home-best'),

@@ -17,12 +17,18 @@
 .topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .303); }
 /* SCORE keeps the crown (v0.9.24 restored it), so both rows still share the `.12` left inset
    from the rule above — nothing here overrides the padding. */
-/* v0.8.27 → v0.9.22 → v0.9.24 — the crown ends up on BOTH rows.
+/* v0.8.27 → v0.9.22 → v0.9.24 → v0.9.26 — the crown used to sit on BOTH rows.
    It has been shared since v0.8.27; v0.9.22 dropped it from SCORE on the producer's call
    (「SCORE 把左边那个 icon 去掉」), and the same day the producer reversed it
-   (2026-09-29: 「还原成 Score 左边也有 icon 的版本」). The shared selector is the honest
-   expression of that. */
-.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background: url('/art/reference/crown.png') center / contain no-repeat; }
+   (2026-09-29: 「还原成 Score 左边也有 icon 的版本」). v0.9.26 splits the shared selector:
+   the redesign's final ruling is BEST = crown, SCORE = trophy (temp/ui-redesign-handoff-
+   20260929 §1, manifest `decisions.hudBest` / `decisions.hudScore`), so the glyphs differ now
+   and can no longer share one `background`. The shared rule keeps only the geometry: the box
+   is `--plaque-width * .105` wide at `height: 80%` of the chip, and `contain` fits either
+   aspect (crown 130×113, trophy 140×118) inside it. */
+.score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background-position: center; background-size: contain; background-repeat: no-repeat; }
+.best-chip::before { background-image: url('/art/ui-redesign/icons/hud-crown-best.png'); }
+.score-chip::before { background-image: url('/art/ui-redesign/icons/hud-trophy-score.png'); }
 .topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
 .topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
@@ -193,4 +199,281 @@ html, body { overscroll-behavior: none; }
   .board-section { top: 14%; bottom: 30%; }
   .scene-wrap { bottom: 4%; }
   .bottom-panel { width: 48vw; height: 21%; bottom: max(1%, env(safe-area-inset-bottom)); padding: 2px 9px 5px; }
+}
+
+/* ============================================================
+   v0.9.26 — PASTORAL UI REDESIGN SKIN  (home cover · settings panel)
+
+   Source: temp/ui-redesign-handoff-20260929 (guide JEFFY_INTEGRATION.md, art notes
+   public/art/ui-redesign/README.md). This block changes PRESENTATION ONLY: every id,
+   class and event the game already had is untouched, `src/ui/home.js` still owns the
+   resume/new-game branch, and `src/ui/settings.js` still drives `.enabled` /
+   `aria-pressed` — there is no second image-state variable anywhere.
+
+   Two rulings from the handoff that are easy to get wrong and are encoded below:
+     · BEST = crown, SCORE = trophy (the split above); home best = big crown;
+       home leaderboard = small crown. Four places, no swaps.
+     · The settings panel is SEVEN rows, not the concept's six. The language row stays
+       first and is NOT a switch — see §5 of the guide.
+
+   --- how the art is stretched ------------------------------------------------
+   The plates are rounded rectangles, so they are drawn with `border-image` and
+   SRC-PIXEL slice values (never percentages). Each slice is the corner radius MEASURED
+   from the PNG's own alpha — the first opaque row's flat span, read with a
+   `System.Drawing` scan of the first and last opaque rows:
+
+       home-primary.png    675×194  r≈65   home-secondary.png  674×155  r≈51
+       home-nav.png        358×156  r≈51   settings-row.png    682×139  r≈38
+       settings-modal.png  776×1148 r≈56   settings-danger.png 682×139  r≈38
+
+   Those are TIGHTER than the pack's recorded `nineSliceTRBL` (78/82, 65/80, 62/70, 76),
+   which is padded for safety: a padded slice scales its corner DOWN when it lands in a
+   border box sized from the radius, and the cap then reads visibly tighter than the art.
+   Slicing at the radius makes the drawn radius exactly the border width, so the whole
+   question reduces to "is the border box proportional to the art?" — and it is, by
+   construction: the border is set in `em` and the content line box is `1em`, giving
+   `b / (1em + 2b)` = the art's own radius/height ratio (0.335 for home-primary).
+   That is why the sizes below are in em and not in px: the caps keep their shape at every
+   font size and viewport, with no magic numbers to re-tune.
+
+   Everything not covered by a slice is stretched: the plates' fills are flat cream or a
+   smooth vertical gold gradient, so the stretch is invisible, and nothing with a flower or
+   a leaf (home-record.png, close-button.png, the toggles) is ever nine-sliced.
+   ============================================================ */
+
+/* The `::before` wood-plank face toy.css paints behind buttons is for the OLD skin: the new
+   art already carries its own material, so a plank under it would show through as a second,
+   offset border. Only the three repainted controls are switched off — every other button in
+   the game keeps its carving. */
+.home-primary::before, .home-secondary::before, #settings-close::before { display: none; }
+.modal-close { text-shadow: none; }
+
+/* The cover hides the game layers with `visibility: hidden` on `.topbar` / `.game-layout`, but
+   `.item-button .item-icon` re-declares `visibility: visible` further down this very file (the
+   same inheritance trap the note at the item strip documents for the toy carving) — so the four
+   tool icons stayed painted and showed through the cover's translucent wash. Visible in the
+   v0.9.25 baseline too; pinned here, scoped to the cover, because the handoff's §4.8 requires
+   that no in-game tool glyph floats on the home screen. */
+.home-open #item-bar .item-icon { visibility: hidden; }
+
+/* Accessibility utility (the cover's heading is a real `<h1>` that is only visually hidden —
+   `aria-labelledby="home-title"` needs a node, and the brand art cannot supply one). */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* ---------------------------------------------------------------- home cover */
+/* The valley behind the cover is the same clean painting the rest of the game uses
+   (public/art/reference/valley-portrait.webp | valley-landscape.webp, loaded by
+   rendering/pastoralBackdrop.js). The concept's own background is NOT shipped: it has the
+   score, the buttons and the text painted into it. Only the wash on top is lightened here,
+   because the redesign wants the meadow to read rather than be veiled blue. */
+.home-screen { background: linear-gradient(180deg, #cdeafb47 0%, #eaf6e84a 50%, #fbf3e2a8 100%); }
+.home-inner { width: min(400px, 100%); gap: clamp(9px, 2vh, 20px); }
+.home-brand { gap: 3px; }
+.home-logo { display: block; width: 88%; max-width: 340px; height: auto; margin: 2px auto 0; filter: drop-shadow(0 5px 9px #3c270a30); }
+.home-tagline { color: #6b4a1b; text-shadow: 0 1px 0 #fff9e9d9; }
+
+/* Highest score: crown + empty plate as one assembly (the crown's lower edge was covered by
+   the board in the concept render, so it must stay joined to the plate's top edge — floating
+   it free would expose that flat cut). `#home-best` keeps printing the live number. */
+.home-record { display: block; position: relative; width: min(298px, 78vw); padding-top: 30%; margin-top: 1px; color: #8a5a19; font-size: .74rem; }
+.home-record-crown { position: absolute; top: 0; left: 50%; width: 57%; height: auto; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 3px 4px #40280a38); }
+.home-record-plate { display: grid; justify-items: center; align-content: center; aspect-ratio: 441 / 220; padding: 17% 14% 5%; background: url('/art/ui-redesign/panels/home-record.png') center / 100% 100% no-repeat; }
+.home-record-label { color: #8a5a19; font-weight: 900; letter-spacing: .03em; text-shadow: 0 1px 0 #fff7e2; }
+.home-record strong { color: #7d4c0d; font-size: 1.95rem; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 #ffeaba; }
+
+/* The cover's run action. One gold plate serves BOTH labels: the concept paints 继续游戏 and
+   新游戏 in the same gold, so `.resume` no longer repaints the button — it is still toggled by
+   ui/home.js and still reported by `report()`, it just is not a second colour any more. */
+.home-primary {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 60px; padding: 0 30px;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
+  border-image-source: url('/art/ui-redesign/panels/home-primary.png');
+  border-image-slice: 65 65 65 65 fill;
+  background: none; border-radius: 0; box-shadow: none;
+  color: #6b4106; font-size: 1.2rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #ffeeb6;
+  transition: transform .12s, filter .12s;
+}
+.home-primary.resume { color: #6b4106; background: none; border-color: transparent; box-shadow: none; }
+.home-primary:hover { filter: brightness(1.04); }
+.home-primary:active { transform: translateY(2px); box-shadow: none; filter: brightness(.97); }
+.home-primary-icon { width: 1.1em; height: 1.1em; object-fit: contain; }
+.home-resume-note { color: #6b4a1b; text-shadow: 0 1px 0 #fff9e9b8; }
+
+/* 新游戏 — the one full-width action that is NOT the primary plate. It uses
+   home-secondary.png (a 674×155 plate); the `.home-secondary` CLASS below is a different
+   control (排行榜 / 设置, home-nav.png), so the two must never be mapped by name. */
+.home-new {
+  width: 100%; min-height: 52px;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 0 26px;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
+  border-image-source: url('/art/ui-redesign/panels/home-secondary.png');
+  border-image-slice: 51 51 51 51 fill;
+  background: none; border-radius: 0; box-shadow: none;
+  color: #77470f; font-size: 1.02rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #fff6e2;
+  transition: transform .12s, filter .12s;
+}
+.home-new:active { transform: translateY(2px); filter: brightness(.97); }
+.home-new-icon { width: 1.15em; height: 1.15em; object-fit: contain; }
+
+/* Leaderboard / Settings — two cream nav plates side by side. */
+.home-secondary-row { gap: 12px; }
+.home-secondary {
+  flex: 1; min-width: 0; min-height: 54px;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 10px;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
+  border-image-source: url('/art/ui-redesign/panels/home-nav.png');
+  border-image-slice: 51 51 51 51 fill;
+  background: none; border-radius: 0; box-shadow: none;
+  color: #6f4512; font-size: .9rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #fff6e2;
+  transition: transform .12s, filter .12s;
+}
+.home-secondary:active { transform: translateY(3px) !important; box-shadow: none; filter: brightness(.97); }
+.home-nav-icon { width: 1.35em; height: 1.35em; object-fit: contain; }
+
+/* Short screens (the phone held sideways, and the small-phone band): the cover may scroll,
+   but it may NOT shrink the type below the 44px hit target to make the art fit. */
+@media (max-height: 600px) {
+  .home-inner { gap: 8px; }
+  .home-logo { width: 74%; }
+  .home-record { width: min(240px, 62vw); }
+  .home-primary { min-height: 50px; font-size: 1.02rem; padding: 0 24px; }
+  .home-new { min-height: 44px; font-size: .92rem; padding: 0 20px; }
+  .home-secondary { min-height: 46px; font-size: .82rem; }
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  /* Two columns, brand on the left: a phone turned sideways has no vertical room for a
+     centred stack, and the concept's 853-wide column is not a fixed pixel layout.
+     The numbers below are the budget — 390px minus the cover's own 42px of safe padding
+     leaves 348, and the right-hand stack is crown+plate (190px wide → 152 tall) + primary
+     46 + note 16 + new 44 + nav row 44 + four 6px gaps = 326. It fits without scrolling and
+     WITHOUT touching the type sizes: a 44px hit target is a floor, not a preference. */
+  .home-inner { width: min(720px, 100%); grid-template-columns: 1fr 1fr; column-gap: 24px; gap: 4px; align-content: center; }
+  .home-brand { grid-column: 1; grid-row: 1 / 6; align-self: center; }
+  .home-record, .home-primary, .home-resume-note, .home-new, .home-secondary-row { grid-column: 2; }
+  .home-logo { width: 76%; }
+  .home-record { width: min(180px, 47vw); }
+  .home-primary { min-height: 46px; }
+  .home-new { min-height: 44px; }
+  .home-secondary { min-height: 44px; }
+}
+
+/* ------------------------------------------------------------ settings panel */
+/* Narrower page padding than the other dialogs: seven rows of two-line copy plus a 32px glyph
+   column do not fit a 390px screen inside the stock `.modal { padding: 20px }`, and the answer
+   is neither to shrink the type nor to drop the language row (handoff §5). The panel's own
+   frame supplies the visual margin. */
+#settings-modal { padding: 14px; }
+.settings-card {
+  /* 776×1148 frame. TWO widths, and they are not the same number on purpose:
+     · `border-width` is the LAYOUT inset — what the content box gives up;
+     · `border-image-width` is where the art is DRAWN, and it may overlap the padding box.
+     The art's gold band is 26 source px of a 776-wide frame and its corner radius is 56, i.e.
+     the radius is twice the band. A single border width can only honour one of them: sized for
+     the band (≈12px here) the corners go square, sized for the radius (25px) the frame doubles
+     in thickness and reads as a double line. Splitting them gives both — the band lands at
+     26 × 24.8/56 = 11.5px and the corner at 24.8px, which is the art's own ratio at this size. */
+  border-width: 1.2em; border-image-width: 1.35em;
+  border-style: solid; border-color: transparent; border-image-repeat: stretch;
+  border-image-source: url('/art/ui-redesign/panels/settings-modal.png');
+  border-image-slice: 56 56 56 56 fill;
+  padding: 12px 14px 14px;
+  background: none; border-radius: 0;
+  box-shadow: 0 18px 46px #3b2a0a45;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.settings-header { padding-bottom: 12px; }
+.settings-header h1 { color: #7d4c0d; font-size: 1.5rem; letter-spacing: 0; text-shadow: 0 1px 0 #fff7e6; }
+/* close-button.png already contains the X and its own round plate, so the original `×` glyph is
+   hidden rather than stacked on top of it. `box-shadow: none` is load-bearing: the toy skin
+   gives `.modal-close` a cream inset highlight AND two hard brown drop layers (`0 3px 0` /
+   `0 5px 0`), which painted a light square with a maroon bar behind the new art — measured on
+   the rendered panel, the square was the button's own 44×44 border box. The translated
+   aria-label still names the button. */
+#settings-close {
+  width: 44px; height: 44px; padding: 0;
+  border: 0; border-radius: 0; box-shadow: none;
+  background: url('/art/ui-redesign/panels/close-button.png') center / contain no-repeat;
+  color: transparent; font-size: 0; line-height: 0;
+  filter: drop-shadow(0 2px 3px #4a321033);
+}
+#settings-close:hover { filter: brightness(1.06) drop-shadow(0 2px 3px #4a321033); }
+#settings-close:active { transform: translateY(2px); box-shadow: none; }
+
+.settings-list { display: grid; gap: 10px; }
+/* Three columns: glyph / text / control. The glyph slot is ALWAYS there, even on the language
+   row that has no icon — the handoff pack does not ship one and this skin will not invent a
+   language pictogram, but dropping the slot would make that one row's text start 34px left of
+   every other row's.
+   Same split border as the card: `settings-row.png` is a cream plate whose hairline edge is
+   2 source px against a 38px corner, so the layout border stays thin (8.8px) while the art is
+   drawn at 15.2px — the corner radius the plate actually has at this row height. */
+.setting-row, .setting-action {
+  width: 100%; min-height: 58px;
+  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 0 12px;
+  border-width: .55em; border-image-width: .95em;
+  border-style: solid; border-color: transparent; border-image-repeat: stretch;
+  border-image-source: url('/art/ui-redesign/panels/settings-row.png');
+  border-image-slice: 38 38 38 38 fill;
+  background: none; border-radius: 0; box-shadow: none;
+  color: #6f4512; text-align: left;
+  transition: transform .12s, filter .12s;
+}
+.setting-row:hover, .setting-action:hover { filter: brightness(1.02); transform: none; }
+.setting-row:active, .setting-action:active { transform: translateY(2px); filter: brightness(.98); }
+/* `#settings-modal` is not decoration: `.setting-action > span` (styles.css) and
+   `.setting-row.enabled .setting-switch` (toy.css) are MORE specific than a bare class and used
+   to win — the first painted the 回到主页 / 重新开始 glyphs as a navy 34×34 square, the second
+   reset the switch's background-size to `auto` so a zoomed crop of the toggle art was drawn
+   instead of the whole switch. Measured on both, fixed by out-specifying them, not by `!important`. */
+#settings-modal .setting-icon { width: 30px; height: 30px; border-radius: 0; background-color: transparent; background-repeat: no-repeat; background-position: center; background-size: contain; }
+#sound-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-speaker.png'); }
+#haptics-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-vibration.png'); }
+#drag-turn-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-turn.png'); }
+#controls-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-book.png'); }
+#home-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-home.png'); }
+#restart-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-restart.png'); }
+.setting-row strong, .setting-action strong { color: #6f4512; font-size: .92rem; letter-spacing: 0; text-shadow: 0 1px 0 #fff6e2; }
+.setting-row small { color: #9a7a4c; font-size: .68rem; font-weight: 800; }
+/* 回到主页 keeps the neutral cream row; only 重新开始 wears the red one. */
+.setting-action { grid-template-columns: 28px minmax(0, 1fr); }
+#restart-setting { border-image-source: url('/art/ui-redesign/panels/settings-danger.png'); color: #fff7ec; }
+#restart-setting strong { color: #fff7ec; text-shadow: 0 1px 1px #8f2f12; }
+/* The row is inert on a device with no vibrator (settings.js disables it); the disabled look
+   has to survive the new art, and the READER state is the disabled attribute, not the colour. */
+.setting-row:disabled { opacity: .55; filter: saturate(.5); }
+.setting-row:disabled .setting-icon { opacity: .7; }
+
+/* The switch is ONE image per state — the art carries the knob, so the toy skin's `i` thumb is
+   hidden instead of being nudged on top of a second knob. The event is still the row button. */
+#settings-modal .setting-switch {
+  position: relative; flex: 0 0 auto;
+  width: 58px; height: 34px;
+  border: 0; border-radius: 0;
+  background: url('/art/ui-redesign/panels/toggle-off.png') center / contain no-repeat;
+  transition: none;
+}
+#settings-modal .setting-switch i { display: none; }
+#settings-modal .setting-row.enabled .setting-switch { background-image: url('/art/ui-redesign/panels/toggle-on.png'); }
+
+/* The keyboard legend and the language name share one small cream pill. It is a FULL pill
+   (radius = half its height), which a nine-slice cannot reproduce — the caps would flatten —
+   so this is the one plate that is scaled to the box instead of sliced. */
+.setting-hint {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  min-height: 30px; padding: 0 10px;
+  border: 0; border-radius: 0;
+  background: url('/art/ui-redesign/panels/keyboard-hint.png') center / 100% 100% no-repeat;
+  color: #8a6a3c; font-size: .7rem; font-weight: 900; letter-spacing: .06em;
+}
+@media (max-height: 700px) {
+  /* Seven rows on a 568px-tall phone: the panel scrolls (never shrinks the hit targets). */
+  .settings-list { gap: 8px; }
+  .setting-row, .setting-action { min-height: 52px; }
 }
