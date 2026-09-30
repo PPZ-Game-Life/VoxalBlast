@@ -81,9 +81,22 @@ export const BOARD_STYLE = Object.freeze({
   environmentIntensity: 0.55,
   // Polished agate-like colour on the board and in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.12,
-  paintClearcoat: 1,
-  paintClearcoatRoughness: 0.045,
+  //
+  // v0.9.32 R1 round 3 (BLOCK_REFERENCE_REWORK_R0.md §9bis.4): 0.12 -> 0.22, and the
+  // clearcoat split widened. Round 2 flattened the FACE, but a face that is dead flat
+  // still split into a bright left band and a darker right band while the surface was
+  // this mirror-like: at roughness 0.12 with clearcoat 1 / 0.045 the environment's
+  // reflection card and small glint land almost un-blurred, so one hard highlight owns
+  // part of every face. The reference lights a face with ONE broad soft gloss.
+  // "Polished agate" is the wrong words for an opaque toy, which is what this looks like.
+  //
+  // Note the effective roughness is this factor times the roughnessMap (the paint map
+  // sits near 244/255), so the UI number is not the final roughness — do not read 0.22
+  // as "matte". Metalness stays 0 and the toy environment binding must stay explicit
+  // (Three r172 can override envMapIntensity when envMap is null).
+  paintRoughness: 0.22,
+  paintClearcoat: 0.85,
+  paintClearcoatRoughness: 0.12,
   paintIor: 1.46,
   paintMetalness: 0,
   paintEnvMapIntensity: 0.85,
