@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180" viewBox="0 0 720 180" role="img" aria-labelledby="title desc">
+<title id="title">VoxalBlast original celebration shape templates</title>
+<desc id="desc">Left to right: rounded paper chip, four-point sparkle, five-point paper seal, short ribbon. Reusable symbol paths, not an animation atlas. Transparent background.</desc>
+<defs>
+  <symbol id="paper-chip" viewBox="0 0 64 64">
+    <rect x="8" y="18" width="48" height="28" rx="6" fill="currentColor"/>
+    <path d="M14 21H50" stroke="#FFF1D4" stroke-opacity=".4" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="sparkle-four" viewBox="0 0 64 64">
+    <path d="M32 5Q35 24 42 27L59 32Q40 35 37 42L32 59Q29 40 22 37L5 32Q24 29 27 22Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="seal-five" viewBox="0 0 64 64">
+    <path d="M29 6Q32 1 35 6L42 21L58 23Q64 24 59 29L47 41L50 57Q51 63 45 60L32 53L19 60Q13 63 14 57L17 41L5 29Q0 24 6 23L22 21Z" fill="currentColor"/>
+    <path d="M32 11L39 26L53 28" fill="none" stroke="#FFF1D4" stroke-opacity=".5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="ribbon-short" viewBox="0 0 64 96">
+    <path d="M18 4C-2 28 58 25 42 53C36 63 21 75 24 89L38 94C33 80 51 69 56 57C71 23 15 23 32 9Z" fill="currentColor"/>
+    <path d="M21 28C25 34 39 36 43 42" fill="none" stroke="#452E13" stroke-opacity=".12" stroke-width="4" stroke-linecap="round"/>
+  </symbol>
+</defs>
+<g color="#C98699"><use href="#paper-chip" x="28" y="30" width="120" height="120"/></g>
+<g color="#FFF1D4"><use href="#sparkle-four" x="208" y="30" width="120" height="120"/></g>
+<g color="#E7B75F"><use href="#seal-five" x="388" y="30" width="120" height="120"/></g>
+<g color="#8DBDD3"><use href="#ribbon-short" x="586" y="15" width="90" height="145"/></g>
+</svg>

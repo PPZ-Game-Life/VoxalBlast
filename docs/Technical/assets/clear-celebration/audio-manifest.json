@@ -1,0 +1,693 @@
+{
+  "status": "original offline synthesized design previews; NOT integrated; NOT human-listening approved",
+  "sampleRate": 48000,
+  "channels": 1,
+  "bitsPerSample": 16,
+  "seed": 1847,
+  "externalSamples": false,
+  "measurement": "sample peaks and unweighted RMS only; not LUFS or true-peak mastering",
+  "audition": {
+    "file": "audio/audition-sequence.wav",
+    "durationSeconds": 19.89,
+    "samplePeakDbFS": -12.04,
+    "rmsDbFS": -31.81
+  },
+  "entries": [
+    {
+      "id": "place",
+      "file": "audio/place.wav",
+      "auditionStartSeconds": 0.5,
+      "durationSeconds": 0.16,
+      "samplePeakDbFS": -19.17,
+      "rmsDbFS": -33.33,
+      "bytes": 15404,
+      "recipe": {
+        "id": "place",
+        "duration": 0.16,
+        "peak": 0.11,
+        "notes": [
+          [
+            0,
+            60,
+            0.12,
+            "wood",
+            1
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "clear-l1",
+      "file": "audio/clear-l1.wav",
+      "auditionStartSeconds": 1.36,
+      "durationSeconds": 0.42,
+      "samplePeakDbFS": -15.92,
+      "rmsDbFS": -28.17,
+      "bytes": 40364,
+      "recipe": {
+        "id": "clear-l1",
+        "duration": 0.42,
+        "peak": 0.16,
+        "notes": [
+          [
+            0,
+            60,
+            0.14,
+            "wood",
+            0.65
+          ],
+          [
+            0.07,
+            72,
+            0.29,
+            "mallet",
+            1
+          ]
+        ],
+        "paper": [
+          [
+            0.045,
+            0.12,
+            0.055
+          ]
+        ]
+      }
+    },
+    {
+      "id": "clear-l2",
+      "file": "audio/clear-l2.wav",
+      "auditionStartSeconds": 2.48,
+      "durationSeconds": 0.5,
+      "samplePeakDbFS": -14.89,
+      "rmsDbFS": -27.8,
+      "bytes": 48044,
+      "recipe": {
+        "id": "clear-l2",
+        "duration": 0.5,
+        "peak": 0.18,
+        "notes": [
+          [
+            0,
+            60,
+            0.14,
+            "wood",
+            0.65
+          ],
+          [
+            0.065,
+            72,
+            0.27,
+            "mallet",
+            0.9
+          ],
+          [
+            0.15,
+            76,
+            0.28,
+            "mallet",
+            1
+          ]
+        ],
+        "paper": [
+          [
+            0.045,
+            0.15,
+            0.065
+          ]
+        ]
+      }
+    },
+    {
+      "id": "clear-l3",
+      "file": "audio/clear-l3.wav",
+      "auditionStartSeconds": 3.68,
+      "durationSeconds": 0.62,
+      "samplePeakDbFS": -13.98,
+      "rmsDbFS": -25.1,
+      "bytes": 59564,
+      "recipe": {
+        "id": "clear-l3",
+        "duration": 0.62,
+        "peak": 0.2,
+        "notes": [
+          [
+            0,
+            60,
+            0.14,
+            "wood",
+            0.6
+          ],
+          [
+            0.06,
+            72,
+            0.26,
+            "mallet",
+            0.85
+          ],
+          [
+            0.15,
+            76,
+            0.28,
+            "mallet",
+            0.9
+          ],
+          [
+            0.24,
+            79,
+            0.32,
+            "bell",
+            0.75
+          ]
+        ],
+        "paper": [
+          [
+            0.05,
+            0.17,
+            0.08
+          ]
+        ]
+      }
+    },
+    {
+      "id": "clear-l4",
+      "file": "audio/clear-l4.wav",
+      "auditionStartSeconds": 5,
+      "durationSeconds": 0.76,
+      "samplePeakDbFS": -13.15,
+      "rmsDbFS": -25.03,
+      "bytes": 73004,
+      "recipe": {
+        "id": "clear-l4",
+        "duration": 0.76,
+        "peak": 0.22,
+        "notes": [
+          [
+            0,
+            60,
+            0.14,
+            "wood",
+            0.65
+          ],
+          [
+            0.055,
+            72,
+            0.28,
+            "mallet",
+            0.9
+          ],
+          [
+            0.15,
+            76,
+            0.29,
+            "mallet",
+            0.9
+          ],
+          [
+            0.25,
+            79,
+            0.31,
+            "mallet",
+            1
+          ],
+          [
+            0.35,
+            84,
+            0.34,
+            "bell",
+            0.65
+          ]
+        ],
+        "paper": [
+          [
+            0.05,
+            0.2,
+            0.09
+          ]
+        ]
+      }
+    },
+    {
+      "id": "clear-l5",
+      "file": "audio/clear-l5.wav",
+      "auditionStartSeconds": 6.46,
+      "durationSeconds": 0.92,
+      "samplePeakDbFS": -12.4,
+      "rmsDbFS": -25.02,
+      "bytes": 88364,
+      "recipe": {
+        "id": "clear-l5",
+        "duration": 0.92,
+        "peak": 0.24,
+        "notes": [
+          [
+            0,
+            60,
+            0.14,
+            "wood",
+            0.65
+          ],
+          [
+            0.055,
+            72,
+            0.27,
+            "mallet",
+            0.9
+          ],
+          [
+            0.15,
+            76,
+            0.3,
+            "mallet",
+            0.95
+          ],
+          [
+            0.25,
+            79,
+            0.32,
+            "mallet",
+            1
+          ],
+          [
+            0.36,
+            84,
+            0.45,
+            "bell",
+            0.65
+          ],
+          [
+            0.36,
+            76,
+            0.38,
+            "mallet",
+            0.35
+          ]
+        ],
+        "paper": [
+          [
+            0.05,
+            0.22,
+            0.1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "chain-milestone",
+      "file": "audio/chain-milestone.wav",
+      "auditionStartSeconds": 8.08,
+      "durationSeconds": 0.44,
+      "samplePeakDbFS": -17.72,
+      "rmsDbFS": -28.97,
+      "bytes": 42284,
+      "recipe": {
+        "id": "chain-milestone",
+        "duration": 0.44,
+        "peak": 0.13,
+        "notes": [
+          [
+            0,
+            79,
+            0.23,
+            "mallet",
+            0.8
+          ],
+          [
+            0.1,
+            84,
+            0.29,
+            "bell",
+            0.7
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "new-best",
+      "file": "audio/new-best.wav",
+      "auditionStartSeconds": 9.22,
+      "durationSeconds": 1.12,
+      "samplePeakDbFS": -12.04,
+      "rmsDbFS": -26.94,
+      "bytes": 107564,
+      "recipe": {
+        "id": "new-best",
+        "duration": 1.12,
+        "peak": 0.25,
+        "notes": [
+          [
+            0,
+            60,
+            0.18,
+            "wood",
+            0.4
+          ],
+          [
+            0.08,
+            72,
+            0.29,
+            "mallet",
+            0.8
+          ],
+          [
+            0.2,
+            76,
+            0.31,
+            "mallet",
+            0.85
+          ],
+          [
+            0.32,
+            79,
+            0.34,
+            "mallet",
+            0.95
+          ],
+          [
+            0.46,
+            84,
+            0.5,
+            "bell",
+            0.8
+          ],
+          [
+            0.46,
+            76,
+            0.46,
+            "mallet",
+            0.4
+          ],
+          [
+            0.46,
+            79,
+            0.44,
+            "mallet",
+            0.35
+          ]
+        ],
+        "paper": [
+          [
+            0.14,
+            0.26,
+            0.1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "item-hammer",
+      "file": "audio/item-hammer.wav",
+      "auditionStartSeconds": 11.04,
+      "durationSeconds": 0.25,
+      "samplePeakDbFS": -15.92,
+      "rmsDbFS": -31,
+      "bytes": 24044,
+      "recipe": {
+        "id": "item-hammer",
+        "duration": 0.25,
+        "peak": 0.16,
+        "notes": [
+          [
+            0,
+            53,
+            0.17,
+            "wood",
+            1
+          ],
+          [
+            0.035,
+            65,
+            0.16,
+            "mallet",
+            0.22
+          ]
+        ],
+        "paper": [
+          [
+            0.012,
+            0.07,
+            0.1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "item-rocket",
+      "file": "audio/item-rocket.wav",
+      "auditionStartSeconds": 11.99,
+      "durationSeconds": 0.34,
+      "samplePeakDbFS": -17.08,
+      "rmsDbFS": -28.8,
+      "bytes": 32684,
+      "recipe": {
+        "id": "item-rocket",
+        "duration": 0.34,
+        "peak": 0.14,
+        "notes": [
+          [
+            0.04,
+            67,
+            0.19,
+            "mallet",
+            0.5
+          ],
+          [
+            0.12,
+            72,
+            0.18,
+            "mallet",
+            0.45
+          ]
+        ],
+        "paper": [
+          [
+            0,
+            0.24,
+            0.24
+          ]
+        ]
+      }
+    },
+    {
+      "id": "item-bomb",
+      "file": "audio/item-bomb.wav",
+      "auditionStartSeconds": 13.03,
+      "durationSeconds": 0.36,
+      "samplePeakDbFS": -16.48,
+      "rmsDbFS": -31.38,
+      "bytes": 34604,
+      "recipe": {
+        "id": "item-bomb",
+        "duration": 0.36,
+        "peak": 0.15,
+        "notes": [
+          [
+            0,
+            55,
+            0.19,
+            "wood",
+            0.8
+          ],
+          [
+            0.08,
+            67,
+            0.22,
+            "mallet",
+            0.36
+          ]
+        ],
+        "paper": [
+          [
+            0.018,
+            0.23,
+            0.22
+          ]
+        ]
+      }
+    },
+    {
+      "id": "item-refresh",
+      "file": "audio/item-refresh.wav",
+      "auditionStartSeconds": 14.09,
+      "durationSeconds": 0.3,
+      "samplePeakDbFS": -18.42,
+      "rmsDbFS": -33.09,
+      "bytes": 28844,
+      "recipe": {
+        "id": "item-refresh",
+        "duration": 0.3,
+        "peak": 0.12,
+        "notes": [
+          [
+            0.015,
+            67,
+            0.11,
+            "wood",
+            0.4
+          ],
+          [
+            0.1,
+            72,
+            0.14,
+            "wood",
+            0.45
+          ]
+        ],
+        "paper": [
+          [
+            0,
+            0.1,
+            0.2
+          ],
+          [
+            0.105,
+            0.12,
+            0.15
+          ]
+        ]
+      }
+    },
+    {
+      "id": "cancel",
+      "file": "audio/cancel.wav",
+      "auditionStartSeconds": 15.09,
+      "durationSeconds": 0.15,
+      "samplePeakDbFS": -23.1,
+      "rmsDbFS": -36.69,
+      "bytes": 14444,
+      "recipe": {
+        "id": "cancel",
+        "duration": 0.15,
+        "peak": 0.07,
+        "notes": [
+          [
+            0,
+            57,
+            0.12,
+            "wood",
+            1
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "chain-break",
+      "file": "audio/chain-break.wav",
+      "auditionStartSeconds": 15.94,
+      "durationSeconds": 0.34,
+      "samplePeakDbFS": -20.92,
+      "rmsDbFS": -36,
+      "bytes": 32684,
+      "recipe": {
+        "id": "chain-break",
+        "duration": 0.34,
+        "peak": 0.09,
+        "notes": [
+          [
+            0,
+            67,
+            0.16,
+            "wood",
+            0.8
+          ],
+          [
+            0.1,
+            64,
+            0.19,
+            "wood",
+            0.65
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "score-tick",
+      "file": "audio/score-tick.wav",
+      "auditionStartSeconds": 16.98,
+      "durationSeconds": 0.07,
+      "samplePeakDbFS": -29.12,
+      "rmsDbFS": -39.83,
+      "bytes": 6764,
+      "recipe": {
+        "id": "score-tick",
+        "duration": 0.07,
+        "peak": 0.035,
+        "notes": [
+          [
+            0,
+            76,
+            0.055,
+            "wood",
+            1
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "score-settle",
+      "file": "audio/score-settle.wav",
+      "auditionStartSeconds": 17.75,
+      "durationSeconds": 0.28,
+      "samplePeakDbFS": -20.92,
+      "rmsDbFS": -32.15,
+      "bytes": 26924,
+      "recipe": {
+        "id": "score-settle",
+        "duration": 0.28,
+        "peak": 0.09,
+        "notes": [
+          [
+            0,
+            72,
+            0.18,
+            "mallet",
+            0.7
+          ],
+          [
+            0.055,
+            79,
+            0.2,
+            "mallet",
+            0.65
+          ]
+        ],
+        "paper": []
+      }
+    },
+    {
+      "id": "game-over",
+      "file": "audio/game-over.wav",
+      "auditionStartSeconds": 18.73,
+      "durationSeconds": 0.46,
+      "samplePeakDbFS": -20,
+      "rmsDbFS": -34.04,
+      "bytes": 44204,
+      "recipe": {
+        "id": "game-over",
+        "duration": 0.46,
+        "peak": 0.1,
+        "notes": [
+          [
+            0,
+            64,
+            0.24,
+            "wood",
+            0.75
+          ],
+          [
+            0.15,
+            60,
+            0.24,
+            "mallet",
+            0.55
+          ]
+        ],
+        "paper": []
+      }
+    }
+  ]
+}
