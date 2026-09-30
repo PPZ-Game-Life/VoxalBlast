@@ -1,7 +1,7 @@
 {
   "run": {
-    "startedAt": "2026-09-30T13:38:57.990Z",
-    "version": "0.10.2",
+    "startedAt": "2026-09-30T11:28:58.434Z",
+    "version": "0.10.1",
     "url": "http://127.0.0.1:5173/",
     "stage": "all",
     "tier": "auto",
@@ -268,8 +268,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g0-empty-dock.png",
-      "bytes": 390290,
-      "sha256": "9d55821e3b7782d346f77b7b9d00fcd5e727f0029acbe3bd098e4ccae01f11b0",
+      "bytes": 390336,
+      "sha256": "de2e715473b20ffa1377877c8e160c030642583b863275ab5a32199c3cb5aca6",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -286,22 +286,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -314,8 +306,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g0-rgb-dock.png",
-      "bytes": 403155,
-      "sha256": "b7898c8226e5d3810ba54bc3b9074b8ece1b5fcd85e62c48dac6df53a45412f2",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -332,22 +324,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -360,8 +344,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1a-A-all.png",
-      "bytes": 403155,
-      "sha256": "b7898c8226e5d3810ba54bc3b9074b8ece1b5fcd85e62c48dac6df53a45412f2",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -378,22 +362,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -406,8 +382,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1a-C-no-contact.png",
-      "bytes": 403258,
-      "sha256": "cf43556afb7a94237449335e141b6ae5256aff367d60fdd0edc2d5d50b1e81d4",
+      "bytes": 403203,
+      "sha256": "a4cde0d25d78d244efdaba10bc3f757f3571c58dbf6667dd20f252dbc2cf752b",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -424,22 +400,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -452,8 +420,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1a-D-no-projected.png",
-      "bytes": 403143,
-      "sha256": "df8e47c782efaa376825c63b453531afbd78d20f67e0d2732c460a2ef13ec58a",
+      "bytes": 403139,
+      "sha256": "6081c4e65114c020f0b3a87617bb43291c1695984a2ae8f5705d9fac3b60e02e",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -470,22 +438,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": false,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -498,8 +458,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-art-ssao-off.png",
-      "bytes": 403155,
-      "sha256": "b7898c8226e5d3810ba54bc3b9074b8ece1b5fcd85e62c48dac6df53a45412f2",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
       "state": {
         "route": "art",
         "ssaoEnabled": false,
@@ -516,22 +476,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -544,8 +496,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-platform-plain.png",
-      "bytes": 380958,
-      "sha256": "f894fc60efba342ace8d4f37d9b6cda879956e78dbc4f8b2deb0f4b7f0b54787",
+      "bytes": 380911,
+      "sha256": "b876526bb99f832e27ef275a34edd942522aacb809dfef59d1d56306129bac30",
       "state": {
         "route": "platform",
         "ssaoEnabled": false,
@@ -572,22 +524,14 @@
           "worldPerPx": 0.020836114966976908
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -600,8 +544,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-platform-decal.png",
-      "bytes": 381715,
-      "sha256": "21bb1d0400e1627062c800b7472ac2e0f1d3cbf1230e7f7e6ce42cfe9482b036",
+      "bytes": 381250,
+      "sha256": "77cb6f66e4e76813ef914dd1a925130f4de1868ea19114d185b3f8f12d225d4d",
       "state": {
         "route": "platform",
         "ssaoEnabled": false,
@@ -628,22 +572,14 @@
           "worldPerPx": 0.020836114966976908
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -656,8 +592,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-platform-ssao.png",
-      "bytes": 380958,
-      "sha256": "f894fc60efba342ace8d4f37d9b6cda879956e78dbc4f8b2deb0f4b7f0b54787",
+      "bytes": 380911,
+      "sha256": "b876526bb99f832e27ef275a34edd942522aacb809dfef59d1d56306129bac30",
       "state": {
         "route": "platform",
         "ssaoEnabled": true,
@@ -684,22 +620,14 @@
           "worldPerPx": 0.020836114966976908
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -712,8 +640,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-platform-flip-pitch-mid.png",
-      "bytes": 367311,
-      "sha256": "691f86c6940887b1bbfdd99dabcd71b70761d29dae53927fd2c0dc7d2ae3699a",
+      "bytes": 367260,
+      "sha256": "39c547f8d9432c791e3afd6c55df7a7aa91c492c0345d708ccc794387af0a29a",
       "state": {
         "route": "platform",
         "ssaoEnabled": false,
@@ -740,22 +668,14 @@
           "worldPerPx": 0.020836114966976908
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -768,8 +688,8 @@
       "tier": "high",
       "crop": null,
       "file": "docs/Technical/assets/material-grounding-review/g1b-platform-intro-mid.png",
-      "bytes": 363057,
-      "sha256": "320c87c5e251467946b6fcadee71d74714c027ef23775dbdc929a00f9ecb1a36",
+      "bytes": 363103,
+      "sha256": "a139454cfe6c06277f682f0615defa527a88b1ca8ac3ee6db9cf40ef5c2ada64",
       "state": {
         "route": "platform",
         "ssaoEnabled": false,
@@ -796,256 +716,18 @@
           "worldPerPx": 0.020836114966976908
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
       "note": "opening wave mid-build over the slab"
-    },
-    {
-      "id": "g1c-footprint",
-      "label": "路线 B：按底面轮廓塑形的接触影（shipped 默认）",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "file": "docs/Technical/assets/material-grounding-review/g1c-footprint.png",
-      "bytes": 403155,
-      "sha256": "b7898c8226e5d3810ba54bc3b9074b8ece1b5fcd85e62c48dac6df53a45412f2",
-      "state": {
-        "route": "art",
-        "ssaoEnabled": true,
-        "ssaoOfferedByTier": true,
-        "tier": "high",
-        "cubeBottomY": -2.475,
-        "supportTopY": -2.5,
-        "pedestalArt": {
-          "hidden": false,
-          "widthPx": 309.734375,
-          "topPx": 431.3125,
-          "leftPx": 42.0546875,
-          "heightPx": 127.640625
-        },
-        "platform": null,
-        "artQuads": {
-          "contactOpacity": 0.3,
-          "projectedOpacity": 0.18,
-          "contactEnabled": true,
-          "projectedEnabled": true,
-          "floorY": -2.5,
-          "basePlaneY": -2.5,
-          "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
-        },
-        "occlusionIntensity": 1
-      },
-      "note": "route B: footprint-shaped contact decal (shipped default)"
-    },
-    {
-      "id": "g1c-radial",
-      "label": "路线 B 对照：旧径向圆形接触影（同帧同姿态）",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "file": "docs/Technical/assets/material-grounding-review/g1c-radial.png",
-      "bytes": 403248,
-      "sha256": "504a55c7141811775fffc141b714085afca46a12bc5e6b07a773cf71f95df276",
-      "state": {
-        "route": "art",
-        "ssaoEnabled": true,
-        "ssaoOfferedByTier": true,
-        "tier": "high",
-        "cubeBottomY": -2.475,
-        "supportTopY": -2.5,
-        "pedestalArt": {
-          "hidden": false,
-          "widthPx": 309.734375,
-          "topPx": 431.3125,
-          "leftPx": 42.0546875,
-          "heightPx": 127.640625
-        },
-        "platform": null,
-        "artQuads": {
-          "contactOpacity": 0.3,
-          "projectedOpacity": 0.18,
-          "contactEnabled": true,
-          "projectedEnabled": true,
-          "floorY": -2.5,
-          "basePlaneY": -2.5,
-          "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "radial",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
-        },
-        "occlusionIntensity": 1
-      },
-      "note": "legacy radial contact decal (same frame, same pose)"
-    },
-    {
-      "id": "g1c-footprint-yaw-right",
-      "label": "路线 B：微调区间上端，轮廓跟随棋盘偏航",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "file": "docs/Technical/assets/material-grounding-review/g1c-footprint-yaw-right.png",
-      "bytes": 410971,
-      "sha256": "d6f8d7c1ef63cb603f205d12d6c301e82294194e49aa2581facd9ab9b5dd2e08",
-      "state": {
-        "route": "art",
-        "ssaoEnabled": true,
-        "ssaoOfferedByTier": true,
-        "tier": "high",
-        "cubeBottomY": -2.475,
-        "supportTopY": -2.5,
-        "pedestalArt": {
-          "hidden": false,
-          "widthPx": 309.734375,
-          "topPx": 431.3125,
-          "leftPx": 42.0546875,
-          "heightPx": 127.640625
-        },
-        "platform": null,
-        "artQuads": {
-          "contactOpacity": 0.3,
-          "projectedOpacity": 0.18,
-          "contactEnabled": true,
-          "projectedEnabled": true,
-          "floorY": -2.5,
-          "basePlaneY": -2.5,
-          "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.6262551064981636
-        },
-        "occlusionIntensity": 1
-      },
-      "note": "route B decal at the top of the fine-tune zone"
-    },
-    {
-      "id": "g1c-footprint",
-      "label": "路线 B 桌面 1:1 底边裁切",
-      "view": "desktop",
-      "tier": "high",
-      "crop": "base",
-      "file": "docs/Technical/assets/material-grounding-review/g1c-footprint-crop-base.png",
-      "bytes": 46297,
-      "sha256": "bae5574ece74681862a80f1a3967a3c04badaa13ae5469041a159f407f621dc4",
-      "state": {
-        "route": "art",
-        "ssaoEnabled": true,
-        "ssaoOfferedByTier": true,
-        "tier": "high",
-        "cubeBottomY": -2.475,
-        "supportTopY": -2.5,
-        "pedestalArt": {
-          "hidden": false,
-          "widthPx": 512.46875,
-          "topPx": 499.140625,
-          "leftPx": 467.953125,
-          "heightPx": 211.203125
-        },
-        "platform": null,
-        "artQuads": {
-          "contactOpacity": 0.3,
-          "projectedOpacity": 0.18,
-          "contactEnabled": true,
-          "projectedEnabled": true,
-          "floorY": -2.5,
-          "basePlaneY": -2.5,
-          "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
-        },
-        "occlusionIntensity": 1
-      },
-      "note": "route B: footprint-shaped contact decal (shipped default)"
-    },
-    {
-      "id": "g1c-radial",
-      "label": "路线 B 对照 桌面 1:1 底边裁切",
-      "view": "desktop",
-      "tier": "high",
-      "crop": "base",
-      "file": "docs/Technical/assets/material-grounding-review/g1c-radial-crop-base.png",
-      "bytes": 46619,
-      "sha256": "c70e73d14c1974313e60e9d4b3683a0d96b81470936279f4ed34ed6b73d1fd3b",
-      "state": {
-        "route": "art",
-        "ssaoEnabled": true,
-        "ssaoOfferedByTier": true,
-        "tier": "high",
-        "cubeBottomY": -2.475,
-        "supportTopY": -2.5,
-        "pedestalArt": {
-          "hidden": false,
-          "widthPx": 512.46875,
-          "topPx": 499.140625,
-          "leftPx": 467.953125,
-          "heightPx": 211.203125
-        },
-        "platform": null,
-        "artQuads": {
-          "contactOpacity": 0.3,
-          "projectedOpacity": 0.18,
-          "contactEnabled": true,
-          "projectedEnabled": true,
-          "floorY": -2.5,
-          "basePlaneY": -2.5,
-          "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "radial",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
-        },
-        "occlusionIntensity": 1
-      },
-      "note": "legacy radial contact decal (same frame, same pose)"
     },
     {
       "id": "g0-rgb-dock",
@@ -1072,22 +754,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -1100,8 +774,8 @@
       "tier": "high",
       "crop": "wood",
       "file": "docs/Technical/assets/material-grounding-review/g0-rgb-dock-crop-wood.png",
-      "bytes": 41902,
-      "sha256": "b00788bd0ef3a57613e536c6a3afe73bef8cbadd2141f5f6acadf319f527bb80",
+      "bytes": 42162,
+      "sha256": "20b342e3a01fb81916681b8147f2b26e33d267ac131bf527c348de728f8e5b4f",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -1118,22 +792,14 @@
         },
         "platform": null,
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -1174,22 +840,14 @@
           "worldPerPx": 0.012711706223262415
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -1230,22 +888,14 @@
           "worldPerPx": 0.012711706223262415
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -1258,8 +908,8 @@
       "tier": "high",
       "crop": "base",
       "file": "docs/Technical/assets/material-grounding-review/g1b-art-flip-roll-mid-crop-base.png",
-      "bytes": 52189,
-      "sha256": "fa042ca414316207684291afda9a97d35d60ed8790f61f78a09fcfd98b5391f9",
+      "bytes": 52293,
+      "sha256": "3c98cb780b26e7ccb849c8aab85dd5c5bd02f482d6a479a5df3ccbb5aae4a9af",
       "state": {
         "route": "art",
         "ssaoEnabled": true,
@@ -1286,22 +936,14 @@
           "worldPerPx": 0.012711706223262415
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": true,
           "projectedEnabled": true,
           "floorY": -2.5,
           "basePlaneY": -2.5,
           "contactVisible": true,
-          "projectedVisible": true,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": true
         },
         "occlusionIntensity": 1
       },
@@ -1342,22 +984,14 @@
           "worldPerPx": 0.012711706223262415
         },
         "artQuads": {
-          "contactOpacity": 0.3,
+          "contactOpacity": 0.24,
           "projectedOpacity": 0.18,
           "contactEnabled": false,
           "projectedEnabled": false,
           "floorY": -2.4690000000000003,
           "basePlaneY": -2.5,
           "contactVisible": false,
-          "projectedVisible": false,
-          "contactShape": "footprint",
-          "footprintHalf": 2.475,
-          "footprintQuadHalf": 3.5250000000000004,
-          "skirt": {
-            "near": 0.34,
-            "far": 1.05
-          },
-          "supportYaw": 0.45404570931141897
+          "projectedVisible": false
         },
         "occlusionIntensity": 1
       },
@@ -1374,7 +1008,7 @@
         "p50": 66.7,
         "p95": 83.4,
         "min": 66.5,
-        "max": 83.5,
+        "max": 83.4,
         "fpsFromP50": 15,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -1401,7 +1035,7 @@
         "frames": 199,
         "p50": 66.7,
         "p95": 83.4,
-        "min": 50,
+        "min": 66.5,
         "max": 83.4,
         "fpsFromP50": 15,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
@@ -1414,7 +1048,7 @@
       "static": {
         "frames": 89,
         "p50": 49.9,
-        "p95": 50,
+        "p95": 50.1,
         "min": 33.2,
         "max": 50.1,
         "fpsFromP50": 20,
@@ -1457,8 +1091,8 @@
         "frames": 89,
         "p50": 33.3,
         "p95": 50,
-        "min": 16.6,
-        "max": 50,
+        "min": 16.7,
+        "max": 50.1,
         "fpsFromP50": 30,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -1470,9 +1104,9 @@
       "static": {
         "frames": 89,
         "p50": 33.3,
-        "p95": 50,
+        "p95": 33.4,
         "min": 16.6,
-        "max": 50.1,
+        "max": 50,
         "fpsFromP50": 30,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -1499,7 +1133,7 @@
         "frames": 89,
         "p50": 16.7,
         "p95": 33.4,
-        "min": 16.6,
+        "min": 16.5,
         "max": 33.4,
         "fpsFromP50": 59.9,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
@@ -1512,7 +1146,7 @@
       "static": {
         "frames": 89,
         "p50": 16.7,
-        "p95": 33.4,
+        "p95": 33.3,
         "min": 16.6,
         "max": 33.4,
         "fpsFromP50": 59.9,
@@ -1527,7 +1161,7 @@
         "frames": 199,
         "p50": 16.7,
         "p95": 33.4,
-        "min": 16.6,
+        "min": 16.5,
         "max": 33.4,
         "fpsFromP50": 59.9,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
@@ -1541,8 +1175,8 @@
         "frames": 89,
         "p50": 50,
         "p95": 66.7,
-        "min": 33.3,
-        "max": 66.7,
+        "min": 33.2,
+        "max": 66.8,
         "fpsFromP50": 20,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -1555,7 +1189,7 @@
         "frames": 89,
         "p50": 50,
         "p95": 66.6,
-        "min": 33.4,
+        "min": 33.3,
         "max": 66.8,
         "fpsFromP50": 20,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
@@ -1584,7 +1218,7 @@
         "p50": 33.3,
         "p95": 33.4,
         "min": 16.6,
-        "max": 33.4,
+        "max": 33.5,
         "fpsFromP50": 30,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -1597,7 +1231,7 @@
         "frames": 89,
         "p50": 33.3,
         "p95": 33.4,
-        "min": 16.6,
+        "min": 16.5,
         "max": 33.4,
         "fpsFromP50": 30,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
@@ -1611,8 +1245,8 @@
         "frames": 199,
         "p50": 33.3,
         "p95": 33.4,
-        "min": 16.6,
-        "max": 33.4,
+        "min": 16.5,
+        "max": 33.5,
         "fpsFromP50": 30,
         "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
       }
@@ -2354,16 +1988,16 @@
       },
       "pixels": 194166,
       "over": {
-        "2": 5066,
-        "8": 4598,
-        "16": 3863,
-        "32": 2549
+        "2": 2846,
+        "8": 1127,
+        "16": 274,
+        "32": 0
       },
-      "meanDelta": 0.845,
-      "maxDelta": 69,
+      "meanDelta": 0.134,
+      "maxDelta": 31,
       "movedBBox": {
         "minX": 518,
-        "minY": 497,
+        "minY": 525,
         "maxX": 931,
         "maxY": 601
       }
@@ -2383,538 +2017,538 @@
       },
       "pixels": 200448,
       "over": {
-        "2": 8471,
-        "8": 6169,
-        "16": 4174,
-        "32": 2492
-      },
-      "meanDelta": 0.98,
-      "maxDelta": 69,
-      "movedBBox": {
-        "minX": 486,
-        "minY": 547,
-        "maxX": 962,
-        "maxY": 606
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 4626,
-        "8": 4334,
-        "16": 3747,
-        "32": 2585
-      },
-      "meanDelta": 0.835,
-      "maxDelta": 92,
-      "movedBBox": {
-        "minX": 518,
-        "minY": 497,
-        "maxX": 931,
-        "maxY": 601
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 8056,
-        "8": 5919,
-        "16": 4057,
-        "32": 2524
-      },
-      "meanDelta": 0.971,
-      "maxDelta": 92,
-      "movedBBox": {
-        "minX": 486,
-        "minY": 547,
-        "maxX": 962,
-        "maxY": 606
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 2217,
-        "8": 1843,
-        "16": 1486,
-        "32": 792
-      },
-      "meanDelta": 0.839,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 431,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 4198,
-        "8": 2869,
-        "16": 1828,
-        "32": 792
-      },
-      "meanDelta": 1.431,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 496
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 1894,
-        "8": 1712,
-        "16": 1423,
-        "32": 819
-      },
-      "meanDelta": 0.802,
-      "maxDelta": 115,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 431,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 3881,
-        "8": 2740,
-        "16": 1763,
-        "32": 819
-      },
-      "meanDelta": 1.384,
-      "maxDelta": 115,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 496
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 3769,
-        "8": 3400,
-        "16": 2832,
-        "32": 1670
-      },
-      "meanDelta": 0.93,
-      "maxDelta": 70,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 400,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 5381,
-        "8": 3962,
-        "16": 2676,
-        "32": 1602
-      },
-      "meanDelta": 0.886,
-      "maxDelta": 70,
-      "movedBBox": {
-        "minX": 453,
-        "minY": 441,
-        "maxX": 832,
-        "maxY": 487
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 3492,
-        "8": 3211,
-        "16": 2743,
-        "32": 1723
-      },
-      "meanDelta": 0.922,
-      "maxDelta": 96,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 400,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1a: contact decal contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-C-no-contact",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 5113,
-        "8": 3772,
-        "16": 2585,
-        "32": 1639
-      },
-      "meanDelta": 0.877,
-      "maxDelta": 96,
-      "movedBBox": {
-        "minX": 453,
-        "minY": 441,
-        "maxX": 832,
-        "maxY": 487
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "desktop",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 1925,
-        "8": 1105,
-        "16": 362,
+        "2": 4291,
+        "8": 1124,
+        "16": 274,
         "32": 0
-      },
-      "meanDelta": 0.113,
-      "maxDelta": 27,
-      "movedBBox": {
-        "minX": 586,
-        "minY": 529,
-        "maxX": 931,
-        "maxY": 598
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "desktop",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 2232,
-        "8": 1083,
-        "16": 362,
-        "32": 0
-      },
-      "meanDelta": 0.118,
-      "maxDelta": 27,
-      "movedBBox": {
-        "minX": 586,
-        "minY": 547,
-        "maxX": 955,
-        "maxY": 598
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 1707,
-        "8": 913,
-        "16": 383,
-        "32": 5
-      },
-      "meanDelta": 0.103,
-      "maxDelta": 75,
-      "movedBBox": {
-        "minX": 586,
-        "minY": 529,
-        "maxX": 931,
-        "maxY": 599
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 2015,
-        "8": 891,
-        "16": 383,
-        "32": 5
-      },
-      "meanDelta": 0.109,
-      "maxDelta": 75,
-      "movedBBox": {
-        "minX": 586,
-        "minY": 547,
-        "maxX": 955,
-        "maxY": 599
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 856,
-        "8": 373,
-        "16": 120,
-        "32": 0
-      },
-      "meanDelta": 0.119,
-      "maxDelta": 25,
-      "movedBBox": {
-        "minX": 118,
-        "minY": 450,
-        "maxX": 322,
-        "maxY": 492
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 1092,
-        "8": 377,
-        "16": 120,
-        "32": 0
-      },
-      "meanDelta": 0.177,
-      "maxDelta": 25,
-      "movedBBox": {
-        "minX": 118,
-        "minY": 450,
-        "maxX": 337,
-        "maxY": 492
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 730,
-        "8": 316,
-        "16": 163,
-        "32": 10
-      },
-      "meanDelta": 0.114,
-      "maxDelta": 102,
-      "movedBBox": {
-        "minX": 117,
-        "minY": 450,
-        "maxX": 322,
-        "maxY": 492
-      }
-    },
-    {
-      "label": "G1a: projected receiver contribution",
-      "a": "g1a-A-all",
-      "b": "g1a-D-no-projected",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 965,
-        "8": 320,
-        "16": 163,
-        "32": 10
       },
       "meanDelta": 0.17,
-      "maxDelta": 102,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 498,
+        "minY": 547,
+        "maxX": 950,
+        "maxY": 610
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 2637,
+        "8": 1108,
+        "16": 284,
+        "32": 2
+      },
+      "meanDelta": 0.129,
+      "maxDelta": 34,
+      "movedBBox": {
+        "minX": 518,
+        "minY": 525,
+        "maxX": 931,
+        "maxY": 601
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 4087,
+        "8": 1105,
+        "16": 284,
+        "32": 2
+      },
+      "meanDelta": 0.166,
+      "maxDelta": 34,
+      "movedBBox": {
+        "minX": 498,
+        "minY": 547,
+        "maxX": 950,
+        "maxY": 610
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 1178,
+        "8": 404,
+        "16": 110,
+        "32": 0
+      },
+      "meanDelta": 0.141,
+      "maxDelta": 29,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 452,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1793,
+        "8": 404,
+        "16": 110,
+        "32": 0
+      },
+      "meanDelta": 0.24,
+      "maxDelta": 29,
+      "movedBBox": {
+        "minX": 60,
+        "minY": 452,
+        "maxX": 337,
+        "maxY": 497
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 1048,
+        "8": 387,
+        "16": 125,
+        "32": 10
+      },
+      "meanDelta": 0.14,
+      "maxDelta": 97,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 452,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1663,
+        "8": 387,
+        "16": 125,
+        "32": 10
+      },
+      "meanDelta": 0.24,
+      "maxDelta": 97,
+      "movedBBox": {
+        "minX": 60,
+        "minY": 452,
+        "maxX": 337,
+        "maxY": 497
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 2101,
+        "8": 720,
+        "16": 171,
+        "32": 0
+      },
+      "meanDelta": 0.146,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 425,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 2755,
+        "8": 717,
+        "16": 171,
+        "32": 0
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 463,
+        "minY": 441,
+        "maxX": 828,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 1973,
+        "8": 718,
+        "16": 189,
+        "32": 0
+      },
+      "meanDelta": 0.143,
+      "maxDelta": 32,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 425,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 2628,
+        "8": 712,
+        "16": 189,
+        "32": 0
+      },
+      "meanDelta": 0.15,
+      "maxDelta": 32,
+      "movedBBox": {
+        "minX": 463,
+        "minY": 441,
+        "maxX": 828,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 2053,
+        "8": 1412,
+        "16": 748,
+        "32": 1
+      },
+      "meanDelta": 0.148,
+      "maxDelta": 33,
+      "movedBBox": {
+        "minX": 579,
+        "minY": 527,
+        "maxX": 931,
+        "maxY": 598
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 2397,
+        "8": 1385,
+        "16": 748,
+        "32": 1
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 33,
+      "movedBBox": {
+        "minX": 579,
+        "minY": 547,
+        "maxX": 954,
+        "maxY": 598
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 1825,
+        "8": 1217,
+        "16": 572,
+        "32": 11
+      },
+      "meanDelta": 0.131,
+      "maxDelta": 48,
+      "movedBBox": {
+        "minX": 585,
+        "minY": 526,
+        "maxX": 931,
+        "maxY": 599
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 2173,
+        "8": 1190,
+        "16": 572,
+        "32": 11
+      },
+      "meanDelta": 0.136,
+      "maxDelta": 48,
+      "movedBBox": {
+        "minX": 585,
+        "minY": 547,
+        "maxX": 954,
+        "maxY": 599
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 987,
+        "8": 495,
+        "16": 198,
+        "32": 0
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 30,
       "movedBBox": {
         "minX": 117,
-        "minY": 450,
+        "minY": 449,
+        "maxX": 322,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1245,
+        "8": 509,
+        "16": 198,
+        "32": 0
+      },
+      "meanDelta": 0.221,
+      "maxDelta": 30,
+      "movedBBox": {
+        "minX": 117,
+        "minY": 449,
+        "maxX": 337,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 836,
+        "8": 402,
+        "16": 226,
+        "32": 15
+      },
+      "meanDelta": 0.147,
+      "maxDelta": 98,
+      "movedBBox": {
+        "minX": 118,
+        "minY": 449,
+        "maxX": 322,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1094,
+        "8": 416,
+        "16": 226,
+        "32": 15
+      },
+      "meanDelta": 0.214,
+      "maxDelta": 98,
+      "movedBBox": {
+        "minX": 118,
+        "minY": 449,
         "maxX": 337,
         "maxY": 492
       }
@@ -2934,16 +2568,16 @@
       },
       "pixels": 124832,
       "over": {
-        "2": 1253,
-        "8": 676,
-        "16": 217,
-        "32": 8
+        "2": 1415,
+        "8": 868,
+        "16": 451,
+        "32": 10
       },
-      "meanDelta": 0.114,
-      "maxDelta": 78,
+      "meanDelta": 0.151,
+      "maxDelta": 70,
       "movedBBox": {
-        "minX": 533,
-        "minY": 423,
+        "minX": 531,
+        "minY": 425,
         "maxX": 809,
         "maxY": 481
       }
@@ -2963,17 +2597,17 @@
       },
       "pixels": 142336,
       "over": {
-        "2": 1418,
-        "8": 653,
-        "16": 217,
-        "32": 8
+        "2": 1588,
+        "8": 843,
+        "16": 451,
+        "32": 10
       },
-      "meanDelta": 0.106,
-      "maxDelta": 78,
+      "meanDelta": 0.139,
+      "maxDelta": 70,
       "movedBBox": {
-        "minX": 533,
+        "minX": 531,
         "minY": 441,
-        "maxX": 828,
+        "maxX": 827,
         "maxY": 481
       }
     },
@@ -2992,15 +2626,15 @@
       },
       "pixels": 124832,
       "over": {
-        "2": 1152,
-        "8": 598,
-        "16": 256,
-        "32": 3
+        "2": 1280,
+        "8": 765,
+        "16": 381,
+        "32": 19
       },
-      "meanDelta": 0.106,
-      "maxDelta": 77,
+      "meanDelta": 0.136,
+      "maxDelta": 88,
       "movedBBox": {
-        "minX": 532,
+        "minX": 530,
         "minY": 423,
         "maxX": 809,
         "maxY": 481
@@ -3021,17 +2655,17 @@
       },
       "pixels": 142336,
       "over": {
-        "2": 1320,
-        "8": 575,
-        "16": 256,
-        "32": 3
+        "2": 1460,
+        "8": 740,
+        "16": 381,
+        "32": 19
       },
-      "meanDelta": 0.099,
-      "maxDelta": 77,
+      "meanDelta": 0.126,
+      "maxDelta": 88,
       "movedBBox": {
-        "minX": 532,
+        "minX": 530,
         "minY": 441,
-        "maxX": 828,
+        "maxX": 827,
         "maxY": 481
       }
     },
@@ -3338,16 +2972,16 @@
       },
       "pixels": 194166,
       "over": {
-        "2": 5317,
-        "8": 5041,
-        "16": 4796,
-        "32": 4461
+        "2": 5085,
+        "8": 4849,
+        "16": 4492,
+        "32": 3387
       },
-      "meanDelta": 2.242,
-      "maxDelta": 208,
+      "meanDelta": 1.691,
+      "maxDelta": 216,
       "movedBBox": {
         "minX": 518,
-        "minY": 497,
+        "minY": 512,
         "maxX": 931,
         "maxY": 601
       }
@@ -3367,12 +3001,12 @@
       },
       "pixels": 200448,
       "over": {
-        "2": 54195,
-        "8": 53683,
-        "16": 52973,
-        "32": 50400
+        "2": 54208,
+        "8": 53631,
+        "16": 52694,
+        "32": 49198
       },
-      "meanDelta": 27.267,
+      "meanDelta": 26.697,
       "maxDelta": 239,
       "movedBBox": {
         "minX": 472,
@@ -3396,16 +3030,16 @@
       },
       "pixels": 194166,
       "over": {
-        "2": 4771,
-        "8": 4632,
-        "16": 4464,
-        "32": 4226
+        "2": 4538,
+        "8": 4420,
+        "16": 4135,
+        "32": 3089
       },
-      "meanDelta": 2.118,
-      "maxDelta": 205,
+      "meanDelta": 1.557,
+      "maxDelta": 213,
       "movedBBox": {
         "minX": 518,
-        "minY": 497,
+        "minY": 510,
         "maxX": 931,
         "maxY": 601
       }
@@ -3425,12 +3059,12 @@
       },
       "pixels": 200448,
       "over": {
-        "2": 53656,
-        "8": 53262,
-        "16": 52622,
-        "32": 50129
+        "2": 53661,
+        "8": 53192,
+        "16": 52318,
+        "32": 48863
       },
-      "meanDelta": 27.14,
+      "meanDelta": 26.56,
       "maxDelta": 237,
       "movedBBox": {
         "minX": 472,
@@ -3454,16 +3088,16 @@
       },
       "pixels": 71786,
       "over": {
-        "2": 2337,
-        "8": 2157,
-        "16": 2031,
-        "32": 1825
+        "2": 2255,
+        "8": 2093,
+        "16": 1925,
+        "32": 1436
       },
-      "meanDelta": 2.351,
-      "maxDelta": 198,
+      "meanDelta": 1.813,
+      "maxDelta": 197,
       "movedBBox": {
         "minX": 72,
-        "minY": 431,
+        "minY": 439,
         "maxX": 322,
         "maxY": 493
       }
@@ -3483,12 +3117,12 @@
       },
       "pixels": 56700,
       "over": {
-        "2": 21076,
-        "8": 20609,
-        "16": 20304,
-        "32": 19323
+        "2": 21044,
+        "8": 20572,
+        "16": 20126,
+        "32": 18844
       },
-      "meanDelta": 35.751,
+      "meanDelta": 34.965,
       "maxDelta": 223,
       "movedBBox": {
         "minX": 44,
@@ -3512,16 +3146,16 @@
       },
       "pixels": 71786,
       "over": {
-        "2": 2050,
-        "8": 1952,
-        "16": 1849,
-        "32": 1672
+        "2": 1962,
+        "8": 1879,
+        "16": 1705,
+        "32": 1279
       },
-      "meanDelta": 2.182,
-      "maxDelta": 198,
+      "meanDelta": 1.661,
+      "maxDelta": 197,
       "movedBBox": {
         "minX": 72,
-        "minY": 431,
+        "minY": 437,
         "maxX": 322,
         "maxY": 493
       }
@@ -3541,12 +3175,12 @@
       },
       "pixels": 56700,
       "over": {
-        "2": 20804,
-        "8": 20414,
-        "16": 20134,
-        "32": 19174
+        "2": 20758,
+        "8": 20373,
+        "16": 19917,
+        "32": 18691
       },
-      "meanDelta": 35.515,
+      "meanDelta": 34.749,
       "maxDelta": 218,
       "movedBBox": {
         "minX": 44,
@@ -3570,16 +3204,16 @@
       },
       "pixels": 124832,
       "over": {
-        "2": 3902,
-        "8": 3770,
-        "16": 3614,
-        "32": 3391
+        "2": 3782,
+        "8": 3655,
+        "16": 3403,
+        "32": 2483
       },
-      "meanDelta": 2.549,
-      "maxDelta": 219,
+      "meanDelta": 1.954,
+      "maxDelta": 223,
       "movedBBox": {
         "minX": 478,
-        "minY": 400,
+        "minY": 411,
         "maxX": 809,
         "maxY": 484
       }
@@ -3599,12 +3233,12 @@
       },
       "pixels": 142336,
       "over": {
-        "2": 34823,
-        "8": 34575,
-        "16": 34144,
-        "32": 32560
+        "2": 34872,
+        "8": 34554,
+        "16": 33999,
+        "32": 31728
       },
-      "meanDelta": 24.841,
+      "meanDelta": 24.331,
       "maxDelta": 239,
       "movedBBox": {
         "minX": 441,
@@ -3628,16 +3262,16 @@
       },
       "pixels": 124832,
       "over": {
-        "2": 3629,
-        "8": 3525,
-        "16": 3399,
-        "32": 3204
+        "2": 3462,
+        "8": 3379,
+        "16": 3154,
+        "32": 2266
       },
-      "meanDelta": 2.422,
-      "maxDelta": 219,
+      "meanDelta": 1.808,
+      "maxDelta": 223,
       "movedBBox": {
         "minX": 478,
-        "minY": 400,
+        "minY": 410,
         "maxX": 809,
         "maxY": 484
       }
@@ -3657,12 +3291,12 @@
       },
       "pixels": 142336,
       "over": {
-        "2": 34546,
-        "8": 34324,
-        "16": 33926,
-        "32": 32357
+        "2": 34550,
+        "8": 34269,
+        "16": 33744,
+        "32": 31491
       },
-      "meanDelta": 24.712,
+      "meanDelta": 24.182,
       "maxDelta": 237,
       "movedBBox": {
         "minX": 441,
@@ -3686,18 +3320,18 @@
       },
       "pixels": 194166,
       "over": {
-        "2": 4584,
-        "8": 2909,
-        "16": 1656,
-        "32": 99
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
       },
-      "meanDelta": 0.363,
-      "maxDelta": 114,
+      "meanDelta": 0.064,
+      "maxDelta": 112,
       "movedBBox": {
-        "minX": 518,
-        "minY": 495,
+        "minX": 523,
+        "minY": 534,
         "maxX": 931,
-        "maxY": 601
+        "maxY": 596
       }
     },
     {
@@ -3715,18 +3349,18 @@
       },
       "pixels": 200448,
       "over": {
-        "2": 5259,
-        "8": 2751,
-        "16": 1521,
-        "32": 84
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
       },
-      "meanDelta": 0.36,
-      "maxDelta": 99,
+      "meanDelta": 0.068,
+      "maxDelta": 112,
       "movedBBox": {
-        "minX": 505,
+        "minX": 523,
         "minY": 547,
-        "maxX": 959,
-        "maxY": 606
+        "maxX": 937,
+        "maxY": 596
       }
     },
     {
@@ -3744,18 +3378,18 @@
       },
       "pixels": 194166,
       "over": {
-        "2": 4170,
-        "8": 2545,
-        "16": 1343,
-        "32": 35
+        "2": 901,
+        "8": 309,
+        "16": 107,
+        "32": 11
       },
-      "meanDelta": 0.307,
+      "meanDelta": 0.05,
       "maxDelta": 171,
       "movedBBox": {
-        "minX": 518,
-        "minY": 495,
+        "minX": 598,
+        "minY": 534,
         "maxX": 931,
-        "maxY": 601
+        "maxY": 596
       }
     },
     {
@@ -3773,18 +3407,18 @@
       },
       "pixels": 200448,
       "over": {
-        "2": 4865,
-        "8": 2405,
-        "16": 1233,
-        "32": 35
+        "2": 903,
+        "8": 309,
+        "16": 107,
+        "32": 11
       },
-      "meanDelta": 0.312,
+      "meanDelta": 0.054,
       "maxDelta": 171,
       "movedBBox": {
-        "minX": 505,
+        "minX": 598,
         "minY": 547,
-        "maxX": 954,
-        "maxY": 603
+        "maxX": 937,
+        "maxY": 596
       }
     },
     {
@@ -3802,1153 +3436,169 @@
       },
       "pixels": 71786,
       "over": {
-        "2": 2070,
-        "8": 1203,
-        "16": 594,
-        "32": 53
+        "2": 500,
+        "8": 174,
+        "16": 49,
+        "32": 8
       },
-      "meanDelta": 0.391,
-      "maxDelta": 90,
+      "meanDelta": 0.076,
+      "maxDelta": 131,
       "movedBBox": {
-        "minX": 72,
-        "minY": 430,
+        "minX": 121,
+        "minY": 453,
         "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 2921,
-        "8": 1336,
-        "16": 582,
-        "32": 53
-      },
-      "meanDelta": 0.603,
-      "maxDelta": 90,
-      "movedBBox": {
-        "minX": 47,
-        "minY": 447,
-        "maxX": 350,
-        "maxY": 497
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 1889,
-        "8": 953,
-        "16": 468,
-        "32": 30
-      },
-      "meanDelta": 0.336,
-      "maxDelta": 165,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 430,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 2709,
-        "8": 1060,
-        "16": 445,
-        "32": 30
-      },
-      "meanDelta": 0.524,
-      "maxDelta": 165,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 344,
-        "maxY": 494
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 3070,
-        "8": 1924,
-        "16": 1067,
-        "32": 55
-      },
-      "meanDelta": 0.373,
-      "maxDelta": 89,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 398,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 3385,
-        "8": 1771,
-        "16": 985,
-        "32": 50
-      },
-      "meanDelta": 0.328,
-      "maxDelta": 89,
-      "movedBBox": {
-        "minX": 468,
-        "minY": 441,
-        "maxX": 837,
-        "maxY": 487
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 2857,
-        "8": 1669,
-        "16": 893,
-        "32": 35
-      },
-      "meanDelta": 0.329,
-      "maxDelta": 172,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 398,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1b: contact decal on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-decal",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 3160,
-        "8": 1522,
-        "16": 814,
-        "32": 35
-      },
-      "meanDelta": 0.291,
-      "maxDelta": 172,
-      "movedBBox": {
-        "minX": 468,
-        "minY": 441,
-        "maxX": 827,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: SSAO on a real slab",
-      "a": "g1b-platform-plain",
-      "b": "g1b-platform-ssao",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 0,
-        "8": 0,
-        "16": 0,
-        "32": 0
-      },
-      "meanDelta": 0,
-      "maxDelta": 0,
-      "movedBBox": null
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 4584,
-        "8": 2909,
-        "16": 1656,
-        "32": 99
-      },
-      "meanDelta": 0.363,
-      "maxDelta": 114,
-      "movedBBox": {
-        "minX": 518,
-        "minY": 495,
-        "maxX": 931,
-        "maxY": 601
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 5259,
-        "8": 2751,
-        "16": 1521,
-        "32": 84
-      },
-      "meanDelta": 0.36,
-      "maxDelta": 99,
-      "movedBBox": {
-        "minX": 505,
-        "minY": 547,
-        "maxX": 959,
-        "maxY": 606
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 4170,
-        "8": 2545,
-        "16": 1343,
-        "32": 35
-      },
-      "meanDelta": 0.307,
-      "maxDelta": 171,
-      "movedBBox": {
-        "minX": 518,
-        "minY": 495,
-        "maxX": 931,
-        "maxY": 601
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 4865,
-        "8": 2405,
-        "16": 1233,
-        "32": 35
-      },
-      "meanDelta": 0.312,
-      "maxDelta": 171,
-      "movedBBox": {
-        "minX": 505,
-        "minY": 547,
-        "maxX": 954,
-        "maxY": 603
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 2070,
-        "8": 1203,
-        "16": 594,
-        "32": 53
-      },
-      "meanDelta": 0.391,
-      "maxDelta": 90,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 430,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 2921,
-        "8": 1336,
-        "16": 582,
-        "32": 53
-      },
-      "meanDelta": 0.603,
-      "maxDelta": 90,
-      "movedBBox": {
-        "minX": 47,
-        "minY": 447,
-        "maxX": 350,
-        "maxY": 497
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 1889,
-        "8": 953,
-        "16": 468,
-        "32": 30
-      },
-      "meanDelta": 0.336,
-      "maxDelta": 165,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 430,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 2709,
-        "8": 1060,
-        "16": 445,
-        "32": 30
-      },
-      "meanDelta": 0.524,
-      "maxDelta": 165,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 344,
-        "maxY": 494
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 3070,
-        "8": 1924,
-        "16": 1067,
-        "32": 55
-      },
-      "meanDelta": 0.373,
-      "maxDelta": 89,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 398,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 3385,
-        "8": 1771,
-        "16": 985,
-        "32": 50
-      },
-      "meanDelta": 0.328,
-      "maxDelta": 89,
-      "movedBBox": {
-        "minX": 468,
-        "minY": 441,
-        "maxX": 837,
-        "maxY": 487
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 2857,
-        "8": 1669,
-        "16": 893,
-        "32": 35
-      },
-      "meanDelta": 0.329,
-      "maxDelta": 172,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 398,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1b: decal on top of SSAO",
-      "a": "g1b-platform-ssao",
-      "b": "g1b-platform-ssao-decal",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 3160,
-        "8": 1522,
-        "16": 814,
-        "32": 35
-      },
-      "meanDelta": 0.291,
-      "maxDelta": 172,
-      "movedBBox": {
-        "minX": 468,
-        "minY": 441,
-        "maxX": 827,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 5001,
-        "8": 4426,
-        "16": 3446,
-        "32": 1922
-      },
-      "meanDelta": 0.681,
-      "maxDelta": 62,
-      "movedBBox": {
-        "minX": 518,
-        "minY": 497,
-        "maxX": 931,
-        "maxY": 601
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 8421,
-        "8": 5608,
-        "16": 3390,
-        "32": 1924
-      },
-      "meanDelta": 0.79,
-      "maxDelta": 62,
-      "movedBBox": {
-        "minX": 486,
-        "minY": 547,
-        "maxX": 962,
-        "maxY": 610
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 518,
-        "y0": 133,
-        "x1": 931,
-        "y1": 601
-      },
-      "pixels": 194166,
-      "over": {
-        "2": 4611,
-        "8": 4260,
-        "16": 3431,
-        "32": 2058
-      },
-      "meanDelta": 0.678,
-      "maxDelta": 85,
-      "movedBBox": {
-        "minX": 518,
-        "minY": 497,
-        "maxX": 931,
-        "maxY": 601
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 547,
-        "x1": 1295,
-        "y1": 720
-      },
-      "pixels": 200448,
-      "over": {
-        "2": 8055,
-        "8": 5441,
-        "16": 3368,
-        "32": 2057
-      },
-      "meanDelta": 0.786,
-      "maxDelta": 85,
-      "movedBBox": {
-        "minX": 486,
-        "minY": 547,
-        "maxX": 962,
-        "maxY": 610
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 2169,
-        "8": 1725,
-        "16": 1275,
-        "32": 588
-      },
-      "meanDelta": 0.668,
-      "maxDelta": 56,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 431,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 4067,
-        "8": 2526,
-        "16": 1463,
-        "32": 588
-      },
-      "meanDelta": 1.154,
-      "maxDelta": 56,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 497
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 72,
-        "y0": 208,
-        "x1": 322,
-        "y1": 493
-      },
-      "pixels": 71786,
-      "over": {
-        "2": 1872,
-        "8": 1670,
-        "16": 1167,
-        "32": 610
-      },
-      "meanDelta": 0.634,
-      "maxDelta": 58,
-      "movedBBox": {
-        "minX": 72,
-        "minY": 431,
-        "maxX": 322,
-        "maxY": 493
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 3779,
-        "8": 2476,
-        "16": 1352,
-        "32": 610
-      },
-      "meanDelta": 1.111,
-      "maxDelta": 58,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 499
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 478,
-        "y0": 109,
-        "x1": 809,
-        "y1": 484
-      },
-      "pixels": 124832,
-      "over": {
-        "2": 3722,
-        "8": 3278,
-        "16": 2542,
-        "32": 1166
-      },
-      "meanDelta": 0.751,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 478,
-        "minY": 400,
-        "maxX": 809,
-        "maxY": 484
-      }
-    },
-    {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 441,
-        "x1": 1151,
-        "y1": 579
-      },
-      "pixels": 142336,
-      "over": {
-        "2": 5395,
-        "8": 3612,
-        "16": 2235,
-        "32": 1164
-      },
-      "meanDelta": 0.713,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 453,
-        "minY": 441,
-        "maxX": 832,
         "maxY": 490
       }
     },
     {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 546,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.116,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 418,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.073,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 464,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.112,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 874,
+        "8": 241,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.062,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 482,
+        "minY": 423,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 828,
+        "8": 236,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.057,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
       "view": "desktop720",
       "tier": "low",
       "region": "cube",
@@ -4960,24 +3610,24 @@
       },
       "pixels": 124832,
       "over": {
-        "2": 3481,
-        "8": 3159,
-        "16": 2524,
-        "32": 1260
+        "2": 629,
+        "8": 223,
+        "16": 90,
+        "32": 18
       },
-      "meanDelta": 0.747,
-      "maxDelta": 88,
+      "meanDelta": 0.059,
+      "maxDelta": 172,
       "movedBBox": {
-        "minX": 478,
-        "minY": 400,
+        "minX": 543,
+        "minY": 429,
         "maxX": 809,
-        "maxY": 484
+        "maxY": 479
       }
     },
     {
-      "label": "G1c (route B): footprint decal vs the legacy radial blob",
-      "a": "g1c-radial",
-      "b": "g1c-footprint",
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
       "view": "desktop720",
       "tier": "low",
       "region": "support",
@@ -4989,471 +3639,34 @@
       },
       "pixels": 142336,
       "over": {
-        "2": 5160,
-        "8": 3490,
-        "16": 2214,
-        "32": 1257
+        "2": 608,
+        "8": 223,
+        "16": 90,
+        "32": 18
       },
-      "meanDelta": 0.709,
-      "maxDelta": 88,
+      "meanDelta": 0.056,
+      "maxDelta": 172,
       "movedBBox": {
-        "minX": 453,
+        "minX": 543,
         "minY": 441,
-        "maxX": 832,
-        "maxY": 490
+        "maxX": 814,
+        "maxY": 479
       }
     },
     {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
       "view": "desktop",
       "tier": "high",
       "region": "cube",
       "box": {
-        "x0": 470,
-        "y0": 79,
-        "x1": 956,
-        "y1": 639
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
       },
-      "pixels": 273207,
-      "over": {
-        "2": 18882,
-        "8": 14059,
-        "16": 8265,
-        "32": 452
-      },
-      "meanDelta": 1.055,
-      "maxDelta": 65,
-      "movedBBox": {
-        "minX": 475,
-        "minY": 501,
-        "maxX": 956,
-        "maxY": 611
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 585,
-        "x1": 1295,
-        "y1": 757
-      },
-      "pixels": 199296,
-      "over": {
-        "2": 8382,
-        "8": 7030,
-        "16": 5089,
-        "32": 212
-      },
-      "meanDelta": 0.729,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 477,
-        "minY": 585,
-        "maxX": 934,
-        "maxY": 611
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 470,
-        "y0": 79,
-        "x1": 956,
-        "y1": 639
-      },
-      "pixels": 273207,
-      "over": {
-        "2": 18809,
-        "8": 14021,
-        "16": 8255,
-        "32": 496
-      },
-      "meanDelta": 1.056,
-      "maxDelta": 87,
-      "movedBBox": {
-        "minX": 475,
-        "minY": 501,
-        "maxX": 956,
-        "maxY": 611
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 144,
-        "y0": 585,
-        "x1": 1295,
-        "y1": 757
-      },
-      "pixels": 199296,
-      "over": {
-        "2": 8378,
-        "8": 7028,
-        "16": 5071,
-        "32": 253
-      },
-      "meanDelta": 0.733,
-      "maxDelta": 87,
-      "movedBBox": {
-        "minX": 477,
-        "minY": 585,
-        "maxX": 934,
-        "maxY": 611
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "mobile",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 44,
-        "y0": 176,
-        "x1": 339,
-        "y1": 517
-      },
-      "pixels": 101232,
-      "over": {
-        "2": 6911,
-        "8": 5013,
-        "16": 2851,
-        "32": 167
-      },
-      "meanDelta": 1.015,
-      "maxDelta": 79,
-      "movedBBox": {
-        "minX": 45,
-        "minY": 434,
-        "maxX": 339,
-        "maxY": 499
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "mobile",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 471,
-        "x1": 383,
-        "y1": 620
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 5764,
-        "8": 4271,
-        "16": 2441,
-        "32": 73
-      },
-      "meanDelta": 1.51,
-      "maxDelta": 79,
-      "movedBBox": {
-        "minX": 45,
-        "minY": 471,
-        "maxX": 337,
-        "maxY": 499
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "mobile",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 44,
-        "y0": 176,
-        "x1": 339,
-        "y1": 517
-      },
-      "pixels": 101232,
-      "over": {
-        "2": 6938,
-        "8": 4970,
-        "16": 2860,
-        "32": 191
-      },
-      "meanDelta": 1.017,
-      "maxDelta": 72,
-      "movedBBox": {
-        "minX": 45,
-        "minY": 434,
-        "maxX": 339,
-        "maxY": 499
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "mobile",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 471,
-        "x1": 383,
-        "y1": 620
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 5785,
-        "8": 4224,
-        "16": 2449,
-        "32": 96
-      },
-      "meanDelta": 1.512,
-      "maxDelta": 72,
-      "movedBBox": {
-        "minX": 45,
-        "minY": 471,
-        "maxX": 337,
-        "maxY": 499
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "cube",
-      "box": {
-        "x0": 440,
-        "y0": 66,
-        "x1": 828,
-        "y1": 514
-      },
-      "pixels": 174661,
-      "over": {
-        "2": 12092,
-        "8": 8988,
-        "16": 5267,
-        "32": 291
-      },
-      "meanDelta": 1.054,
-      "maxDelta": 65,
-      "movedBBox": {
-        "minX": 444,
-        "minY": 403,
-        "maxX": 828,
-        "maxY": 491
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop720",
-      "tier": "high",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 471,
-        "x1": 1151,
-        "y1": 608
-      },
-      "pixels": 141312,
-      "over": {
-        "2": 5064,
-        "8": 4213,
-        "16": 3132,
-        "32": 128
-      },
-      "meanDelta": 0.62,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 446,
-        "minY": 471,
-        "maxX": 810,
-        "maxY": 491
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "cube",
-      "box": {
-        "x0": 440,
-        "y0": 66,
-        "x1": 828,
-        "y1": 514
-      },
-      "pixels": 174661,
-      "over": {
-        "2": 12044,
-        "8": 8990,
-        "16": 5254,
-        "32": 314
-      },
-      "meanDelta": 1.056,
-      "maxDelta": 69,
-      "movedBBox": {
-        "minX": 444,
-        "minY": 403,
-        "maxX": 828,
-        "maxY": 491
-      }
-    },
-    {
-      "label": "G1c (route B): the two shapes under a 45° pitch",
-      "a": "g1c-radial-flip-pitch-mid",
-      "b": "g1c-footprint-flip-pitch-mid",
-      "view": "desktop720",
-      "tier": "low",
-      "region": "support",
-      "box": {
-        "x0": 128,
-        "y0": 471,
-        "x1": 1151,
-        "y1": 608
-      },
-      "pixels": 141312,
-      "over": {
-        "2": 5063,
-        "8": 4224,
-        "16": 3110,
-        "32": 146
-      },
-      "meanDelta": 0.623,
-      "maxDelta": 64,
-      "movedBBox": {
-        "minX": 446,
-        "minY": 471,
-        "maxX": 810,
-        "maxY": 491
-      }
-    }
-  ],
-  "beforeAfter": [
-    {
-      "id": "g0-rgb-dock",
-      "label": "G0 停靠 · 接触影 前 → 后",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 4098,
-        "8": 2608,
-        "16": 1577,
-        "32": 627
-      },
-      "meanDelta": 1.208,
-      "maxDelta": 58,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 497
-      }
-    },
-    {
-      "id": "g1a-A-all",
-      "label": "G1a-A 全部开启 · 前 → 后",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 4098,
-        "8": 2608,
-        "16": 1577,
-        "32": 627
-      },
-      "meanDelta": 1.208,
-      "maxDelta": 58,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 497
-      }
-    },
-    {
-      "id": "g1b-art-ssao-off",
-      "label": "G1b 二维底座无 SSAO · 前 → 后",
-      "view": "mobile",
-      "tier": "high",
-      "crop": null,
-      "region": "support",
-      "box": {
-        "x0": 6,
-        "y0": 447,
-        "x1": 383,
-        "y1": 596
-      },
-      "pixels": 56700,
-      "over": {
-        "2": 4098,
-        "8": 2608,
-        "16": 1577,
-        "32": 627
-      },
-      "meanDelta": 1.208,
-      "maxDelta": 58,
-      "movedBBox": {
-        "minX": 50,
-        "minY": 447,
-        "maxX": 343,
-        "maxY": 497
-      }
-    },
-    {
-      "id": "g0-rgb-dock",
-      "label": "1:1 正面裁切 · 前 → 后",
-      "view": "desktop",
-      "tier": "high",
-      "crop": "face",
-      "region": "crop",
-      "box": {
-        "x0": 0,
-        "y0": 0,
-        "x1": 241,
-        "y1": 241
-      },
-      "pixels": 58564,
+      "pixels": 194166,
       "over": {
         "2": 0,
         "8": 0,
@@ -5465,32 +3678,615 @@
       "movedBBox": null
     },
     {
-      "id": "g0-rgb-dock",
-      "label": "1:1 底排裁切 · 前 → 后",
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
       "view": "desktop",
       "tier": "high",
-      "crop": "wood",
-      "region": "crop",
+      "region": "support",
       "box": {
-        "x0": 0,
-        "y0": 0,
-        "x1": 209,
-        "y1": 209
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
       },
-      "pixels": 44100,
+      "pixels": 200448,
       "over": {
-        "2": 2715,
-        "8": 2086,
-        "16": 1665,
-        "32": 1072
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
       },
-      "meanDelta": 1.553,
-      "maxDelta": 58,
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.064,
+      "maxDelta": 112,
       "movedBBox": {
-        "minX": 0,
-        "minY": 121,
-        "maxX": 209,
-        "maxY": 163
+        "minX": 523,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.068,
+      "maxDelta": 112,
+      "movedBBox": {
+        "minX": 523,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 901,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.05,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 903,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.054,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 500,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.076,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 546,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.116,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 418,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.073,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 464,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.112,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 874,
+        "8": 241,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.062,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 482,
+        "minY": 423,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 828,
+        "8": 236,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.057,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 629,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.059,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 429,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 608,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.056,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
       }
     }
   ],
@@ -6641,7 +5437,7 @@
       "view": "desktop",
       "tier": "high",
       "maxTileScale": 1.05,
-      "maxScaleCell": "1,0,1",
+      "maxScaleCell": "0,0,4",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true
@@ -6650,7 +5446,7 @@
       "view": "desktop",
       "tier": "low",
       "maxTileScale": 1.05,
-      "maxScaleCell": "0,0,2",
+      "maxScaleCell": "1,0,2",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true
@@ -6659,7 +5455,7 @@
       "view": "mobile",
       "tier": "high",
       "maxTileScale": 1.05,
-      "maxScaleCell": "0,3,2",
+      "maxScaleCell": "0,0,4",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true
@@ -6668,7 +5464,7 @@
       "view": "mobile",
       "tier": "low",
       "maxTileScale": 1.05,
-      "maxScaleCell": "0,3,3",
+      "maxScaleCell": "0,2,2",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true
@@ -6677,7 +5473,7 @@
       "view": "desktop720",
       "tier": "high",
       "maxTileScale": 1.05,
-      "maxScaleCell": "2,0,3",
+      "maxScaleCell": "2,0,1",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true
@@ -6686,7 +5482,7 @@
       "view": "desktop720",
       "tier": "low",
       "maxTileScale": 1.05,
-      "maxScaleCell": "3,0,0",
+      "maxScaleCell": "1,0,4",
       "dipBelowRestBottom": 0.0238,
       "restBottomY": -2.475,
       "captured": true

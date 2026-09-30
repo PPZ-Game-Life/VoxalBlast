@@ -283,7 +283,6 @@ const {
   getOrbitDistance,
   getCameraDir,
   getAppliedCanvasSize,
-  setSupportYaw,
 } = scene3d
 
 // ============================================================
@@ -1601,11 +1600,6 @@ function animate() {
   // is playing the blocks wear their own wave material instead and must not be
   // repainted under it.
   if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
-  // Route B (v0.10.2): the contact decal's footprint follows the board's own yaw, so it stays
-  // under the blocks while the view is dialled. One float compare per frame; the mesh rotation
-  // only changes when the bearing does (the texture is never rebuilt here). Presentation
-  // assembly only — no rule, no pose and no camera value is written.
-  setSupportYaw(boardView.getBearing().yaw)
   updatePiecePreviews()
   // 07 §8.5.4: the quiet pulse on the cells that will actually disappear. It rides the same
   // frame loop as everything else (the plan's "只有一个时钟" rule) and is a no-op with no scope
@@ -1721,7 +1715,6 @@ const devHandles = import.meta.env.DEV
       contactDecal: (on) => scene3d.setContactDecalEnabled(on),
       projectedShadow: (on) => scene3d.setProjectedShadowEnabled(on),
       occlusion: (value) => scene3d.setOcclusionIntensity(value),
-      contactShape: (shape) => scene3d.setContactShape(shape),
       hold: (axis, angle) => boardView.holdDiagnosticPose(axis, angle),
       release: () => boardView.clearDiagnosticPose(),
       report: () => scene3d.groundingReport(),

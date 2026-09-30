@@ -388,13 +388,11 @@ async function runSession({ viewName, tier, report }) {
         throw new Error(`the grounding diagnostics are missing — is the page a DEV build? rendering keys: ${Object.keys(state.rendering).join(', ')}`)
       }
       baselineOcclusion = state.rendering.grounding.occlusionIntensity
-      baselineShape = state.rendering.contactShadows.pedestal?.contactShape ?? 'footprint'
       return state
     }
 
     let baselineOcclusion = null
-    let baselineShape = null
-    const applyState = async ({ route = 'art', ssao, contact = true, projected = true, pose = null, occlusion = null, shape = null }) => {
+    const applyState = async ({ route = 'art', ssao, contact = true, projected = true, pose = null, occlusion = null }) => {
       const expression = `(() => {
         const g = globalThis.__voxalblastDev.grounding
         g.route(${JSON.stringify(route)})
@@ -402,7 +400,6 @@ async function runSession({ viewName, tier, report }) {
         g.projectedShadow(${projected})
         ${ssao === undefined || ssao === null ? '' : `g.ssao(${ssao})`}
         g.occlusion(${occlusion === null ? baselineOcclusion ?? 'undefined' : occlusion})
-        g.contactShape(${JSON.stringify(shape ?? baselineShape ?? 'footprint')})
         ${pose ? pose.expression : 'g.release()'}
         return JSON.stringify(g.report())
       })()`
@@ -525,7 +522,6 @@ async function runSession({ viewName, tier, report }) {
     const wantG0 = stageAll || STAGE === 'g0'
     const wantG1a = stageAll || STAGE === 'g1a'
     const wantG1b = stageAll || STAGE === 'g1b'
-    const wantG1c = stageAll || STAGE === 'g1c'
 
     const autoTierDefault = tier === 'high' ? true : tier === 'low' ? false : null
 
@@ -723,40 +719,6 @@ async function runSession({ viewName, tier, report }) {
       }
     }
 
-    // ---- G1c: route B (v0.10.2) — the contact decal reshaped to the board's footprint -------
-    //
-    // The producer chose route B on 2026-09-30 (keep the painted pedestal, redo the contact
-    // matching). The only thing that changed is the decal's SHAPE and its alignment, so the round
-    // is graded by swapping the shape on the same frame and nothing else.
-    if (wantG1c) {
-      await loadFixture('rgb')
-      const variants = [
-        { id: 'g1c-footprint', shape: 'footprint', note: 'route B: footprint-shaped contact decal (shipped default)' },
-        { id: 'g1c-radial', shape: 'radial', note: 'legacy radial contact decal (same frame, same pose)' },
-      ]
-      for (const variant of variants) {
-        const state = await applyState({ route: 'art', ssao: autoTierDefault, contact: true, projected: true, shape: variant.shape })
-        await recordFrame({ id: variant.id, stage: 'G1c', crops: true, flipCrop: true, note: variant.note }, state, null)
-      }
-      // Does the footprint stay under the blocks while the view is dialled? One real fine-tune
-      // drag to each end of the zone, captured, so the alignment can be seen rather than assumed.
-      await dragFineTune(0.09)
-      await recordFrame({ id: 'g1c-footprint-yaw-right', stage: 'G1c', note: 'route B decal at the top of the fine-tune zone' },
-        await applyState({ route: 'art', ssao: autoTierDefault }), null)
-      await dragFineTune(-0.09)
-      await dragFineTune(-0.09)
-      await recordFrame({ id: 'g1c-footprint-yaw-left', stage: 'G1c', note: 'route B decal at the bottom of the fine-tune zone' },
-        await applyState({ route: 'art', ssao: autoTierDefault }), null)
-      // …and under a mid-turn cube, where the footprint is no longer a footprint.
-      for (const shape of ['footprint', 'radial']) {
-        await recordFrame({
-          id: `g1c-${shape}-flip-pitch-mid`, stage: 'G1c', flipCrop: true,
-          note: `${shape} decal under a 45° pitch`,
-        }, await applyState({ route: 'art', ssao: autoTierDefault, shape, pose: { expression: `g.hold('pitch', Math.PI / 4)` } }), null)
-      }
-      await applyState({ route: 'art', ssao: autoTierDefault })
-    }
-
     if (browserErrors.length) {
       report.pageErrors.push({ view: viewName, tier, errors: [...new Set(browserErrors)] })
     }
@@ -843,8 +805,6 @@ const pairs = [
   ['g1b-platform-plain', 'g1b-platform-decal', 'G1b: contact decal on a real slab'],
   ['g1b-platform-plain', 'g1b-platform-ssao', 'G1b: SSAO on a real slab'],
   ['g1b-platform-ssao', 'g1b-platform-ssao-decal', 'G1b: decal on top of SSAO'],
-  ['g1c-radial', 'g1c-footprint', 'G1c (route B): footprint decal vs the legacy radial blob'],
-  ['g1c-radial-flip-pitch-mid', 'g1c-footprint-flip-pitch-mid', 'G1c (route B): the two shapes under a 45° pitch'],
 ]
 for (const [aId, bId, label] of pairs) {
   for (const a of report.conditions.filter((condition) => condition.id === aId)) {

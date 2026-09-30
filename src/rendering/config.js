@@ -263,41 +263,12 @@ export const SHADOW_STYLE = Object.freeze({
   lowPowerMapSize: 512,
   // The pedestal is DOM art: a transparent receiver overlays only its shadow.
   projectedOpacity: 0.18,
-  contactOpacity: 0.3,
-  // LEGACY radial decal (v0.9.x). Kept because route B is graded against it — same frame, same
-  // pose, only the decal's shape differs — and because it is what a rollback restores.
+  contactOpacity: 0.24,
   contactSize: 6.0,
   receiverSize: 6.3,
   floorOffset: 0.025,
   textureSize: 128,
   lowPowerSSAO: false, // baked surface AO + contact decal replace two scene passes
-
-  // ---- Route B (v0.10.2): the contact decal is shaped like the board's own bottom footprint ----
-  //
-  // G1 measured the radial blob contributing nothing outside a thin ring at the cube's bottom
-  // edge — its dark core sat behind the cube, so what reached the screen was a soft circular
-  // smudge. Route B's exit condition (handoff §5) is 「接触影需更贴近底部轮廓，近处较实、外沿渐软，
-  // 不能只放大一团圆形污影」, so the decal is now built from the footprint itself:
-  //
-  //   * shape   a rounded square of EXACTLY the blocks' half-extent (`footprintHalf`, passed in
-  //             from the board's own lattice), rotated with the board's bearing so it stays under
-  //             the blocks as the view is dialled.
-  //   * near    the camera-near edge (the board's own +z face) falls off over `contactSkirtNear`
-  //             — short and firm, which is the part a player actually sees below the front edge.
-  //   * far     the far/outer side falls off over `contactSkirtFar` — long and soft, so the decal
-  //             has a tail instead of an edge.
-  //
-  // This is still painted alpha on a plane, NOT surface occlusion: it is a visual approximation
-  // and must not be described as a real table SSAO (route B's own wording).
-  contactShape: 'footprint', // 'footprint' | 'radial' (diagnostic / rollback)
-  footprintTextureSize: 256,
-  contactColor: Object.freeze([70, 42, 23]),
-  contactRoundness: 6, // superellipse exponent: 2 = ellipse, high = square. The blocks' own
-  // rounded corners are what keep this from reading as a hard-edged plate.
-  contactSkirtNear: 0.34, // world units of falloff on the camera-near edge
-  contactSkirtFar: 1.05, // …and on the far/outer side
-  contactNearWeight: 1,
-  contactFarWeight: 0.6,
 })
 
 // G1 diagnostic prototype (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §5 G1b).
