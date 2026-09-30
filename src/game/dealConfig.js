@@ -23,7 +23,20 @@
 // Bumped whenever any value in this file changes in a way that can move a hand. It is
 // written into the save slot and into the experiment output, so a number is always
 // attributable to the table that produced it.
-export const DEAL_CONFIG_VERSION = 'v0.9.0-p1.0'
+//
+// v0.10.0 (2026-09-30): the three pentominoes joined `SHAPE_WEIGHTS` (15 -> 18 shapes,
+// 20.4 -> 23.4 weight units). No number IN this file changed — the bump is here because the
+// SHAPE TABLE changed, and the shape table is what half of these parameters are measured
+// against:
+//   - `boardPressure.REFERENCE_POOL` is derived from `SHAPES`, so `room()` and therefore the
+//     absolute meaning of `R` moved the moment the pool grew. Same for `PRESSURE_DELTA`'s
+//     ranges and `PRESSURE_MAX_JUMP`, which are expressed in units of that same R.
+//   - the dealer's `weightedTable()` is derived from `SHAPE_WEIGHTS`, so the candidate
+//     distribution moved too.
+// This string is the only mechanism that stops "the metric was renormalised" from being read
+// as "the game got easier/harder". Reports that quote an R measured under `v0.9.0-p1.0` are
+// NOT comparable to one measured under `v0.10.0`; reports under the same string are.
+export const DEAL_CONFIG_VERSION = 'v0.10.0'
 
 // ---- Tiers (§8.1) ------------------------------------------------------------
 // `tier = min(3, floor(placementCount / 30))` — the tier is DERIVED, never stored, so the

@@ -38,10 +38,11 @@ const PURPLE = 0xc03fa0 // Z      -> #c300f0
 const PALETTE = [RED, BLUE, GREEN, YELLOW, PURPLE]
 
 // 2x2x2-ish same-colour clusters, the way the reference stacks blocks, instead of
-// per-cell noise that would hide seams behind a speckled face.
-function paint(x, y, z) {
+// per-cell noise that would hide seams behind a speckled face. The modulus is the palette
+// length, so the original five-colour call reproduces the committed fixtures byte for byte.
+function paint(x, y, z, length = PALETTE.length) {
   const cluster = Math.floor(x / 2) + Math.floor(y / 2) * 2 + Math.floor(z / 2) * 3
-  return PALETTE[cluster % PALETTE.length]
+  return cluster % length
 }
 
 // A mostly-filled shell with the front wall complete. The front wall is the whole point:
@@ -51,7 +52,7 @@ function paint(x, y, z) {
 // colour impossible to grade against the wood.
 const GAPS = new Set(['3,4,3', '2,4,2', '1,4,1', '4,0,2', '4,1,1', '0,4,3', '0,0,4', '4,4,4'])
 
-function boardCells() {
+function boardCells(palette = PALETTE) {
   const cells = []
   for (let x = 0; x < SIDE; x += 1) {
     for (let y = 0; y < SIDE; y += 1) {
@@ -65,7 +66,7 @@ function boardCells() {
           || (z === 0 && y <= 2)
         if (!filled) continue
         if (GAPS.has(`${x},${y},${z}`)) continue
-        cells.push([x, y, z, paint(x, y, z)])
+        cells.push([x, y, z, palette[paint(x, y, z, palette.length)]])
       }
     }
   }
@@ -75,16 +76,25 @@ function boardCells() {
 // Batch hands. Index 0 is the widest piece in its batch on purpose: §5.2 says a 4-cell
 // line is the shape most at risk of being fitted smaller than its neighbours, so it must
 // never be the one batch that a reviewer skips.
+//
+// v0.10.0 adds batch `d`, the three pentominoes. Their colours have to be graded against
+// the timber here rather than in the numeric scan alone (the v0.8.17 rule's whole point),
+// and the three have to be tellable apart from the four-cell `T` at a glance — so this
+// batch is the one whose BOARD paints with the new colours too, giving the review a real
+// render of each new paint next to bare wood and next to the old palette.
+const PENTOMINO_PALETTE = [0xc22b58, 0x2f5fc4, 0x4faa4a, 0x293894, 0xd62fd6, 0x2fd64b, 0xd13c2e, 0x8b57c9]
 const BATCHES = {
   a: ['Dot', 'Line 4', 'L'],
   b: ['J', 'S', 'Z'],
   c: ['Rect 6', 'Block 9', 'T'],
+  d: ['Cross 5', 'U 5', 'T 5'],
 }
 
 const BOARD = boardCells()
+const PENTOMINO_BOARD = boardCells(PENTOMINO_PALETTE)
 
 for (const [key, pieces] of Object.entries(BATCHES)) {
-  const cells = BOARD.map((cell) => cell.slice())
+  const cells = (key === 'd' ? PENTOMINO_BOARD : BOARD).map((cell) => cell.slice())
   const fixture = {
     snapshot: {
       board: { cells, score: 4180, totalLines: 21 },

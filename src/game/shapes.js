@@ -22,6 +22,14 @@
 // `Line 5` stays out: on a 5-wide face it can only ever land on a completely empty
 // row and clears it instantly, and P1 does not add it.
 //
+// v0.10.0 keeps that rule and uses its other half. The three shapes added below are
+// pentominoes that all top out at a THREE-long straight run: like `L 5` they can never
+// self-clear, and unlike the small fillers they can complete a line the board already has
+// two cells of. The rule is about the face width, not the cell count — "no straight run as
+// long as a face" — so a 5-cell piece is not automatically suspect and a 3-cell piece is
+// not automatically safe (the v0.8.14 note on `Block 9` is the same point from the other
+// side: it is 3-wide, so it never self-clears, and that is exactly why it is pure pressure).
+//
 // Each cell is [u, v] relative to the shape's top-left origin at (0,0).
 //
 // v0.7 「田园木作」recoloured the pool to CRAYON PAINT: colours a wooden toy would
@@ -124,6 +132,58 @@ export const SHAPES = [
   //     card — but see docs/Technical/DIFFICULTY_TENSION.md for what it does to the
   //     ending rate before deciding to keep it at weight 1.
   { name: 'Block 9', color: 0xa94fc4, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]] },
+  // v0.10.0: the three PENTOMINOES the producer asked for (2026-09-30 handoff §1/§6), all at
+  // an explicit weight of 1 — the producer's call is deliberately "harder, no damping".
+  //
+  // Why these three are legal where `Line 5` is not: the pool rule is "a shape may not carry a
+  // straight run as long as a face" (v0.2.24 — a 5-long line can only ever land on a completely
+  // empty 5-wide row and clears it on contact, free points, and it rescues almost every dead
+  // board). All three top out at a 3-long run, so none of them can ever self-clear. They are
+  // the OTHER half of that rule: because each carries a 3-long run, all three can COMPLETE a
+  // line the board already has two cells of — they are pressure pieces that pay for the space
+  // they demand. `Cross 5` and `T 5` have their horizontal and vertical 3-runs crossing on one
+  // shared centre cell, so either can complete TWO lines at once; `U 5` has one 3-run, so it
+  // completes at most one.
+  //
+  // Difficulty profile (handoff §2; "empty-face placements" = bounding-box origins x in-plane
+  // orientations, which is the number that actually predicts how picky a piece is):
+  //   Cross 5  9 placements  — the tightest piece in the pool bar `Block 9` (also 9, also one
+  //                            orientation): it needs a 3x3 free region and always occupies the
+  //                            same 5 of those 9 cells. High pressure, but it is the piece most
+  //                            likely to complete a line, and it can complete two.
+  //   T 5     36 placements  — `L 5`'s tier, 4x the cross's room, same 5 cells.
+  //   U 5     48 placements  — the roomiest of the three, and the one that behaves most like the
+  //                            four-cell `L`/`J`/`T` it is one cell bigger than.
+  // That spread is intentional: it is what makes the triad a difficulty GRADIENT rather than
+  // three copies of the same problem (see docs/Technical/DIFFICULTY_CURVE_POOL18.md).
+  //
+  // Colours (#d62fd6 / #2fd64b / #d13c2e): picked by the pool's own v0.8.17 wood-free hue-band
+  // rule (see the header), not by eye — a ΔE*ab scan over the three free hue windows (green
+  // h128-156, magenta h296-326, vermilion h3-24) inside the crayon envelope, maximising the
+  // distance to the nearest paint already in the pool.
+  //
+  // ⚠️ The scan has to be run in RENDERED space, and these three are a case where that matters:
+  // `src/rendering/referencePalette.js` maps the 14 pre-v0.9.0 logic colours to a LACQUER skin
+  // and passes anything else through unchanged, so `Line 4` and these three are seen by the
+  // player as the hex values written here, while `Dot` is seen as #ff1644 and `Block 9` as
+  // #9500f5. The timber the paint must clear is `BOARD_STYLE.blockColor` (#f3c99a, the EMPTY
+  // block — a placed and an empty block are the same cube in a different material, so "is this
+  // cell filled?" is carried by colour alone) across its `blockToneSteps` 0.97-1.03, i.e. hue
+  // ~31-32° at L* 82.5-84.6. All three clear it: `Cross 5` and `U 5` by HUE (300° and 130° are
+  // 90°+ away), `T 5` by LIGHTNESS (L* 48.2, ΔL* 34+ from every wood tone).
+  //
+  // Nearest paint already in the pool, measured in that same rendered space:
+  //   Cross 5 vs Z 22.8   U 5 vs S 29.2   T 5 vs Dot 23.2
+  // All three are above the rule's 16.5 bar, and — the number that actually matters — the
+  // tightest pair these three introduce (22.8) is still LOOSER than seven pairs the pool
+  // already ships with (`Square`/`Block 9` 5.1, `L`/`S` 6.5, `Line 4`/`Slant 3` 13.0,
+  // `L`/`Rect 6` 14.6, `Z`/`Block 9` 16.1, `Line 2`/`J` 16.8, `S`/`Rect 6` 19.5), so this
+  // addition does not create a new closest pair.
+  // `T 5` sits ΔE 36.4 from the four-cell `T` it is named after — the handoff's one explicit
+  // colour requirement. Scan: %TEMP%/vb-color-rendered.cjs (one-off, not committed).
+  { name: 'Cross 5', color: 0xd62fd6, cells: [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]] },
+  { name: 'U 5', color: 0x2fd64b, cells: [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1]] },
+  { name: 'T 5', color: 0xd13c2e, cells: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]] },
 ]
 // Candidate weights (v0.8.4; the pool grew in v0.8.12/13/14, the RULE did not). The six
 // four-cell shapes carry weight 2 and every other shape carries 1. With the shipping
@@ -164,6 +224,13 @@ export const SHAPES = [
 // DIFFICULTY_TENSION.md for the later re-runs, which is where Block 9's effect lands.
 // v0.9.0 P1 breaks the rule in exactly one place (Line 4 = 1) and turns Block 9 down to
 // 0.4 — read the two entries in the table below before touching either number.
+//
+// v0.10.0 grows the pool 15 -> 18 and leaves the rule alone: `Cross 5` / `U 5` / `T 5` are
+// five-cell pieces, so they enter at 1, exactly like `Rect 6` and `L 5` did at v0.8.12.
+// What does NOT follow the cell count is difficulty: measured on the empty face, `Cross 5`
+// has 9 legal placements against `U 5`'s 48 — the cross is in `Block 9`'s tier, the U is in
+// `L 5`'s. The producer ruled to ship all three at 1 anyway, so this table is the intent,
+// and docs/Technical/DIFFICULTY_CURVE_POOL18.md is the measurement of what it did.
 export const SHAPE_WEIGHTS = Object.freeze({
   Dot: 1,
   'Line 2': 1,
@@ -191,14 +258,48 @@ export const SHAPE_WEIGHTS = Object.freeze({
   // director both move the realised distribution — see docs/Planning/02 §3.
   'Line 4': 1,
   'Block 9': 0.4,
+  // v0.10.0: the three pentominoes, each at weight 1 — the producer's 2026-09-30 ruling
+  // ("三件全上、各权重 1、不降权不加冷却，难度上升就是本次的目的", handoff §6). The rule
+  // "a shape weighs 2 only if it is a four-cell piece" is kept literally: these are five-cell
+  // pieces, so they join at 1 like `Rect 6` / `L 5` did. Do NOT "fix" them to 2 — that is a
+  // different, much stronger pool.
+  //
+  // Total is now 23.4 (was 20.4). Base sampling shares move to: four-cell 12/23.4 = 51.3%,
+  // four-cells-or-larger 18.4/23.4 = 78.6%, five-cell 3/23.4 = 12.8% (was 4.9% — the number
+  // the handoff calls the difficulty lever), `Block 9` 0.4/23.4 = 1.71% (diluted from 1.96%).
+  // These are BASE SAMPLING shares, not what a player finally sees: the batch filter
+  // (≤1 Block 9, Block 9 cooldown, ≤2 of a shape per batch) and the difficulty director both
+  // move the realised distribution — measured, not assumed, in
+  // docs/Technical/DIFFICULTY_CURVE_POOL18.md.
+  'Cross 5': 1,
+  'U 5': 1,
+  'T 5': 1,
 })
 
-// The opening preset (Board.seedOpening) draws UNIFORMLY from this list, and P1 freezes
-// its membership to the pre-Line-4 pool on purpose: the spec (§3.3) asks the new shape to
-// move the CANDIDATE distribution only, so a change in opening density can never be read
-// as part of the Line 4 effect in the A/B/C experiments. Frozen by name, not by slicing
-// SHAPES, so a future shape addition has to opt in here deliberately.
-export const OPENING_SHAPES = Object.freeze(SHAPES.filter((shape) => shape.name !== 'Line 4'))
+// The opening preset (Board.seedOpening) draws UNIFORMLY from this list. It is an EXPLICIT
+// whitelist spelled out by NAME, not a filter over SHAPES — the previous
+// `SHAPES.filter(name !== 'Line 4')` was opt-OUT, so every future shape silently joined the
+// opening pool even though the comment claimed the opposite.
+//
+// This matters more than it looks. `Board.seedOne` picks a shape by INDEX into the list it is
+// handed, so membership AND order both decide the decorated board — and the opening density
+// moves every difficulty number in the project. v0.9.0 measured the damage once already: merely
+// giving `Line 4` a place in this list would have moved the seeded opening from 17.28 to 17.20
+// cells and changed the whole histogram (MEASUREMENT_METHOD.md §7.6(b)).
+//
+// So this list is FROZEN at the pre-`Line 4` membership AND ORDER (SHAPES order, `Line 4`
+// removed) for the third time running, and the v0.10.0 pentominoes opt OUT of it deliberately
+// (handoff §6.3 / decision point (b)): this release changes what the dealer OFFERS, not how the
+// board starts. A tighter opening would be a second, independent lever — do not add the three
+// here without re-freezing every opening-sensitive baseline in the same breath.
+const OPENING_SHAPE_NAMES = Object.freeze([
+  'Dot', 'Line 2', 'Line 3', 'Square', 'L', 'J', 'T', 'S', 'Z', 'Corner', 'Rect 6', 'L 5', 'Slant 3', 'Block 9',
+])
+export const OPENING_SHAPES = Object.freeze(OPENING_SHAPE_NAMES.map((name) => {
+  const shape = SHAPES.find((entry) => entry.name === name)
+  if (!shape) throw new Error(`OPENING_SHAPES names a shape the pool does not have: ${name}`)
+  return shape
+}))
 
 const WEIGHTED_POOL = (() => {
   const entries = SHAPES.map((shape) => ({ shape, weight: SHAPE_WEIGHTS[shape.name] ?? 0 }))

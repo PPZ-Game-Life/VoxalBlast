@@ -343,7 +343,7 @@ test('strict CLI rejects silent experiment-parameter mistakes', () => {
 })
 
 test('pool definitions are explicit, and only declared pools are accepted', () => {
-  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'ship', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9', 'bb4', 'bb5', 'bb'])
+  assert.deepEqual(POOL_IDS, ['current', 'soft75', 'ship', 'c', 'd', 'w90', 'e', 'e5', 'soft82', 'b9w04', 'no9', 'bb4', 'bb5', 'bb', 'pool15', 'pool18'])
   // `current`, `c`, `d` and `soft82` are frozen to the ten shapes they were MEASURED
   // with (v0.8.12 added two shapes to the game; letting them into these pools would
   // have silently redefined three published candidates and invalidated every number
@@ -459,12 +459,35 @@ test('pool definitions are explicit, and only declared pools are accepted', () =
   // from 75.0%), Line 4 1/20.4 = 4.90% and Block 9 0.4/20.4 = 1.96% (down from 5.00%).
   // Pinned to the shipped table's own numbers, so a game-side reweighting has to be a
   // conscious decision here as well.
-  assert.ok(Math.abs(shareOf('ship', FOUR) - 12 / 20.4) < 1e-9)
-  assert.ok(Math.abs(shareOf('ship', [...FOUR, 'Line 4', 'Rect 6', 'L 5', 'Block 9']) - 15.4 / 20.4) < 1e-9)
-  assert.ok(Math.abs(shareOf('ship', ['Line 4']) - 1 / 20.4) < 1e-9)
-  assert.ok(Math.abs(shareOf('ship', ['Block 9']) - 0.4 / 20.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', FOUR) - 12 / 23.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', [...FOUR, 'Line 4', 'Rect 6', 'L 5', 'Block 9', 'Cross 5', 'U 5', 'T 5']) - 18.4 / 23.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', ['Line 4']) - 1 / 23.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('ship', ['Block 9']) - 0.4 / 23.4) < 1e-9)
   assert.ok(Math.abs(shareOf('soft82', FOUR) - 18 / 22) < 1e-9)
   assert.ok(Math.abs(shareOf('w90', FOUR) - 0.9) < 1e-9)
+  // v0.10.0 (producer's 2026-09-30 handoff §5 step 2): the pentomino experiment's two new ids.
+  // `pool15` is the v0.9.0 shipped table LITERAL-frozen and `pool18` is that plus the three
+  // pentominoes at 1 each. Both halves are asserted here independently, so a future edit that
+  // spreads `SHAPE_WEIGHTS` into the baseline (turning the treatment into the control) fails
+  // loudly instead of measuring the new pool against itself.
+  const PENTOMINO = ['Cross 5', 'U 5', 'T 5']
+  assert.deepEqual(weightsOf('pool15'), { ...FROZEN14, 'Line 4': 1, 'Block 9': 0.4 })
+  assert.deepEqual(Object.keys(weightsOf('pool15')), ['Dot', 'Line 2', 'Line 3', 'Corner', 'Slant 3', 'Square', 'L', 'J', 'T', 'S', 'Z', 'Rect 6', 'L 5', 'Line 4', 'Block 9'])
+  assert.equal(POOLS.pool15.entries.length, 15)
+  assert.ok(POOLS.pool15.members.has('Line 4') && !POOLS.pool15.members.has('Cross 5'))
+  assert.deepEqual(weightsOf('pool18'), { ...weightsOf('pool15'), 'Cross 5': 1, 'U 5': 1, 'T 5': 1 })
+  assert.equal(POOLS.pool18.entries.length, 18)
+  for (const name of PENTOMINO) assert.equal(weightsOf('pool18')[name], 1)
+  // The pair differs in EXACTLY one factor: same fifteen shapes, same weights, plus three.
+  assert.deepEqual(Object.keys(weightsOf('pool18')).slice(0, 15), Object.keys(weightsOf('pool15')))
+  // And `pool18` must be the shipped table value-for-value — otherwise the "treatment" arm is
+  // not the configuration that ships, and §6's ruling would be measured nowhere.
+  assert.deepEqual(weightsOf('pool18'), { ...SHAPE_WEIGHTS })
+  // The lever the whole handoff §3.1 argument is about: five-cell pieces 4.90% -> 17.09% of
+  // slots at BASE weights (SLANT3-era 4.9% was `L 5` alone), and 4+-cell pieces 75.5% -> 78.6%.
+  assert.ok(Math.abs(shareOf('pool15', ['L 5']) - 1 / 20.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('pool18', ['L 5', ...PENTOMINO]) - 4 / 23.4) < 1e-9)
+  assert.ok(Math.abs(shareOf('pool18', [...FOUR, 'Line 4', 'Rect 6', 'L 5', 'Block 9', ...PENTOMINO]) - 18.4 / 23.4) < 1e-9)
 })
 
 test('uniform pool dealing honours weights, never leaves the pool and consumes two randoms per slot', () => {

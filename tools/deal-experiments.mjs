@@ -41,6 +41,35 @@
 //   A → D   TWO factors  the whole v0.9.0 change in one step — NOT usable for attribution
 //   B → E   TWO factors  Block 9 weight AND dealing move together — NOT usable for attribution
 //
+// ---------------------------------------------------------------------------
+// ARMS G–L — v0.10.0, the three pentominoes (producer's 2026-09-30 handoff §5 step 2)
+// ---------------------------------------------------------------------------
+//   arm  shape pool (weights keyed by NAME)                          dealing
+//   ---  ---------------------------------------------------------  --------------------------
+//   G    FROZEN v0.9.0 15 shapes (`Line 4: 1`, `Block 9: 0.4`)      blind   [BASELINE]
+//   H    G + `U 5: 1`                                               blind   single-piece effect
+//   I    G + `T 5: 1`                                               blind   single-piece effect
+//   J    G + `Cross 5: 1`                                           blind   single-piece effect
+//   K    G + all three at 1  (= the ruled configuration)             blind   THE TOTAL EFFECT
+//   L    G + all three at 1 AND `Block 9: 1`                        blind   pressure ceiling, not a candidate
+//
+//   G → H / G → I / G → J / G → K / K → L   single factor, usable for attribution
+//   G → L                                   two factors, NOT usable for attribution
+//
+// WHY ALL SIX ARE BLIND, and how to read the board-aware side instead. A blind arm draws from
+// ITS OWN weight table, so its pool can be frozen exactly — which is the entire point of a
+// baseline. A board-aware arm draws from `SHAPE_WEIGHTS` inside src/game/shapes.js (the shipped
+// dealer builds its candidate table there and exposes no injection seam; the one shipped lever
+// is the Block 9 cooldown, see `armCForceBlock9Out`). So arms C and D CANNOT be held at fifteen
+// shapes after the game has eighteen: a `D` run today IS the shipped configuration, and the
+// "what will players actually meet" question is answered by comparing today's `D` against the
+// PUBLISHED `D` run — same arms, same seeds, same strategies, same step cap — with the two
+// `configVersion`s (`v0.9.0-p1.0` vs `v0.10.0`) side by side in the two summaries.
+//
+// Arms A/B/E/F are unchanged in DESIGN and reproduce the published numbers exactly; that
+// reproduction is itself the check that the freeze above works (E/random: endedPct 100, p50 34,
+// KM 34, identical to the v0.9.0-p1.0 summary).
+//
 // WHAT IS DIFFERENT FROM tools/difficulty-model.mjs (the previous generation): that tool
 // re-implemented the board as its own bitboard model. This one drives the REAL
 // `createGameSession()` — the shipped board, the shipped director, the shipped dealer, the
@@ -106,28 +135,104 @@ const SESSION_SCHEMA = 'deal-experiments/v2'
 // ---------------------------------------------------------------------------
 const SHAPE_BY_NAME = new Map(SHAPES.map((shape) => [shape.name, shape]))
 
-// The shipped table, copied so the arms below can override single entries. The frozen export
-// itself is never mutated.
-const SHIPPED_WEIGHTS = Object.freeze({ ...SHAPE_WEIGHTS }) // Line 4: 1, Block 9: 0.4, total 20.4
+// Resolve a frozen shape list by NAME, in the order given. Never by slicing `SHAPES`: the
+// v0.8.12 accident (four published measurement pools derived from `SHAPE_NAMES` were silently
+// redefined by a shape addition) is exactly what "freeze by name" prevents.
+function shapesNamed(names) {
+  return Object.freeze(names.map((name) => {
+    const shape = SHAPE_BY_NAME.get(name)
+    if (!shape) throw new Error(`frozen shape list names a shape the pool does not have: ${name}`)
+    return shape
+  }))
+}
+
+// The v0.9.0 shipped pool, FROZEN BY NAME AND ORDER (15 shapes, 20.4 units: `Line 4` 1,
+// `Block 9` 0.4). Arms A–G are all built from this literal, so the arm designs published with
+// A–F keep reproducing after v0.10.0 grew the shipped pool to 18.
+//
+// This used to be `{ ...SHAPE_WEIGHTS }` — a SPREAD, which was a copy only until the shipped
+// table moved. Left as a spread, adding the three pentominoes would have turned arms B/E/F into
+// 18-shape arms, i.e. it would have rewritten six published arms instead of adding new ones.
+const POOL15_NAMES = Object.freeze([
+  'Dot', 'Line 2', 'Line 3', 'Line 4', 'Square', 'L', 'J', 'T', 'S', 'Z', 'Corner', 'Rect 6', 'L 5', 'Slant 3', 'Block 9',
+])
+const POOL15_SHAPES = shapesNamed(POOL15_NAMES)
+const POOL15_WEIGHTS = Object.freeze({
+  Dot: 1,
+  'Line 2': 1,
+  'Line 3': 1,
+  Corner: 1,
+  'Slant 3': 1,
+  Square: 2,
+  L: 2,
+  J: 2,
+  T: 2,
+  S: 2,
+  Z: 2,
+  'Rect 6': 1,
+  'L 5': 1,
+  'Line 4': 1,
+  'Block 9': 0.4,
+})
+
+// The SHIPPED table, live (`{ ...SHAPE_WEIGHTS }`), used by arms C and D ONLY. Those two are
+// board-aware: their pool comes from `SHAPE_WEIGHTS` inside src/game/shapes.js, so freezing the
+// arm's copy would only make the REPORT lie about what was dealt. Their design row therefore
+// states what the game deals at the time of the run, and `followsGame` marks them so the report
+// can say so out loud. Every BLIND arm uses the literal POOL15_WEIGHTS above instead.
+//
+// Consequence, and the report repeats it: C/D numbers are NOT comparable across a change to
+// `SHAPE_WEIGHTS` unless the two runs are read as a before/after pair with their
+// `DEAL_CONFIG_VERSION`s side by side. That is precisely what the v0.10.0 measurement does.
+const SHIPPED_WEIGHTS = Object.freeze({ ...SHAPE_WEIGHTS })
+
+// The v0.10.0 additions. In `SHAPES` they are appended after `Block 9`, and the arms below
+// append them in the same order, so an arm's cumulative table is exactly the shipped table's
+// order with the missing shapes removed — no reshuffling of the existing intervals beyond the
+// renormalisation the total change forces on every arm anyway.
+const PENTOMINO_NAMES = Object.freeze(['Cross 5', 'U 5', 'T 5'])
 
 // Arm A: the FROZEN pre-v0.9.0 table — the 14 shapes with `Block 9: 1` and no `Line 4`
 // (total 20). Membership is read from `OPENING_SHAPES`, which shapes.js froze by NAME for
 // exactly this reason: a future shape addition has to opt in there deliberately, so this arm
 // cannot silently widen.
 const PRE_LINE4_WEIGHTS = (() => {
-  const table = { ...SHAPE_WEIGHTS, 'Block 9': 1 }
+  const table = { ...POOL15_WEIGHTS, 'Block 9': 1 }
   delete table['Line 4']
   return Object.freeze(table)
 })()
 
 // Arm B: shipped membership with `Line 4` present but Block 9 still at its pre-v0.9.0 weight
 // (total 21). This is the arm that separates "Line 4 came back" from "Block 9 went down".
-const LINE4_ADDED_WEIGHTS = Object.freeze({ ...SHAPE_WEIGHTS, 'Block 9': 1 })
+const LINE4_ADDED_WEIGHTS = Object.freeze({ ...POOL15_WEIGHTS, 'Block 9': 1 })
 
 // Arms C and F: the 15-shape pool with `Line 4: 1` and **`Block 9: 0`** (total 20). The zero is
 // a ZERO-WEIGHT MEMBER: `blindTable()` drops it before the cumulative table exists, so the draw
 // can never return it — it is not "drawn and rejected".
-const NO_BLOCK9_WEIGHTS = Object.freeze({ ...SHAPE_WEIGHTS, 'Block 9': 0 })
+const NO_BLOCK9_WEIGHTS = Object.freeze({ ...POOL15_WEIGHTS, 'Block 9': 0 })
+
+// ---- arms G–L: the v0.10.0 pentomino experiment (producer's 2026-09-30 handoff §5 step 2) ----
+// All six are BLIND arms, and that is a deliberate choice rather than a convenience:
+//
+//   * a blind arm's pool comes from the ARM's own weight table, so the baseline can be frozen
+//     exactly (G = the v0.9.0 15-shape table);
+//   * a board-aware arm's pool comes from `SHAPE_WEIGHTS` inside src/game/shapes.js — the
+//     shipped dealer builds its candidate table there and there is no injection seam, by
+//     design (see armCForceBlock9Out: the one shipped lever is the Block 9 cooldown). So a
+//     board-aware arm CANNOT be held at 15 shapes once the game has 18.
+//
+// What that means for reading the report, and it is not optional:
+//   - G/H/I/J/K/L isolate the SHAPE EFFECT on an identical, board-blind dealer;
+//   - `D` (and `C`) are the SHIPPED dealer and follow the game: a `D` run today is the 18-shape
+//     pool through the real board-aware dealer, so the "what will players actually meet"
+//     question is read as `D`-today vs the published `D` run (15 shapes, same seeds, same
+//     strategies, same step cap, config version pinned in the summary).
+const withPentomino = (...names) => Object.freeze(Object.fromEntries([
+  ...Object.entries(POOL15_WEIGHTS),
+  ...names.map((name) => [name, 1]),
+]))
+// The v0.10.0 pool with `Block 9` put back to its pre-v0.9.0 weight — arm L's pressure ceiling.
+const withPentominoBlock9AtOne = Object.freeze({ ...withPentomino(...PENTOMINO_NAMES), 'Block 9': 1 })
 
 const ARMS = {
   A: {
@@ -144,44 +249,101 @@ const ARMS = {
     label: 'B A + Line 4（Block9=1，Σ21）+ 旧发牌（盲）',
     short: 'B +Line 4 + 盲发牌',
     dealer: 'blind',
-    shapes: SHAPES,
+    shapes: POOL15_SHAPES,
     weights: LINE4_ADDED_WEIGHTS,
     block9Out: false,
   },
   C: {
     id: 'C',
-    label: 'C 新发牌 + Line 4，Block9 权重 0（Σ20）',
+    label: 'C 新发牌 + Line 4，Block9 权重 0（跟随 src 池，本次运行 = 18 类）',
     short: 'C 无 Block9 + 感知发牌',
     dealer: 'boardAware',
     shapes: SHAPES,
-    weights: NO_BLOCK9_WEIGHTS,
+    weights: SHIPPED_WEIGHTS,
     block9Out: true,
+    followsGame: true,
   },
   D: {
     id: 'D',
-    label: 'D 新发牌 + Line 4，Block9 权重 0.4（Σ20.4，= 现行 SHAPE_WEIGHTS）',
+    label: 'D 新发牌 + 现行 SHAPE_WEIGHTS（跟随 src 池，本次运行 = 18 类 / Σ23.4）',
     short: 'D 现行权重 + 感知发牌',
     dealer: 'boardAware',
     shapes: SHAPES,
     weights: SHIPPED_WEIGHTS,
     block9Out: false,
+    followsGame: true,
   },
   E: {
     id: 'E',
-    label: 'E 与 D 同权重（Block9=0.4）+ 旧发牌（盲）',
-    short: 'E 现行权重 + 盲发牌',
+    label: 'E 冻结 15 类（Block9=0.4，Σ20.4）+ 旧发牌（盲）',
+    short: 'E 冻结 15 类 + 盲发牌',
     dealer: 'blind',
-    shapes: SHAPES,
-    weights: SHIPPED_WEIGHTS,
+    shapes: POOL15_SHAPES,
+    weights: POOL15_WEIGHTS,
     block9Out: false,
   },
   F: {
     id: 'F',
-    label: 'F 与 C 同形状池和权重（Block9=0）+ 旧发牌（盲）',
+    label: 'F 与 C 同形状池和权重（15 类，Block9=0）+ 旧发牌（盲）',
     short: 'F 无 Block9 + 盲发牌',
     dealer: 'blind',
-    shapes: SHAPES,
+    shapes: POOL15_SHAPES,
     weights: NO_BLOCK9_WEIGHTS,
+    block9Out: false,
+  },
+  // ---- G–L -------------------------------------------------------------------------------
+  G: {
+    id: 'G',
+    label: 'G 【基线】v0.9.0 冻结池 15 类（Line4=1、Block9=0.4，Σ20.4）+ 盲发牌',
+    short: 'G 15 类基线 + 盲发牌',
+    dealer: 'blind',
+    shapes: POOL15_SHAPES,
+    weights: POOL15_WEIGHTS,
+    block9Out: false,
+  },
+  H: {
+    id: 'H',
+    label: 'H G + U 5(1) —— 最温和的新件，单件效应',
+    short: 'H +U 5',
+    dealer: 'blind',
+    shapes: shapesNamed([...POOL15_NAMES, 'U 5']),
+    weights: withPentomino('U 5'),
+    block9Out: false,
+  },
+  I: {
+    id: 'I',
+    label: 'I G + T 5(1) —— 中等压力，单件效应',
+    short: 'I +T 5',
+    dealer: 'blind',
+    shapes: shapesNamed([...POOL15_NAMES, 'T 5']),
+    weights: withPentomino('T 5'),
+    block9Out: false,
+  },
+  J: {
+    id: 'J',
+    label: 'J G + Cross 5(1) —— 必读：9 个落位的单件效应',
+    short: 'J +Cross 5',
+    dealer: 'blind',
+    shapes: shapesNamed([...POOL15_NAMES, 'Cross 5']),
+    weights: withPentomino('Cross 5'),
+    block9Out: false,
+  },
+  K: {
+    id: 'K',
+    label: 'K G + 三件各 1 —— 拟上线配置（制作人 2026-09-30 裁决档）',
+    short: 'K 拟上线（三件各 1）',
+    dealer: 'blind',
+    shapes: shapesNamed([...POOL15_NAMES, ...PENTOMINO_NAMES]),
+    weights: withPentomino(...PENTOMINO_NAMES),
+    block9Out: false,
+  },
+  L: {
+    id: 'L',
+    label: 'L G + 三件各 1 且 Block9 回到 1 —— 压力上限参考臂（不是上线候选）',
+    short: 'L 压力上限（Block9=1）',
+    dealer: 'blind',
+    shapes: shapesNamed([...POOL15_NAMES, ...PENTOMINO_NAMES]),
+    weights: withPentominoBlock9AtOne,
     block9Out: false,
   },
 }
@@ -196,6 +358,15 @@ const PAIRS = [
   { id: 'E→F', from: 'E', to: 'F', single: true, headline: false, factor: 'Block 9 权重 0.4 → 0（两侧都是盲发牌）' },
   { id: 'A→D', from: 'A', to: 'D', single: false, headline: false, factor: '形状池 + 发牌方式同时改变（整包参考，不可用于归因）' },
   { id: 'B→E', from: 'B', to: 'E', single: false, headline: false, factor: 'Block 9 权重 1 → 0.4 与发牌方式同时改变（不可用于归因）' },
+  // v0.10.0 pentomino experiment (handoff §5 step 2). Every pair below is single-factor: the
+  // two arms share the dealer (blind), the weight of every other shape, the opening plan, the
+  // seeds and the step cap, so the delta is the shape addition and nothing else.
+  { id: 'G→H', from: 'G', to: 'H', single: true, headline: false, factor: '加 U 5(1)（其余 15 类权重与发牌方式完全相同）' },
+  { id: 'G→I', from: 'G', to: 'I', single: true, headline: false, factor: '加 T 5(1)（其余完全相同）' },
+  { id: 'G→J', from: 'G', to: 'J', single: true, headline: true, factor: '加 Cross 5(1)（其余完全相同）— 必读：单件压力归因' },
+  { id: 'G→K', from: 'G', to: 'K', single: true, headline: true, factor: '加三件各 1（＝拟上线配置）— 本次改动的总效应' },
+  { id: 'K→L', from: 'K', to: 'L', single: true, headline: false, factor: 'Block 9 权重 0.4 → 1（两臂都含三件各 1，都是盲发牌）— 压力上限参考' },
+  { id: 'G→L', from: 'G', to: 'L', single: false, headline: false, factor: '三个五格件 + Block 9 回到 1（双因子，不可用于归因）' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -1504,7 +1675,7 @@ function parseArgs(argv) {
     return parts
   }
   const arms = list(opts.arms || 'A,B,C,D,E,F', 'arms')
-  arms.forEach((id) => { if (!ARMS[id]) throw new Error(`unknown arm ${id}; use A,B,C,D,E,F`) })
+  arms.forEach((id) => { if (!ARMS[id]) throw new Error(`unknown arm ${id}; use ${Object.keys(ARMS).join(',')}`) })
   const strategies = list(opts.strategies || STRATEGY_ORDER.join(','), 'strategies')
   strategies.forEach((id) => { if (!STRATEGIES[id]) throw new Error(`unknown strategy ${id}; use ${STRATEGY_ORDER.join(',')}`) })
   const seeds = list(opts.seeds || '1,2,3', 'seeds').map((value) => {
@@ -1785,7 +1956,7 @@ function survivalChart(pooled, options, strategy) {
 }
 
 function htmlReport(result) {
-  const headline = 'VoxalBlast 发牌实验：A–F 六臂（形状池 / 权重 / 发牌方式分离）'
+  const headline = `VoxalBlast 发牌实验：${result.options.arms.join('/')} 臂（形状池 / 权重 / 发牌方式分离）`
   const pooled = result.pooled
   const byArm = (armId, strategy) => pooled.find((row) => row.arm === armId && row.strategy === strategy)
 

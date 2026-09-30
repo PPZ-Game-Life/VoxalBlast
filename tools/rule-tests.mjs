@@ -9,7 +9,7 @@
 // tiers.js) — no copies — so a drift between the docs, the code and this file shows
 // up as a failure instead of a surprise in the browser.
 import { Board, SH, FACES, faceLattice, isShell } from '../src/game/board.js'
-import { SHAPES, SHAPE_WEIGHTS, pickShape, normalizeCells, maxOrigin, rotateCells } from '../src/game/shapes.js'
+import { SHAPES, SHAPE_WEIGHTS, OPENING_SHAPES, pickShape, normalizeCells, maxOrigin, rotateCells } from '../src/game/shapes.js'
 import {
   SCORING, MAX_LINES_PER_MOVE, lineMultiplier, lineScore, faceBonus, placementScore, chainBonus,
   chainMilestoneBonus, nextChain, moveScore,
@@ -141,10 +141,15 @@ group('sixface', () => {  // The precise bug this version fixes: the +z row v=0 
   const random = rng(1234)
   let placements = 0
   let crossFace = 0
+  // v0.10.0: this loop used to be 60 games. The threshold below ("a meaningful number of
+  // pieces") is UNCHANGED — what changed is how long a random game lasts: 3 of the pool's 18
+  // shapes are now tight five-cell pieces, so a random walk meets "no legal placement" sooner
+  // and 60 games stopped clearing the bar. Raising the SAMPLE is the honest fix; lowering the
+  // bar would have been a gate quietly softened by the very change it exists to police.
   let games = 0
   let gamesWithCrossFace = 0
   let placedAnything = 0
-  for (let game = 0; game < 60; game += 1) {
+  for (let game = 0; game < 80; game += 1) {
     const settled = (b, face, cells, origin, color) => b.place(face, cells, origin, color)
     const result = randomGame(settled, random, 300)
     games += 1
@@ -646,7 +651,12 @@ group('supply', () => {
   const total = Object.values(SHAPE_WEIGHTS).reduce((sum, w) => sum + w, 0)
   const shareOf = (list) => list.reduce((sum, name) => sum + SHAPE_WEIGHTS[name], 0) / total
   const fourCell = ['Square', 'L', 'J', 'T', 'S', 'Z']
-  const big = [...fourCell, 'Rect 6', 'L 5', 'Line 4', 'Block 9']
+  // v0.10.0: the three pentominoes are five-cell pieces, so they join this list (4+ cells),
+  // not `fourCell`. The two shares below are the BASE SAMPLING shares of the shipped table —
+  // hard assertions on purpose, because "bigger pieces dominate the deal" is the producer's
+  // intent and this is the number that expresses it.
+  const pentomino = ['Cross 5', 'U 5', 'T 5']
+  const big = [...fourCell, 'Rect 6', 'L 5', 'Line 4', 'Block 9', ...pentomino]
   // v0.8.12–v0.8.14 added Rect 6, L 5, Slant 3 and Block 9 to the pool. The v0.8.4 rule
   // is literally "four-cell pieces x2, everything else x1", so all four new shapes
   // joined at x1 and the four-cell share moved 0.75 -> 12/20. Both numbers are
@@ -656,14 +666,27 @@ group('supply', () => {
   // (the one exception to the four-cell rule) and Block 9 drops to 0.4, so the total is
   // 20.4 — four-cell 12/20.4 = 58.8%, four-cells-or-larger 15.4/20.4 = 75.5%. These are
   // base sampling shares; the batch filter and the director move what the player sees.
-  equal('four-cell candidates are 12/20.4 of the deal', shareOf(fourCell), 12 / 20.4)
-  equal('candidates of 4 cells or more are 15.4/20.4 of the deal', shareOf(big), 15.4 / 20.4)
+  // v0.10.0 adds three five-cell pieces at 1 each: total 23.4, so four-cell goes 12/23.4 =
+  // 51.3% and four-cells-or-larger 18.4/23.4 = 78.6%. The five-cell share alone is 3/23.4 =
+  // 12.8%, up from 4.9% — that is the lever the producer's handoff §3.1 is about, and it is
+  // pinned here so it cannot drift quietly.
+  equal('four-cell candidates are 12/23.4 of the deal', shareOf(fourCell), 12 / 23.4)
+  equal('candidates of 4 cells or more are 18.4/23.4 of the deal', shareOf(big), 18.4 / 23.4)
+  equal('five-cell candidates are 3/23.4 of the deal', shareOf(pentomino), 3 / 23.4)
   // The two numbers P1 is about, pinned individually: the four-cell rule must not
   // silently "fix" Line 4 back to 2, and Block 9 must not silently return to 1.
   equal('Line 4 carries an explicit weight of 1, not the four-cell 2', SHAPE_WEIGHTS['Line 4'], 1)
   equal('Block 9 carries the reduced weight 0.4', SHAPE_WEIGHTS['Block 9'], 0.4)
-  check('the pool is 15 shapes', SHAPES.length === 15, `${SHAPES.length} shapes`)
+  // v0.10.0 (handoff §6): the producer's ruling is "all three, weight 1 each, no damping".
+  // Pinned per shape so a future "helpful" re-weighting is a visible decision, not a drift.
+  for (const name of pentomino) equal(`${name} carries the ruled weight of 1`, SHAPE_WEIGHTS[name], 1)
+  check('the pool is 18 shapes', SHAPES.length === 18, `${SHAPES.length} shapes`)
   check('Line 5 is still not shipped', !names.includes('Line 5'))
+  // The opening pool is an explicit whitelist and the new pieces must NOT be in it: it is
+  // frozen membership AND order, because `Board.seedOne` picks by index. See shapes.js.
+  equal('the opening pool still holds the fourteen pre-Line-4 shapes', OPENING_SHAPES.length, 14)
+  check('no v0.10.0 pentomino joins the opening pool', OPENING_SHAPES.every((shape) => !pentomino.includes(shape.name)))
+  equal('the opening pool has not reordered', OPENING_SHAPES.map((shape) => shape.name).join(','), 'Dot,Line 2,Line 3,Square,L,J,T,S,Z,Corner,Rect 6,L 5,Slant 3,Block 9')
 
   // The two new shapes must fit a 5-wide face, not just exist in the table: a shape
   // that cannot be placed anywhere on an empty face would be a dead deal (and Rect 6
@@ -715,6 +738,141 @@ group('supply', () => {
   // shape, because a second 4-long piece (or a 5-long one) would be a different pool.
   equal('no shape carries a straight run longer than four', Math.max(...SHAPES.map((shape) => longestRun(shape.cells))), 4)
   equal('Line 4 is the only shape with a four-long run', SHAPES.filter((shape) => longestRun(shape.cells) === 4).map((shape) => shape.name).join(','), 'Line 4')
+
+  // ---- v0.10.0 pentominoes ------------------------------------------------------------
+  // (handoff §4.1 M6: cell count + bounding box + share + "the shape really is dealt".
+  // The share and the "dealt" check are asserted further down, next to the 20k draw.)
+  const pentominoCells = {
+    'Cross 5': { cells: '5x3x3', geometry: [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]] },
+    'U 5': { cells: '5x3x2', geometry: [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1]] },
+    'T 5': { cells: '5x3x3', geometry: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]] },
+  }
+  for (const [name, spec] of Object.entries(pentominoCells)) {
+    const shape = SHAPES.find((entry) => entry.name === name)
+    equal(`${name} is five cells in a ${spec.cells} box`,
+      `${shape.cells.length}x${Math.max(...shape.cells.map(([u]) => u)) + 1}x${Math.max(...shape.cells.map(([, v]) => v)) + 1}`, spec.cells)
+    equal(`${name} has the geometry the handoff specifies`, JSON.stringify(shape.cells), JSON.stringify(spec.geometry))
+    // Half the pool rule: nothing may self-clear, i.e. no straight run as long as a face.
+    equal(`${name} tops out at a three-long run and never self-clears`, longestRun(shape.cells), 3)
+  }
+  check('no pentomino clears anything on an empty face, in any orientation or position', SHAPES
+    .filter((shape) => pentomino.includes(shape.name))
+    .every((shape) => legalPlacements(new Board(), shape.cells).every((placement) => new Board().place('+z', shape.cells, placement.origin, shape.color).lines.length === 0)))
+  // The payoff the three were chosen for, asserted on the real Board: `Cross 5` and `T 5` have
+  // their 3-runs crossing on a shared centre cell, so one placement can complete TWO lines
+  // (横 3 + 竖 3). `U 5` has a single 3-run, so it completes at most one.
+  //
+  // TWO details make this assertion mean what it says rather than something else:
+  //   - the measurement is `linesByFace['+z']`, not the total. A +z row/column on the cube's
+  //     edge IS a row/column of the neighbouring face (the `+z` v=0 line is the `-y` v=4 line),
+  //     so a total would report 3 for a piece that completed one line on this face and one on
+  //     the face behind it. Both shapes are placed on interior rows/columns so nothing is
+  //     shared, and the per-face count is what isolates the claim.
+  //   - the origin is chosen per shape so the crossing cell sits at (1,1), i.e. on an interior
+  //     row AND column. `T 5`'s runs cross on its top row, so placing it at (0,0) would put the
+  //     row on v=0 — the edge, i.e. the case above.
+  const pentominoOf = (name) => SHAPES.find((shape) => shape.name === name).cells
+  const crossingCell = (cells) => {
+    const byU = new Map(), byV = new Map()
+    for (const [u, v] of cells) {
+      if (!byU.has(v)) byU.set(v, []); byU.get(v).push(u)
+      if (!byV.has(u)) byV.set(u, []); byV.get(u).push(v)
+    }
+    for (const [u, v] of cells) if ((byU.get(v) || []).length >= 3 && (byV.get(u) || []).length >= 3) return { u, v }
+    return null
+  }
+  // Pre-fill, for every line the piece has a 3-run in, the cells of that line the piece does
+  // NOT cover — i.e. hand it a board that is two cells short on exactly those lines and nothing
+  // else. Whatever it then completes is the piece's own doing.
+  const twoLineSetup = (cells, origin) => {
+    const board = new Board()
+    const rows = new Map(), cols = new Map()
+    for (const [u, v] of cells) {
+      if (!rows.has(v)) rows.set(v, []); rows.get(v).push(u)
+      if (!cols.has(u)) cols.set(u, []); cols.get(u).push(v)
+    }
+    // The complement is computed in BOARD coordinates: the runs are read off the shape's own
+    // cells (shape-local) but the origin shifts the piece, so comparing local values against
+    // board indices would "fill" a cell the piece itself is about to occupy.
+    const fill = []
+    for (const [v, us] of rows) {
+      if (us.length < 3) continue
+      const boardU = us.map((u) => origin.u + u)
+      for (let u = 0; u < SH; u += 1) if (!boardU.includes(u)) fill.push([u, origin.v + v])
+    }
+    for (const [u, vs] of cols) {
+      if (vs.length < 3) continue
+      const boardV = vs.map((v) => origin.v + v)
+      for (let v = 0; v < SH; v += 1) if (!boardV.includes(v)) fill.push([origin.u + u, v])
+    }
+    for (const [u, v] of fill) {
+      const [x, y, z] = faceLattice('+z', u, v)
+      board.cells.set(board.key(x, y, z), { x, y, z, color: 0x3f8fe0 })
+    }
+    return board
+  }
+  const placeOnZ = (name, origin) => twoLineSetup(pentominoOf(name), origin)
+    .place('+z', pentominoOf(name), origin, 0xffffff)
+  for (const [name, origin] of [['Cross 5', { u: 0, v: 0 }], ['T 5', { u: 0, v: 1 }]]) {
+    const cross = crossingCell(pentominoOf(name))
+    check(`${name} has a cell shared by a 3-run in both directions`, cross !== null, JSON.stringify(cross))
+    equal(`${name} completes two lines on the face it lands on`,
+      placeOnZ(name, origin).lines.filter((line) => line.face === '+z').length, 2)
+  }
+  equal('U 5 completes one line at a time',
+    placeOnZ('U 5', { u: 0, v: 1 }).lines.filter((line) => line.face === '+z').length, 1)
+  // And the geometric reason behind both numbers, so the claim is checkable without a Board:
+  // the cross and the big T each own TWO 3-long straight runs, the U owns ONE.
+  const straightRuns = (cells) => {
+    let runs = 0
+    for (const axis of [0, 1]) {
+      const lines = new Map()
+      for (const [u, v] of cells) {
+        const key = axis === 0 ? v : u
+        if (!lines.has(key)) lines.set(key, new Set())
+        lines.get(key).add(axis === 0 ? u : v)
+      }
+      for (const set of lines.values()) if (set.size >= 3) runs += 1
+    }
+    return runs
+  }
+  equal('Cross 5 / T 5 own two 3-long runs; U 5 owns one',
+    pentomino.map((name) => straightRuns(pentominoOf(name))).join('/'), '2/1/2')
+  // Difficulty is NOT cell count, and the three are a gradient rather than three copies of one
+  // problem. "Empty-face placements" = distinct in-plane orientations x origins that fit on one
+  // 5x5 face, i.e. the handoff §2 method (orientations deduped — the cross is four-fold
+  // symmetric, so its four rotations are ONE placement set; `U 5` and `T 5` have four).
+  // Cross 5 lands in `Block 9`'s tier (also 9), `T 5` in `L 5`'s (36), `U 5` roomiest (48).
+  // The cells are SORTED before deduping: rotateCells returns the same set in a rotated cell
+  // order, so comparing raw JSON would count the symmetric cross's identical orientation twice.
+  const canonical = (cells) => [...cells].map(([u, v]) => `${u},${v}`).sort().join(' ')
+  const faceLetters = (cells) => [...new Set([0, 1, 2, 3].map((quarter) => canonical(rotateCells(cells, quarter))))]
+  const emptyFacePlacements = (cells) => faceLetters(cells).reduce((sum, key) => {
+    const shape = key.split(' ').map((pair) => pair.split(',').map(Number))
+    const { u: uMax, v: vMax } = maxOrigin(shape, SH)
+    return sum + uMax * vMax
+  }, 0)
+  const emptyFaceCounts = Object.fromEntries(pentomino.map((name) => [name, emptyFacePlacements(pentominoOf(name))]))
+  equal('Cross 5 / T 5 / U 5 have 9 / 36 / 48 empty-face placements',
+    `${emptyFaceCounts['Cross 5']}/${emptyFaceCounts['T 5']}/${emptyFaceCounts['U 5']}`, '9/36/48')
+  // The same claim through the SHIPPED enumerator, deduped (the raw list counts a symmetric
+  // piece's identical orientations once per quarter). `Cross 5` must land exactly on `Block 9`:
+  // one orientation, 3x3 window, 9 windows per face — the equivalence the handoff §2 and §3.2
+  // rest on.
+  const uniquePlacements = (cells) => {
+    const seen = new Set()
+    for (const placement of legalPlacements(new Board(), cells)) {
+      seen.add(`${placement.face}|${placement.origin.u},${placement.origin.v}|${canonical(placement.cells)}`)
+    }
+    return seen.size
+  }
+  const uniqueCounts = Object.fromEntries(pentomino.map((name) => [name, uniquePlacements(pentominoOf(name))]))
+  check('Cross 5 is the tightest of the three on a real empty cube',
+    uniqueCounts['Cross 5'] < uniqueCounts['T 5'] && uniqueCounts['T 5'] < uniqueCounts['U 5'],
+    JSON.stringify(uniqueCounts))
+  equal('Cross 5 has exactly Block 9\'s placement count on the real board',
+    uniqueCounts['Cross 5'],
+    uniquePlacements(SHAPES.find((shape) => shape.name === 'Block 9').cells))
   const line4 = SHAPES.find((shape) => shape.name === 'Line 4')
   equal('Line 4 is four cells in a 4x1 box', `${line4.cells.length}x${Math.max(...line4.cells.map(([u]) => u)) + 1}x${Math.max(...line4.cells.map(([, v]) => v)) + 1}`, '4x4x1')
   // The spec's correction of the old note: a 4-long line does NOT always clear a line.
@@ -753,16 +911,22 @@ group('supply', () => {
   for (let i = 0; i < 20000; i += 1) { const shape = pickShape(next); counts.set(shape.name, counts.get(shape.name) + 1) }
   check('every shape is still dealt', [...counts.values()].every((n) => n > 0), JSON.stringify(Object.fromEntries(counts)))
   const observedBig = big.reduce((sum, name) => sum + counts.get(name), 0) / 20000
-  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 15.4 / 20.4) < 0.02, `observed ${observedBig.toFixed(3)}`)
-  // The shapes added in v0.8.12–v0.8.14 must actually reach the board, not just the table.
-  const added = ['Rect 6', 'L 5', 'Slant 3', 'Block 9', 'Line 4']
-  check('every v0.8.12–v0.9.0 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
+  check('observed 4+-cell share tracks the weights', Math.abs(observedBig - 18.4 / 23.4) < 0.02, `observed ${observedBig.toFixed(3)}`)
+  // v0.10.0: the three pentominoes have to REACH the board, not just the table — this is the
+  // assertion the v0.8.12 accident taught (four published measurement pools were derived from
+  // SHAPE_NAMES and would have been silently rewritten by a shape addition). The observed
+  // five-cell share is checked too: 3/23.4 is the number the whole difficulty argument rests on.
+  const added = ['Rect 6', 'L 5', 'Slant 3', 'Block 9', 'Line 4', ...pentomino]
+  check('every v0.8.12–v0.10.0 shape is dealt', added.every((name) => counts.get(name) > 0), JSON.stringify(Object.fromEntries(added.map((name) => [name, counts.get(name)]))))
+  const observedPentomino = pentomino.reduce((sum, name) => sum + counts.get(name), 0) / 20000
+  check('observed five-cell share tracks the weights', Math.abs(observedPentomino - 3 / 23.4) < 0.02, `observed ${(observedPentomino * 100).toFixed(2)}%`)
   // Block 9's reduced weight has to be visible in the sampled distribution, not just in
-  // the table: at 0.4/20.4 it is ~1.96% of slots, and the four-cell-plus share above is
-  // what the rest of the pool is judged by. A 2x overshoot here means the table and the
-  // cumulative picker disagree — exactly the drift this group exists to catch.
+  // the table: at 0.4/23.4 it is ~1.71% of slots (diluted from 1.96% by the bigger pool), and
+  // the four-cell-plus share above is what the rest of the pool is judged by. A 2x overshoot
+  // here means the table and the cumulative picker disagree — exactly the drift this group
+  // exists to catch.
   const observedBlock9 = counts.get('Block 9') / 20000
-  check('Block 9 samples near its 1.96% share', Math.abs(observedBlock9 - 0.4 / 20.4) < 0.005, `observed ${(observedBlock9 * 100).toFixed(2)}%`)
+  check('Block 9 samples near its 1.71% share', Math.abs(observedBlock9 - 0.4 / 23.4) < 0.005, `observed ${(observedBlock9 * 100).toFixed(2)}%`)
 })
 
 group('placement-preview', () => {

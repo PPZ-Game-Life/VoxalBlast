@@ -69,6 +69,33 @@ const SOFT75_FROZEN = Object.freeze({
 
 export const SHAPE_NAMES = Object.freeze(SHAPES.map((shape) => shape.name))
 
+// The v0.9.0 shipped table, written out LITERALLY (15 shapes, `Line 4` 1, `Block 9` 0.4, 20.4
+// units) — the baseline the v0.10.0 pentomino experiment is measured against.
+//
+// It has to be a literal rather than `{ ...SHAPE_WEIGHTS }`: that spread used to mean this
+// table and no longer does, because `SHAPE_WEIGHTS` now carries the three pentominoes. A
+// spread would silently turn the BASELINE into the TREATMENT and the experiment would compare
+// the new pool against itself — the same failure mode the v0.9.0 spec §3.3 freeze rule exists
+// to prevent. Key order is the v0.9.0 `SHAPE_WEIGHTS` order, because the uniform dealer walks
+// the cumulative sums.
+const POOL15_FROZEN = Object.freeze({
+  Dot: 1,
+  'Line 2': 1,
+  'Line 3': 1,
+  Corner: 1,
+  'Slant 3': 1,
+  Square: 2,
+  L: 2,
+  J: 2,
+  T: 2,
+  S: 2,
+  Z: 2,
+  'Rect 6': 1,
+  'L 5': 1,
+  'Line 4': 1,
+  'Block 9': 0.4,
+})
+
 // v0.8.16 measurement-only: Block Blast's 5-long line, which the game still does NOT
 // have (v0.2.24 removed it, and the v0.9.0 P1 call did not bring it back — on a
 // 5-wide face it can only land on a completely empty row and clears it instantly, so
@@ -125,7 +152,7 @@ const POOL_SPECS = Object.freeze({
   // `Block 9` at 0.4); tomorrow's numbers are whatever the shipped table says. Compare
   // `ship` against a frozen arm to read an experiment; compare `ship` against itself
   // across versions to read the game.
-  ship: { label: '正式发牌池（v0.9.0：15 类，Line 4×1、Block 9×0.4，跟随 SHAPE_WEIGHTS）', weights: { ...SHAPE_WEIGHTS } },
+  ship: { label: '正式发牌池（v0.10.0：18 类，Line 4×1、Block 9×0.4、三个五格件各 1，跟随 SHAPE_WEIGHTS）', weights: { ...SHAPE_WEIGHTS } },
   c: { label: '去单格与直线2（8种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name)).map((name) => [name, 1])) },
   d: { label: '去单格、直线2、三格转角（7种）', weights: Object.fromEntries(TEN.filter((name) => !SMALL.includes(name) && name !== 'Corner').map((name) => [name, 1])) },
   w90: { label: '四格件×3＋直线3×2（小件权重0，即实际去掉三种）', weights: Object.fromEntries([...FOUR.map((name) => [name, 3]), ['Line 3', 2]]) },
@@ -160,6 +187,15 @@ const POOL_SPECS = Object.freeze({
   bb4: { label: '正式池 + Line 4（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 4': 1 } },
   bb5: { label: '正式池 + Line 5（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 5': 1 } },
   bb: { label: '正式池 + Line 4 + Line 5（BB 对齐臂）', weights: { ...SOFT75_FROZEN, 'Line 4': 1, 'Line 5': 1 } },
+  // v0.10.0 pentomino experiment (producer's 2026-09-30 handoff §5 step 2). Two NEW ids,
+  // APPENDED rather than inserted, so every existing id keeps the position it was published
+  // with (POOL_IDS order is part of the CLI surface): `pool15` is the v0.9.0 shipped table
+  // literal-frozen (POOL15_FROZEN), `pool18` is that plus the three pentominoes at 1 each —
+  // the configuration the producer ruled to ship. The pair differs in exactly one factor
+  // (pool membership), so a paired run over the same seeds and openings measures the shape
+  // addition and nothing else.
+  pool15: { label: 'v0.9.0 正式池（15 类，Line 4×1、Block 9×0.4，字面冻结）', weights: { ...POOL15_FROZEN } },
+  pool18: { label: 'v0.10.0 拟上线池（pool15 + Cross 5 / U 5 / T 5 各 1）', weights: { ...POOL15_FROZEN, 'Cross 5': 1, 'U 5': 1, 'T 5': 1 } },
 })
 
 export const POOL_IDS = Object.freeze(Object.keys(POOL_SPECS))
