@@ -15,6 +15,7 @@
 //   node tools/screenshot.mjs [url] [outDir]
 //   npm run shot
 //   SHOT_REFLECTION_SWEEP=1 adds held-drag angle captures + pose JSON for board shots.
+//   SHOT_GEM_COMPARE=1 also captures the same pose with volume response disabled.
 //
 // Defaults: url http://127.0.0.1:5173/, outDir artifacts/visual (gitignored).
 // Writes <outDir>/v<package.version>-desktop-home.png, -desktop-board.png and
@@ -401,6 +402,40 @@ async function capture(browser, shot) {
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
             gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
             candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
+            // v0.9.32 R0 (BLOCK_REFERENCE_REWORK_HANDOFF §5.3): the candidate tray's real
+            // CSS pixels. This block reads LAYOUT BOXES only -- it deliberately does not
+            // re-derive the preview camera's ortho fit, because diagnostics must not copy a
+            // projection algorithm (plan §2.1). Per-cell pitch is paired offline: the
+            // projected NDC box from candidateFrames above times the canvas CSS width, over
+            // the shape's own cell span, which the analysis side knows from shapes.js.
+            pieceMetrics: [...document.querySelectorAll('.piece-slot')].map((slot, index) => {
+              const rect = (el) => {
+                if (!el) return null
+                const r = el.getBoundingClientRect()
+                return { x: +r.left.toFixed(1), y: +r.top.toFixed(1), width: +r.width.toFixed(1), height: +r.height.toFixed(1) }
+              }
+              return {
+                index,
+                className: slot.className,
+                slot: rect(slot),
+                canvas: rect(slot.querySelector('canvas')),
+                thumb: rect(slot.querySelector('.piece-thumb')),
+              }
+            }),
+            trayMetrics: (() => {
+              const el = document.querySelector('.bottom-panel')
+              if (!el) return null
+              const r = el.getBoundingClientRect()
+              return { x: +r.left.toFixed(1), y: +r.top.toFixed(1), width: +r.width.toFixed(1), height: +r.height.toFixed(1) }
+            })(),
+            // The board's own lattice pitch on screen, from the same axis the placement probe
+            // already publishes -- one world cell in CSS px, no second implementation.
+            boardCellPx: (() => {
+              const u = globalThis.__voxalblast?.placement?.()?.uAxis
+              return u ? +Math.hypot(u.dx, u.dy).toFixed(2) : null
+            })(),
+            devicePixelRatio: devicePixelRatio,
+            canvasPx: [...document.querySelectorAll('canvas')].map(c => ({ width: c.width, height: c.height })),
             scoreTextContained: [...document.querySelectorAll('#score, #best, .score-chip-label, .best-chip-label')].every(el => {
               const range = document.createRange()
               range.selectNodeContents(el)
@@ -612,6 +647,21 @@ async function capture(browser, shot) {
       console.log(`${clean ? 'OK  ' : 'FAIL'} ${shot.name.padEnd(13)} ${width}x${height}  ${out}`)
       console.log(`     ${JSON.stringify(parsed)}`)
       if (!clean) throw new Error(`${shot.name}: ${failures.join('; ')}`)
+      if (process.env.SHOT_GEM_COMPARE === '1' && mode === 'board') {
+        const settings = parsed.rendering.materials.gem.settings
+        const tuned = await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: `__voxalblastDev.tuneGem({scatter:0,coreAbsorption:0,internalReflection:0,environmentTransmission:0})`, returnByValue: true,
+        })
+        if (tuned.exceptionDetails) throw new Error('gem comparison needs the dev tuning hook')
+        try {
+          await send(ws, nextId++, 'Runtime.evaluate', { expression: 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))', awaitPromise: true })
+          const surfaceOnly = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+          writeFileSync(out.replace(/\.png$/, '-surface-only.png'), Buffer.from(surfaceOnly.data, 'base64'))
+        } finally {
+          await send(ws, nextId++, 'Runtime.evaluate', { expression: `__voxalblastDev.tuneGem(${JSON.stringify(settings)})`, returnByValue: true })
+        }
+        console.log(`OK   ${shot.name}: surface-only comparison captured; volume settings restored`)
+      }
       // Optional visual evidence for specular response: one real, held yaw drag
       // visits five angles, then returns to the original pose before release.
       // No gameplay write hook or camera/material change is used for these shots.
