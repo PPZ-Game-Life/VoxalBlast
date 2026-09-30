@@ -752,8 +752,11 @@ export function createBoardView({
 
   function introMaterialFor(tile) {
     let material = introMaterials.get(tile)
-    if (!material) {
-      material = new THREE.MeshPhysicalMaterial()
+    if (!material || Boolean(material.isGemMaterial) !== Boolean(tile.material.isGemMaterial)) {
+      // Preserve custom scattering across clone/copy. Switching between timber
+      // and gem replaces (and disposes) only this tile's owned animation material.
+      material?.dispose()
+      material = tile.material.clone()
       material.needsUpdate = true
       introMaterials.set(tile, material)
     }

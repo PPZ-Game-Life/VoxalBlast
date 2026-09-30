@@ -29,13 +29,15 @@
 // `metrics()` hands it the lattice half-side lazily, the same way gameScene gets its own.
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { BOARD_STYLE as style } from './config.js'
+import { BOARD_STYLE as style, GEM_STYLE } from './config.js'
 import { blockSurfaceMaps, woodGrainTextureRepeating } from './woodTexture.js'
 import { referencePaintColor } from './referencePalette.js'
 import { toyEnvironment } from './toyLights.js'
+import { GemMaterial, clampGemSettings } from './gemMaterial.js'
 
 export function createBlockResources({ metrics }) {
   const livePaintMaterials = new Set()
+  let gemTuning = { ...GEM_STYLE }
   const paintTuning = { roughness: style.paintRoughness, envMapIntensity: style.paintEnvMapIntensity, metalness: style.paintMetalness }
   // THE block. ONE geometry instance shared by the board's 98 blocks, the three candidate
   // slots and the drag ghost, so a piece in the hand and a piece on the board are literally
@@ -96,13 +98,13 @@ export function createBlockResources({ metrics }) {
     active: blockWoodMaterial(style.blockActiveColor, step, variant),
   }))
 
-  // Polished, agate-like colour has a subtle body wash under a glossy dielectric
-  // coat. It stays opaque: no transmission render target or sorting artifacts.
+  // Glossy glass surface with a thickness-aware, jelly-like scattering lobe.
+  // Opaque depth avoids a transmission render target and sorting artifacts.
   // This is a separate surface family from bare maple. A piece
   // keeps this exact material from the tray, through the drag, onto the board.
   function makeMaterial(color, opacity = 1, variant = 0) {
     const surface = blockSurfaceMaps(true, variant)
-    const material = new THREE.MeshPhysicalMaterial({
+    const material = new GemMaterial({
       color: new THREE.Color(referencePaintColor(color)),
       ...surface,
       normalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
@@ -123,6 +125,7 @@ export function createBlockResources({ metrics }) {
       transparent: opacity < 1,
       opacity,
     })
+    material.setVolume(gemTuning)
     livePaintMaterials.add(material)
     material.addEventListener('dispose', () => livePaintMaterials.delete(material))
     return material
@@ -172,6 +175,8 @@ export function createBlockResources({ metrics }) {
       wood: { roughness: blockWoodMaterials[0].idle.roughness, envMapIntensity: blockWoodMaterials[0].idle.envMapIntensity },
       paint: { ...paintTuning },
       polish: { clearcoat: style.paintClearcoat, clearcoatRoughness: style.paintClearcoatRoughness, ior: style.paintIor, crownHeight: style.paintCrownHeight },
+      gem: { model: 'local-thickness-scattering', settings: { ...gemTuning }, materials: livePaintMaterials.size,
+        singlePass: [...livePaintMaterials].every(material => material.transmission === 0) },
       textureChannels: ['baseColor', 'roughness', 'normal', 'ao'],
       environmentBound: [...livePaintMaterials, ...blockWoodMaterials.flatMap(pair => Object.values(pair))]
         .every(material => material.envMap === toyEnvironment()),
@@ -194,6 +199,12 @@ export function createBlockResources({ metrics }) {
     return report()
   }
 
+  function tuneGem(values = {}) {
+    gemTuning = clampGemSettings(values, gemTuning)
+    for (const material of livePaintMaterials) material.setVolume(gemTuning)
+    return { ...gemTuning }
+  }
+
   return {
     blockGeometry,
     edgeGeometry,
@@ -202,6 +213,7 @@ export function createBlockResources({ metrics }) {
     cubeBody,
     report,
     tuneMaterials,
+    tuneGem,
     blockWoodMaterials,
     paintMaterial,
     makeMaterial,

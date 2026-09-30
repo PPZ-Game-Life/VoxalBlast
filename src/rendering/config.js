@@ -73,12 +73,12 @@ export const BOARD_STYLE = Object.freeze({
   environmentIntensity: 0.55,
   // Polished agate-like colour on the board and in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
-  paintRoughness: 0.19,
+  paintRoughness: 0.12,
   paintClearcoat: 1,
-  paintClearcoatRoughness: 0.09,
-  paintIor: 1.5,
+  paintClearcoatRoughness: 0.045,
+  paintIor: 1.46,
   paintMetalness: 0,
-  paintEnvMapIntensity: 0.95,
+  paintEnvMapIntensity: 0.85,
   paintSpecularIntensity: 1,
   surfaceAOIntensity: 0.35,
   voxelEdgeOpacity: 0,
@@ -201,6 +201,9 @@ export const LIGHTING_STYLE = Object.freeze({
   reflectionCardWidth: 0.18,
   reflectionCardHeight: 0.85,
   reflectionCardIntensity: 2.6,
+  reflectionGlintPosition: Object.freeze([-0.2, 0.65, 1]),
+  reflectionGlintIntensity: 16,
+  reflectionGlintFocus: 700,
   reflectionRimIntensity: 4,
   reflectionRimFocus: 32,
 })
@@ -211,6 +214,16 @@ export const LIGHTING_STYLE = Object.freeze({
 export const BLOCK_TEXTURES = Object.freeze({
   wood: Object.freeze({ baseColor: null, roughness: null, normal: null, ao: null }),
   paint: Object.freeze({ baseColor: null, roughness: null, normal: null, ao: null }),
+})
+
+// Stylised volume response, all in the existing material pass. Set scatter /
+// internalReflection / coreAbsorption to zero for the surface-only fallback.
+export const GEM_STYLE = Object.freeze({
+  density: 2.1,
+  scatter: 1.0,
+  coreAbsorption: 0.42,
+  internalReflection: 0.4,
+  environmentTransmission: 0.28,
 })
 
 export const SHADOW_STYLE = Object.freeze({

@@ -22,6 +22,7 @@ export function toyEnvironment() {
   const keyRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), key).normalize()
   const keyUp = new THREE.Vector3().crossVectors(key, keyRight).normalize()
   const rim = new THREE.Vector3(...light.rimPosition).normalize()
+  const glintDirection = new THREE.Vector3(...light.reflectionGlintPosition).normalize()
   const card = new THREE.Vector3(...light.reflectionCardPosition).normalize()
   const cardRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), card).normalize()
   const cardUp = new THREE.Vector3().crossVectors(card, cardRight).normalize()
@@ -40,6 +41,7 @@ export function toyEnvironment() {
         -Math.pow(direction.dot(keyUp) / (facing * light.reflectionKeyHeight), 4),
       ) : 0
       const rimbox = light.reflectionRimIntensity * Math.pow(Math.max(0, direction.dot(rim)), light.reflectionRimFocus)
+      const glint = light.reflectionGlintIntensity * Math.pow(Math.max(0, direction.dot(glintDirection)), light.reflectionGlintFocus)
       const cardFacing = direction.dot(card)
       const ribbon = cardFacing > 0 ? light.reflectionCardIntensity * Math.exp(
         -Math.pow(direction.dot(cardRight) / (cardFacing * light.reflectionCardWidth), 4)
@@ -47,9 +49,9 @@ export function toyEnvironment() {
       ) : 0
       const offset = (y * width + x) * 4
       const rgb = [
-        0.16 + sky * 0.3 + softbox + rimbox + ribbon,
-        0.18 + sky * 0.32 + softbox * 0.96 + rimbox * 0.9 + ribbon * 0.98,
-        0.2 + sky * 0.38 + softbox * 0.9 + rimbox * 0.85 + ribbon * 0.95,
+        0.16 + sky * 0.3 + softbox + rimbox + ribbon + glint,
+        0.18 + sky * 0.32 + softbox * 0.96 + rimbox * 0.9 + ribbon * 0.98 + glint,
+        0.2 + sky * 0.38 + softbox * 0.9 + rimbox * 0.85 + ribbon * 0.95 + glint,
       ]
       for (let c = 0; c < 3; c += 1) data[offset + c] = THREE.DataUtils.toHalfFloat(rgb[c])
       data[offset + 3] = THREE.DataUtils.toHalfFloat(1)

@@ -289,6 +289,7 @@ export function createDiagnostics({
     if (import.meta.env.DEV && dev) {
       globalThis.__voxalblastDev = Object.freeze({
         tuneMaterials: (values) => blocks.tuneMaterials(values),
+        tuneGem: (values) => blocks.tuneGem(values),
         tuneShadows: (values) => scene3d.tuneShadows(values),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
