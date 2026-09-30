@@ -356,7 +356,14 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   let boardShadows = null
   function ensureBoardShadows() {
     if (boardShadows) return
-    boardShadows = createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift })
+    // Route B (v0.10.2): the contact decal is fitted to the board's own bottom footprint, so the
+    // shape follows the object instead of being a generic blob, and it is aligned to the shipped
+    // dock so the near/far falloff matches the edge the player is looking at.
+    boardShadows = createBoardShadows(scene, {
+      extent: cubeSolidExtent() - style.previewLift,
+      footprintHalf: -cubeBottomY(),
+      groundYaw: ROTATE_STYLE.bearingYaw,
+    })
     applyGroundingRoute()
   }
 
@@ -502,6 +509,14 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     boardShadows?.setEnabled({ projected: projectedShadowEnabled && groundingRoute !== 'platform' })
     return groundingReport()
   }
+  // Route B's own two handles. `setSupportYaw` is called once per frame from main's loop with the
+  // board's bearing: it is a float compare and a mesh rotation, never a texture rebuild.
+  function setContactShape(shape) {
+    return boardShadows?.setShape(shape) ?? null
+  }
+  function setSupportYaw(yaw) {
+    return boardShadows?.setGroundYaw(yaw) ?? null
+  }
 
   // ---- Resize -------------------------------------------------------------------
   // The canvas is sized from the wrap's client box. `setSize` runs with updateStyle=false,
@@ -640,6 +655,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     setProjectedShadowEnabled,
     setOcclusionIntensity,
     occlusionIntensity,
+    setContactShape,
+    setSupportYaw,
     groundingReport,
     getAppliedCanvasSize: () => ({ ...appliedCanvasSize }),
     getCameraZoom: () => cameraZoom,
