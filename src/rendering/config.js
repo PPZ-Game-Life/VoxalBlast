@@ -218,12 +218,23 @@ export const BLOCK_TEXTURES = Object.freeze({
 
 // Stylised volume response, all in the existing material pass. Set scatter /
 // internalReflection / coreAbsorption to zero for the surface-only fallback.
+//
+// v0.9.32 R1 round 1 (docs/Technical/BLOCK_REFERENCE_REWORK_R0.md §9bis.4): the four
+// volume terms are OFF, not merely smaller. The target reference is a fully OPAQUE toy
+// block — one flat saturated face under a single broad soft gloss — so absorption,
+// scattering, internal reflection and environment transmission describe something the
+// reference does not have. The measured size of what they were contributing (R0 §5.2,
+// tools/frame-diff.mjs) is why "turn them down" was rejected: switching them off moved
+// 18% of the phone frame's pixels but 63% of those by only 2-8 levels — a low-amplitude
+// wash over every face, which is haze, not form. `density` is kept because with all four
+// coefficients at zero it has nothing to act on; the class, its clone/copy lifecycle and
+// tools/gem-material-tests.mjs all stay, so this is reversible in one edit.
 export const GEM_STYLE = Object.freeze({
   density: 2.1,
-  scatter: 1.0,
-  coreAbsorption: 0.42,
-  internalReflection: 0.4,
-  environmentTransmission: 0.28,
+  scatter: 0,
+  coreAbsorption: 0,
+  internalReflection: 0,
+  environmentTransmission: 0,
 })
 
 export const SHADOW_STYLE = Object.freeze({
