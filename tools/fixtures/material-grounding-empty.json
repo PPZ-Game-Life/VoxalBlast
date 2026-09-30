@@ -1,0 +1,43 @@
+{
+  "snapshot": {
+    "board": {
+      "cells": [],
+      "score": 4180,
+      "totalLines": 21
+    },
+    "pieces": [
+      {
+        "name": "Dot",
+        "used": false
+      },
+      {
+        "name": "J",
+        "used": false
+      },
+      {
+        "name": "S",
+        "used": false
+      }
+    ],
+    "items": {
+      "refresh": 2,
+      "hammer": 1,
+      "rocket": 1,
+      "bomb": 1
+    },
+    "run": {
+      "chain": 0,
+      "bestChain": 5,
+      "facesLit": [
+        "+z"
+      ],
+      "honors": []
+    },
+    "pose": {}
+  },
+  "expectedBoard": {
+    "cells": [],
+    "score": 4180,
+    "totalLines": 21
+  }
+}

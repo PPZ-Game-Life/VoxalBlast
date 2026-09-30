@@ -49,11 +49,56 @@ export function createBoardShadows(scene, { extent }) {
   contact.renderOrder = 1
   projected.renderOrder = 2
 
+  // G1a (MATERIAL_GROUNDING_REWORK_HANDOFF §5): the two quads have to be separable on
+  // demand, one at a time, so the contact diagnosis can say WHERE a difference came from
+  // instead of showing "the frame changed". `tune()` only moves opacity, which leaves a
+  // still-drawn (and still depth-tested) quad in the frame; `setEnabled` really takes one
+  // out of it. Both default to on, which is what the shipped build shows.
+  let contactEnabled = true
+  let projectedEnabled = true
+  function applyEnabled() {
+    contact.visible = contactEnabled
+    projected.visible = projectedEnabled
+  }
+
+  // Where the painted support's two planes sit. In the shipped (art) route this never
+  // moves. The G1b prototype lifts it onto the prototype's own top surface, because a
+  // contact decal buried 0.025 below a real platform shows nothing at all — and the whole
+  // point of that round is to find out whether a decal on top of a REAL surface still buys
+  // anything (the low-power fallback question, §5 G1b).
+  function setPlaneY(y) {
+    if (!Number.isFinite(y)) return
+    contact.position.y = y
+    projected.position.y = y - 0.002
+  }
+
   return {
     tune({ contactOpacity, projectedOpacity } = {}) {
       if (Number.isFinite(contactOpacity)) contactMaterial.opacity = THREE.MathUtils.clamp(contactOpacity, 0, 0.6)
       if (Number.isFinite(projectedOpacity)) projected.material.opacity = THREE.MathUtils.clamp(projectedOpacity, 0, 0.6)
     },
-    report: () => ({ contactOpacity: contactMaterial.opacity, projectedOpacity: projected.material.opacity, floorY: contact.position.y }),
+    setEnabled({ contact: contactOn, projected: projectedOn } = {}) {
+      if (typeof contactOn === 'boolean') contactEnabled = contactOn
+      if (typeof projectedOn === 'boolean') projectedEnabled = projectedOn
+      applyEnabled()
+      return report()
+    },
+    setPlaneY,
+    report,
+  }
+
+  function report() {
+    return {
+      contactOpacity: contactMaterial.opacity,
+      projectedOpacity: projected.material.opacity,
+      contactEnabled,
+      projectedEnabled,
+      floorY: contact.position.y,
+      basePlaneY: -extent - style.floorOffset,
+      // The renderer's own view, so an evidence run cannot claim a quad is "off" while the
+      // scene still draws it.
+      contactVisible: contact.visible,
+      projectedVisible: projected.visible,
+    }
   }
 }

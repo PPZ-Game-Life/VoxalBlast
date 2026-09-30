@@ -66,6 +66,12 @@ export function createDiagnostics({
         toneMapping: scene.toneMapping,
         programs: scene.programs,
         lowPower: scene.lowPower,
+        // G0/G1 (MATERIAL_GROUNDING_REWORK_HANDOFF §4/§5): the per-frame counters a support or
+        // material round has to report, and which support the page is actually drawing (painted
+        // pedestal, its two quads, the 3D prototype, and whether the two scene passes are on).
+        // Still a pure assembly of gameScene's own report.
+        rendererInfo: scene.rendererInfo,
+        grounding: scene.grounding,
       }
     },
     // `pose` is the rendered orientation; `base` is the logical grid pose it settles around
@@ -331,6 +337,11 @@ export function createDiagnostics({
         clearCelebration: () => dev.clearCelebration(),
         audioReset: () => dev.audioReset(),
         audioUnlock: () => dev.audioUnlock(),
+        // G1 grounding diagnostics (MATERIAL_GROUNDING_REWORK_HANDOFF §5): the pedestal-contact
+        // round has to switch ONE term at a time (SSAO / the projected receiver / the contact
+        // decal / the support route) and hold a mid-turn pose that exists for a few frames
+        // during a real flip. All presentation-only; main builds the callbacks.
+        grounding: dev.grounding,
       })
     }
   }

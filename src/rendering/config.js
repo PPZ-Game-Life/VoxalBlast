@@ -271,6 +271,43 @@ export const SHADOW_STYLE = Object.freeze({
   lowPowerSSAO: false, // baked surface AO + contact decal replace two scene passes
 })
 
+// G1 diagnostic prototype (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §5 G1b).
+//
+// What this is: a DELIBERATELY PLAIN, low, round platform whose only job is to answer one
+// question — does putting the support into the real geometry / normal / depth chain buy
+// enough grounding to justify replacing the painted pedestal? It is not a final asset and
+// it is not dressed: no foliage, no stone joints, no bevel profile, no texture. Route A is
+// only allowed to be adopted if this prototype wins on real pixels, and the final surface
+// (if any) is Luna's delivery (§8.2).
+//
+// Why a separate constant group instead of extending SHADOW_STYLE: those two quads are the
+// PAINTED support (a radial contact decal and a ShadowMaterial receiver), which is exactly
+// what the prototype is being compared against. They stay switchable and unchanged.
+//
+// Sizing is DERIVED, never typed in twice: the diameter comes from the swatch the DOM art
+// already defines (gameScene's `fitPedestal()` decides how wide the pedestal is drawn — the
+// prototype is fitted from that same projected silhouette), and the top surface sits on the
+// resting cube's own bottom edge so nothing about the camera or the board has to move.
+export const GROUNDING_STYLE = Object.freeze({
+  // The shipped build keeps the painted pedestal until G1 rules; flipping this only changes
+  // which support a page boots with (the probe sets it at runtime, per capture).
+  platformEnabled: false,
+  // Multiplier on the projected pedestal width the art fit already produces. 1 = the
+  // prototype is exactly as wide on screen as `pedestal.webp` is drawn.
+  platformWidthFactor: 1,
+  // World-space height of the slab. Low on purpose: the art's stone is a shallow ledge, and
+  // a tall drum would read as a new prop rather than a support.
+  platformHeight: 0.55,
+  // The top surface relative to the resting cube's own bottom edge (0 = flush under it).
+  platformTopInset: 0,
+  platformSegments: 72,
+  // 浅奶油石材, the tone the painted ledge is painted in — so the comparison grades the
+  // LIGHTING AND CONTACT, not a new colour.
+  platformColor: 0xf1e3d0,
+  platformRoughness: 0.9,
+  platformClearcoat: 0.04,
+})
+
 // Opening layout (v0.2.31) — MEASUREMENT ONLY since v0.9.10. The shipped game no longer
 // seeds it: resetGame() clears to a bare shell so a run starts with all six faces at zero,
 // and the first move is always the player's. It stays because the offline difficulty tools
@@ -897,7 +934,14 @@ export const INTRO_STYLE = Object.freeze({
 })
 
 export function getRenderQuality() {
-  const lowPower = window.matchMedia?.('(max-width: 700px)').matches || (navigator.hardwareConcurrency || 8) <= 4
+  // DEV-only tier override (MATERIAL_GROUNDING_REWORK_HANDOFF §9.2: 「至少同设备强制高/低档对照」).
+  // The tier is otherwise decided by the viewport and the core count, which a screenshot run
+  // cannot vary on one machine. `import.meta.env.DEV` is replaced by `false` in the production
+  // bundle, so the whole branch — and the read of the global — is stripped from what ships.
+  const forced = import.meta.env.DEV ? globalThis.__voxalblastQuality : null
+  const lowPower = forced === 'low' || forced === 'high'
+    ? forced === 'low'
+    : window.matchMedia?.('(max-width: 700px)').matches || (navigator.hardwareConcurrency || 8) <= 4
   return Object.freeze({
     lowPower,
     pixelRatioMax: lowPower ? 1.35 : 2,

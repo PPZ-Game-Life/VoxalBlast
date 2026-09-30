@@ -176,6 +176,10 @@ export function createBoardView({
   }
   const scratchQuat = new THREE.Quaternion()
   const scratchLogical = new THREE.Quaternion()
+  // G1 diagnostic hold (see holdDiagnosticPose below). Null in every real path.
+  const diagnosticPose = new THREE.Quaternion()
+  const diagnosticStep = new THREE.Quaternion()
+  let diagnosticHeld = null
   // v0.2.30 dropped the pitch pole limit (and its `pitchReach` bookkeeping). It was
   // the fixed-axis restatement of v0.2.25's Euler "clamp pitch to ±90°", but in the
   // quaternion model there is nothing to protect: pitching past a pole is an
@@ -208,7 +212,10 @@ export function createBoardView({
 
   function applyCubeRotation() {
     const cubeGroup = getCubeGroup()
-    cubeGroup.quaternion.copy(cubeQuat)
+    // The diagnostic hold wins while it is set — it is the LAST writer on purpose, so the
+    // rAF loop's own settle/gesture calls below cannot animate it away between the frame
+    // that was asked for and the frame that is captured.
+    cubeGroup.quaternion.copy(diagnosticHeld ? diagnosticPose : cubeQuat)
     cubeGroup.updateMatrixWorld(true)
   }
 
@@ -480,6 +487,7 @@ export function createBoardView({
   function resetCubeRotation() {
     cubeSnapAnim.active = false
     cubeLive = null
+    diagnosticHeld = null
     // A reset can land in the middle of a gesture; drop it so the pointerup that
     // may never come cannot leave rotation permanently blocked. The gesture record is
     // main's pointer state (gameInput, P7), so the drop is asked for by callback.
@@ -506,6 +514,38 @@ export function createBoardView({
       cubeSnapAnim.active = false
       applyCubeRotation()
     }
+  }
+
+  // ---- Diagnostic pose hold (G1 flip-interpenetration gate) ---------------------
+  //
+  // WHY this exists: every committed face turn is a 0.26 s eased slerp from the current grid
+  // pose to the next (`updateCubeSnap`, `ROTATE_STYLE.snapDuration`), so the ~45° intermediate
+  // the handoff's G1 gate asks about exists for a handful of frames — too few for a headless
+  // capture to land on, and too fast to photograph by hand. This holds that exact intermediate
+  // pose still.
+  //
+  // What it holds is NOT an approximation: it is the same composition the shipped pose uses —
+  // `bearingQuat(bearingYaw, bearingPitch) · step(axis, angle) · cubeBase` — i.e. the point the
+  // slerp passes through, under the real camera, with the real geometry and the real support
+  // (a slab's edge or a painted ledge). It writes no logic state: `cubeBase`, the bearing and
+  // the snap animation are untouched, so the pose a release commits is exactly what it was
+  // before the hold. It is reachable only from the DEV diagnostics bag, and `clearDiagnosticPose`
+  // (or Reset Game) lets go of it.
+  function holdDiagnosticPose(axis, angle) {
+    if (!AXIS_OF[axis] || !Number.isFinite(angle)) return clearDiagnosticPose()
+    diagnosticStep.setFromAxisAngle(AXIS_OF[axis], angle)
+    bearingQuat(bearingYaw, bearingPitch, diagnosticPose)
+    diagnosticPose.multiply(diagnosticStep).multiply(cubeBase).normalize()
+    diagnosticHeld = { axis, angle, deg: Number(THREE.MathUtils.radToDeg(angle).toFixed(2)) }
+    applyCubeRotation()
+    return { ...diagnosticHeld }
+  }
+
+  function clearDiagnosticPose() {
+    if (!diagnosticHeld) return null
+    diagnosticHeld = null
+    applyCubeRotation()
+    return null
   }
 
   // ---- Candidate orientation on the front face (v0.2.28) ----------------------
@@ -1092,7 +1132,14 @@ export function createBoardView({
   // readability helpers for the checks (a pure yaw/pitch/roll pose decomposes exactly
   // in ZYX order).
   function rotationReport() {
-    const poseEuler = new THREE.Euler().setFromQuaternion(cubeQuat, 'ZYX')
+    // `pose` is the pose the RENDERER is actually drawing — read off the cube group, which is
+    // the one thing every writer (gesture, snap, reset, the G1 diagnostic hold) goes through.
+    // It is bit-identical to `cubeQuat` whenever no diagnostic hold is set, so nothing that
+    // reads this contract changes; with a hold set it is the only honest answer, and a probe
+    // comparing a held pose against a real one would otherwise be comparing cubeQuat with
+    // itself. `poseLogical` keeps the logical value visible next to it.
+    const rendered = getCubeGroup().quaternion
+    const poseEuler = new THREE.Euler().setFromQuaternion(rendered, 'ZYX')
     const baseEuler = new THREE.Euler().setFromQuaternion(cubeBase, 'ZYX')
     // Read the two module-owned `let`s once, through their accessors. getBearing() hands
     // back a copy, so the read-out can never alias the module's own state.
@@ -1121,11 +1168,16 @@ export function createBoardView({
         yaw: Number(THREE.MathUtils.radToDeg(rawForOffset(bearing.yaw - bearingDock('yaw'), rotateStyle.bearingMargin.yaw)).toFixed(2)),
         pitch: Number(THREE.MathUtils.radToDeg(rawForOffset(bearing.pitch - bearingDock('pitch'), rotateStyle.bearingMargin.pitch)).toFixed(2)),
       },
-      pose: cubeQuat.toArray(),
+      pose: rendered.toArray(),
+      poseLogical: cubeQuat.toArray(),
       base: cubeBase.toArray(),
       front: findFrontFace(),
       settling: cubeSnapAnim.active,
       live: live ? { axis: live.axis, angle: live.angle, rendered: live.rendered, shown: live.shown, raw: live.raw } : null,
+      // Non-null only while a DEV diagnostic hold is on screen (holdDiagnosticPose): a probe
+      // can then prove the pose it captured is the one it asked for, rather than trusting the
+      // frame. Never set on any player path.
+      diagnostic: diagnosticHeld ? { ...diagnosticHeld } : null,
       // The fine-tune zone as the model actually uses it (v0.8.24), in degrees: the
       // dock, the symmetric margin, and the finger travel that reaches the edge.
       zone: { yaw: bearingZoneReport('yaw'), pitch: bearingZoneReport('pitch') },
@@ -1381,6 +1433,9 @@ export function createBoardView({
     settleCubeSnap,
     updateCubeSnap,
     resetCubeRotation,
+    // G1 diagnostic hold (DEV diagnostics bag only): render an exact mid-turn pose still.
+    holdDiagnosticPose,
+    clearDiagnosticPose,
     findFrontFace,
     faceOrientedCells,
   }

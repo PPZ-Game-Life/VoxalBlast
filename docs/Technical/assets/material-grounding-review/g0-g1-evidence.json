@@ -1,0 +1,5494 @@
+{
+  "run": {
+    "startedAt": "2026-09-30T11:28:58.434Z",
+    "version": "0.10.1",
+    "url": "http://127.0.0.1:5173/",
+    "stage": "all",
+    "tier": "auto",
+    "tiers": [
+      "high",
+      "low"
+    ],
+    "seed": 20260930,
+    "views": [
+      "desktop",
+      "mobile",
+      "desktop720"
+    ],
+    "head": "ref: refs/heads/main",
+    "node": "v24.15.0",
+    "note": "G0 + G1 evidence for MATERIAL_GROUNDING_REWORK_HANDOFF §4/§5. Every switch driven here is DEV-only and presentation-only."
+  },
+  "note": "G0 + G1 evidence (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §4/§5). Frame times come from headless software rendering on this machine and are a RELATIVE same-machine baseline, not a device measurement.",
+  "fixtures": {
+    "empty": {
+      "path": "tools/fixtures/material-grounding-empty.json",
+      "sha256": "1e399b77fcd5f300d3a21bf8ba65819be6c5b8d26deab8655e0a6c37dc136284"
+    },
+    "rgb": {
+      "path": "tools/fixtures/material-grounding-rgb.json",
+      "sha256": "bac9856d4e05d392fb761e76ec9811ab51dd86cbd8d0fa1002810dca1d6f271f"
+    }
+  },
+  "sessions": [
+    {
+      "key": "desktop|high",
+      "view": "desktop",
+      "tier": "high",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "tierReported": "high",
+      "ssaoEnabledAtBoot": true,
+      "ssaoOfferedByTier": true,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 316,
+        "triangles": 174070,
+        "points": 0,
+        "lines": 0,
+        "textures": 41,
+        "geometries": 14
+      },
+      "programs": 18,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 512.46875,
+        "topPx": 499.140625,
+        "leftPx": 467.953125,
+        "heightPx": 211.203125
+      }
+    },
+    {
+      "key": "desktop|low",
+      "view": "desktop",
+      "tier": "low",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "tierReported": "low",
+      "ssaoEnabledAtBoot": false,
+      "ssaoOfferedByTier": false,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 210,
+        "triangles": 115851,
+        "points": 0,
+        "lines": 0,
+        "textures": 31,
+        "geometries": 14
+      },
+      "programs": 14,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 512.46875,
+        "topPx": 499.140625,
+        "leftPx": 467.953125,
+        "heightPx": 211.203125
+      }
+    },
+    {
+      "key": "mobile|high",
+      "view": "mobile",
+      "tier": "high",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "tierReported": "high",
+      "ssaoEnabledAtBoot": true,
+      "ssaoOfferedByTier": true,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 316,
+        "triangles": 174070,
+        "points": 0,
+        "lines": 0,
+        "textures": 41,
+        "geometries": 14
+      },
+      "programs": 18,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 309.734375,
+        "topPx": 431.3125,
+        "leftPx": 42.0546875,
+        "heightPx": 127.640625
+      }
+    },
+    {
+      "key": "mobile|low",
+      "view": "mobile",
+      "tier": "low",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "tierReported": "low",
+      "ssaoEnabledAtBoot": false,
+      "ssaoOfferedByTier": false,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 210,
+        "triangles": 115851,
+        "points": 0,
+        "lines": 0,
+        "textures": 31,
+        "geometries": 14
+      },
+      "programs": 14,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 309.734375,
+        "topPx": 431.3125,
+        "leftPx": 42.0546875,
+        "heightPx": 127.640625
+      }
+    },
+    {
+      "key": "desktop720|high",
+      "view": "desktop720",
+      "tier": "high",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "tierReported": "high",
+      "ssaoEnabledAtBoot": true,
+      "ssaoOfferedByTier": true,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 316,
+        "triangles": 174070,
+        "points": 0,
+        "lines": 0,
+        "textures": 41,
+        "geometries": 14
+      },
+      "programs": 18,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 409.78125,
+        "topPx": 401.890625,
+        "leftPx": 438.453125,
+        "heightPx": 168.875
+      }
+    },
+    {
+      "key": "desktop720|low",
+      "view": "desktop720",
+      "tier": "low",
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "tierReported": "low",
+      "ssaoEnabledAtBoot": false,
+      "ssaoOfferedByTier": false,
+      "occlusionIntensity": 1,
+      "rendererInfo": {
+        "calls": 210,
+        "triangles": 115851,
+        "points": 0,
+        "lines": 0,
+        "textures": 31,
+        "geometries": 14
+      },
+      "programs": 14,
+      "ssaoInputs": {
+        "depthBound": true,
+        "normalBound": true,
+        "blendOpacity": 1,
+        "blendFunction": 21,
+        "radius": null
+      },
+      "cubeBottomY": -2.475,
+      "supportTopY": -2.5,
+      "pedestalArt": {
+        "hidden": false,
+        "widthPx": 409.78125,
+        "topPx": 401.890625,
+        "leftPx": 438.453125,
+        "heightPx": 168.875
+      }
+    }
+  ],
+  "frames": [
+    {
+      "id": "g0-empty-dock",
+      "label": "G0 空盘 · 默认停靠",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g0-empty-dock.png",
+      "bytes": 390336,
+      "sha256": "de2e715473b20ffa1377877c8e160c030642583b863275ab5a32199c3cb5aca6",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "empty board, default dock"
+    },
+    {
+      "id": "g0-rgb-dock",
+      "label": "G0 彩色存档 · 默认停靠（木 + 红/蓝/绿）",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g0-rgb-dock.png",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "coloured save, default dock"
+    },
+    {
+      "id": "g1a-A-all",
+      "label": "G1a-A 全部开启",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1a-A-all.png",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "A: everything on"
+    },
+    {
+      "id": "g1a-C-no-contact",
+      "label": "G1a-C 仅关接触贴片",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1a-C-no-contact.png",
+      "bytes": 403203,
+      "sha256": "a4cde0d25d78d244efdaba10bc3f757f3571c58dbf6667dd20f252dbc2cf752b",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "C: contact decal only"
+    },
+    {
+      "id": "g1a-D-no-projected",
+      "label": "G1a-D 仅关实时投影接收面",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1a-D-no-projected.png",
+      "bytes": 403139,
+      "sha256": "6081c4e65114c020f0b3a87617bb43291c1695984a2ae8f5705d9fac3b60e02e",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": false,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "D: projected receiver only"
+    },
+    {
+      "id": "g1b-art-ssao-off",
+      "label": "G1b 二维底座（无 SSAO）",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-art-ssao-off.png",
+      "bytes": 403170,
+      "sha256": "e172e76680052a3d299928f1a5a0a765ba3fd3a8fc5259626770bdb0ded3d6ab",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "painted pedestal, no SSAO (the comparable 2D baseline)"
+    },
+    {
+      "id": "g1b-platform-plain",
+      "label": "G1b 三维样板（无 SSAO/无贴片/无接收面）",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-plain.png",
+      "bytes": 380911,
+      "sha256": "b876526bb99f832e27ef275a34edd942522aacb809dfef59d1d56306129bac30",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.2269409739515718,
+          "topY": -2.475,
+          "diameterPx": 309.74497684102244,
+          "centrePx": 191.08583208826218,
+          "worldPerPx": 0.020836114966976908
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "3D slab, no SSAO, no decal, no receiver"
+    },
+    {
+      "id": "g1b-platform-decal",
+      "label": "G1b 三维样板 + 接触贴片",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-decal.png",
+      "bytes": 381250,
+      "sha256": "77cb6f66e4e76813ef914dd1a925130f4de1868ea19114d185b3f8f12d225d4d",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.2269409739515718,
+          "topY": -2.475,
+          "diameterPx": 309.74497684102244,
+          "centrePx": 191.08583208826218,
+          "worldPerPx": 0.020836114966976908
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "3D slab + contact decal"
+    },
+    {
+      "id": "g1b-platform-ssao",
+      "label": "G1b 三维样板 + SSAO",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-ssao.png",
+      "bytes": 380911,
+      "sha256": "b876526bb99f832e27ef275a34edd942522aacb809dfef59d1d56306129bac30",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.2269409739515718,
+          "topY": -2.475,
+          "diameterPx": 309.74497684102244,
+          "centrePx": 191.08583208826218,
+          "worldPerPx": 0.020836114966976908
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "3D slab + SSAO"
+    },
+    {
+      "id": "g1b-platform-flip-pitch-mid",
+      "label": "G1b 三维样板 · pitch 45° 中间帧",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-flip-pitch-mid.png",
+      "bytes": 367260,
+      "sha256": "39c547f8d9432c791e3afd6c55df7a7aa91c492c0345d708ccc794387af0a29a",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.2269409739515718,
+          "topY": -2.475,
+          "diameterPx": 309.74497684102244,
+          "centrePx": 191.08583208826218,
+          "worldPerPx": 0.020836114966976908
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "platform support at pitch 45° (mid-turn hold)"
+    },
+    {
+      "id": "g1b-platform-intro-mid",
+      "label": "G1b 三维样板 · 开场波次中间帧",
+      "view": "mobile",
+      "tier": "high",
+      "crop": null,
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-intro-mid.png",
+      "bytes": 363103,
+      "sha256": "a139454cfe6c06277f682f0615defa527a88b1ca8ac3ee6db9cf40ef5c2ada64",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 309.734375,
+          "topPx": 431.3125,
+          "leftPx": 42.0546875,
+          "heightPx": 127.640625
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.2269409739515718,
+          "topY": -2.475,
+          "diameterPx": 309.74497684102244,
+          "centrePx": 191.08583208826218,
+          "worldPerPx": 0.020836114966976908
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "opening wave mid-build over the slab"
+    },
+    {
+      "id": "g0-rgb-dock",
+      "label": "G0 1:1 正面裁切（彩漆）",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "face",
+      "file": "docs/Technical/assets/material-grounding-review/g0-rgb-dock-crop-face.png",
+      "bytes": 36405,
+      "sha256": "123a01fc89ecc442d6fee6ebcbad8acdaeeea708d451c9c8537102a5b9635d29",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "coloured save, default dock"
+    },
+    {
+      "id": "g0-rgb-dock",
+      "label": "G0 1:1 底排裁切（裸木 + 彩漆同框）",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "wood",
+      "file": "docs/Technical/assets/material-grounding-review/g0-rgb-dock-crop-wood.png",
+      "bytes": 42162,
+      "sha256": "20b342e3a01fb81916681b8147f2b26e33d267ac131bf527c348de728f8e5b4f",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": null,
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "coloured save, default dock"
+    },
+    {
+      "id": "g1b-art-flip-pitch-mid",
+      "label": "G1b 二维底座 · pitch 45° 底边 1:1",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "base",
+      "file": "docs/Technical/assets/material-grounding-review/g1b-art-flip-pitch-mid-crop-base.png",
+      "bytes": 16459,
+      "sha256": "3043c3340216a5ff8c01a6e977b70312c23d448c6ea794f2e0c32f84a8e3d830",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": {
+          "visible": false,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.257234056311404,
+          "topY": -2.475,
+          "diameterPx": 512.4778686830675,
+          "centrePx": 580.1923859477026,
+          "worldPerPx": 0.012711706223262415
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "art support at pitch 45° (mid-turn hold)"
+    },
+    {
+      "id": "g1b-platform-flip-pitch-mid",
+      "label": "G1b 三维样板 · pitch 45° 底边 1:1",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "base",
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-flip-pitch-mid-crop-base.png",
+      "bytes": 16459,
+      "sha256": "3043c3340216a5ff8c01a6e977b70312c23d448c6ea794f2e0c32f84a8e3d830",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.257234056311404,
+          "topY": -2.475,
+          "diameterPx": 512.4778686830675,
+          "centrePx": 580.1923859477026,
+          "worldPerPx": 0.012711706223262415
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "platform support at pitch 45° (mid-turn hold)"
+    },
+    {
+      "id": "g1b-art-flip-roll-mid",
+      "label": "G1b 二维底座 · roll 45° 底边 1:1",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "base",
+      "file": "docs/Technical/assets/material-grounding-review/g1b-art-flip-roll-mid-crop-base.png",
+      "bytes": 52293,
+      "sha256": "3c98cb780b26e7ccb849c8aab85dd5c5bd02f482d6a479a5df3ccbb5aae4a9af",
+      "state": {
+        "route": "art",
+        "ssaoEnabled": true,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.5,
+        "pedestalArt": {
+          "hidden": false,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": {
+          "visible": false,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.257234056311404,
+          "topY": -2.475,
+          "diameterPx": 512.4778686830675,
+          "centrePx": 580.1923859477026,
+          "worldPerPx": 0.012711706223262415
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": true,
+          "projectedEnabled": true,
+          "floorY": -2.5,
+          "basePlaneY": -2.5,
+          "contactVisible": true,
+          "projectedVisible": true
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "art support at roll 45° (mid-turn hold)"
+    },
+    {
+      "id": "g1b-platform-flip-roll-mid",
+      "label": "G1b 三维样板 · roll 45° 底边 1:1",
+      "view": "desktop",
+      "tier": "high",
+      "crop": "base",
+      "file": "docs/Technical/assets/material-grounding-review/g1b-platform-flip-roll-mid-crop-base.png",
+      "bytes": 39891,
+      "sha256": "d30ef123b7af1df7e6c4873e9042f855202ffc32535cae00860316bed532bf4e",
+      "state": {
+        "route": "platform",
+        "ssaoEnabled": false,
+        "ssaoOfferedByTier": true,
+        "tier": "high",
+        "cubeBottomY": -2.475,
+        "supportTopY": -2.475,
+        "pedestalArt": {
+          "hidden": true,
+          "widthPx": 512.46875,
+          "topPx": 499.140625,
+          "leftPx": 467.953125,
+          "heightPx": 211.203125
+        },
+        "platform": {
+          "visible": true,
+          "receiveShadow": true,
+          "castShadow": false,
+          "layerMask": 1,
+          "radius": 3.257234056311404,
+          "topY": -2.475,
+          "diameterPx": 512.4778686830675,
+          "centrePx": 580.1923859477026,
+          "worldPerPx": 0.012711706223262415
+        },
+        "artQuads": {
+          "contactOpacity": 0.24,
+          "projectedOpacity": 0.18,
+          "contactEnabled": false,
+          "projectedEnabled": false,
+          "floorY": -2.4690000000000003,
+          "basePlaneY": -2.5,
+          "contactVisible": false,
+          "projectedVisible": false
+        },
+        "occlusionIntensity": 1
+      },
+      "note": "platform support at roll 45° (mid-turn hold)"
+    }
+  ],
+  "frameTiming": [
+    {
+      "id": "g0-empty-dock",
+      "view": "desktop",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 66.7,
+        "p95": 83.4,
+        "min": 66.5,
+        "max": 83.4,
+        "fpsFromP50": 15,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "desktop",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 66.7,
+        "p95": 83.4,
+        "min": 50,
+        "max": 83.4,
+        "fpsFromP50": 15,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "desktop",
+      "tier": "high",
+      "turning": {
+        "frames": 199,
+        "p50": 66.7,
+        "p95": 83.4,
+        "min": 66.5,
+        "max": 83.4,
+        "fpsFromP50": 15,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-empty-dock",
+      "view": "desktop",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 49.9,
+        "p95": 50.1,
+        "min": 33.2,
+        "max": 50.1,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "desktop",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 49.9,
+        "p95": 50.1,
+        "min": 33.2,
+        "max": 50.1,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "desktop",
+      "tier": "low",
+      "turning": {
+        "frames": 199,
+        "p50": 50,
+        "p95": 50.1,
+        "min": 33.2,
+        "max": 50.1,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-empty-dock",
+      "view": "mobile",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 33.3,
+        "p95": 50,
+        "min": 16.7,
+        "max": 50.1,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "mobile",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 33.3,
+        "p95": 33.4,
+        "min": 16.6,
+        "max": 50,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "mobile",
+      "tier": "high",
+      "turning": {
+        "frames": 199,
+        "p50": 33.3,
+        "p95": 50,
+        "min": 16.6,
+        "max": 50.1,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-empty-dock",
+      "view": "mobile",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 16.7,
+        "p95": 33.4,
+        "min": 16.5,
+        "max": 33.4,
+        "fpsFromP50": 59.9,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "mobile",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 16.7,
+        "p95": 33.3,
+        "min": 16.6,
+        "max": 33.4,
+        "fpsFromP50": 59.9,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "mobile",
+      "tier": "low",
+      "turning": {
+        "frames": 199,
+        "p50": 16.7,
+        "p95": 33.4,
+        "min": 16.5,
+        "max": 33.4,
+        "fpsFromP50": 59.9,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-empty-dock",
+      "view": "desktop720",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 50,
+        "p95": 66.7,
+        "min": 33.2,
+        "max": 66.8,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "desktop720",
+      "tier": "high",
+      "static": {
+        "frames": 89,
+        "p50": 50,
+        "p95": 66.6,
+        "min": 33.3,
+        "max": 66.8,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "desktop720",
+      "tier": "high",
+      "turning": {
+        "frames": 199,
+        "p50": 50,
+        "p95": 66.7,
+        "min": 33.3,
+        "max": 66.8,
+        "fpsFromP50": 20,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-empty-dock",
+      "view": "desktop720",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 33.3,
+        "p95": 33.4,
+        "min": 16.6,
+        "max": 33.5,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-dock",
+      "view": "desktop720",
+      "tier": "low",
+      "static": {
+        "frames": 89,
+        "p50": 33.3,
+        "p95": 33.4,
+        "min": 16.5,
+        "max": 33.4,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    },
+    {
+      "id": "g0-rgb-turning",
+      "view": "desktop720",
+      "tier": "low",
+      "turning": {
+        "frames": 199,
+        "p50": 33.3,
+        "p95": 33.4,
+        "min": 16.5,
+        "max": 33.5,
+        "fpsFromP50": 30,
+        "note": "headless software rendering (--disable-gpu); a relative same-machine baseline, not a device measurement"
+      }
+    }
+  ],
+  "diffs": [
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: SSAO contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-B-no-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: what the low tier gives up by turning both passes off",
+      "a": "g1a-A-all",
+      "b": "g1a-E-low-ssao-on",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: is the shipped occlusion merely gentle, or not running at all?",
+      "a": "g1a-A-all",
+      "b": "g1a-F-occlusion-cranked",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 2846,
+        "8": 1127,
+        "16": 274,
+        "32": 0
+      },
+      "meanDelta": 0.134,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 518,
+        "minY": 525,
+        "maxX": 931,
+        "maxY": 601
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 4291,
+        "8": 1124,
+        "16": 274,
+        "32": 0
+      },
+      "meanDelta": 0.17,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 498,
+        "minY": 547,
+        "maxX": 950,
+        "maxY": 610
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 2637,
+        "8": 1108,
+        "16": 284,
+        "32": 2
+      },
+      "meanDelta": 0.129,
+      "maxDelta": 34,
+      "movedBBox": {
+        "minX": 518,
+        "minY": 525,
+        "maxX": 931,
+        "maxY": 601
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 4087,
+        "8": 1105,
+        "16": 284,
+        "32": 2
+      },
+      "meanDelta": 0.166,
+      "maxDelta": 34,
+      "movedBBox": {
+        "minX": 498,
+        "minY": 547,
+        "maxX": 950,
+        "maxY": 610
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 1178,
+        "8": 404,
+        "16": 110,
+        "32": 0
+      },
+      "meanDelta": 0.141,
+      "maxDelta": 29,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 452,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1793,
+        "8": 404,
+        "16": 110,
+        "32": 0
+      },
+      "meanDelta": 0.24,
+      "maxDelta": 29,
+      "movedBBox": {
+        "minX": 60,
+        "minY": 452,
+        "maxX": 337,
+        "maxY": 497
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 1048,
+        "8": 387,
+        "16": 125,
+        "32": 10
+      },
+      "meanDelta": 0.14,
+      "maxDelta": 97,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 452,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1663,
+        "8": 387,
+        "16": 125,
+        "32": 10
+      },
+      "meanDelta": 0.24,
+      "maxDelta": 97,
+      "movedBBox": {
+        "minX": 60,
+        "minY": 452,
+        "maxX": 337,
+        "maxY": 497
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 2101,
+        "8": 720,
+        "16": 171,
+        "32": 0
+      },
+      "meanDelta": 0.146,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 425,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 2755,
+        "8": 717,
+        "16": 171,
+        "32": 0
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 31,
+      "movedBBox": {
+        "minX": 463,
+        "minY": 441,
+        "maxX": 828,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 1973,
+        "8": 718,
+        "16": 189,
+        "32": 0
+      },
+      "meanDelta": 0.143,
+      "maxDelta": 32,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 425,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1a: contact decal contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-C-no-contact",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 2628,
+        "8": 712,
+        "16": 189,
+        "32": 0
+      },
+      "meanDelta": 0.15,
+      "maxDelta": 32,
+      "movedBBox": {
+        "minX": 463,
+        "minY": 441,
+        "maxX": 828,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 2053,
+        "8": 1412,
+        "16": 748,
+        "32": 1
+      },
+      "meanDelta": 0.148,
+      "maxDelta": 33,
+      "movedBBox": {
+        "minX": 579,
+        "minY": 527,
+        "maxX": 931,
+        "maxY": 598
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 2397,
+        "8": 1385,
+        "16": 748,
+        "32": 1
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 33,
+      "movedBBox": {
+        "minX": 579,
+        "minY": 547,
+        "maxX": 954,
+        "maxY": 598
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 1825,
+        "8": 1217,
+        "16": 572,
+        "32": 11
+      },
+      "meanDelta": 0.131,
+      "maxDelta": 48,
+      "movedBBox": {
+        "minX": 585,
+        "minY": 526,
+        "maxX": 931,
+        "maxY": 599
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 2173,
+        "8": 1190,
+        "16": 572,
+        "32": 11
+      },
+      "meanDelta": 0.136,
+      "maxDelta": 48,
+      "movedBBox": {
+        "minX": 585,
+        "minY": 547,
+        "maxX": 954,
+        "maxY": 599
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 987,
+        "8": 495,
+        "16": 198,
+        "32": 0
+      },
+      "meanDelta": 0.153,
+      "maxDelta": 30,
+      "movedBBox": {
+        "minX": 117,
+        "minY": 449,
+        "maxX": 322,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1245,
+        "8": 509,
+        "16": 198,
+        "32": 0
+      },
+      "meanDelta": 0.221,
+      "maxDelta": 30,
+      "movedBBox": {
+        "minX": 117,
+        "minY": 449,
+        "maxX": 337,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 836,
+        "8": 402,
+        "16": 226,
+        "32": 15
+      },
+      "meanDelta": 0.147,
+      "maxDelta": 98,
+      "movedBBox": {
+        "minX": 118,
+        "minY": 449,
+        "maxX": 322,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 1094,
+        "8": 416,
+        "16": 226,
+        "32": 15
+      },
+      "meanDelta": 0.214,
+      "maxDelta": 98,
+      "movedBBox": {
+        "minX": 118,
+        "minY": 449,
+        "maxX": 337,
+        "maxY": 492
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 1415,
+        "8": 868,
+        "16": 451,
+        "32": 10
+      },
+      "meanDelta": 0.151,
+      "maxDelta": 70,
+      "movedBBox": {
+        "minX": 531,
+        "minY": 425,
+        "maxX": 809,
+        "maxY": 481
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 1588,
+        "8": 843,
+        "16": 451,
+        "32": 10
+      },
+      "meanDelta": 0.139,
+      "maxDelta": 70,
+      "movedBBox": {
+        "minX": 531,
+        "minY": 441,
+        "maxX": 827,
+        "maxY": 481
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 1280,
+        "8": 765,
+        "16": 381,
+        "32": 19
+      },
+      "meanDelta": 0.136,
+      "maxDelta": 88,
+      "movedBBox": {
+        "minX": 530,
+        "minY": 423,
+        "maxX": 809,
+        "maxY": 481
+      }
+    },
+    {
+      "label": "G1a: projected receiver contribution",
+      "a": "g1a-A-all",
+      "b": "g1a-D-no-projected",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 1460,
+        "8": 740,
+        "16": 381,
+        "32": 19
+      },
+      "meanDelta": 0.126,
+      "maxDelta": 88,
+      "movedBBox": {
+        "minX": 530,
+        "minY": 441,
+        "maxX": 827,
+        "maxY": 481
+      }
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO contribution on the painted route",
+      "a": "g1b-art-ssao-on",
+      "b": "g1b-art-ssao-off",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 5085,
+        "8": 4849,
+        "16": 4492,
+        "32": 3387
+      },
+      "meanDelta": 1.691,
+      "maxDelta": 216,
+      "movedBBox": {
+        "minX": 518,
+        "minY": 512,
+        "maxX": 931,
+        "maxY": 601
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 54208,
+        "8": 53631,
+        "16": 52694,
+        "32": 49198
+      },
+      "meanDelta": 26.697,
+      "maxDelta": 239,
+      "movedBBox": {
+        "minX": 472,
+        "minY": 547,
+        "maxX": 982,
+        "maxY": 705
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 4538,
+        "8": 4420,
+        "16": 4135,
+        "32": 3089
+      },
+      "meanDelta": 1.557,
+      "maxDelta": 213,
+      "movedBBox": {
+        "minX": 518,
+        "minY": 510,
+        "maxX": 931,
+        "maxY": 601
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 53661,
+        "8": 53192,
+        "16": 52318,
+        "32": 48863
+      },
+      "meanDelta": 26.56,
+      "maxDelta": 237,
+      "movedBBox": {
+        "minX": 472,
+        "minY": 547,
+        "maxX": 982,
+        "maxY": 705
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 2255,
+        "8": 2093,
+        "16": 1925,
+        "32": 1436
+      },
+      "meanDelta": 1.813,
+      "maxDelta": 197,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 439,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 21044,
+        "8": 20572,
+        "16": 20126,
+        "32": 18844
+      },
+      "meanDelta": 34.965,
+      "maxDelta": 223,
+      "movedBBox": {
+        "minX": 44,
+        "minY": 447,
+        "maxX": 352,
+        "maxY": 556
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 1962,
+        "8": 1879,
+        "16": 1705,
+        "32": 1279
+      },
+      "meanDelta": 1.661,
+      "maxDelta": 197,
+      "movedBBox": {
+        "minX": 72,
+        "minY": 437,
+        "maxX": 322,
+        "maxY": 493
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 20758,
+        "8": 20373,
+        "16": 19917,
+        "32": 18691
+      },
+      "meanDelta": 34.749,
+      "maxDelta": 218,
+      "movedBBox": {
+        "minX": 44,
+        "minY": 447,
+        "maxX": 352,
+        "maxY": 556
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 3782,
+        "8": 3655,
+        "16": 3403,
+        "32": 2483
+      },
+      "meanDelta": 1.954,
+      "maxDelta": 223,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 411,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 34872,
+        "8": 34554,
+        "16": 33999,
+        "32": 31728
+      },
+      "meanDelta": 24.331,
+      "maxDelta": 239,
+      "movedBBox": {
+        "minX": 441,
+        "minY": 441,
+        "maxX": 849,
+        "maxY": 567
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 3462,
+        "8": 3379,
+        "16": 3154,
+        "32": 2266
+      },
+      "meanDelta": 1.808,
+      "maxDelta": 223,
+      "movedBBox": {
+        "minX": 478,
+        "minY": 410,
+        "maxX": 809,
+        "maxY": 484
+      }
+    },
+    {
+      "label": "G1b: painted support vs plain 3D slab (both without SSAO)",
+      "a": "g1b-art-ssao-off",
+      "b": "g1b-platform-plain",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 34550,
+        "8": 34269,
+        "16": 33744,
+        "32": 31491
+      },
+      "meanDelta": 24.182,
+      "maxDelta": 237,
+      "movedBBox": {
+        "minX": 441,
+        "minY": 441,
+        "maxX": 849,
+        "maxY": 567
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.064,
+      "maxDelta": 112,
+      "movedBBox": {
+        "minX": 523,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.068,
+      "maxDelta": 112,
+      "movedBBox": {
+        "minX": 523,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 901,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.05,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 903,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.054,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 500,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.076,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 546,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.116,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 418,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.073,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 464,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.112,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 874,
+        "8": 241,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.062,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 482,
+        "minY": 423,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 828,
+        "8": 236,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.057,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 629,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.059,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 429,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: contact decal on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 608,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.056,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: SSAO on a real slab",
+      "a": "g1b-platform-plain",
+      "b": "g1b-platform-ssao",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 0,
+        "8": 0,
+        "16": 0,
+        "32": 0
+      },
+      "meanDelta": 0,
+      "maxDelta": 0,
+      "movedBBox": null
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.064,
+      "maxDelta": 112,
+      "movedBBox": {
+        "minX": 523,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 1184,
+        "8": 411,
+        "16": 114,
+        "32": 22
+      },
+      "meanDelta": 0.068,
+      "maxDelta": 112,
+      "movedBBox": {
+        "minX": 523,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 518,
+        "y0": 133,
+        "x1": 931,
+        "y1": 601
+      },
+      "pixels": 194166,
+      "over": {
+        "2": 901,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.05,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 534,
+        "maxX": 931,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 144,
+        "y0": 547,
+        "x1": 1295,
+        "y1": 720
+      },
+      "pixels": 200448,
+      "over": {
+        "2": 903,
+        "8": 309,
+        "16": 107,
+        "32": 11
+      },
+      "meanDelta": 0.054,
+      "maxDelta": 171,
+      "movedBBox": {
+        "minX": 598,
+        "minY": 547,
+        "maxX": 937,
+        "maxY": 596
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 500,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.076,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 546,
+        "8": 174,
+        "16": 49,
+        "32": 8
+      },
+      "meanDelta": 0.116,
+      "maxDelta": 131,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 72,
+        "y0": 208,
+        "x1": 322,
+        "y1": 493
+      },
+      "pixels": 71786,
+      "over": {
+        "2": 418,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.073,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 322,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "mobile",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 6,
+        "y0": 447,
+        "x1": 383,
+        "y1": 596
+      },
+      "pixels": 56700,
+      "over": {
+        "2": 464,
+        "8": 150,
+        "16": 63,
+        "32": 14
+      },
+      "meanDelta": 0.112,
+      "maxDelta": 165,
+      "movedBBox": {
+        "minX": 121,
+        "minY": 453,
+        "maxX": 326,
+        "maxY": 490
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 874,
+        "8": 241,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.062,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 482,
+        "minY": 423,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "high",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 828,
+        "8": 236,
+        "16": 59,
+        "32": 5
+      },
+      "meanDelta": 0.057,
+      "maxDelta": 89,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "cube",
+      "box": {
+        "x0": 478,
+        "y0": 109,
+        "x1": 809,
+        "y1": 484
+      },
+      "pixels": 124832,
+      "over": {
+        "2": 629,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.059,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 429,
+        "maxX": 809,
+        "maxY": 479
+      }
+    },
+    {
+      "label": "G1b: decal on top of SSAO",
+      "a": "g1b-platform-ssao",
+      "b": "g1b-platform-ssao-decal",
+      "view": "desktop720",
+      "tier": "low",
+      "region": "support",
+      "box": {
+        "x0": 128,
+        "y0": 441,
+        "x1": 1151,
+        "y1": 579
+      },
+      "pixels": 142336,
+      "over": {
+        "2": 608,
+        "8": 223,
+        "16": 90,
+        "32": 18
+      },
+      "meanDelta": 0.056,
+      "maxDelta": 172,
+      "movedBBox": {
+        "minX": 543,
+        "minY": 441,
+        "maxX": 814,
+        "maxY": 479
+      }
+    }
+  ],
+  "interpenetration": [
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "art",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.5,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0002,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-mid",
+      "axis": "yaw",
+      "deg": 45,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-mid",
+      "axis": "pitch",
+      "deg": 45,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-yaw-end",
+      "axis": "yaw",
+      "deg": 90,
+      "poseReported": {
+        "axis": "yaw",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-pitch-end",
+      "axis": "pitch",
+      "deg": 90,
+      "poseReported": {
+        "axis": "pitch",
+        "angle": 1.5707963267948966,
+        "deg": 90
+      },
+      "extent": 2.475,
+      "lowestCornerY": -2.475,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 0,
+      "belowRestBottom": 0
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "route": "platform",
+      "pose": "flip-roll-mid",
+      "axis": "roll",
+      "deg": 45,
+      "poseReported": {
+        "axis": "roll",
+        "angle": 0.7853981633974483,
+        "deg": 45
+      },
+      "extent": 2.475,
+      "lowestCornerY": -3.5002,
+      "supportTopY": -2.475,
+      "restBottomY": -2.475,
+      "belowSupport": 1.0252,
+      "belowRestBottom": 1.0252
+    }
+  ],
+  "introWave": [
+    {
+      "view": "desktop",
+      "tier": "high",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "0,0,4",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    },
+    {
+      "view": "desktop",
+      "tier": "low",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "1,0,2",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    },
+    {
+      "view": "mobile",
+      "tier": "high",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "0,0,4",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    },
+    {
+      "view": "mobile",
+      "tier": "low",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "0,2,2",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    },
+    {
+      "view": "desktop720",
+      "tier": "high",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "2,0,1",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    },
+    {
+      "view": "desktop720",
+      "tier": "low",
+      "maxTileScale": 1.05,
+      "maxScaleCell": "1,0,4",
+      "dipBelowRestBottom": 0.0238,
+      "restBottomY": -2.475,
+      "captured": true
+    }
+  ],
+  "pageErrors": [],
+  "fullReport": "artifacts/material-grounding/report-all.json",
+  "regenerate": "npm run fixtures:grounding && npm run probe:grounding -- --views=desktop,mobile,desktop720 --tiers=high,low"
+}

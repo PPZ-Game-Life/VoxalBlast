@@ -1567,6 +1567,11 @@ platform.initialize().catch(() => showToast(t('toast.offline')))
 const clock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
+  // G0 (MATERIAL_GROUNDING_REWORK_HANDOFF §4.5): draw calls and triangles are only meaningful
+  // as a WHOLE-frame total, and three resets them on every render() call by default — the post
+  // chain makes several. gameScene turns that auto-reset off; the frame's own boundary is here,
+  // so this is where they are zeroed. Presentation-only: no gameplay path reads them.
+  renderer.info.reset()
   const measure = clock.getDelta()
   const raw = Math.min(measure, 0.05)
   // The L5 dip scales the CUBE's animation clock (handoff §7.3): the celebration is scheduled on
@@ -1699,6 +1704,21 @@ const devHandles = import.meta.env.DEV
     // output peak; the cue count is monotonically increasing so the probe diffs it itself.
     audioReset: () => audio.resetOutputWindow(),
     audioUnlock: () => audio.unlock(),
+    // G1 grounding diagnostics (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §5).
+    // Presentation-only switches: no board cell, no score, no hand, no camera position and no
+    // framing number moves, and the only thing `hold` writes is the rendered pose (the logical
+    // pose, the bearing and the run are untouched). DEV-only, so the shipped bundle carries
+    // neither the bag nor these closures.
+    grounding: {
+      ssao: (on) => scene3d.setSSAOEnabled(on),
+      route: (route) => scene3d.setGroundingRoute(route),
+      contactDecal: (on) => scene3d.setContactDecalEnabled(on),
+      projectedShadow: (on) => scene3d.setProjectedShadowEnabled(on),
+      occlusion: (value) => scene3d.setOcclusionIntensity(value),
+      hold: (axis, angle) => boardView.holdDiagnosticPose(axis, angle),
+      release: () => boardView.clearDiagnosticPose(),
+      report: () => scene3d.groundingReport(),
+    },
   }
   : null
 

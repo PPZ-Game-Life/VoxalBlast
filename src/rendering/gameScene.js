@@ -32,7 +32,7 @@ import {
   ToneMappingMode,
 } from 'postprocessing'
 import { skipComposerDepthBlit } from './threeCompat.js'
-import { BOARD_STYLE as style, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, GROUNDING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
 import { createBoardShadows } from './boardShadows.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
@@ -66,6 +66,10 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   const stagePoint = new THREE.Vector3()
   const stageUp = new THREE.Vector3(0, 1, 0)
   let stageProjectionKey = ''
+  // The last fitted stage footprint (canvas-local pixels). Kept so the G1 prototype can be
+  // fitted from the same numbers the DOM art was fitted from, and re-fitted when the route
+  // is switched on after a resize that predates it.
+  let lastStage = null
 
   // Anchor scenery to the resting cube footprint, not its rotating/scaling intro
   // mesh. It follows resize and wheel zoom without wobbling during a face turn.
@@ -91,6 +95,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     pedestal.style.width = `${stageWidth}px`
     pedestal.style.left = `${sceneWrap.offsetLeft + (minX + maxX) / 2}px`
     pedestal.style.top = `${sceneWrap.offsetTop + maxY - stageWidth * 0.20}px`
+    lastStage = { stageWidth, centreX: (minX + maxX) / 2, canvasWidth: width, bottomY: maxY }
+    fitPlatform(lastStage)
   }
 
   // Fit bound covers the shell plus the one tile inset that stands proud of it.
@@ -294,6 +300,11 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   renderer.setClearColor(0x000000, 0)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  // Per-FRAME counters, not per-render()-call ones: the post chain issues several render calls
+  // per frame, and the default auto-reset would leave `info.render` holding only the last pass's
+  // numbers (measured: 1 call / 1 triangle, which is the composer's final quad). main's frame
+  // loop zeroes them at the frame boundary instead.
+  renderer.info.autoReset = false
   sceneWrap.appendChild(renderer.domElement)
 
   const composer = new EffectComposer(renderer, { multisampling: quality.multisampling, frameBufferType: THREE.HalfFloatType })
@@ -337,12 +348,159 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   composer.addPass(normalPass)
   composer.addPass(occlusionPass)
   composer.addPass(effectPass)
-  const useSSAO = !quality.lowPower || SHADOW_STYLE.lowPowerSSAO
+  // The TIER decides the shipped default; the G1 diagnostic can flip the two scene passes
+  // afterwards so one machine can be graded with and without them (§9.2 「强制高/低档对照」).
+  let useSSAO = !quality.lowPower || SHADOW_STYLE.lowPowerSSAO
   normalPass.enabled = occlusionPass.enabled = useSSAO
   // metrics() is lazy until main has assembled the board constants.
   let boardShadows = null
   function ensureBoardShadows() {
-    boardShadows ??= createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift })
+    if (boardShadows) return
+    boardShadows = createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift })
+    applyGroundingRoute()
+  }
+
+  // ---- G1 grounding prototype (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §5) --
+  //
+  // Two routes, one at a time, so the question "does the support need to be 3D?" is answered
+  // by a controlled comparison rather than by a look at the new thing on its own:
+  //
+  //   'art'      the shipped painted pedestal (`pedestal.webp`) plus its two quads.
+  //   'platform' a PLAIN 3D slab, in the real geometry / normal / depth chain, with the DOM
+  //              art hidden. The projected receiver is switched OFF in this route (its quad
+  //              sits below the slab and would be buried), while the contact decal stays an
+  //              independent switch — §5 G1b asks for its off state to be compared first.
+  //
+  // Nothing here moves the cube, the camera or the framing: the slab is fitted from the
+  // silhouette the art fit already produced. This is a DIAGNOSTIC and a candidate, not the
+  // §8.2 delivery: no bevel profile, no texture, no foliage.
+  let groundingRoute = GROUNDING_STYLE.platformEnabled ? 'platform' : 'art'
+  let contactDecalEnabled = true
+  let projectedShadowEnabled = true
+  let platform = null
+  const platformMetrics = {}
+
+  function ensurePlatform() {
+    if (platform) return platform
+    platform = new THREE.Mesh(
+      new THREE.CylinderGeometry(1, 1, GROUNDING_STYLE.platformHeight, GROUNDING_STYLE.platformSegments, 1, false),
+      new THREE.MeshPhysicalMaterial({
+        color: GROUNDING_STYLE.platformColor,
+        roughness: GROUNDING_STYLE.platformRoughness,
+        clearcoat: GROUNDING_STYLE.platformClearcoat,
+        clearcoatRoughness: 0.5,
+        metalness: 0,
+      }),
+    )
+    // It RECEIVES the key light: that is half of what the prototype is being tested for.
+    // It casts nothing, and it is not a pick target (layer 0 keeps it inside the
+    // normal/depth prepass, so SSAO can see it — the other half of the test).
+    platform.receiveShadow = true
+    platform.castShadow = false
+    platform.raycast = () => {}
+    platform.visible = false
+    scene.add(platform)
+    return platform
+  }
+
+  // Fitted from the SAME projected silhouette `fitPedestal()` measures, so the prototype
+  // inherits the art's own on-screen width instead of a second, hand-typed size (§5 G1b:
+  // 「按现有底座屏幕轮廓标定承托宽度」). The screen→world map is the turn-band lift's; its
+  // horizontal and vertical factors are identical because camera.aspect is width/height.
+  // The resting cube's own bottom edge — the outermost block faces. One place, because both
+  // the slab's top surface and the interpenetration read-out are measured against it.
+  function cubeBottomY() {
+    const { half, cs, blockHalf } = metrics()
+    return -(half - cs / 2 + blockHalf)
+  }
+
+  function fitPlatform(stage) {
+    if (!platform || !stage) return
+    const rect = renderer.domElement.getBoundingClientRect()
+    const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
+    const diameterPx = Math.min(stage.stageWidth * GROUNDING_STYLE.platformWidthFactor, stage.canvasWidth * 1.05)
+    const radius = Math.max(0.4, (diameterPx * worldPerPx) / 2)
+    // The top surface is anchored to the RESTING cube's own bottom edge (the outermost
+    // blocks' faces), so the slab is a support the cube stands on and not a prop placed by
+    // eye. `platformTopInset` is the one deliberate offset.
+    const topY = cubeBottomY() + GROUNDING_STYLE.platformTopInset
+    platform.scale.set(radius, 1, radius)
+    platform.position.set((stage.centreX - stage.canvasWidth / 2) * worldPerPx, topY - GROUNDING_STYLE.platformHeight / 2, 0)
+    Object.assign(platformMetrics, { radius, topY, diameterPx, centrePx: stage.centreX, worldPerPx })
+  }
+
+  function applyGroundingRoute() {
+    const onPlatform = groundingRoute === 'platform'
+    if (onPlatform) { ensurePlatform(); fitPlatform(lastStage) }
+    if (platform) platform.visible = onPlatform
+    if (pedestal) pedestal.style.visibility = onPlatform ? 'hidden' : ''
+    if (!boardShadows) return
+    const floorY = onPlatform ? (platformMetrics.topY ?? 0) + 0.006 : boardShadows.report().basePlaneY
+    boardShadows.setEnabled({ contact: contactDecalEnabled, projected: projectedShadowEnabled && !onPlatform })
+    boardShadows.setPlaneY(floorY)
+  }
+
+  function groundingReport() {
+    const art = pedestal ? pedestal.getBoundingClientRect() : null
+    return {
+      route: groundingRoute,
+      ssaoEnabled: useSSAO,
+      // Whether the TIER even offers the two scene passes: a low-power load cannot show
+      // SSAO at all, which is why every G1 comparison is also captured at low tier.
+      ssaoOfferedByTier: !quality.lowPower || SHADOW_STYLE.lowPowerSSAO,
+      tier: quality.lowPower ? 'low' : 'high',
+      // The resting cube's bottom edge, in world units, and the support's own top surface:
+      // an interpenetration check can decide "does the turning cube go through the support"
+      // from these two numbers instead of from a screenshot nobody can measure.
+      cubeBottomY: cubeBottomY(),
+      supportTopY: groundingRoute === 'platform' ? (platformMetrics.topY ?? null) : boardShadows?.report().floorY ?? null,
+      pedestalArt: art ? { hidden: pedestal.style.visibility === 'hidden', widthPx: art.width, topPx: art.top, leftPx: art.left, heightPx: art.height } : null,
+      platform: platform ? {
+        visible: platform.visible,
+        receiveShadow: platform.receiveShadow,
+        castShadow: platform.castShadow,
+        layerMask: platform.layers.mask,
+        ...platformMetrics,
+      } : null,
+      artQuads: boardShadows?.report() ?? null,
+      // The occlusion blend's live value (VFX_CONFIG.occlusion.intensity unless a diagnostic
+      // override is in force), so a measurement of "SSAO did nothing" can say at what strength.
+      occlusionIntensity: occlusionIntensity(),
+    }
+  }
+
+  function setSSAOEnabled(on) {
+    useSSAO = Boolean(on)
+    normalPass.enabled = occlusionPass.enabled = useSSAO
+    return groundingReport()
+  }
+  function setGroundingRoute(route) {
+    groundingRoute = route === 'platform' ? 'platform' : 'art'
+    applyGroundingRoute()
+    return groundingReport()
+  }
+  function setContactDecalEnabled(on) {
+    contactDecalEnabled = Boolean(on)
+    boardShadows?.setEnabled({ contact: contactDecalEnabled })
+    return groundingReport()
+  }
+  // How hard the two scene passes are actually biting, as an override on the effect's own blend
+  // opacity. The G1a measurement found the shipped SSAO changing ZERO pixels of the frame, and a
+  // zero can mean "configured too gently" as easily as "not running" — this is what separates the
+  // two: cranked, the occlusion either darkens the seams or it does not exist. Diagnostic only;
+  // the shipped value comes from VFX_CONFIG.occlusion and is restored by the probe.
+  function setOcclusionIntensity(value) {
+    if (!Number.isFinite(value)) return null
+    occlusionEffect.blendMode.opacity.value = value
+    return occlusionEffect.blendMode.opacity.value
+  }
+  function occlusionIntensity() {
+    return occlusionEffect.blendMode.opacity.value
+  }
+  function setProjectedShadowEnabled(on) {
+    projectedShadowEnabled = Boolean(on)
+    boardShadows?.setEnabled({ projected: projectedShadowEnabled && groundingRoute !== 'platform' })
+    return groundingReport()
   }
 
   // ---- Resize -------------------------------------------------------------------
@@ -396,10 +554,33 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
         width: contactDepth.image.width,
         height: contactDepth.image.height,
         projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(camera.projectionMatrix),
+        // G1a found the occlusion changing zero pixels of the frame even when cranked. A zero has
+        // two very different causes — the pass never ran, or its inputs never arrived — and these
+        // four fields are what tell them apart without a debugger attached.
+        ssaoInputs: {
+          // Read through the uniforms, which are the values the shader actually samples: the
+          // material's own `depthBuffer` / `normalBuffer` properties are set-only accessors.
+          depthBound: occlusionEffect.ssaoMaterial.uniforms.depthBuffer.value === contactDepth,
+          normalBound: occlusionEffect.ssaoMaterial.uniforms.normalBuffer.value === normalPass.texture,
+          blendOpacity: occlusionEffect.blendMode.opacity.value,
+          blendFunction: occlusionEffect.blendMode.blendFunction,
+          radius: occlusionEffect.ssaoMaterial.uniforms.radius?.value ?? null,
+        },
       },
       toneMapping: toneMappingEffect.mode,
       programs: renderer.info.programs?.length,
+      // G0 (§4 item 5): the renderer's own per-frame counters, so a material/geometry round
+      // can report what it did to the frame instead of only how it looked.
+      rendererInfo: {
+        calls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        points: renderer.info.render.points,
+        lines: renderer.info.render.lines,
+        textures: renderer.info.memory.textures,
+        geometries: renderer.info.memory.geometries,
+      },
       lowPower: quality.lowPower,
+      grounding: groundingReport(),
     }
   }
 
@@ -451,6 +632,15 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     report,
     framingReport,
     tuneShadows: (values) => boardShadows?.tune(values),
+    // G1 grounding diagnostics. DEV-only by wiring (diagnostics.js mounts them under
+    // `__voxalblastDev`), never called by a gameplay path.
+    setSSAOEnabled,
+    setGroundingRoute,
+    setContactDecalEnabled,
+    setProjectedShadowEnabled,
+    setOcclusionIntensity,
+    occlusionIntensity,
+    groundingReport,
     getAppliedCanvasSize: () => ({ ...appliedCanvasSize }),
     getCameraZoom: () => cameraZoom,
     getOrbitDistance: () => orbitDistance,
