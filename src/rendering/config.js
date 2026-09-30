@@ -69,7 +69,15 @@ export const BOARD_STYLE = Object.freeze({
   woodEnvMapIntensity: 0.65,
   woodCrownHeight: 0.012,
   paintNormalScale: 1,
-  paintCrownHeight: 0.032, // optical crown: moving reflections without changing pick geometry
+  // v0.9.32 R1 round 2 (BLOCK_REFERENCE_REWORK_R0.md §9bis.4): 0.032 → 0.012.
+  // The crown is an optical dome written into the cached normal map — geometry and pick
+  // volume do not change. At 0.032 it distorted the reflections INSIDE a face hard enough
+  // to split each face into a bright band and a darker band, which is the "两个内外层"
+  // read the handoff §3 P1 objects to; the reference's faces are near-flat under one broad
+  // gloss. Range to explore 0.008-0.016 — not all the way to 0, which would flatten the
+  // face into unlit colour paper. Rebuilt on load: the cache must not be reused from an
+  // older constant, or the edit will look like it did nothing.
+  paintCrownHeight: 0.012,
   environmentIntensity: 0.55,
   // Polished agate-like colour on the board and in the hand, so a piece never
   // changes material as it moves from the tray, through the drag, onto the board.
