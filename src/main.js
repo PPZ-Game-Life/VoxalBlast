@@ -7,7 +7,7 @@ import * as THREE from 'three'
 // Modules evaluate once, so this side-effect import and gameScene's named import are the
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
-import { SH, FACES, isShell } from './game/board.js'
+import { SH, FACES, isShell, faceLattice } from './game/board.js'
 import { lineMultiplier } from './game/scoring.js'
 import { resolveHonors, feedbackLevel } from './game/honors.js'
 import { recordStore } from './game/records.js'
@@ -27,6 +27,7 @@ import { createEdgeTurnHint } from './ui/edgeTurnHint.js'
 import { createGameSession } from './game/gameSession.js'
 import { createPieceView } from './rendering/pieceView.js'
 import { createEffects } from './rendering/effects.js'
+import { createGameAudio } from './audio/gameAudio.js'
 import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
@@ -180,6 +181,12 @@ const gameOverUi = createGameOver({
   getRun: () => run,
 })
 
+// The audio bus (v0.10.1, handoff §5/§6) is built further down, once the effects factory has
+// taken its own place in the boot order; the HUD's three callbacks below reach it through this
+// binding, exactly like the other lazy callbacks in this file — a roll can only start on a
+// settled placement, long after everything exists.
+let audio
+
 // HUD presentation (see ui/hud.js). The factory only stores closures, so it can be built
 // here: every getter is lazy and the item state it reads is declared further down.
 const hud = createHud({
@@ -203,12 +210,13 @@ const hud = createHud({
   bindSlot: (slot, piece) => input.bindSlot(slot, piece),
   disposePiecePreviews: (fromIndex) => pieceView.disposePiecePreviews(fromIndex),
   createPiecePreview: (piece, canvas, slot, index) => pieceView.createPiecePreview(piece, canvas, slot, index),
-  onChainBreak: (chain) => playChainBreakSound(chain),
-  // The score roll's two noises (v0.9.29). `playScoreTick` / `playScoreSettle` come from the
-  // effects factory below, which is built AFTER this call — hence the arrow, exactly like
-  // onChainBreak above: a roll can only start on a settled placement, long after both exist.
-  onScoreTick: (progress) => playScoreTick(progress),
-  onScoreSettle: (points) => playScoreSettle(points),
+  onChainBreak: () => audio.playChainBreak(),
+  // The score roll's two noises (v0.9.29; the arbitration moved to the audio bus in v0.10.1).
+  // hud.js decides only WHEN a tick is owed and when the number is done; whether anything is
+  // heard, how far down the click sits under the main cue, and whether the landing chord is
+  // suppressed are gameAudio's (§6.1).
+  onScoreTick: () => audio.playScoreTick(),
+  onScoreSettle: () => audio.playScoreSettle(),
 })
 
 // Bound to the module's own names so every existing call site below reads exactly as it
@@ -220,6 +228,7 @@ const {
   showScorePop,
   updateChainHud,
   breakChainFeedback,
+  celebrateChainMilestone,
   showHonorBanner,
   clearHonorLayer,
   renderItemBar,
@@ -559,38 +568,47 @@ addToyLights(scene, { shadows: true, lowPower: quality.lowPower })
 const candidateGroup = new THREE.Group()
 scene.add(candidateGroup)
 
-// Effects (refactor P5) own the batched particle renderer, the line beams and stars, the shake,
-// the slow-motion dip and the audio. The factory is called here, where its scene attachments
-// used to be made, and it is handed the things this file used to close over.
+// Effects (refactor P5) own the batched particle renderer, the paper celebration, the line
+// bands and marks, the shake, the slow-motion dip and the haptics. The factory is called here,
+// where its scene attachments used to be made, and it is handed the things this file used to
+// close over. Sound is NOT one of them any more (v0.10.1): it moved to the audio bus below.
 const effects = createEffects({
   scene,
   camera,
   cubeGroup,
   cubeSide,
+  // v0.10.1: the paper sizes the design gives are in CELLS, so the lattice pitch crosses the
+  // boundary explicitly rather than being assumed to be 1.
+  cellPitch: cs,
   cellToWorld,
   cubeVector,
   findFrontFace,
   quality,
-  // Live getters, never captured booleans: the switches are read at the moment of the sound.
-  getSoundOn: () => settingsUi.getSoundOn(),
+  // Live getters, never captured booleans: the switch is read at the moment of the buzz.
   getHapticsOn: () => settingsUi.getHapticsOn(),
+  // §7.2: decoration gives way to a live drag preview or a tool scope, and both of those live
+  // in the input layer — read per frame because either can appear between two frames.
+  getInputBusy: () => input.hasDrag() || input.hasItemActive(),
 })
 const {
-  playTone,
   playHaptic,
-  playPlaceSound,
-  playScoreTick,
-  playScoreSettle,
-  playHonorSound,
-  playChainSound,
-  playChainBreakSound,
   emitItemBurst,
   spawnClearEffects,
+  retreatDecorations,
   triggerSlowMo,
   clearTransientEffects,
   resetShake,
   clearSlowMo,
 } = effects
+
+// The audio bus (v0.10.1, handoff §5/§6). One AudioContext, one master, one set of scenes: it
+// replaces the bare `playTone()` oscillators that used to live in effects.js and used to fire
+// place + honour + chain as three melodies over each other (§1/§6.1).
+audio = createGameAudio({
+  // The switch is read LIVE at the moment of every cue, exactly like the haptics one above.
+  getSoundOn: () => settingsUi.getSoundOn(),
+  lowPower: Boolean(quality.lowPower),
+})
 // ---- Drag ghost (v0.4.4) ----------------------------------------------------
 // The ghost itself now lives in rendering/pieceView.js (refactor P4b) and hangs off the CAMERA
 // rather than the cube. The camera therefore has to be part of the graph, and that stays this
@@ -689,6 +707,12 @@ function syncPause() {
   const previous = isPaused
   isPaused = homeUi.isOpen() || document.hidden || session.isEnded()
     || settingsUi.isOpen() || settingsUi.isControlsOpen() || introPlaying()
+  // §6.3: the AUDIO scene is not the same boolean. Pausing the run, hiding the page, opening
+  // the panel and being on the result card are five different answers to "what may be heard",
+  // and the finished run is exactly the one that still owes a record sound. Deriving the scene
+  // here — where every one of those transitions already arrives — is what keeps the two
+  // channels from drifting apart.
+  audio.setScene(audioScene())
   // The item strip's only "not yet" affordance is a class derived from isPaused
   // (canUseItemsNow), so whoever changes the pause state has to restore it: the opening
   // wave and the settings panel both grey the buttons on the way in, and without this the
@@ -696,6 +720,19 @@ function syncPause() {
   // buttons were still grey after the wave had settled.
   if (isPaused !== previous) renderItemBar()
   return isPaused
+}
+
+// The seven scenes the bus understands (handoff §6.3). Ordered by authority: a hidden page
+// outranks everything, the cover cancels a run's tail, the finished run may still play its
+// record sound, and the two panels stop in-run sound without silencing an explicit test tone.
+function audioScene() {
+  if (document.hidden) return 'hidden'
+  if (homeUi.isOpen()) return 'home'
+  if (session.isEnded()) return 'result'
+  if (settingsUi.isOpen()) return 'settings'
+  if (settingsUi.isControlsOpen()) return 'help'
+  if (introPlaying()) return 'intro'
+  return 'gameplay'
 }
 
 function openSettings() {
@@ -773,6 +810,20 @@ function clearItemUndo() {
   renderUndoBar(null)
 }
 
+// §4.3 图像刷新: the refresh tool's picture is the TRAY being re-laid, not a burst on the cube.
+// One short class on the strip and the CSS does the sweep; it is overlay-only, so it can never
+// eat a gesture or take focus, and it is cleared on a re-entrant call so two refreshes in a row
+// do not stack timers.
+let pieceSweepTimer
+function sweepPieceSlots() {
+  slotsEl.classList.remove('sweeping')
+  // Force a style flush so the animation restarts instead of being ignored mid-flight.
+  void slotsEl.offsetWidth
+  slotsEl.classList.add('sweeping')
+  clearTimeout(pieceSweepTimer)
+  pieceSweepTimer = setTimeout(() => slotsEl.classList.remove('sweeping'), 260)
+}
+
 // 07 §8.4: the mode takes the cube's rotation away on purpose, so this is the sentence that
 // explains the refusal. Rate-limited on purpose: a player dragging the board around would
 // otherwise toast on every frame.
@@ -783,6 +834,7 @@ function showLockedRotateHint() {
   lockedRotateHintUntil = now + 1600
   showToast(ITEM_COPY.lockedRotate)
   playHaptic(12)
+  audio.playCancel()
 }
 
 // v0.6 (07 §3.1 A9): a clear is the one irreversible thing a mis-tap can do — the
@@ -797,6 +849,9 @@ function undoItem() {
   renderItemBar()
   saveSession()
   playHaptic(8)
+  // §4.3: 撤销 is the light version of 「no」 — the same cue an illegal release uses, and never
+  // the clear sound played backwards.
+  audio.playCancel()
   setStatus(t('status.idle'))
   showToast(undone.restored ? ITEM_COPY.restoredN(undone.restored) : t('toast.nothingToRestore'))
   // Undoing back into the stuck board the clear had rescued is a real state, and the
@@ -832,12 +887,18 @@ function confirmItem(snapshot) {
     setStatus(t('status.nothingToClear'))
     showToast(t('toast.nothingToClear'))
     playHaptic(24)
+    // §4.3: a miss makes no success sound. It gets the same clip as an illegal release, rate
+    // limited so a player sweeping the board cannot machine-gun it.
+    audio.playCancel()
     return
   }
   spendItem(id)
   input.holdItemsFor(420)
   setTimeout(renderItemBar, 450)
+  // §4.3: the tool's `id` is consumed HERE, not just its particle count — hammer, rocket, bomb
+  // and refresh are four different effects, and a refresh has no board burst at all.
   emitItemBurst(removed, id)
+  audio.playItem(id)
   renderBoard()
   setStatus(t('status.idle'))
   renderItemBar()
@@ -876,6 +937,8 @@ function rerollPieces() {
       // playable batch must not cost the player a charge, and must not be silent about it either.
       showToast(t('toast.noRoomClearPath'))
       playHaptic(20)
+      // §4.3: an async refresh that FAILED is not a success — no paper flip for it.
+      audio.playCancel()
       renderItemBar()
       return false
     }
@@ -884,6 +947,10 @@ function rerollPieces() {
     renderPieceSlots()
     showToast(t('toast.refreshed'))
     playHaptic(10)
+    // §4.3: refresh is a TRAY gesture, not a board explosion. The paper sweep is the strip's
+    // own class; the cue is the two light flips, and it is only owed once the batch arrived.
+    sweepPieceSlots()
+    audio.playItem('refresh')
     renderItemBar()
     saveSession()
     checkStuckAndPrompt()
@@ -940,7 +1007,12 @@ function onDrop({ piece, face, cells, origin }) {
   const {
     result, lines, lineCount, honors, level, score, previousChain,
   } = settlePlacement(face, cells, origin, piece.shape.color)
-  playPlaceSound(lineCount)
+  // §6.1: ONE main cue per settled placement, decided here and nowhere else. A clearing
+  // placement plays `clear-lN`, which already contains the landing knock — the old
+  // place + honour + chain trio that used to stack three melodies is gone, and the chain
+  // milestone rides INSIDE this cue rather than opening a second phrase.
+  if (lineCount) audio.playClear(level, { milestone: score.chainMilestone })
+  else audio.playPlace()
   playHaptic(lineCount > 1 ? [18, 35, 22] : lineCount ? [18, 28, 16] : 12)
   // The hand is the session's, so the flag that spends the candidate is set through it
   // (plan §6 P6a: 现存 currentDrag.piece.used = true 改由明确 session 动作执行，时机保持).
@@ -954,11 +1026,15 @@ function onDrop({ piece, face, cells, origin }) {
       multiplier: lineMultiplier(lineCount),
       points: score.total,
     }))
-    showScorePop(score.total, { lines: lineCount, faces: result.facesHit, honor: honors.primary })
+    // §4.2: the result is announced BEFORE the celebration, and the score pop no longer carries
+    // a second copy of the honour name — the plate below is the one place it is said.
+    showScorePop(score.total, { lines: lineCount, faces: result.facesHit })
     showHonorBanner(honors, level)
-    spawnClearEffects(lines, level)
-    playHonorSound(level)
-    playChainSound(run.chain)
+    spawnClearEffects(lines, level, { milestone: score.chainMilestone })
+    // §3: the chain milestone is the RULE's field (5/10/15/20 are already scoring nodes); the HUD
+    // flashes the pill that already exists and never invents a second counter or a second
+    // celebration — its sound is the bell point inside the main cue above.
+    if (score.chainMilestone > 0) celebrateChainMilestone()
     triggerSlowMo(level)
     input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)
@@ -1157,6 +1233,10 @@ function startNewRunFromHome() {
 
 function applySession(saved) {
   clearTransientEffects()
+  // Resuming a stored run is a new scene too: nothing from the tab that was hidden before the
+  // reload may play into it (§6.3).
+  audio.cancelAll()
+  audio.setScene('gameplay')
   clearHonorLayer()
   resetShake()
   clearSlowMo()
@@ -1248,11 +1328,27 @@ function endGame() {
   // Layer 2: exactly one submission per run, dropped silently when the game has no
   // leaderboard invitation (§7.4).
   platform.submitScore(finalScore, getRunId())
+  // §4.4: the record is read from the summary the RECORD BOOK just returned — never from the
+  // live score crossing BEST mid-run, and never a second time on a re-render. The scene moves
+  // first so no in-run tail and no in-run cue can survive into the card; the ordinary ending
+  // keeps its quiet fade instead of a fanfare.
+  audio.setScene('result')
+  clearTransientEffects()
+  if (summary.isNewBest) {
+    audio.playNewBest()
+    gameOverUi.celebrateNewBest(summary)
+  } else {
+    audio.playGameOver()
+  }
   gameOverEl.classList.remove('hidden')
 }
 
 function resetGame() {
   clearTransientEffects()
+  // §7.3: a new run cancels EVERYTHING that belonged to the last one — tails, scheduled cues
+  // and the mute scene — by scope, not one effect at a time.
+  audio.cancelAll()
+  audio.setScene('gameplay')
   clearHonorLayer()
   closeLeaderboard()
   board.clear()
@@ -1386,9 +1482,23 @@ settingsUi.bind({
   openControls,
   closeControls,
   beginRun,
-  playTone,
+  // §6.3 显式试音: the switch's own confirmation is the audio bus's test cue, played through the
+  // same master as everything else — and it is allowed to unlock a suspended context, without
+  // ever letting a failed unlock block the game.
+  playTone: () => audio.playTestTone(),
   playHaptic,
+  // Switching the sound OFF has to do more than refuse the next note: the master ramps to zero
+  // in ≤20ms and everything already scheduled or playing is cancelled.
+  onSoundChanged: (on) => { if (on) audio.unlock(); else audio.refreshMute() },
 })
+
+// §6.3: the FIRST valid gesture is what creates and resumes the AudioContext. It is a capture
+// listener on the window so it cannot be missed by a panel that stops propagation, and it is
+// armed once: an unlock that fails does not re-arm and does not queue the sounds it dropped.
+const unlockAudioOnce = () => { audio.unlock() }
+window.addEventListener('pointerdown', unlockAudioOnce, { once: true, capture: true })
+window.addEventListener('keydown', unlockAudioOnce, { once: true, capture: true })
+window.addEventListener('touchstart', unlockAudioOnce, { once: true, capture: true, passive: true })
 settingsUi.updateSettingsUi()
 
 // ---- Locale switch (docs/Technical/LOCALIZATION.md) -------------------------
@@ -1459,7 +1569,8 @@ function animate() {
   requestAnimationFrame(animate)
   const measure = clock.getDelta()
   const raw = Math.min(measure, 0.05)
-  // The L5 dip scales the animation clock only — never input, never the board state.
+  // The L5 dip scales the CUBE's animation clock (handoff §7.3): the celebration is scheduled on
+  // the wall clock, so a 1.4s decoration tail can never be stretched to 2.3s by the 0.6× dip.
   const delta = effects.timestep(raw)
   // The home cover hides the canvas: nothing behind it is on screen, and the board
   // under it must not drift (the pose snap is part of the paused branch anyway).
@@ -1473,7 +1584,9 @@ function animate() {
   // 60fps. If the frames are that slow, the wave should simply be over.
   updateIntro(measure)
   if (!isPaused) {
-    effects.update(delta)
+    // The RAW delta: the paper celebration runs on the wall clock, and only the cube's own snap
+    // reads the dipped `delta` above.
+    effects.update(raw)
     updateCubeSnap(delta)
   }
   // Bare tiles wear the lighter timber on the face the player is working on
@@ -1552,6 +1665,40 @@ const devHandles = import.meta.env.DEV
       return honors
     },
     showScorePop: (points, options) => showScorePop(points, options),
+    // v0.10.1 clear-celebration probe (handoff §10 R2/R4). An L1–L5 clear cannot be arranged on
+    // demand — the board would have to be filled to a specific pattern first — so this builds
+    // REAL line descriptors off the front face's lattice and hands them to the very same
+    // spawnClearEffects() and audio.playClear() the gameplay path calls. It competes for nothing:
+    // the report it returns is the effects layer's own event record.
+    demoClear: (lineCount, faces = 1, milestone = 0) => {
+      const lines = Number(lineCount) || 1
+      const faceCount = Number(faces) || 1
+      const face = findFrontFace()
+      const descriptors = []
+      for (let index = 0; index < Math.min(lines, SH); index += 1) {
+        // Alternating row/column on ONE face is deliberate: they intersect, so a two-line demo
+        // carries a genuinely SHARED cell and the probe can assert it is deduped once.
+        const axis = index % 2 === 0 ? 'row' : 'col'
+        descriptors.push({
+          face,
+          axis,
+          index,
+          cells: Array.from({ length: SH }, (_, k) => (axis === 'row'
+            ? faceLattice(face, index, k)
+            : faceLattice(face, k, index))),
+        })
+      }
+      const level = feedbackLevel({ lines: lines, faces: faceCount })
+      spawnClearEffects(descriptors, level, { milestone: milestone })
+      audio.playClear(level, { milestone: milestone })
+      return { level, ...effects.report() }
+    },
+    clearCelebration: () => { clearTransientEffects() },
+    // The bus's measurement window (§9): "was anything heard SINCE here" is the only question
+    // that can tell a silenced master from a master that was never driven. Zeroes the running
+    // output peak; the cue count is monotonically increasing so the probe diffs it itself.
+    audioReset: () => audio.resetOutputWindow(),
+    audioUnlock: () => audio.unlock(),
   }
   : null
 
@@ -1563,6 +1710,7 @@ createDiagnostics({
   blocks,
   pieceView,
   effects,
+  audio,
   input,
   session,
   recordStore,

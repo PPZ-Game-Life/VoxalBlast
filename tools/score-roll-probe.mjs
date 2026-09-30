@@ -69,18 +69,33 @@ async function connect(endpoint) {
   return ws
 }
 
-// The counter is installed BEFORE any sound can be made, and it counts the one call every tone
-// in effects.js has to go through. `playTone` reads the sound switch live, so this counts what
-// the player would have heard, not what the code intended.
-const INSTALL_TONE_COUNTER = `(() => {
-  const Ctor = window.AudioContext || window.webkitAudioContext
-  if (!Ctor) return false
-  if (!globalThis.__toneCount) {
-    globalThis.__toneCount = 0
-    const proto = Ctor.prototype
-    const original = proto.createOscillator
-    proto.createOscillator = function patched() { globalThis.__toneCount += 1; return original.call(this) }
+// v0.10.1 (CLEAR_CELEBRATION_AUDIO_HANDOFF.md §9): the sound checks read the AUDIO BUS, not
+// the WebAudio call sites. Counting `createOscillator` could only ever say "the code asked for
+// a tone" — it could not survive the move to pre-rendered cue buffers, and it could never have
+// detected "muted but still audible" because a muted bus makes exactly as many oscillators as
+// a playing one. What is measured now is the pair that answers both questions:
+//   * `cuesPlayed` — what the game handed to the bus (drops are counted separately and are NOT
+//     included), which is what "a stage of the roll is silent" has to be detected against;
+//   * `outputPeak` — the peak the MASTER actually sent, read from an analyser AFTER the master
+//     gain and the safety compressor. With the switch off the master ramps to zero and cancels
+//     its voices, so this must read exactly 0 — the negative case the old probe could not make.
+const START_AUDIO_WINDOW = `(() => {
+  if (typeof globalThis.__voxalblastDev?.audioReset !== 'function') return false
+  globalThis.__voxalblastDev.audioReset()
+  const first = globalThis.__voxalblast?.audio?.()
+  const window = { base: first ? first.cuesPlayed : -1, cues: 0, peak: 0, samples: 0, drops: 0 }
+  globalThis.__audioWindow = window
+  const step = () => {
+    const report = globalThis.__voxalblast?.audio?.()
+    if (report) {
+      window.cues = report.cuesPlayed - window.base
+      window.peak = Math.max(window.peak, report.outputPeak)
+      window.drops = report.cuesDropped
+      window.samples += 1
+    }
+    if (globalThis.__audioWindow === window && window.samples < 900) requestAnimationFrame(step)
   }
+  requestAnimationFrame(step)
   return true
 })()`
 
@@ -153,7 +168,8 @@ try {
   }
   check('the opening wave is over before the first drag',
     (await json('globalThis.__voxalblast.intro().active')) === false)
-  check('the tone counter is installed', await evalJs(INSTALL_TONE_COUNTER) === true)
+  check('the audio bus reports itself', typeof await json('globalThis.__voxalblast.audio().cuesPlayed') === 'number')
+  check('the audio window can be armed', await evalJs(START_AUDIO_WINDOW) === true)
 
   // One real placement: press a candidate slot, walk the pointer onto the cube, re-read the
   // app's own placement report at every step (a carry off the cube may turn it), then release.
@@ -170,7 +186,7 @@ try {
     })()`)
     if (!slot) throw new Error('no piece slot in the strip')
     const before = await json('globalThis.__voxalblast.board().score')
-    await evalJs('globalThis.__toneCount = 0')
+    await evalJs(START_AUDIO_WINDOW)
     await evalJs(START_TRACE)
 
     await mouse('mouseMoved', slot.x, slot.y)
@@ -212,7 +228,8 @@ try {
     await evalJs('globalThis.__rollTicking = false')
     const trace = await json('globalThis.__rollTrace')
     const after = await json('globalThis.__voxalblast.board().score')
-    const tones = await json('globalThis.__toneCount')
+    const sound = await json('globalThis.__audioWindow')
+    await evalJs('globalThis.__audioWindow = null')
     // A roll can only paint as many values as the browser gave it FRAMES, so the widest gap
     // between two frames is part of every check's evidence: a cold page (first placement ever,
     // shaders and particle materials compiling) can hitch for 300ms and swallow the whole
@@ -220,7 +237,7 @@ try {
     const gaps = trace.slice(1).map(([at], index) => at - trace[index][0])
     const window = rollWindow(trace)
     return {
-      landed, before, after, trace, tones, frames: trace.length,
+      landed, before, after, trace, sound, frames: trace.length,
       maxGap: Math.max(0, ...gaps), ...window,
     }
   }
@@ -266,7 +283,16 @@ try {
       const last = runs[runs.length - 1]
       best = { ...last, distinct: new Set(last.trace.map(([, text]) => Number(text))).size }
     }
-    return { best, runs, tones: runs.reduce((sum, run) => sum + run.tones, 0), paid: runs.some((run) => run.after > run.before), landed: runs.some((run) => run.landed) }
+    return {
+      best,
+      runs,
+      // The bus's own numbers, summed the same way the old oscillator count was: across every
+      // attempt, so a hitch can only make a "something played" check MORE certain.
+      cues: runs.reduce((sum, run) => sum + (run.sound?.cues || 0), 0),
+      peak: runs.reduce((max, run) => Math.max(max, run.sound?.peak || 0), 0),
+      paid: runs.some((run) => run.after > run.before),
+      landed: runs.some((run) => run.landed),
+    }
   }
 
   // ---- 0. warm-up: one placement, measured by nothing --------------------------------
@@ -302,11 +328,17 @@ try {
   check('the roll ends with `.rolling` OFF the number',
     !first.trace[first.trace.length - 1][2].includes('rolling'),
     `class="${first.trace[first.trace.length - 1][2]}"`)
-  // playPlaceSound already fires 1-2 tones; the roll owes at least one click and the landing
-  // owes exactly two, so anything under 4 means a stage of the roll is silent. Counted across
-  // every attempt, so a hitch can only make this check MORE certain, never less.
-  check('the clicks and the landing chord really fire', sound.tones >= 4,
-    `${sound.tones} oscillators across ${sound.runs.length} attempt(s), ${evidence}`)
+  // One settled placement owes a placement cue AND at least one counting click: §6.1 caps the
+  // click at one per 70ms with at most 8 per roll, so a roll of 260–900ms can never be silent,
+  // and a `clear-lN` cue is ONE cue (it contains the landing knock) rather than a pile of them.
+  // The bus's own `cuesPlayed` counts what was actually handed to it.
+  check('the placement cue and the roll\'s counting clicks reached the bus', sound.cues >= 2,
+    `${sound.cues} cue(s) across ${sound.runs.length} attempt(s), ${evidence}`)
+  // The positive half of §9's pair: sound was not merely REQUESTED, it reached the output. The
+  // peak is measured after the master gain and the safety compressor, so a master stuck at zero
+  // fails here even though every cue was dispatched.
+  check('and the output really carried it', sound.peak > 0.0005,
+    `master output peak ${sound.peak.toFixed(5)}`)
 
   // ---- 2. sound OFF: the number still rolls, and nothing is heard ---------------------
   const soundPressed = await json(`document.querySelector('#sound-button').getAttribute('aria-pressed')`)
@@ -330,8 +362,14 @@ try {
   check('with the sound off the number STILL rolls',
     silent.distinct >= 3 && secondValues.some((value) => value < secondValues[secondValues.length - 1]),
     `${silent.distinct} distinct values, roll ${silent.rollMs}ms over ${silent.rollFrames} frames, widest roll gap ${silent.rollGap}ms`)
-  check('with the sound off nothing is heard', second.tones === 0,
-    `${second.tones} oscillators across ${second.runs.length} attempt(s)`)
+  // §9's NEGATIVE case, and the one the old oscillator count could never make: with the switch
+  // off, silence is not "the next cue is refused" — the master ramps to zero in ≤20ms and every
+  // scheduled or playing voice is cancelled. Both halves are asserted: nothing new was handed to
+  // the bus, and the master put out nothing at all.
+  check('with the sound off nothing is handed to the bus', second.cues === 0,
+    `${second.cues} cue(s) across ${second.runs.length} attempt(s)`)
+  check('with the sound off the master output is silent', second.peak === 0,
+    `master output peak ${second.peak.toFixed(5)}`)
   check('and it lands exactly on the board score', secondValues[secondValues.length - 1] === silent.after,
     `pill=${secondValues[secondValues.length - 1]} board=${silent.after}`)
 

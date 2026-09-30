@@ -1072,3 +1072,63 @@ kbd.active {
   .refresh-confirm-copy { flex-basis: 100%; font-size: 11px; }
   .refresh-confirm button { flex: 1 1 auto; padding: 0 10px; }
 }
+/* ============================================================
+   Clear celebration + new-record card (v0.10.1)
+   docs/Technical/CLEAR_CELEBRATION_AUDIO_HANDOFF.md §3 / §4.3 / §4.4 / §8
+   ============================================================ */
+
+/* §3 CHAIN：普通增长只更新 HUD，里程碑才给一次「纸结」闪动。它挂在本来就存在的链数
+   pill 上——不新增计数器，也不自创计分（分数仍由 score.chainMilestone 决定）。 */
+@keyframes chainMilestone {
+  0% { transform: scale(1); }
+  26% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.chain-chip.milestone { animation: chainMilestone .6s ease-out; box-shadow: 0 0 0 3px rgba(231,183,95,.42), 0 12px 22px rgba(120,70,10,.28); }
+
+/* §4.3 图像刷新：换批的图是「托盘重排」，不是棋盘上的一次爆破。纯装饰——条带布局、
+   按钮与它们的指针目标一个都不动。 */
+@keyframes slotSweep {
+  0% { transform: translateY(10px) scale(.97); opacity: .4; }
+  60% { transform: none; opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+#piece-slots.sweeping .piece-slot { animation: slotSweep .24s ease-out both; }
+#piece-slots.sweeping .piece-slot:nth-child(2) { animation-delay: .04s; }
+#piece-slots.sweeping .piece-slot:nth-child(3) { animation-delay: .08s; }
+
+/* §4.4 新纪录：卡片上一次温暖收束。`stamped` 是留在纪录标识上的静态印记，纸彩只飞一次
+   并在 1.6s 内结束，且不跨过分数与按钮。 */
+@keyframes newBestStamp {
+  0% { transform: scale(1.22); }
+  40% { transform: scale(.97); }
+  100% { transform: none; }
+}
+.game-over-card { position: relative; }
+.game-over-best.stamped { animation: newBestStamp .5s cubic-bezier(.2,.8,.3,1.2) both; }
+.record-paper { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.record-chip {
+  position: absolute; left: 50%; top: 46%;
+  width: 11px; height: 6px; border-radius: 3px;
+  opacity: 0; animation: recordFloat 1.5s ease-out both; animation-delay: var(--paper-delay, 0ms);
+}
+.record-chip.tone-0 { background: #c98699; }
+.record-chip.tone-1 { background: #8dbdd3; }
+.record-chip.tone-2 { background: #a5bba1; }
+@keyframes recordFloat {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(0deg) scale(.6); }
+  18% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--paper-x, 0px)), calc(-50% + var(--paper-y, 0px))) rotate(var(--paper-turn, 0deg)) scale(1);
+  }
+}
+
+/* §8：减少动态效果是独立的一轴——它只关掉运动，不关声音、不关触感，也不丢信息：
+   纸彩不飞，但纪录标识与链数照常出现。 */
+@media (prefers-reduced-motion: reduce) {
+  .chain-chip.milestone { animation: none; }
+  #piece-slots.sweeping .piece-slot { animation: none; }
+  .game-over-best.stamped { animation: none; }
+  .record-chip { animation: none; opacity: 0; }
+}

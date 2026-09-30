@@ -653,24 +653,162 @@ export const PIECE_SPIN = Object.freeze({
 
 // v0.3 feedback ladder (08-荣誉与排行榜系统.md §6, aligned with 03 §7).
 // honors.js decides the LEVEL of a placement (that is a rule: it decides whether a
-// banner is owed); the seconds, shake and particle strength behind each level are
-// visual numbers and live here. Index = level, 0 = a placement that cleared nothing.
+// banner is owed); the seconds and the banner size behind each level are visual
+// numbers and live here. Index = level, 0 = a placement that cleared nothing.
 // The gradient is the point: 一段日常有反馈、稀有才隆重 — L3 runs about twice a game,
 // L4 about once every three games, L5 about once every fifty (08 §6), so the top of
 // the ladder must never become the background hum.
+//
+// v0.10.1 (CLEAR_CELEBRATION_AUDIO_HANDOFF.md §3): the ladder no longer carries a
+// particle MULTIPLIER. The old `particleScale` multiplied every cleared line's own
+// burst, so four lines bought four times the particles AND the top of the ladder
+// bought five times that again — the budget is now allocated per EVENT (CELEBRATION
+// below, one entry per level, shared cells deduped) and a line can never multiply it.
+// `shake` is gone for the same reason the doc gives a target of 0: the celebration is
+// paper in a garden, not a detonation.
 export const FEEDBACK_STYLE = Object.freeze({
   levels: Object.freeze([
-    /* 0 nothing cleared */ Object.freeze({ duration: 0, shake: 0, particleScale: 0, banner: 'none', badges: false }),
-    /* 1 one line */ Object.freeze({ duration: 0.35, shake: 0.055, particleScale: 1, banner: 'none', badges: false }),
-    /* 2 two lines */ Object.freeze({ duration: 0.6, shake: 0.09, particleScale: 1.6, banner: 'small', badges: true }),
-    /* 3 TRIPLE */ Object.freeze({ duration: 0.9, shake: 0.14, particleScale: 2.4, banner: 'name', badges: true }),
-    /* 4 QUAD / TRIFACE */ Object.freeze({ duration: 1.4, shake: 0.2, particleScale: 3.5, banner: 'large', badges: true }),
+    /* 0 nothing cleared */ Object.freeze({ duration: 0, banner: 'none' }),
+    /* 1 one line */ Object.freeze({ duration: 0.42, banner: 'none' }),
+    /* 2 two lines */ Object.freeze({ duration: 0.55, banner: 'none' }),
+    /* 3 TRIPLE */ Object.freeze({ duration: 0.8, banner: 'name' }),
+    /* 4 QUAD / TRIFACE */ Object.freeze({ duration: 1.1, banner: 'large' }),
     // L5 gets the only "顿帧" in the game: a brief slowdown for the ceremony, which
     // must never block input and must leave the board readable (03 §7 hard rule).
-    /* 5 PENTA+ */ Object.freeze({ duration: 2.2, shake: 0.26, particleScale: 5, banner: 'full', badges: true, slowMo: Object.freeze({ scale: 0.6, ms: 400 }) }),
+    /* 5 PENTA+ */ Object.freeze({ duration: 1.4, banner: 'full', slowMo: Object.freeze({ scale: 0.6, ms: 400 }) }),
   ]),
   shakeDecay: 0.42, // per-second falloff of the camera shake
   honorBannerMs: Object.freeze({ small: 700, name: 900, large: 1400, full: 2200 }),
+})
+
+// ============================================================
+// Clear celebration (docs/Technical/CLEAR_CELEBRATION_AUDIO_HANDOFF.md §2.2/§3/§8)
+// ============================================================
+// One placement is ONE event with ONE budget. The numbers below are the doc's own
+// starting values: the standard column is its 「飞行纸彩上限」, the lowPower column its
+// low-spec row, and reduced-motion is a THIRD, independent axis that is queried from the
+// media query rather than stored here (closing motion must not close sound or haptics —
+// §6.3 「不得把三项偏好绑成一个开关」).
+//
+// Paper is NOT additive light. The old clear sprayed additive-blended white sprites that
+// read as sparks; these are opaque-ish rounded cards in the three paper tones the doc
+// names, with cream and honey gold reserved for the few highlight marks. Strong
+// saturation stays with the real playing blocks — the celebration must never out-shout
+// the thing that was just cleared.
+export const CELEBRATION = Object.freeze({
+  colors: Object.freeze({
+    cream: 0xfff1d4, // 奶油纸: short confirmation, sparkles, seal plate
+    gold: 0xe7b75f, // 蜜蜡金: the seal and a few highlights — not metal, not a block colour
+    rose: 0xc98699, // 玫瑰纸
+    sky: 0x8dbdd3, // 晴空纸
+    sage: 0xa5bba1, // 鼠尾草纸
+    ink: 0x452e13, // 树皮墨
+  }),
+  // One event picks three paper tones at most (cream rides on top of them), so a clear
+  // reads as a designed handful rather than as every colour at once.
+  paperTones: Object.freeze([0xc98699, 0x8dbdd3, 0xa5bba1]),
+
+  // Rounded card, two ratios, at most two light flips (§2.2). Short side in cells —
+  // 0.06–0.12 lattice units, i.e. ~3–7 CSS px on a phone. Below that the chip is dropped
+  // rather than rendered as a sub-pixel speck. The flip is BAKED into the chip geometry, one
+  // static tilt per paper tone (rendering/effects.js explains why it cannot be a behavior).
+  chip: Object.freeze({
+    shortSide: 0.085,
+    ratios: Object.freeze([2, 1.5]),
+    radiusRatio: 0.22,
+  }),
+  // §2.2: a four-point sparkle closes a move (6–12 CSS px apparent, one flash), the
+  // five-point seal is the honour mark at 18–28 CSS px in play and 32–48 on the record
+  // card. The seal does NOT keep growing with the line count.
+  sparkle: Object.freeze({ size: 0.16, duration: 0.42 }),
+  seal: Object.freeze({ size: 0.42, duration: 0.72, recordSize: 0.72 }),
+  // §2.2: L4/L5 only, at most two per event, ≤1 band wide, at most two bends.
+  ribbon: Object.freeze({ max: 2, length: 0.78, width: 0.11, bends: 2, duration: 1.05 }),
+
+  // §3 飞行纸彩上限 — the whole event, shared cells counted once and multi-line events
+  // never multiplying again. `record` is the new-record card's own budget (§4.4).
+  budgets: Object.freeze({
+    standard: Object.freeze({ 0: 0, 1: 6, 2: 12, 3: 24, 4: 40, 5: 64, record: 72 }),
+    lowPower: Object.freeze({ 0: 0, 1: 3, 2: 6, 3: 12, 4: 20, 5: 28, record: 28 }),
+  }),
+  // §8: other decoration objects (seals, sparkles, ribbons) and the whole-screen flying
+  // ceiling, which is what the budget is checked against when events overlap.
+  decorationCap: Object.freeze({ standard: 8, lowPower: 4 }),
+  flyingCap: Object.freeze({ standard: 96, lowPower: 40 }),
+  // §8: side emission (the L4/L5 two-sided fan) cools down instead of firing every clear.
+  // It only ever drops DECORATION: the line band, the real score and the main sound of the
+  // current event are never withheld.
+  sideCooldownMs: 1200,
+
+  // §3 最长装饰尾段（墙钟）, by level; index 6 is the new-record card. The tail is the
+  // longest a decoration may stay on screen, and it is measured on the WALL clock — the
+  // L5 slow-motion dip scales the animation clock, and a 1.4s tail stretched by 0.6×
+  // would be exactly the bug §7.3 names.
+  tailSeconds: Object.freeze([0, 0.42, 0.55, 0.8, 1.1, 1.4, 1.6]),
+
+  // §4.1/§4.2 wall-clock beats. `confirmMs` is the landing's own short acknowledgement,
+  // `bandStart`/`bandEnd` the line band, `paperStart`/`paperEnd` the chips, `celebrateAt`
+  // the moment L3+ composition enters and `bannerAt` the honour plate.
+  timing: Object.freeze({
+    confirmMs: 50,
+    bandStart: 0.05,
+    bandEnd: 0.14,
+    bandStagger: 0.035, // §4.1 「多线同期、最多错峰 35ms」
+    paperStart: 0.1,
+    paperEnd: 0.24,
+    celebrateAt: 0.12,
+    bannerAt: 0.16,
+    tailFrom: 0.3,
+  }),
+
+  // §2.2: the line band is derived from the real cleared segment, sticks out by 0.03 cell
+  // at each end, is 0.025–0.045 cell thick and peaks at 0.28–0.40 opacity in ONE pulse.
+  band: Object.freeze({
+    overshoot: 0.03,
+    thickness: 0.035,
+    opacity: 0.34,
+    duration: 0.5,
+    /** merged co-linear bands are limited to this, §7.2 「空间重叠亮带应合并／限亮」 */
+    mergeDistance: 0.02,
+  }),
+
+  // §4.2 「手机没安全留白：自动降为 HUD 小星章＋短亮边，不缩小棋盘为礼花腾位置」. A short or narrow
+  // viewport (landscape phone, small handset) has nowhere for the fan to go, so the flying budget
+  // is halved and the side ribbons are dropped — the board is NEVER scaled down to make room, and
+  // the line band, the real score and the main sound are never withheld either.
+  cramped: Object.freeze({ maxHeight: 620, maxWidth: 360, budgetFactor: 0.5 }),
+  // §3 相机震动 = 0. Kept as a named number instead of a hard-coded zero so the one
+  // place that could ever raise it is greppable.
+  shake: 0,
+})
+
+// ============================================================
+// Audio bus (handoff §5/§6) — the numbers, not the cues
+// ============================================================
+// §5.3: the first version SYNTHESIZES the cues at runtime from the offline recipes
+// (docs/Technical/assets/clear-celebration/build-audio-previews.mjs) and caches the
+// rendered AudioBuffers; the WAVs in the handoff package are listening references and
+// are deliberately not copied into `public/` (they would be first-packet weight for
+// nothing). These are the mix and concurrency numbers §6.2 asks for.
+export const AUDIO_STYLE = Object.freeze({
+  master: 0.7,
+  // §6.2: source → category → master → soft safety compressor → out. The compressor is
+  // insurance against a pile-up, never a substitute for sane levels.
+  categories: Object.freeze({ clear: 1, item: 0.95, ui: 0.72, result: 1, test: 0.8 }),
+  duckDb: -12, // §6.1: the counting click is pushed this far down under a main cue
+  duckAttack: 0.02,
+  duckRelease: 0.35,
+  voiceLimit: 12, // §6.2 音符／噪声声源总数 同时≤12
+  voiceLimitLowPower: 8,
+  mainCueFadeMs: 25, // §6.2 新事件替换旧尾句，15～30ms 淡出
+  muteFadeMs: 20, // §6.3 master 在≤20ms 内淡到 0
+  // §6.1: the roll's counting click. The NUMBER keeps its own rhythm (ui/hud.js SCORE_ROLL
+  // reads these two), but the sound request is rate-limited and capped per roll — the visual
+  // roll and the total are never affected by either.
+  tickMinIntervalMs: 70,
+  tickMaxPerRoll: 8,
+  edgeHintMinIntervalMs: 150, // §6.2 边缘无效提示
+  compressor: Object.freeze({ threshold: -18, knee: 12, ratio: 3, attack: 0.004, release: 0.18 }),
 })
 
 // HUD rules that the design fixes rather than the art: the chain pill only exists

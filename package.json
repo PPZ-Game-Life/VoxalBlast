@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.10.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,7 +28,8 @@
     "probe:ui": "node tools/refactor-ui-probe.mjs",
     "probe:churn": "node tools/refactor-churn-probe.mjs",
     "gates": "node tools/i18n-tests.mjs && node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/refactor-interaction-probe.mjs && node tools/refactor-ui-probe.mjs && node tools/refactor-churn-probe.mjs",
-    "reachability": "node tools/reachability.mjs all"
+    "reachability": "node tools/reachability.mjs all",
+    "probe:celebration": "node tools/celebration-audio-probe.mjs"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",

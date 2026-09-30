@@ -36,6 +36,11 @@ export function createSettings({
   // dwell may already be armed on a live drag, so main clears it (the same `endTurns()` every
   // other cancellation path uses). Optional, so a caller that does not care can omit it.
   onDragTurnChanged = () => {},
+  // v0.10.1 (CLEAR_CELEBRATION_AUDIO_HANDOFF.md §6.3): flipping the sound switch has to reach
+  // the audio bus, because "mute" is not a refusal of the NEXT sound — the master ramps to zero
+  // and whatever is already scheduled or playing is cancelled. The key and the semantics of the
+  // stored preference are unchanged; only the live notification is new.
+  onSoundChanged = () => {},
 }) {
   let settingsOpen = false
   let controlsOpen = false
@@ -172,6 +177,9 @@ export function createSettings({
       soundOn = !soundOn
       writePreferenceOn('sound', soundOn)
       updateSettingsUi()
+      // The bus is told either way: OFF cancels what is live, ON unlocks if it never got the
+      // chance, and the confirmation tone is played once (§6.3 设置测试音只播一次).
+      onSoundChanged(soundOn)
       if (soundOn) playTone(520, 0.08, 0.035)
     }
     function onHapticsSettingClick() {

@@ -12,6 +12,52 @@ import { formatNumber, t } from '../i18n/index.js'
 export function createGameOver({ els, getRun }) {
   const { gameOverBestEl, gameOverFacesEl, gameOverHonorsEl, gameOverStatsEl } = els
 
+  // v0.10.1 (CLEAR_CELEBRATION_AUDIO_HANDOFF.md §4.4): the record moment happens ONCE per run.
+  // The card is re-rendered for reasons that have nothing to do with the record — a language
+  // switch, a resize — and 重复 render 不再触发 is a hard requirement, so the trigger is tied to
+  // the SUMMARY OBJECT identity: main re-renders from the same `lastSummary`, so a second
+  // render of the same record finds this flag already set and only repaints the text.
+  let celebratedSummary = null
+
+  // The card's own paper: a ring of chips around the record line, drawn from the same three
+  // paper tones as the in-play celebration. Pure overlay — `pointer-events:none`,
+  // `aria-hidden` and no focusable node, so the buttons stay usable the whole time (§4.4
+  // 按钮立即可用) and a screen reader hears the card, not the decoration.
+  function paperRing(hostEl) {
+    const ring = document.createElement('div')
+    ring.className = 'record-paper'
+    ring.setAttribute('aria-hidden', 'true')
+    for (let i = 0; i < 14; i += 1) {
+      const chip = document.createElement('i')
+      const side = i % 2 === 0 ? -1 : 1
+      chip.className = `record-chip tone-${i % 3}`
+      // Spread down both sides of the card, never across the score or the buttons.
+      chip.style.setProperty('--paper-x', `${side * (46 + (i % 4) * 8)}px`)
+      chip.style.setProperty('--paper-y', `${(i % 7) * 18 - 40}px`)
+      chip.style.setProperty('--paper-turn', `${(i % 5) * 22 - 44}deg`)
+      chip.style.setProperty('--paper-delay', `${(i % 4) * 45}ms`)
+      ring.appendChild(chip)
+    }
+    hostEl.appendChild(ring)
+    return ring
+  }
+
+  /**
+   * The new-record moment, called by main.endGame() with the summary the record book just
+   * returned — never from a live score crossing BEST mid-run, and never from a re-render.
+   */
+  function celebrateNewBest(summary) {
+    if (!summary?.isNewBest || celebratedSummary === summary) return false
+    celebratedSummary = summary
+    gameOverBestEl.classList.add('stamped')
+    const host = gameOverBestEl.parentElement
+    paperRing(host || gameOverBestEl)
+    // §4.4: 全部飞行装饰结束，只留静态纪录标识 — the paper unmounts itself and the `stamped`
+    // mark stays.
+    setTimeout(() => { host?.querySelector('.record-paper')?.remove() }, 1700)
+    return true
+  }
+
   // The run is read through a getter, never captured in a local. resetRun() and
   // applySession() rewrite these counters (and swap `facesLit` for a new Set) in place, so
   // a destructured copy taken once at construction would silently go stale — the exact trap
@@ -33,6 +79,10 @@ export function createGameOver({ els, getRun }) {
   // language the player just left.
   function renderGameOver(summary) {
     const run = getRun()
+    // A run that was NOT a record clears the flag, so the next record in the same session still
+    // fires, and a card left open across two runs cannot inherit the previous stamp.
+    if (!summary.isNewBest && celebratedSummary) celebratedSummary = null
+    if (!summary.isNewBest) gameOverBestEl.classList.remove('stamped')
     if (summary.isNewBest) {
       gameOverBestEl.textContent = t('gameover.newBest')
       gameOverBestEl.className = 'game-over-best new-best'
@@ -68,5 +118,5 @@ export function createGameOver({ els, getRun }) {
     ].map(({ label, value }) => `<span>${t(label)} <strong>${value}</strong></span>`).join('')
   }
 
-  return { renderGameOver, bestDimensionLabel }
+  return { renderGameOver, bestDimensionLabel, celebrateNewBest }
 }

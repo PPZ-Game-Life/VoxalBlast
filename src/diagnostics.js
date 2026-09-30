@@ -33,6 +33,7 @@ export function createDiagnostics({
   blocks,
   pieceView,
   effects,
+  audio,
   input,
   session,
   recordStore,
@@ -240,6 +241,11 @@ export function createDiagnostics({
     // board meshes, so no other read-out can prove they were released on a restart; the shake
     // and the slow-motion dip are otherwise invisible too. Read-only; no gameplay path reads it.
     effects: () => effects.report(),
+    // v0.10.1 (handoff §9): the audio bus's own read-out. `cuesPlayed` is what the game asked the
+    // bus to play and `outputPeak` is what the MASTER actually handed to the device, which is the
+    // only pair that can tell "it played" from "it intended to play" — and, with the sound off,
+    // "silenced" from "still audible".
+    audio: () => audio.report(),
     session: () => sessionStore.read(),
     // v0.4.1: the keyboard bindings the game actually honours. The headless check reads this
     // and compares it against the keycaps printed in the controls card, so a legend can never
@@ -318,6 +324,13 @@ export function createDiagnostics({
         showChain: (chain) => dev.showChain(chain),
         showHonor: (lines, faces) => dev.showHonor(lines, faces),
         showScorePop: (points, options) => dev.showScorePop(points, options),
+        // v0.10.1 clear-celebration probe: an L1–L5 clear cannot be arranged by playing, so the
+        // probe drives the very same spawnClearEffects() the gameplay path calls, plus the two
+        // audio-window handles that make "was anything heard since here" answerable.
+        demoClear: (lines, faces, milestone) => dev.demoClear(lines, faces, milestone),
+        clearCelebration: () => dev.clearCelebration(),
+        audioReset: () => dev.audioReset(),
+        audioUnlock: () => dev.audioUnlock(),
       })
     }
   }

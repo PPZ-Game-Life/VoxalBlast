@@ -16,7 +16,7 @@
 // holds a renderer, which is the part of the plan's contract that matters. The single
 // Three.js use below is a colour formatter, not a renderer.
 import * as THREE from 'three'
-import { FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
+import { AUDIO_STYLE, FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
 import { formatNumber, t } from '../i18n/index.js'
 import { ITEM_COPY, ITEM_NAME } from './itemCopy.js'
 
@@ -43,8 +43,12 @@ const SCORE_ROLL = Object.freeze({
   minMs: 260,
   maxMs: 900,
   perPoint: 1.5,
-  tickMs: 48,
-  tickMax: 14,
+  // v0.10.1 (§6.1): the counting click's own rate limit is the AUDIO BUS's constant now — the
+  // request is capped at one per `tickMinIntervalMs` and at `tickMaxPerRoll` per roll. The
+  // NUMBER is untouched by either: it still repaints every frame and still lands on the score
+  // the board reports.
+  tickMs: AUDIO_STYLE.tickMinIntervalMs,
+  tickMax: AUDIO_STYLE.tickMaxPerRoll,
   settleMs: 420,
 })
 
@@ -252,15 +256,16 @@ export function createHud({
   // 荣誉名号 — and the point of the placement-score layer (§4.1) is that a placement
   // clearing nothing still pops its score: "this turn built instead of clearing" must not
   // read as nothing happened. Overlay only; nothing here is modal or eats a gesture.
-  function showScorePop(points, { lines = 0, faces = 1, honor = null, quiet = false } = {}) {
+  //
+  // v0.10.1 (§4.2): the honour row is GONE. There is one honour statement per event and it is
+  // the banner; repeating the same name under the number made the reward moment say the same
+  // thing twice. `N LINES / M FACES` stay — they are the real result the player has to read.
+  function showScorePop(points, { lines = 0, faces = 1, quiet = false } = {}) {
     const pop = document.createElement('div')
     pop.className = quiet ? 'score-pop quiet' : 'score-pop'
-    // The honour's name is translated through the shared catalogue: honors.js is game DATA
-    // (and is imported by the Node rule tests), so it carries ids, never display text.
     const rows = [`<strong>+${points}</strong>`]
     if (lines > 0) rows.push(`<span>${t('pop.lines', { n: lines })}</span>`)
     if (faces > 1) rows.push(`<span class="score-pop-faces">${t('pop.faces', { n: faces })}</span>`)
-    if (honor) rows.push(`<span class="score-pop-honor">${t(`honor.${honor.id}.title`)}</span>`)
     pop.innerHTML = rows.join('')
     sceneWrap.appendChild(pop)
     requestAnimationFrame(() => pop.classList.add('visible'))
@@ -287,34 +292,37 @@ export function createHud({
     onChainBreak?.(chain)
   }
 
-  // §5.3: ONE primary banner (the rarest honor wins), the rest float in as a single
-  // row of small badges. Both are overlay-only — the design forbids a reward moment
-  // that blocks input, so nothing here is modal and nothing here can eat a gesture.
+  // §5.3: ONE primary banner (the rarest honor wins). Overlay-only — the design forbids a
+  // reward moment that blocks input, so nothing here is modal and nothing here can eat a gesture.
+  //
+  // v0.10.1 (§「一个主庆祝」): the in-run badge ROW is gone. Every honour, bonus and record badge
+  // is still kept — the settlement card prints the whole collection — but in play one event says
+  // one thing. The `.honor-badge` CSS stays: ui/gameOver.js is still using it.
   function showHonorBanner(honors, level) {
     const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[0]
-    if (honors.primary) {
-      const banner = document.createElement('div')
-      banner.className = `honor-banner honor-banner-${feedback.banner}`
-      banner.innerHTML = `<strong>${t(`honor.${honors.primary.id}.title`)}</strong><small>${t(`honor.${honors.primary.id}.label`)} · +${honors.primary.bonus}</small>`
-      honorLayerEl.appendChild(banner)
-      requestAnimationFrame(() => banner.classList.add('visible'))
-      const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
-      setTimeout(() => {
-        banner.classList.remove('visible')
-        setTimeout(() => banner.remove(), 320)
-      }, ms)
-    }
-    const extras = honors.secondary.concat(honors.records)
-    if (!extras.length || !feedback.badges) return
-    const row = document.createElement('div')
-    row.className = 'honor-badges'
-    row.innerHTML = extras.map((honor) => `<span class="honor-badge">${t(`honor.${honor.id}.title`)}</span>`).join('')
-    honorLayerEl.appendChild(row)
-    requestAnimationFrame(() => row.classList.add('visible'))
+    if (!honors.primary) return
+    const banner = document.createElement('div')
+    banner.className = `honor-banner honor-banner-${feedback.banner}`
+    banner.innerHTML = `<strong>${t(`honor.${honors.primary.id}.title`)}</strong><small>${t(`honor.${honors.primary.id}.label`)} · +${honors.primary.bonus}</small>`
+    honorLayerEl.appendChild(banner)
+    requestAnimationFrame(() => banner.classList.add('visible'))
+    const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
     setTimeout(() => {
-      row.classList.remove('visible')
-      setTimeout(() => row.remove(), 320)
-    }, 1400)
+      banner.classList.remove('visible')
+      setTimeout(() => banner.remove(), 320)
+    }, ms)
+  }
+
+  // §3 「CHAIN 普通增长只更新 HUD」: an ordinary link is the pill's own number moving. The 5/10/15/20
+  // milestones are the rule's (`score.chainMilestone`) and get ONE paper-knot flash on the pill
+  // that already exists — no new counter, no new score, no second celebration beside the clear.
+  let chainMilestoneTimer
+  function celebrateChainMilestone() {
+    chainEl.classList.remove('milestone')
+    void chainEl.offsetWidth
+    chainEl.classList.add('milestone')
+    clearTimeout(chainMilestoneTimer)
+    chainMilestoneTimer = setTimeout(() => chainEl.classList.remove('milestone'), 620)
   }
 
   function clearHonorLayer() {
@@ -475,6 +483,7 @@ export function createHud({
     showScorePop,
     updateChainHud,
     breakChainFeedback,
+    celebrateChainMilestone,
     showHonorBanner,
     clearHonorLayer,
     renderItemBar,
