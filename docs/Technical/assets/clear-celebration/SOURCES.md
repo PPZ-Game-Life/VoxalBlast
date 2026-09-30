@@ -9,6 +9,7 @@
 - `build-audio-previews.mjs`：离线 Node 标准库合成脚本，无外部采样／依赖／网络；不接入游戏，不使用发牌随机源。音符、谐波、衰减、纸声及随机种子全部可重现。
 - `audio/*.wav`：17 个单事件原创合成小样与 1 个顺序试听文件；48kHz、16bit PCM、mono；**尚未人工听审、真机试听或做最终响度母带**。可作为试接入样音，但正式推荐把配方移植为运行时合成，保持零音频下载依赖。
 - `audio-manifest.json`：所有 cue 的顺序、时长、采样峰值／未加权 RMS、音符配方、种子和包体；不是 LUFS、dBTP 或感知响度测量。
+- `build-handoff-package.ps1`：显式按清单打包本文及资源，输出 `jeffy-celebration-handoff.zip`；不包含仓库其他文件，不把 ZIP 自身重复嵌入。可用 `pwsh -File docs/Technical/assets/clear-celebration/build-handoff-package.ps1` 重建，替换已有同名输出。ZIP 根目录含交接文档，附件保留 `assets/clear-celebration/` 相对结构，支持离线阅读。
 
 ## 授权与第三方依赖
 
