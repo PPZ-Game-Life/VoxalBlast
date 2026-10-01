@@ -20,8 +20,8 @@
 import { Board, SH, faceLattice } from './board.js'
 import { SHAPES, normalizeCells } from './shapes.js'
 import {
-  moveScore, nextChain, settleScore, rewardLevel, SCORE_RULES_V1, SCORE_RULES_VERSION,
-  REWARD_ORDER,
+  moveScore, nextChain, settleScore, rewardLevel, wipedFacesFor,
+  SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_ORDER,
 } from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
 import { createStreams } from './rng.js'
@@ -325,7 +325,11 @@ export function createGameSession() {
     }
     run.maxLinesOneMove = Math.max(run.maxLinesOneMove, lineCount)
     run.maxFacesOneMove = Math.max(run.maxFacesOneMove, result.facesHit)
-    run.faceWipes += result.faceWiped.length
+    // 净面只算落子面（制作人口径，2026-10-01）：`result.faceWiped` 会带上被共享格带空的邻面，
+    // 那些不算。这一个收窄同时喂给奖励、表现和 run 统计，三者说的必须是同一件事 ——
+    // 否则结算卡会写「净面 3」却只付了一面的钱。
+    const wipedFaces = wipedFacesFor(result.face, result.faceWiped, lineCount)
+    run.faceWipes += wipedFaces.length
 
     if (run.scoreRulesVersion === SCORE_RULES_V1) {
       // ---- version 1: the legacy formula, unchanged, for a run already in flight ----
@@ -351,10 +355,10 @@ export function createGameSession() {
     }
 
     // ---- version 2: 基础分 + 三类额外奖励, settled once (§2/§4.1) -------------------
-    // `wipedFaces` is Board.place()'s faceWiped — the face IDS, not facesHit. A move that
-    // cleared nothing cannot have wiped a face (nothing was deleted), but the gate is stated
-    // anyway so the rule reads the same as the doc's §2.4.
-    const wipedFaces = lineCount > 0 ? [...result.faceWiped] : []
+    // `wipedFaces` is the PLACED face only, and only when the settle really emptied it — see
+    // `wipedFacesFor()` and the producer's ruling it carries. `result.facesHit` is deliberately
+    // not consulted: a shared edge counts a line on two faces, so paying for facesHit would pay
+    // the same clear twice.
     const score = settleScore({
       cellCount: cells.length, lines: lineCount, chain: run.chain, wipedFaces,
     })

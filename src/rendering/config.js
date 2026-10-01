@@ -861,9 +861,12 @@ export const REWARD_STYLE = Object.freeze({
     haptic: Object.freeze([10, 42, 10]),
   }),
   FACE_CLEAR: Object.freeze({
-    // 1 面 2px/100ms · 2+ 面 3px/140ms，封顶
+    // 1 面约 2px/100ms。**没有 2+ 档**：制作人口径（2026-10-01）下净面只算落子面，
+    // 一手最多清空一个面，所以文档 §3.2 里「2+ 面约 3px/140ms，封顶」那一行是不可达的，
+    // 它被删掉而不是留成死分支。`cap` 仍然给同一个值 —— `rewardFeedback()` 需要它兜底，
+    // 而兜底值就是唯一存在的那一档。
     tiers: Object.freeze([null, Object.freeze({ px: 2, ms: 100 })]),
-    cap: Object.freeze({ px: 3, ms: 140 }),
+    cap: Object.freeze({ px: 2, ms: 100 }),
     haptic: Object.freeze([18, 36, 22]),
   }),
 })

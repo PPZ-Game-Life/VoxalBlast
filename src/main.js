@@ -1689,7 +1689,9 @@ const devHandles = import.meta.env.DEV
     demoReward: (lines = 0, chain = 0, wipedFaces = 0) => {
       const lineCount = Math.max(1, Number(lines) || 1)
       const chainCount = Number(chain) || 0
-      const faceCount = Math.max(0, Math.min(Number(wipedFaces) || 0, FACES.length))
+      // 净面只算落子面（制作人口径）：一手最多 1 个面，所以演示入口也**不能**造出 2 面以上的
+      // 状态 —— 一个演示不出的状态不该能被截图。
+      const faceCount = Math.max(0, Math.min(Number(wipedFaces) || 0, 1))
       const score = settleScore({
         cellCount: 4, lines: lineCount, chain: chainCount, wipedFaces: faceCount,
       })
@@ -1706,16 +1708,14 @@ const devHandles = import.meta.env.DEV
             : faceLattice(face, k, index))),
         })
       }
-      // `wipedFaces` arrives as a COUNT (that is what the rule takes), but the presentation
-      // needs face IDS. The demo lights the first N faces in the board's own order — a real
-      // settle would name the faces it emptied, and a probe screenshot only ever sees the front
-      // one anyway (§3.2 「背面只用文字/图标说明，不强转镜头」).
+      // The demo drops on the front face, so that is the face a wipe would have to be about —
+      // the same narrowing the real settlement does, not a parallel one.
       const rewardEvent = {
         eventId: -1, // a demo is not a settled placement and never enters the run's numbering
         scoreRulesVersion: SCORE_RULES_VERSION,
         lines: lineCount,
         chain: chainCount,
-        wipedFaces: FACES.slice(0, faceCount),
+        wipedFaces: faceCount ? [face] : [],
         rewards: score.rewards,
         primaryType: score.primaryType,
         total: score.total,

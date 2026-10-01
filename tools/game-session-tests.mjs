@@ -213,9 +213,10 @@ function keepFaceFromEmptying(s, face, v) {
     JSON.stringify(s.run.rewardCounts))
 }
 
-// ---- 6c. an edge clear pays the multi bonus AND the face bonus -------------------
-// The one hand that can hit two categories at once without any setup trickery: an edge row is
-// two lines on two faces, and it empties both of them (they had nothing else on them).
+// ---- 6c. an edge clear pays the multi bonus, and ONE face bonus -----------------
+// The one hand that can hit two categories at once without any setup trickery: an edge row is two
+// lines on two faces. Three faces actually end up empty (-x is emptied by the shared end cell),
+// and **only the placed one is paid for** — 制作人口径 2026-10-01: 清空一面只算落子面，侧面不算.
 {
   const s = fresh()
   fillRowExceptOne(s, '+z', 0, 4)
@@ -225,15 +226,41 @@ function keepFaceFromEmptying(s, face, v) {
   check('the multi reward counts the two lines', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.count === 2)
   check('the multi reward pays 100', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.bonus === 100)
   const face = event.rewards.find((r) => r.type === REWARD_TYPES.FACE_CLEAR)
-  check('the face reward counts the emptied faces', face?.count === 3, `${face?.count}`)
-  check('the face reward pays 300 per face', face?.bonus === 900, `${face?.bonus}`)
-  check('the headline is the face clear', event.primaryType === REWARD_TYPES.FACE_CLEAR)
-  check('the wiped faces are reported by ID, not just counted', event.wipedFaces.join(',') === '-x,-y,+z',
+  check('the face reward counts exactly one face', face?.count === 1, `${face?.count}`)
+  check('the face reward pays 300 for it', face?.bonus === 300, `${face?.bonus}`)
+  check('three faces were emptied on the board', settled.result.faceWiped.length === 3,
+    settled.result.faceWiped.join(','))
+  check('but only the placed face is reported on the event', event.wipedFaces.join(',') === '+z',
     event.wipedFaces.join(','))
+  check('the headline is the face clear', event.primaryType === REWARD_TYPES.FACE_CLEAR)
   check('the run tallied both categories',
     s.run.rewardCounts.MULTI_CLEAR === 1 && s.run.rewardCounts.FACE_CLEAR === 1,
     JSON.stringify(s.run.rewardCounts))
-  check('the run counted three net faces', s.run.faceWipes === 3, `${s.run.faceWipes}`)
+  check('the run counted ONE net face, not three', s.run.faceWipes === 1, `${s.run.faceWipes}`)
+  check('and the total is the five named parts', event.total === 10 + 200 + 100 + 300, `${event.total}`)
+}
+
+// ---- 6c2. a side face emptied by a shared cell earns nothing ---------------------
+// The -y column takes the LAST cell of +z and -z with it, while -y itself keeps a cell. Under the
+// producer's ruling that hand owes no face reward at all — and the run's own 净面 counter agrees.
+{
+  const s = fresh()
+  // -z ... (2,0,0)   +z ... (2,0,4)   -y ... both of those, plus (1,0,1)
+  s.board.addCells([
+    { x: 2, y: 0, z: 0, color: 0 },
+    { x: 2, y: 0, z: 4, color: 0 },
+    { x: 1, y: 0, z: 1, color: 0 },
+  ])
+  // The -y column u=2, v=1..3 completes it against the two shared cells already there.
+  const settled = s.settlePlacement('-y', [[0, 1], [0, 2], [0, 3]], { u: 2, v: 0 }, 3)
+  check('the column cleared one line', settled.lineCount === 1, `${settled.lineCount}`)
+  check('two side faces were emptied', settled.result.faceWiped.join(',') === '+z,-z',
+    settled.result.faceWiped.join(','))
+  check('the event pays no face reward', settled.rewardEvent.rewards.length === 0,
+    JSON.stringify(settled.rewardEvent.rewards))
+  check('and names no wiped face', settled.rewardEvent.wipedFaces.length === 0)
+  check('the run counted no net face', s.run.faceWipes === 0, `${s.run.faceWipes}`)
+  check('the run tallied no face event', s.run.rewardCounts.FACE_CLEAR === 0)
 }
 
 // ---- 6d. a tool clears nothing and earns nothing (v0.10.3 §2.4) ------------------

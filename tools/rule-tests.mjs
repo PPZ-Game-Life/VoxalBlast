@@ -18,7 +18,7 @@ import {
   // plays it, the new one because it is what the game now ships.
   SCORING_V2, SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_TYPES, REWARD_ORDER, REWARD_PRIORITY,
   settleScore, resolveRewards, rewardLevel, multiClearBonus, streakBonus, faceClearBonus,
-  normalizeWipedFaces,
+  normalizeWipedFaces, wipedFacesFor,
 } from '../src/game/scoring.js'
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
 import { createRecordStore, weekKey, migrate, RECORD_FIELDS, RECORDS_VERSION, pickStorage as pickStorageFromRecords, probeStorage as probeStorageFromRecords } from '../src/game/records.js'
@@ -181,12 +181,14 @@ group('sixface', () => {  // The precise bug this version fixes: the +z row v=0 
 })
 
 // ---------------------------------------------------------------- face wipe
-// SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §2.4 / §6.2. `faceWiped` is the ONE judgement the
-// 清除整面 reward is allowed to consume, and it is NOT `facesHit`: a shared edge counts a line on
-// two faces, and a face can be emptied by a line that lives entirely on a neighbouring face.
+// SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §2.4 / §6.2, **as ruled by the producer on 2026-10-01**:
+// 清空一面只算方块放置的那一面，侧面不算. `faceWiped` is still the ONE judgement the rule is
+// allowed to consume, but it is narrowed by `wipedFacesFor()` before anything is paid.
+//
 // These are real board states, built and settled through the shipped Board.
 group('face-wipe', () => {
   const cell = (x, y, z) => ({ x, y, z, color: 0xffffff })
+  const rewardFor = (settle) => wipedFacesFor(settle.face, settle.faceWiped, settle.lines.length)
 
   // (1) 落子前空的面不奖励: from an empty cube, completing an INTERIOR row on +z empties +z — but
   // +z had NOTHING on it before the drop, so the reward is not owed. (The row is at v=2 on
@@ -196,11 +198,11 @@ group('face-wipe', () => {
   equal('an interior full row settles one line', freshSettle.lines.length, 1)
   equal('and hits one face', freshSettle.facesHit, 1)
   equal('a face that was already empty is not a wiped face', freshSettle.faceWiped.length, 0)
+  equal('and it is not paid for', rewardFor(freshSettle).length, 0)
   check('but it IS reported as empty', freshSettle.faceEmpty.includes('+z'),
     JSON.stringify(freshSettle.faceEmpty))
 
-  // (2) A face can be emptied WITHOUT having a line of its own — the shared-cell case the doc
-  // calls out, and the reason 净面数 may exceed 消线命中面数.
+  // (2) 侧面不算 — the ruling, stated as a board state.
   //
   //   -z ... (2,0,0)   +z ... (2,0,4)   -y ... both of those, plus (1,0,1)
   //   The -y column u=2 (v=0..4) completes and clears. It takes the LAST cell of +z and of -z
@@ -210,27 +212,27 @@ group('face-wipe', () => {
   const settle = board.place('-y', [[0, 1], [0, 2], [0, 3]], { u: 2, v: 0 }, 0xffffff)
   equal('the -y column is one line', settle.lines.length, 1)
   equal('and it hits one face', settle.facesHit, 1)
-  equal('the face the line lives on is NOT the face that got emptied', settle.faceWiped.includes('-y'), false)
-  equal('two faces are emptied by that one line', settle.faceWiped.join(','), '+z,-z')
-  check('净面数 can exceed 消线命中面数 (2 > 1)', settle.faceWiped.length > settle.facesHit,
-    `${settle.faceWiped.length} vs ${settle.facesHit}`)
+  equal('two side faces really were emptied by that line', settle.faceWiped.join(','), '+z,-z')
+  equal('but the face the piece was placed on was NOT emptied', settle.faceWiped.includes('-y'), false)
+  equal('so the hand earns NO face reward', rewardFor(settle).length, 0)
+  equal('and the score says the same thing', faceClearBonus(settle.lines.length, rewardFor(settle)), 0)
   equal('the -y face keeps its other cell', board.faceOccupancy('-y'), 1)
   equal('and the emptied faces are really at zero', board.faceOccupancy('+z') + board.faceOccupancy('-z'), 0)
 
-  // (3) 共享满棱 still counts TWO lines on two faces (the simplification does NOT touch it). The
-  // row runs along the y=0 / z=4 edge, so it belongs to -y AND +z — and its (0,0,4) end also
-  // belongs to -x, which is why THREE faces end up emptied by a two-line clear.
-  const shared = new Board()
+  // (3) 落子面被清空才发奖 — even when the clear also took a side face with it. The row runs
+  // along the y=0 / z=4 edge, so it belongs to -y AND +z, and its (0,0,4) end also belongs to -x:
+  // THREE faces end up empty, and exactly ONE of them is paid for.
   const seedSharedEdge = (target) => {
     ;[[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4]].forEach(([x, y, z]) => target.addCells([cell(x, y, z)]))
     return target.place('+z', [[0, 0]], { u: 4, v: 0 }, 0xffffff)
   }
-  const sharedSettle = seedSharedEdge(shared)
+  const sharedSettle = seedSharedEdge(new Board())
   equal('a shared edge still settles two lines', sharedSettle.lines.length, 2)
   equal('a shared edge still reports two faces', sharedSettle.facesHit, 2)
-  equal('the shared end cell empties a third face', sharedSettle.faceWiped.join(','), '-x,-y,+z')
+  equal('three faces end up empty', sharedSettle.faceWiped.join(','), '-x,-y,+z')
+  equal('only the placed face is paid for', rewardFor(sharedSettle).join(','), '+z')
   equal('the two face lines pay the multi bonus', multiClearBonus(sharedSettle.lines.length), 100)
-  equal('and the three wiped faces pay the face bonus', faceClearBonus(sharedSettle.lines.length, sharedSettle.faceWiped), 900)
+  equal('and the one placed face pays the face bonus', faceClearBonus(sharedSettle.lines.length, rewardFor(sharedSettle)), 300)
 
   // (4) 同面重新占用后再清空，可以再次领奖: the board keeps no memory of a face it emptied once.
   const wipeOnce = () => {
@@ -238,9 +240,10 @@ group('face-wipe', () => {
     b.addCells([cell(2, 0, 0), cell(2, 0, 4), cell(1, 0, 1)])
     return b.place('-y', [[0, 1], [0, 2], [0, 3]], { u: 2, v: 0 }, 0xffffff)
   }
-  equal('first wipe', wipeOnce().faceWiped.join(','), '+z,-z')
-  equal('second wipe of the same faces', wipeOnce().faceWiped.join(','), '+z,-z')
-  equal('and a shared-edge wipe repeats too', seedSharedEdge(new Board()).faceWiped.join(','), '-x,-y,+z')
+  equal('first wipe: still the side faces, still unpaid', rewardFor(wipeOnce()).length, 0)
+  equal('second wipe of the same hand: same answer', rewardFor(wipeOnce()).length, 0)
+  equal('and a shared-edge hand pays its own face every time',
+    rewardFor(seedSharedEdge(new Board())).join(','), '+z')
 })
 
 // ---------------------------------------------------------------- scoring
@@ -314,12 +317,24 @@ group('scoring-v2', () => {
   equal('the twelfth still pays +200 (the count shows 12, the money caps)', streakBonus(1, 12), 200)
   equal('a turn that cleared nothing pays no streak bonus', streakBonus(0, 9), 0)
 
-  // §2.4 清除整面: W faces, and never without a clear.
+  // §2.4 清除整面: W faces, and never without a clear. The PRICING function stays general; what
+  // narrows W to {0,1} is `wipedFacesFor()` below, which is where the producer's ruling lives.
   equal('one wiped face pays +300', faceClearBonus(1, 1), 300)
   equal('two wiped faces pay +600', faceClearBonus(1, 2), 600)
   equal('faces are deduped before they are priced', faceClearBonus(1, ['+z', '+z', '-y']), 600)
   equal('no clear, no face bonus', faceClearBonus(0, 3), 0)
   equal('a face list and a count mean the same thing', normalizeWipedFaces(['+z', '-y']), 2)
+
+  // ---- 净面只算落子面（制作人口径，2026-10-01）------------------------------------
+  // `wipedFacesFor()` is the ONE narrowing between Board.place()'s report and the reward. It is
+  // tested here because everything downstream (the bonus, the note, the face sweep, the run
+  // stat) consumes its output and nothing else.
+  equal('the placed face, when the settle emptied it', wipedFacesFor('+z', ['-x', '-y', '+z'], 2).join(','), '+z')
+  equal('a side face emptied by a shared cell is NOT paid', wipedFacesFor('-y', ['+z', '-z'], 1).length, 0)
+  equal('a face that was already empty is not a wipe', wipedFacesFor('+z', [], 1).length, 0)
+  equal('a turn that cleared nothing wipes nothing', wipedFacesFor('+z', ['+z'], 0).length, 0)
+  equal('a missing report is not a wipe', wipedFacesFor('+z', undefined, 1).length, 0)
+  equal('one hand can never pay for two faces', wipedFacesFor('+z', ['+z', '-y'], 2).length, 1)
 
   // §6.1 the doc's own table, row by row. `total` must equal the five named parts every time.
   // `base` is 基础分 = 基础放置分 + 基础消线分, which is how the doc's table states it.
@@ -332,7 +347,9 @@ group('scoring-v2', () => {
     { name: '第十二次连续单线', lines: 1, chain: 12, faces: 0, base: 140, multi: 0, streak: 200, face: 0, total: 340 },
     { name: '单线带净一面', lines: 1, chain: 1, faces: 1, base: 140, multi: 0, streak: 0, face: 300, total: 440 },
     { name: '三类同手', lines: 3, chain: 4, faces: 1, base: 340, multi: 200, streak: 150, face: 300, total: 990 },
-    { name: '六线净两面', lines: 6, chain: 1, faces: 2, base: 640, multi: 500, streak: 0, face: 600, total: 1740 },
+    // 文档 §6.1 的这一行原本是「六线净两面」= 1740。制作人口径（净面只算落子面）下
+    // 一手不可能清空两个面，所以它按同一套算术改成可达的那一版：六线、净一面。
+    { name: '六线净一面', lines: 6, chain: 1, faces: 1, base: 640, multi: 500, streak: 0, face: 300, total: 1440 },
   ]
   table.forEach((row) => {
     const score = settleScore({ cellCount: 4, lines: row.lines, chain: row.chain, wipedFaces: row.faces })
@@ -380,7 +397,6 @@ group('scoring-v2', () => {
   equal('a plain single line is L1', levelOf({ cellCount: 4, lines: 1, chain: 1 }), 1)
   equal('a two-line clear is L2', levelOf({ cellCount: 4, lines: 2, chain: 1 }), 2)
   equal('one line that empties a face is L3', levelOf({ cellCount: 4, lines: 1, chain: 1, wipedFaces: 1 }), 3)
-  equal('two faces in one hand are L4', levelOf({ cellCount: 4, lines: 1, chain: 1, wipedFaces: 2 }), 4)
   equal('five lines are L5', levelOf({ cellCount: 4, lines: 5, chain: 1 }), 5)
   equal('a dead turn is L0', levelOf({ cellCount: 4, lines: 0, chain: 0 }), 0)
   equal('a long streak lifts a single line', levelOf({ cellCount: 4, lines: 1, chain: 6 }), 4)

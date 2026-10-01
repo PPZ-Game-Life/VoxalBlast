@@ -309,9 +309,12 @@ try {
     `wiped=${face.event.wipedFaces.join(',')} primary=${face.event.primaryType}`)
   check('the face shake is the doc’s 2px/100ms', face.rewardShake?.px === 2 && face.rewardShake?.ms === 100,
     JSON.stringify(face.rewardShake))
-  const twoFaces = await demoReward(1, 1, 2)
-  check('two faces shake harder but still cap', twoFaces.rewardShake?.px === 3 && twoFaces.rewardShake?.ms === 140,
-    JSON.stringify(twoFaces.rewardShake))
+  // 制作人口径（2026-10-01）：净面只算落子面，一手最多一个面。所以「2+ 面 3px/140ms」那一档
+  // 是不可达的，demo 入口也**造不出来** —— 它必须收窄成 1 面，而不是演示一个规则不允许的状态。
+  const overFace = await demoReward(1, 1, 3)
+  check('a demo cannot fabricate a two-face hand', overFace.event.wipedFaces.length === 1
+    && overFace.rewardShake?.px === 2,
+    `wiped=${overFace.event.wipedFaces.length} shake=${JSON.stringify(overFace.rewardShake)}`)
 
   // 同手多类: ONE main cue, at most ONE extra tail, and the shake is the MAXIMUM (never a sum).
   const stacked = await demoReward(3, 4, 1)
@@ -322,7 +325,7 @@ try {
     busAfterStacked.voices === 2 && busAfterStacked.lastCue === 'streak-tail',
     `lastCue=${busAfterStacked.lastCue} voices=${busAfterStacked.voices}`)
   // 3 lines (2px) + streak (1px) + one face (2px): the answer is the MAXIMUM, so 2px — never the
-  // 5px a sum would give, and never the 3px that only two emptied faces are allowed to ask for.
+  // 5px a sum would give.
   check('the stacked shake is the maximum of the three, not their sum',
     stacked.rewardShake?.px === 2 && stacked.rewardShake?.px < 2 + 1 + 2, JSON.stringify(stacked.rewardShake))
   check('and it matches the largest single category in the hand',

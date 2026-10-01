@@ -190,11 +190,27 @@ export function streakBonus(lines, chain) {
   return SCORING_V2.streakStep * step
 }
 
-// §2.4 清除整面: 落子前非空 → 正常结算后为空。That test is Board.place()'s `faceWiped`;
-// this function只负责定价，不做判定（判定只有一个来源）。
+// §2.4 清除整面: 落子前非空 → 正常结算后为空。
+//
+// **制作人口径（2026-10-01）**：只算**方块放置的那一面**，侧面不算。`Board.place()` 的
+// `faceWiped` 会列出所有「落子前非空、结算后为空」的面 —— 共享棱/角上的格子被邻面的线带走时，
+// 一个邻面也会跟着空掉 —— 但那不是玩家这一手的目标面，不发奖。所以进价前必须用
+// `wipedFacesFor()` 收窄，直接把 `faceWiped` 丢进来是错的（v0.11.0 首版就是这么做的，
+// 一次沿棱的消除能同时点亮 3 个面并付 900 分）。
+//
+// 由此 `W ∈ {0, 1}`：一手最多清空一个面（落子面），「2 面 +600、依此类推」在当前规则下不可达。
 export function faceClearBonus(lines, wipedFaces) {
   if (count(lines) <= 0) return 0
   return SCORING_V2.faceClear * normalizeWipedFaces(wipedFaces)
+}
+
+// 净面判定的收窄：从 `faceWiped` 里只留下落子面。返回的是**面 ID 列表**（不是个数），
+// 因为表现层要用它点亮那一面。落子面必须真的出现在 `faceWiped` 里才算 —— 也就是它必须
+// 「落子前非空、结算后为空」；一个本来就空的面不会被奖励。
+export function wipedFacesFor(placedFace, faceWiped, lines) {
+  if (count(lines) <= 0) return []
+  if (!placedFace || !Array.isArray(faceWiped)) return []
+  return faceWiped.includes(placedFace) ? [placedFace] : []
 }
 
 // The three bonuses, each settled ONCE, as the reward list §4.1 asks for: zero-bonus
@@ -265,7 +281,9 @@ export function rewardLevel({ lines = 0, rewards = [] } = {}) {
   for (const reward of rewards || []) {
     if (reward.type === REWARD_TYPES.MULTI_CLEAR) bump(reward.count >= 5 ? 5 : reward.count >= 4 ? 4 : reward.count >= 3 ? 3 : 2)
     else if (reward.type === REWARD_TYPES.CLEAR_STREAK) bump(reward.count >= 5 ? 4 : reward.count >= 3 ? 3 : 2)
-    else if (reward.type === REWARD_TYPES.FACE_CLEAR) bump(reward.count >= 2 ? 4 : 3)
+    // 清除整面 counts 0 or 1 by rule (只算落子面): one emptied face is an L3 moment, and there is
+    // no second tier to climb to.
+    else if (reward.type === REWARD_TYPES.FACE_CLEAR) bump(3)
   }
   return level
 }
