@@ -6,6 +6,15 @@
     <meta name="theme-color" content="#69a5ff" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%23e2af78'/%3E%3Cpath d='M4 16h24M16 4v24' stroke='%23765033' stroke-width='2'/%3E%3C/svg%3E" />
     <title>VoxalBlast</title>
+    <!-- Boot curtain's FIRST-PAINT FLOOR (v0.11.2). Two rules, inlined on purpose: the module
+         graph and the skin stylesheet both arrive after the HTML, and an unstyled #boot-screen
+         would paint as a bare "Loading…" line at the top of the page — the exact 穿帮 this
+         element exists to hide. Everything decorative (card, logo, the block pulse) lives in
+         the skin, where it belongs. -->
+    <style>
+      #boot-screen { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: #c3e7fb; }
+      #boot-screen.done { opacity: 0; pointer-events: none; }
+    </style>
   </head>
   <!-- Localization (docs/Technical/LOCALIZATION.md): the text baked into this file is the
        ENGLISH default, so a build whose module never runs still reads correctly. Every
@@ -13,6 +22,23 @@
        data-i18n-title, and src/i18n/index.js rewrites them for the active locale. A literal
        added here without one of those attributes is a guard-test failure (tools/i18n-tests.mjs). -->
   <body>
+    <!-- Boot curtain (v0.11.2). Reopening the page used to show the game assembling itself: an
+         empty candidate tray, a live item strip, and the opening wave's primer stage with the
+         cube's core visible through a half-built shell. The player read that as 「卡在一个奇怪的
+         页面」. This element is the first thing in the document and the last thing to leave: it is
+         opaque from the very first paint, it swallows every pointer event while it is up, and
+         src/ui/bootScreen.js lifts it only when the scene is COMPLETE (tray dealt and painted,
+         cube standing in its real colours).
+         The page-load path no longer plays the opening wave at all — the wave is a flourish for a
+         player who just PRESSED something (新游戏 / 再来一局 / 重新开始); a player who just opened
+         the page wants their board back. See src/main.js's boot tail. -->
+    <div id="boot-screen" class="boot-screen" role="status" aria-live="polite" aria-label="Loading" data-i18n-aria-label="a11y.loading">
+      <div class="boot-card">
+        <img class="boot-logo" src="./art/ui-redesign/icons/logo-voxalblast.png" alt="" aria-hidden="true" draggable="false" />
+        <p id="boot-note" class="boot-note" data-i18n="boot.loading">Loading…</p>
+        <span class="boot-blocks" aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
+    </div>
     <div id="app" class="home-open">
       <header class="topbar">
         <div class="score-plaque" aria-hidden="true"></div>

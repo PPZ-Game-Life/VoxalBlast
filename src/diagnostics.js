@@ -39,6 +39,7 @@ export function createDiagnostics({
   recordStore,
   sessionStore,
   homeUi,
+  bootUi,
   settingsUi,
   dev,
 }) {
@@ -243,7 +244,12 @@ export function createDiagnostics({
     // point of storing it). The cover's half is homeUi's own report; `persistent` is the save
     // slot's answer and belongs to the store, not the cover.
     home: () => ({ ...homeUi.report(), persistent: sessionStore.persistent }),
-    intro: () => boardView.introReport(),
+    // v0.11.2: the boot curtain's own state machine. A still cannot say whether the thing on
+    // screen is a loading screen or a frozen page, so the frame checks read this alongside the
+    // picture: `state: 'showing'` is a curtain, `'done'` with `reason: 'ready'` is a curtain that
+    // lifted because the scene was complete, and `reason: 'timeout'` is the one that means the
+    // boot was too slow to be trusted.
+    boot: () => bootUi.report(),    intro: () => boardView.introReport(),
     candidateFrames: () => pieceView.candidateFrames(),
     // v0.9.17 (07 §8): the armed tool's live state — phase, target, scope area/N and whether the
     // release is committable. The v1 interaction lives entirely in pointers, which a screenshot

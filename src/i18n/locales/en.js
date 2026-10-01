@@ -12,9 +12,15 @@ export default Object.freeze({
   'hud.score': 'SCORE',
   'hud.best': 'BEST',
 
+  // ---- Boot curtain (v0.11.2) -----------------------------------------------
+  // The line the player reads while the page is still assembling. It says what is happening and
+  // nothing else: no percentage (there is no honest progress number to show), no apology.
+  'boot.loading': 'Loading…',
+
   // ---- Accessibility labels on static markup --------------------------------
   'a11y.score': 'Score',
   'a11y.bestScore': 'Best score',
+  'a11y.loading': 'Loading',
   'a11y.sound': 'Sound',
   'a11y.version': 'Game version',
   'a11y.controls': 'Controls',

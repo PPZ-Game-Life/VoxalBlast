@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.11.1",
+  "version": "0.11.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "reachability": "node tools/reachability.mjs all",
     "probe:celebration": "node tools/celebration-audio-probe.mjs",
     "demo:rewards": "node tools/reward-demo.mjs",
+    "probe:boot": "node tools/boot-frames.mjs",
     "fixtures:grounding": "node tools/material-grounding-fixtures.mjs",
     "probe:grounding": "node tools/material-grounding-probe.mjs"
   },

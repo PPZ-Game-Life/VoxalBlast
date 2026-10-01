@@ -809,7 +809,31 @@ try {
 
   await client.send('Page.navigate', { url: APP_URL })
   await waitForHandle(client)
-  check('boot: the opening wave finishes on its own', (await waitIntroDone(client)) === true, 'intro().active === false')
+  // v0.11.2: the page-load path no longer PLAYS the opening wave — it settles it behind the boot
+  // curtain, and the curtain lifts only once the scene is complete. The old assertion here
+  // ("the wave finishes on its own") would now be true the instant the handle appeared, i.e. it
+  // would pass without testing anything. What is worth gating is the pair that replaced it: the
+  // wave really is over, AND the curtain really did leave (on its own, not via its timeout).
+  await waitIntroDone(client)
+  // The curtain (v0.11.2) lifts when the tray is dealt AND painted, which on a cold profile can
+  // take a couple of seconds — so this WAITS for it instead of sampling it once. The budget is
+  // deliberately well under the curtain's own hard timeout (9s): a boot that only ever lifted
+  // because the timeout fired is the failure this check exists to catch.
+  const bootDeadline = Date.now() + 6000
+  let boot = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__voxalblast.boot())'))
+  while (boot.state !== 'done' && Date.now() < bootDeadline) {
+    await sleep(150)
+    boot = JSON.parse(await client.evaluate('JSON.stringify(globalThis.__voxalblast.boot())'))
+  }
+  check('boot: the opening wave is settled before the player can look',
+    (await client.evaluate('globalThis.__voxalblast.intro().active')) === false,
+    'intro().active === false')
+  check('boot: the curtain lifted on its own, because the scene was ready',
+    boot.state === 'done' && boot.reason === 'ready',
+    `state=${boot.state} reason=${boot.reason} elapsed=${boot.elapsed}ms`)
+  check('boot: nothing is left of the curtain to eat a click',
+    (await client.evaluate('document.getElementById("boot-screen") === null')) === true,
+    'the node is removed, not merely transparent')
 
   const input = mouse(client)
 

@@ -33,6 +33,9 @@ export function collectDom(root = document) {
     sceneWrap: need('#scene-wrap'),
     app: need('#app'),
     versionEl: need('#app-version'),
+    // v0.11.2: the boot curtain. It is NOT inside #app (it must cover the cover as well), so it
+    // is its own handle rather than part of any layer list.
+    bootEl: need('#boot-screen'),
 
     // HUD: score, best, status line and the transient toast. The CHAIN pill's three handles
     // were removed with the component in v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.1).

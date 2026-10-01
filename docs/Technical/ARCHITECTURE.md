@@ -41,6 +41,7 @@
 | src/ui/dom.js | 静态 DOM 句柄一次性收集（缺失必需节点直接报选择器；动态节点不缓存） |
 | src/ui/hud.js | HUD 展示（分数/连击/状态/toast/荣誉/道具条/轴选择）与候选槽 DOM 模板；分数滚动（`SCORE_ROLL` 与 `#score` 的 `.rolling` / `.settled`，08 §4.1）连同它的两个音效回调都在这里接；预览的建与释放经回调交给 pieceView |
 | src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位 |
+| src/ui/bootScreen.js | 开机遮罩（v0.11.2）：只拥有 `#boot-screen` 的状态机（showing → fading → done）与"场景是否完整"的判定循环；**"完整"的定义是调用方的**（main 传入 `isReady` 谓词）。两条护栏：连续两帧 ready、硬超时 9s |
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
 | src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写；v0.9.19 起 `hapticsSupported()` 为假时触感行 `disabled` 且小字换成 `settings.hapticsUnsupported`（偏好不被改写） |
 | src/styles.css / toy.css / reference.css | 历史布局兼容 / 玩具皮肤 / **参考美术皮肤（最后导入，用 PNG 美术替掉 toy 的绘制层）**。三张表按导入顺序叠加，所以"谁拥有这一层"必须显式：v0.9.21 之前 `.item-button` 里的木刻 `<svg class="toy-icon">` 因为 `visibility` 继承（皮肤把 `.item-icon` 重新设回 visible）而叠在新 PNG 美术上一起画。参考皮肤只管 `.item-icon` 的 `background`，旧绘制层一律在它里面显式隐藏；`npm run shot` 的 `legacyArtHidden` 断言任何"宿主带参考美术但仍绘制"的旧图层 |

@@ -36,6 +36,7 @@ import { ITEM_COPY } from './ui/itemCopy.js'
 import { createGameOver } from './ui/gameOver.js'
 import { createHud } from './ui/hud.js'
 import { createHome } from './ui/home.js'
+import { createBootScreen } from './ui/bootScreen.js'
 import { createSettings } from './ui/settings.js'
 import { createDiagnostics } from './diagnostics.js'
 // Localization (docs/Technical/LOCALIZATION.md). initI18n() runs before the first render
@@ -86,6 +87,7 @@ const {
   sceneWrap,
   app: appEl,
   versionEl,
+  bootEl,
   scoreEl,
   bestEl,
   statusEl,
@@ -1149,6 +1151,15 @@ const {
   closeLeaderboard,
 } = homeUi
 
+// The boot curtain (v0.11.2, see ui/bootScreen.js). It is built here with the other UI modules,
+// but it is only ever LIFTED at the very end of this file, once the run exists and the opening
+// wave has been settled. `isReady` reads the candidate tray's own DOM: three painted slots is
+// exactly the thing whose absence the producer saw.
+const bootUi = createBootScreen({
+  els: { bootEl },
+  isReady: () => slotsEl.children.length >= 3,
+})
+
 function openHome() {
   if (homeUi.isOpen()) return
   // The cover is about to be painted over the board, and the home's own hero is a
@@ -1577,11 +1588,27 @@ if (sessionStore.read()) {
   beginRun()
   leaveHome()
 }
+// v0.11.2 — the page-load path does NOT play the opening wave.
+//
+// beginRun()/leaveHome() arm it (armIntroIfVisible), and that is right for every entry that
+// follows a BUTTON: 新游戏 / 再来一局 / 重新开始 rebuild the run in place, with the player
+// already looking at the board, and the construction is the reward for having pressed something.
+// A player who just OPENED the page is in the opposite situation: they are waiting for their
+// board back, and the wave's first second shows the cube's primer stage with its core visible
+// through a half-built shell — which is precisely the 穿帮 the boot curtain hides. So it is
+// settled here, immediately: the cube is standing in its real colours before the curtain lifts.
+settleIntro()
 // The trays were just filled, so the board's wrapper is shorter than it was when resize()
 // measured it a moment ago; the ResizeObserver catches that, and the wave re-sorts itself
 // once if it armed before the new size landed (see updateIntro()).
 resize()
 platform.initialize().catch(() => showToast(t('toast.offline')))
+
+// The boot curtain (v0.11.2). `release()` is the only thing that can lift it, and it waits for
+// the scene to be COMPLETE — see ui/bootScreen.js for why that is two ready frames and why there
+// is a hard timeout. The predicate reads the tray's own DOM: the slots are the thing the player
+// was staring at while it was empty.
+bootUi.release()
 
 const clock = new THREE.Clock()
 function animate() {
@@ -1801,6 +1828,7 @@ createDiagnostics({
   recordStore,
   sessionStore,
   homeUi,
+  bootUi,
   settingsUi,
   dev: devHandles,
 }).install()
