@@ -18,7 +18,7 @@ import {
   // plays it, the new one because it is what the game now ships.
   SCORING_V2, SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_TYPES, REWARD_ORDER, REWARD_PRIORITY,
   settleScore, resolveRewards, rewardLevel, multiClearBonus, streakBonus, faceClearBonus,
-  normalizeWipedFaces, wipedFacesFor,
+  normalizeWipedFaces, wipedFacesFor, countScoringLines, uniqueLines, segmentKey,
 } from '../src/game/scoring.js'
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
 import { createRecordStore, weekKey, migrate, RECORD_FIELDS, RECORDS_VERSION, pickStorage as pickStorageFromRecords, probeStorage as probeStorageFromRecords } from '../src/game/records.js'
@@ -335,6 +335,46 @@ group('scoring-v2', () => {
   equal('a turn that cleared nothing wipes nothing', wipedFacesFor('+z', ['+z'], 0).length, 0)
   equal('a missing report is not a wipe', wipedFacesFor('+z', undefined, 1).length, 0)
   equal('one hand can never pay for two faces', wipedFacesFor('+z', ['+z', '-y'], 2).length, 1)
+
+  // ---- 棱上的消除只算一次（制作人口径，2026-10-01）----------------------------------
+  // A row along a cube edge is ONE physical row reported by two faces. `countScoringLines()` is
+  // the identity the score uses; `Board.place()` keeps reporting both face-lines, because that is
+  // what settles the cube.
+  const cell = (x, y, z) => ({ x, y, z, color: 0xffffff })
+  const edge = new Board()
+  ;[[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4]].forEach(([x, y, z]) => edge.addCells([cell(x, y, z)]))
+  const edgeSettle = edge.place('+z', [[0, 0]], { u: 4, v: 0 }, 0xffffff)
+  equal('the board still reports the edge row on both faces', edgeSettle.lines.length, 2)
+  equal('but it is ONE line to the score', countScoringLines(edgeSettle.lines), 1)
+  equal('and the two reports carry the same cells', segmentKey(edgeSettle.lines[0]), segmentKey(edgeSettle.lines[1]))
+  equal('so an edge row pays one line of points', settleScore({ cellCount: 1, lines: countScoringLines(edgeSettle.lines), chain: 1 }).linePoints, 100)
+  equal('and no multi bonus', settleScore({ cellCount: 1, lines: countScoringLines(edgeSettle.lines), chain: 1 }).multiBonus, 0)
+
+  const interior = new Board()
+  ;[[0, 2, 4], [1, 2, 4], [2, 2, 4], [3, 2, 4]].forEach(([x, y, z]) => interior.addCells([cell(x, y, z)]))
+  const interiorSettle = interior.place('+z', [[0, 0]], { u: 4, v: 2 }, 0xffffff)
+  equal('an interior row is one line for the board too', interiorSettle.lines.length, 1)
+  equal('and one line for the score', countScoringLines(interiorSettle.lines), 1)
+  // The two moves clear the same number of blocks and are now worth the same. That equality IS
+  // the ruling: before it, the edge row paid 310 and the interior row 110.
+  equal('the two moves clear the same blocks', edgeSettle.cellsCleared, interiorSettle.cellsCleared)
+  const edgeScore = settleScore({ cellCount: 1, lines: countScoringLines(edgeSettle.lines), chain: 1 })
+  const interiorScore = settleScore({ cellCount: 1, lines: countScoringLines(interiorSettle.lines), chain: 1 })
+  equal('so the edge row and the interior row are worth the same', edgeScore.total, interiorScore.total)
+
+  // …and two genuinely different lines stay two.
+  const twoRows = [
+    { face: '+z', axis: 'row', v: 1, cells: [[0, 1, 4], [1, 1, 4], [2, 1, 4], [3, 1, 4], [4, 1, 4]] },
+    { face: '+z', axis: 'row', v: 2, cells: [[0, 2, 4], [1, 2, 4], [2, 2, 4], [3, 2, 4], [4, 2, 4]] },
+  ]
+  equal('two different rows are two lines', countScoringLines(twoRows), 2)
+  equal('a row and a column that share a cell are two lines', countScoringLines([
+    twoRows[0],
+    { face: '+z', axis: 'col', u: 1, cells: [[1, 0, 4], [1, 1, 4], [1, 2, 4], [1, 3, 4], [1, 4, 4]] },
+  ]), 2)
+  equal('the same segment listed twice is one line', countScoringLines([twoRows[0], twoRows[0]]), 1)
+  equal('an empty report is zero lines', countScoringLines([]), 0)
+  equal('a malformed entry cannot invent a line', countScoringLines([{ face: '+z' }, twoRows[0]]), 1)
 
   // §6.1 the doc's own table, row by row. `total` must equal the five named parts every time.
   // `base` is 基础分 = 基础放置分 + 基础消线分, which is how the doc's table states it.

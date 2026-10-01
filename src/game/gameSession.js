@@ -20,7 +20,7 @@
 import { Board, SH, faceLattice } from './board.js'
 import { SHAPES, normalizeCells } from './shapes.js'
 import {
-  moveScore, nextChain, settleScore, rewardLevel, wipedFacesFor,
+  moveScore, nextChain, settleScore, rewardLevel, wipedFacesFor, countScoringLines,
   SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_ORDER,
 } from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
@@ -315,8 +315,12 @@ export function createGameSession() {
     // The tier is derived from this counter, so the challenge stretch and the milestone
     // crossing are read off the same number the player's progress is.
     const step = notePlacement(director)
+    // `lines` is the BOARD's report — every full line on all six faces, which is what settles the
+    // cube and what the face ledger and the visuals consume. `lineCount` is the SCORING count:
+    // distinct physical segments, so a row along a shared edge is one line and not two
+    // (scoring.js `countScoringLines`, 制作人口径 2026-10-01 「棱上的消除会被计算多次」).
     const lines = result.lines
-    const lineCount = lines.length
+    const lineCount = countScoringLines(lines)
     const previousChain = run.chain
     run.chain = nextChain(previousChain, lineCount)
     if (lineCount > 0) {

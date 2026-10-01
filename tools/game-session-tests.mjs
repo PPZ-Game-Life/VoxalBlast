@@ -130,16 +130,25 @@ function keepFaceFromEmptying(s, face, v) {
 }
 
 // ---- 5. an edge row clears two faces at once (the cross-face rule) --------------
+// v0.11.3 (制作人口径 「棱上的消除会被计算多次」): the BOARD still settles two face-lines — that
+// is the v0.3 rule that keeps nothing standing full, and `facesHit` / `facesLit` are facts about
+// the cube — but the SCORE counts the one physical row the player actually made.
 {
   const s = fresh()
   fillRowExceptOne(s, '+z', 0, 4)
   const settled = s.settlePlacement('+z', [[0, 0]], { u: 4, v: 0 }, 3)
-  check('an edge row completes a line on the neighbour too', settled.lineCount === 2, `lineCount=${settled.lineCount}`)
+  check('the board really settles a line on the neighbour too', settled.result.lines.length === 2,
+    `lines=${settled.result.lines.length}`)
   check('and the board reports two faces hit', settled.result.facesHit === 2, `facesHit=${settled.result.facesHit}`)
+  check('but the SCORE counts one line, not two', settled.lineCount === 1, `lineCount=${settled.lineCount}`)
+  check('so the line points are one line’s worth', settled.score.linePoints === 100, `${settled.score.linePoints}`)
+  check('and no multi-clear bonus is paid for it', settled.score.multiBonus === 0, `${settled.score.multiBonus}`)
+  check('the five blocks were cleared once, not twice', settled.result.cellsCleared === 5, `${settled.result.cellsCleared}`)
   const lit = [...s.run.facesLit].sort().join(',')
   check('both faces are lit', s.run.facesLit.size === 2, lit)
   check('the face ledger names the two real faces', s.run.facesLit.has('+z') && !s.run.facesLit.has('+y'), lit)
   check('the per-move face maximum saw both', s.run.maxFacesOneMove === 2, `max=${s.run.maxFacesOneMove}`)
+  check('the run counted ONE line, not two', s.board.totalLines === 1, `${s.board.totalLines}`)
 }
 
 // ---- 6. a second consecutive clear, then a dead turn ----------------------------
@@ -213,31 +222,30 @@ function keepFaceFromEmptying(s, face, v) {
     JSON.stringify(s.run.rewardCounts))
 }
 
-// ---- 6c. an edge clear pays the multi bonus, and ONE face bonus -----------------
-// The one hand that can hit two categories at once without any setup trickery: an edge row is two
-// lines on two faces. Three faces actually end up empty (-x is emptied by the shared end cell),
-// and **only the placed one is paid for** — 制作人口径 2026-10-01: 清空一面只算落子面，侧面不算.
+// ---- 6c. an edge clear pays the face bonus, and NO multi bonus -------------------
+// v0.11.3: an edge row is ONE physical row. It still empties the placed face (that is the 清除整面
+// reward), but it is not 「一次消除 2 线」 and it does not earn the multi-clear bonus — the same
+// five blocks in the middle of a face would never have earned it either.
 {
   const s = fresh()
   fillRowExceptOne(s, '+z', 0, 4)
   const settled = s.settlePlacement('+z', [[0, 0]], { u: 4, v: 0 }, 3)
   const event = settled.rewardEvent
-  check('the edge clear produces two rewards', event.rewards.length === 2, JSON.stringify(event.rewards))
-  check('the multi reward counts the two lines', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.count === 2)
-  check('the multi reward pays 100', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.bonus === 100)
-  const face = event.rewards.find((r) => r.type === REWARD_TYPES.FACE_CLEAR)
-  check('the face reward counts exactly one face', face?.count === 1, `${face?.count}`)
-  check('the face reward pays 300 for it', face?.bonus === 300, `${face?.bonus}`)
+  check('the edge clear produces exactly one reward', event.rewards.length === 1, JSON.stringify(event.rewards))
+  check('and it is the face clear', event.rewards[0].type === REWARD_TYPES.FACE_CLEAR, event.rewards[0].type)
+  check('the face reward counts exactly one face', event.rewards[0].count === 1, `${event.rewards[0].count}`)
+  check('the face reward pays 300 for it', event.rewards[0].bonus === 300, `${event.rewards[0].bonus}`)
+  check('the event reports ONE line', event.lines === 1, `${event.lines}`)
   check('three faces were emptied on the board', settled.result.faceWiped.length === 3,
     settled.result.faceWiped.join(','))
   check('but only the placed face is reported on the event', event.wipedFaces.join(',') === '+z',
     event.wipedFaces.join(','))
   check('the headline is the face clear', event.primaryType === REWARD_TYPES.FACE_CLEAR)
-  check('the run tallied both categories',
-    s.run.rewardCounts.MULTI_CLEAR === 1 && s.run.rewardCounts.FACE_CLEAR === 1,
+  check('the run tallied the face event and no multi event',
+    s.run.rewardCounts.FACE_CLEAR === 1 && s.run.rewardCounts.MULTI_CLEAR === 0,
     JSON.stringify(s.run.rewardCounts))
   check('the run counted ONE net face, not three', s.run.faceWipes === 1, `${s.run.faceWipes}`)
-  check('and the total is the five named parts', event.total === 10 + 200 + 100 + 300, `${event.total}`)
+  check('and the total is the five named parts', event.total === 10 + 100 + 300, `${event.total}`)
 }
 
 // ---- 6c2. a side face emptied by a shared cell earns nothing ---------------------
@@ -261,6 +269,26 @@ function keepFaceFromEmptying(s, face, v) {
   check('and names no wiped face', settled.rewardEvent.wipedFaces.length === 0)
   check('the run counted no net face', s.run.faceWipes === 0, `${s.run.faceWipes}`)
   check('the run tallied no face event', s.run.rewardCounts.FACE_CLEAR === 0)
+}
+
+// ---- 6c3. two GENUINELY different rows still pay as two lines ---------------------
+// The guard on the other side of the dedupe: collapsing a shared edge must not collapse two rows
+// that merely happen to be cleared by the same hand. Two interior rows on +z, each one cell short,
+// completed together by a single 2-cell piece.
+{
+  const s = fresh()
+  fillRowExceptOne(s, '+z', 1, 4)
+  fillRowExceptOne(s, '+z', 2, 4)
+  const settled = s.settlePlacement('+z', [[0, 0], [0, 1]], { u: 4, v: 1 }, 3)
+  check('the hand settled two lines on the board', settled.result.lines.length === 2,
+    `${settled.result.lines.length}`)
+  check('and the score counts two of them', settled.lineCount === 2, `${settled.lineCount}`)
+  check('so the multi-clear bonus is paid', settled.score.multiBonus === 100, `${settled.score.multiBonus}`)
+  check('the event names the multi category',
+    settled.rewardEvent.rewards.some((reward) => reward.type === REWARD_TYPES.MULTI_CLEAR),
+    JSON.stringify(settled.rewardEvent.rewards))
+  check('the two lines are worth two lines of points', settled.score.linePoints === 200,
+    `${settled.score.linePoints}`)
 }
 
 // ---- 6d. a tool clears nothing and earns nothing (v0.10.3 §2.4) ------------------

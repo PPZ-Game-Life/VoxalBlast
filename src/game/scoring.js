@@ -134,6 +134,44 @@ export function nextChain(chain, lines) {
   return count(lines) > 0 ? count(chain) + 1 : 0
 }
 
+// ---- what counts as ONE line for scoring (制作人口径，2026-10-01) ------------------
+//
+// 「棱上的消除会被计算多次」. A row along a cube edge is ONE physical row of five blocks, but it
+// lies on two faces, so `Board.place()` reports it twice — once per face. That is CORRECT for
+// clearing (v0.3 settles all six faces so nothing is ever left standing full) and correct for the
+// face ledger (`facesHit`, `faceWiped`, `facesLit` are facts about the cube), and it is WRONG for
+// scoring: the player cleared five blocks, exactly as they would have in the middle of a face, and
+// was told 「一次消除 2 线」, paid 2 × 100 line points AND the multi-clear bonus on top — 310 for a
+// move that pays 110 anywhere else on the board.
+//
+// So the score counts DISTINCT SEGMENTS: a line's identity is the SET OF CELLS it occupies, never
+// the face it was noticed on. Interior rows are unaffected (one face, one segment), two genuinely
+// different rows stay two, and a shared edge collapses to the one row the player actually made.
+//
+// This is the same identity rendering/effects.js uses (`segmentKey`) to draw one band per segment
+// instead of one per face — the board had one answer for the picture and another for the money.
+export function segmentKey(line) {
+  if (!line || !Array.isArray(line.cells)) return ''
+  return line.cells.map((cell) => cell.join(',')).sort().join('|')
+}
+
+export function uniqueLines(lines) {
+  const seen = new Set()
+  const out = []
+  for (const line of lines || []) {
+    const key = segmentKey(line)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(line)
+  }
+  return out
+}
+
+/** The line count the score, the streak and the run's own totals are stated in. */
+export function countScoringLines(lines) {
+  return uniqueLines(lines).length
+}
+
 // One place that turns a settled move into points, LEGACY rules (§4.5):
 //   放置分 + 线分 + 跨面奖励 + 链加成(含里程碑) + Σ 荣誉加分
 //
