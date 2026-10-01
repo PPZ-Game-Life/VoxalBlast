@@ -26,6 +26,7 @@
 // why the whole path is better gone than disabled.
 import { HONORS } from '../game/honors.js'
 import { RECORD_FIELDS, weekKey } from '../game/records.js'
+import { REWARD_ORDER, SCORE_RULES_VERSION } from '../game/scoring.js'
 import { TIER_CUTS, tierForScore, tiersReady } from '../game/tiers.js'
 import { formatNumber, t } from '../i18n/index.js'
 
@@ -34,6 +35,10 @@ export function createHome({
   getSavedRun,
   getBest,
   getRecords,
+  // v0.10.3 (§5.3): which scoring rules the panel should rank against. The run on screen is the
+  // only thing that knows, and it can change (a legacy save resumes into a version-1 run), so it
+  // arrives as a getter like every other live value here.
+  getRulesVersion = () => SCORE_RULES_VERSION,
   platform,
   onOpen,
   onClose,
@@ -121,7 +126,18 @@ export function createHome({
 
   function renderLeaderboard() {
     const records = getRecords()
-    const tier = tierForScore(records.best.score)
+    // §5.3: every number on this panel belongs to ONE rule set. The current one leads; the other
+    // is printed as read-only history when it has anything in it, so a player who has been here
+    // since the old rules can still see those numbers — clearly labelled, never re-ranked.
+    const rules = getRulesVersion()
+    const current = rules === SCORE_RULES_VERSION
+    const pool = current
+      ? { best: records.bestV2, weekly: records.weeklyV2 }
+      : { best: records.best, weekly: records.weekly }
+    const legacyPool = current
+      ? { best: records.best, weekly: records.weekly }
+      : { best: records.bestV2, weekly: records.weeklyV2 }
+    const tier = tierForScore(pool.best.score)
     // The tier badge: the mechanism is finished, the cut scores are deliberately
     // empty (08 §4.6, 交接单 §2 — 99.3% of games never end, so no absolute number
     // can be calibrated yet). A badge with invented thresholds would be worse than
@@ -130,7 +146,11 @@ export function createHome({
       ? `<div class="lb-tier"><span class="lb-tier-badge">T${tier.tier}</span><span class="lb-tier-copy"><strong>${t(`tier.${tier.tier}.name`)}</strong><small>${t(`tier.${tier.tier}.title`)}</small></span></div>`
       : `<div class="lb-tier uncalibrated"><span class="lb-tier-badge">T?</span><span class="lb-tier-copy"><strong>${t('leaderboard.tierUncalibrated')}</strong><small>${t('leaderboard.tierUncalibratedNote')}</small></span></div>`
 
-    const recent = records.recent
+    // The recent bars are the SAME rule set's last games: a bar chart that mixes two score scales
+    // is a chart of nothing (§5.3 不把不同分制混榜). The legacy entries stay in storage and are
+    // counted out loud instead of being drawn as if they were comparable.
+    const recent = records.recent.filter((entry) => (entry.rules === SCORE_RULES_VERSION) === current)
+    const legacyRecent = records.recent.length - recent.length
     const top = Math.max(1, ...recent.map((entry) => entry.score))
     const bars = recent.length
       ? recent.map((entry, index) => `<li class="lb-bar-row"><span class="lb-bar-index">${index + 1}</span><span class="lb-bar"><i style="width:${Math.max(4, Math.round((entry.score / top) * 100))}%"></i></span><span class="lb-bar-score">${formatNumber(entry.score)}</span></li>`).join('')
@@ -145,35 +165,53 @@ export function createHome({
     const honorRows = HONORS
       .map((honor) => `<li><span>${t(`honor.${honor.id}.label`)}<small>${t(`honor.${honor.id}.title`)}</small></span><strong>${records.honors[honor.id] || 0}</strong></li>`)
       .join('')
+    // The three current categories, with their lifetime counts. A version-2 run earns these and
+    // nothing else, so the panel that says 「荣誉收集」 has to say what it is collecting now.
+    const rewardRows = REWARD_ORDER
+      .map((type) => `<li><span>${t(`reward.${type}.name`)}</span><strong>${records.rewards[type] || 0}</strong></li>`)
+      .join('')
 
     leaderboardBodyEl.innerHTML = `
     ${tierHtml}
     <section class="lb-section">
-      <h2>${t('leaderboard.recent', { n: recent.length || 0 })}</h2>
+      <h2>${current ? t('leaderboard.recent', { n: recent.length || 0 }) : t('leaderboard.recentLegacy', { n: recent.length || 0 })}</h2>
       <ol class="lb-bars">${bars}</ol>
+      ${legacyRecent > 0 ? `<p class="lb-note">${t('leaderboard.recentOtherRules', { n: legacyRecent })}</p>` : ''}
     </section>
     <section class="lb-section">
       <h2>${t('leaderboard.personalBest')}</h2>
       <ul class="lb-list">
-        <li><span>${t('leaderboard.best')}</span><strong>${formatNumber(records.best.score)}</strong></li>
-        <li><span>${t('leaderboard.weekly')}</span><strong>${formatNumber(records.weekly.key === weekKey() ? records.weekly.score : 0)}</strong></li>
+        <li><span>${t('leaderboard.best')}</span><strong>${formatNumber(pool.best.score)}</strong></li>
+        <li><span>${t('leaderboard.weekly')}</span><strong>${formatNumber(pool.weekly.key === weekKey() ? pool.weekly.score : 0)}</strong></li>
+        ${legacyPool.best.score > 0 ? `<li><span>${t('leaderboard.bestLegacy')}</span><strong>${formatNumber(legacyPool.best.score)}</strong></li>` : ''}
+        ${legacyPool.weekly.score > 0 && legacyPool.weekly.key === weekKey() ? `<li><span>${t('leaderboard.weeklyLegacy')}</span><strong>${formatNumber(legacyPool.weekly.score)}</strong></li>` : ''}
         <li><span>${t('leaderboard.gamesPlayed')}</span><strong>${records.records.gamesPlayed}</strong></li>
         ${recordRows}
       </ul>
     </section>
     <section class="lb-section">
-      <h2>${t('leaderboard.honors')}</h2>
-      <ul class="lb-list lb-list-honors">${honorRows}</ul>
+      <h2>${current ? t('leaderboard.rewards') : t('leaderboard.honors')}</h2>
+      ${current
+        ? `<ul class="lb-list">${rewardRows}</ul>`
+        : `<ul class="lb-list lb-list-honors">${honorRows}</ul>`}
       ${tiersReady(TIER_CUTS) ? '' : `<p class="lb-note">${t('leaderboard.tierNote')}</p>`}
-    </section>`
+    </section>
+    ${current && Object.values(records.honors).some((count) => count > 0)
+      ? `<section class="lb-section"><h2>${t('leaderboard.honorsLegacy')}</h2><ul class="lb-list lb-list-honors">${honorRows}</ul></section>`
+      : ''}`
 
     // Layer 2 entry: without an invitation the platform has nothing to show, so the
-    // button is greyed with "coming soon" and never fires a request (§7.4).
-    const invited = platform.leaderboardAvailable()
+    // button is greyed with "coming soon" and never fires a request (§7.4). v0.10.3 adds a
+    // second reason to be greyed — §5.5, a rules set the platform board is not routed to — and
+    // it says which one, because "not yet for these rules" is not "coming soon".
+    const invited = typeof platform.leaderboardAvailableFor === 'function'
+      ? platform.leaderboardAvailableFor(rules)
+      : platform.leaderboardAvailable()
+    const routed = typeof platform.boardRulesVersion !== 'function' || platform.boardRulesVersion() === rules
     leaderboardPlatformEl.innerHTML = `<p>${t('leaderboard.globalBy')}</p>`
       + (invited
         ? `<button id="platform-button" class="ghost-button" type="button">${t('leaderboard.openGlobal')}</button>`
-        : `<button class="ghost-button disabled" type="button" disabled>${t('leaderboard.comingSoon')}</button>`)
+        : `<button class="ghost-button disabled" type="button" disabled>${t(routed ? 'leaderboard.comingSoon' : 'leaderboard.rulesUnrouted')}</button>`)
     leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
   }
 

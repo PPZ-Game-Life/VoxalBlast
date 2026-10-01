@@ -119,7 +119,7 @@ try {
     const times = ${JSON.stringify(times)}
     globalThis.__shots = []
     const start = performance.now()
-    globalThis.__voxalblastDev.demoClear(${level}, 1, 0)
+    globalThis.__voxalblastDev.demoClear(${level}, 1)
     let index = 0
     const tick = () => {
       const now = performance.now() - start

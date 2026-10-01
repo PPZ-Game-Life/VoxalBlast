@@ -41,6 +41,10 @@ import { fileURLToPath } from 'node:url'
 // reworded string cannot make the check disagree with the product (docs/Technical/LOCALIZATION.md).
 // In Node there is no navigator and no ?lang=, so t() here resolves the shipped default: English.
 import { t } from '../src/i18n/index.js'
+// The record book's format version, read from the module that owns it: the probe asserts the
+// SHIPPED snapshot reached storage, and hard-coding the number here would let a version bump
+// pass the gate while the browser wrote something else.
+import { RECORDS_VERSION } from '../src/game/records.js'
 // The Chinese column is imported for the same reason: the gate asserts the switch really
 // changed language by comparing against the catalogue, not against a copy of it typed here.
 import zhCopy from '../src/i18n/locales/zh-Hans.js'
@@ -287,7 +291,11 @@ const STATE = `(() => {
     i18n: globalThis.__voxalblast.i18n(),
     languageLabel: document.querySelector('#language-setting-value')?.textContent ?? null,
     settingsTitle: document.querySelector('#settings-title')?.textContent ?? null,
-    chainLabel: document.querySelector('#chain .chain-chip-label')?.textContent ?? null,
+    // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.1): the resident CHAIN pill is gone, so the
+  // HUD-chrome translation check reads the SCORE chip's label instead. It has to be a piece of
+  // chrome that is ALWAYS on screen — a reward plate only exists for a few hundred ms after a
+  // clear and could never stand in for the header.
+  scoreLabel: document.querySelector('.score-chip-label')?.textContent ?? null,
     scoreLabel: document.querySelector('#score')?.closest('.score-chip')?.querySelector('.score-chip-label')?.textContent ?? null,
     homeTagline: document.querySelector('.home-tagline')?.textContent ?? null,
     gameOverPlayAgain: document.querySelector('#reset-modal')?.textContent?.trim() ?? null,
@@ -600,8 +608,8 @@ async function caseGameOver(client, input) {
   // book, so it is where "the run really reached storage under the shipped key" is
   // observable — the in-memory copy would look identical if the key or the probe broke.
   check('F ending the run writes the record book under its shipped key',
-    over.storedRecords !== null && JSON.parse(over.storedRecords).v === 1,
-    `key=${over.storedRecords === null ? 'absent' : 'present'} v=${over.storedRecords ? JSON.parse(over.storedRecords).v : '-'}`)
+    over.storedRecords !== null && JSON.parse(over.storedRecords).v === RECORDS_VERSION,
+    `key=${over.storedRecords === null ? 'absent' : 'present'} v=${over.storedRecords ? JSON.parse(over.storedRecords).v : '-'} want=${RECORDS_VERSION}`)
   check('F the recorded run is the one that just ended',
     over.records.records.gamesPlayed === beforeOver.records.records.gamesPlayed + 1
     && over.records.recent[0].score === over.board.score,
@@ -694,9 +702,9 @@ async function caseLanguage(client, input) {
     boot.i18n.locale === 'en' && boot.i18n.locale === boot.i18n.defaultLocale, JSON.stringify(boot.i18n))
   check('H <html lang> follows the locale', boot.i18n.htmlLang === 'en', `lang="${boot.i18n.htmlLang}"`)
   check('H the default locale paints English chrome',
-    boot.settingsTitle === t('settings.title') && boot.chainLabel === t('hud.chain')
+    boot.settingsTitle === t('settings.title') && boot.scoreLabel === t('hud.score')
     && boot.itemNames[0] === t('item.name.refresh'),
-    `settings="${boot.settingsTitle}" chain="${boot.chainLabel}" item="${boot.itemNames[0]}"`)
+    `settings="${boot.settingsTitle}" score="${boot.scoreLabel}" item="${boot.itemNames[0]}"`)
 
   const gear = await input.click('#settings-button', { label: 'the gear' })
   if (!gear.clicked) { skip('H localization', gear.reason); return }
@@ -715,7 +723,7 @@ async function caseLanguage(client, input) {
   check('H the panel the row sits in is translated',
     zh.settingsTitle === zhCopy['settings.title'] && zh.languageLabel === '简体中文',
     `title="${zh.settingsTitle}" hint="${zh.languageLabel}"`)
-  check('H the HUD chrome is translated', zh.chainLabel === zhCopy['hud.chain'], `chain="${zh.chainLabel}"`)
+  check('H the HUD chrome is translated', zh.scoreLabel === zhCopy['hud.score'], `score="${zh.scoreLabel}"`)
   check('H the item strip is translated', zh.itemNames[0] === zhCopy['item.name.refresh'], `item="${zh.itemNames[0]}"`)
   check('H the status line is translated', zh.status === zhCopy['status.paused'], `status="${zh.status}"`)
   check('H the home cover is translated', zh.homeTagline === zhCopy['home.tagline'], `tagline="${zh.homeTagline}"`)

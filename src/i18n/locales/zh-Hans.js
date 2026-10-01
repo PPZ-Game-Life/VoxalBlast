@@ -7,12 +7,10 @@ export default Object.freeze({
   // ---- HUD 机身文字 ---------------------------------------------------------
   'hud.score': '分数',
   'hud.best': '最高分',
-  'hud.chain': '连击',
 
   // ---- 静态标记的无障碍标签 --------------------------------------------------
   'a11y.score': '得分',
   'a11y.bestScore': '最高分',
-  'a11y.chain': '连击',
   'a11y.sound': '音效',
   'a11y.version': '游戏版本',
   'a11y.controls': '操作说明',
@@ -57,11 +55,18 @@ export default Object.freeze({
   'toast.noSpotTryRefresh': '无处可放 · 试试换批',
   'toast.nothingToRestore': '没有可撤销的操作',
   'toast.offline': '离线模式',
-  'toast.clearScore': ({ lines, multiplier, points }) => `${lines} 线  ×${multiplier}  +${points}`,
+  'toast.legacyRules': '本局沿用开局时的计分规则',
 
-  // ---- 得分飘字 -------------------------------------------------------------
-  'pop.lines': ({ n }) => `${n} 线`,
-  'pop.faces': ({ n }) => `${n} 面`,
+  // ---- 奖励短签（SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.2） -------------------
+  'reward.MULTI_CLEAR.title': ({ n }) => `一次消除 ${n} 线`,
+  'reward.MULTI_CLEAR.detail': ({ n }) => `${n} 线`,
+  'reward.MULTI_CLEAR.name': '一次多消',
+  'reward.CLEAR_STREAK.title': ({ n }) => `连续消除 ${n} 次`,
+  'reward.CLEAR_STREAK.detail': ({ n }) => `连消 ${n} 次`,
+  'reward.CLEAR_STREAK.name': '连续消除',
+  'reward.FACE_CLEAR.title': ({ n }) => `清空 ${n} 面`,
+  'reward.FACE_CLEAR.detail': ({ n }) => `${n} 面`,
+  'reward.FACE_CLEAR.name': '清除整面',
 
   // ---- 道具（07-道具系统设计.md §8.10） --------------------------------------
   'item.name.refresh': '换批',
@@ -183,14 +188,17 @@ export default Object.freeze({
   'gameover.newBest': '★ 新高分！',
   'gameover.gap': ({ n }) => `差 ${n} 分破纪录`,
   'gameover.noHonors': '本局还没拿到荣誉',
+  'gameover.noRewards': '本局还没有额外奖励',
   'gameover.facesLabel': '六面制霸',
   'gameover.dim.bigMove': ({ n }) => `本局名场面 · 单次 ${n} 线`,
   'gameover.dim.triface': ({ n }) => `本局三面同爆 ${n} 次`,
+  'gameover.dim.faceClear': ({ n }) => `本局净面 ${n} 次`,
   'gameover.dim.chain': ({ n }) => `本局最长链 ${n}`,
   'gameover.dim.faces': ({ n }) => `本局点亮 ${n}/6 面`,
   'gameover.stat.chain': '最长链',
   'gameover.stat.lines': '单次最多',
   'gameover.stat.triface': '三面同爆',
+  'gameover.stat.faceClear': '净面',
   'gameover.stat.weekly': '本周最佳',
 
   // ---- 排行榜 ---------------------------------------------------------------
@@ -200,8 +208,14 @@ export default Object.freeze({
   'leaderboard.personalBest': '个人最佳',
   'leaderboard.best': '最高分',
   'leaderboard.weekly': '本周最佳',
+  'leaderboard.bestLegacy': '最高分 · 旧分制',
+  'leaderboard.weeklyLegacy': '本周最佳 · 旧分制',
+  'leaderboard.recentLegacy': ({ n }) => `最近 ${n} 局 · 旧分制`,
+  'leaderboard.recentOtherRules': ({ n }) => `另有 ${n} 局记录属于另一套分制`,
   'leaderboard.gamesPlayed': '已玩局数',
   'leaderboard.honors': '荣誉收集',
+  'leaderboard.honorsLegacy': '荣誉收集 · 旧分制',
+  'leaderboard.rewards': '奖励统计',
   'leaderboard.empty': '还没有对局记录',
   'leaderboard.tierUncalibrated': '阶位待校准',
   'leaderboard.tierUncalibratedNote': '难度定稿后按真实玩家分位分档。',
@@ -209,4 +223,5 @@ export default Object.freeze({
   'leaderboard.globalBy': '全球榜由 CrazyGames 提供',
   'leaderboard.openGlobal': '打开全球榜',
   'leaderboard.comingSoon': '即将开放',
+  'leaderboard.rulesUnrouted': '当前分制暂无全球榜',
 })

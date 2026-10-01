@@ -19,7 +19,10 @@
 //   - the order that ends a run (local record, slot, platform): main's endGame().
 import { Board, SH, faceLattice } from './board.js'
 import { SHAPES, normalizeCells } from './shapes.js'
-import { moveScore, nextChain } from './scoring.js'
+import {
+  moveScore, nextChain, settleScore, rewardLevel, SCORE_RULES_V1, SCORE_RULES_VERSION,
+  REWARD_ORDER,
+} from './scoring.js'
 import { resolveHonors, feedbackLevel } from './honors.js'
 import { createStreams } from './rng.js'
 import { runDeal } from './dealRun.js'
@@ -42,9 +45,26 @@ export function createGameSession() {
     maxFacesOneMove: 0,
     facesLit: new Set(), // faces cleared at least once this run (六面制霸 progress)
     faceWipes: 0,
-    honors: [], // ids in the order they were earned
+    // v0.10.3 (handoff §5.1): WHICH scoring rules this run is playing under. A new run is
+    // version 2; a run resumed from a version-1 save stays on version 1 until it ends
+    // (§5.2 不中途改价). It is deliberately NOT `SESSION_VERSION` — that number versions the
+    // save FORMAT, this one versions the SCORE, and sharing a field would tie the two
+    // migrations together for no reason.
+    scoreRulesVersion: SCORE_RULES_VERSION,
+    // One token per settled placement, so the presentation layer can tell "this is a new
+    // event" from "this is the same event re-rendered" (handoff §4.1). Monotonic per run.
+    rewardEventId: 0,
+    // How many times each of the three categories fired this run (§4.1). Facts, not points:
+    // the settlement card reads them, nothing pays on them.
+    rewardCounts: Object.fromEntries(REWARD_ORDER.map((type) => [type, 0])),
+    honors: [], // ids in the order they were earned. Version-1 runs only.
     honorCounts: {},
   }
+
+  // What a version-2 placement returns in the `honors` slot: the shape is unchanged so no
+  // consumer has to branch on the rules version, and it is EMPTY because version 2 pays no
+  // honour bonus at all (handoff §2.1). A version-1 run still gets the real resolveHonors().
+  const NO_HONORS = Object.freeze({ primary: null, secondary: [], records: [], ids: [], bonus: 0 })
 
   // The hand is REPLACED by every deal and by a resumed session, so it is handed out through
   // getPieces()/setPieces() rather than bound to a name that would go stale (the same rule
@@ -81,6 +101,10 @@ export function createGameSession() {
     run.maxFacesOneMove = 0
     run.facesLit.clear()
     run.faceWipes = 0
+    // A NEW run always plays the current rules (handoff §5.2): 只有旧局才留在旧分制。
+    run.scoreRulesVersion = SCORE_RULES_VERSION
+    run.rewardEventId = 0
+    REWARD_ORDER.forEach((type) => { run.rewardCounts[type] = 0 })
     run.honors = []
     run.honorCounts = {}
     runId += 1
@@ -275,9 +299,15 @@ export function createGameSession() {
   }
 
   // Place a piece and settle everything that follows from it. The return shape is exactly the one
-  // main has always destructured: { result, lines, lineCount, honors, level, score, previousChain }.
+  // main has always destructured, plus `rewardEvent` (v0.10.3):
+  // { result, lines, lineCount, honors, level, score, rewardEvent, previousChain }.
   // Showing any of it -- sounds, particles, the HUD, the score pop, the slow-motion dip -- is the
   // caller's business.
+  //
+  // The scoring rules are the RUN's, not the module's (handoff §5.2): a run resumed from a
+  // version-1 save keeps playing version 1 until it ends, and a new run plays version 2. The two
+  // branches below are the only place that decides which formula prices a move, and neither
+  // charges a term the other's document names.
   function settlePlacement(face, cells, origin, color) {
     const result = board.place(face, cells, origin, color)
     // One step = one settled placement (§4.1). A drag, an illegal drop, a cube turn, a pause, a
@@ -293,24 +323,65 @@ export function createGameSession() {
       run.bestChain = Math.max(run.bestChain, run.chain)
       lines.forEach((line) => run.facesLit.add(line.face))
     }
-    const honors = resolveHonors({ lines: lineCount, faces: result.facesHit })
-    const level = feedbackLevel({ lines: lineCount, faces: result.facesHit })
-    const score = moveScore({
-      cellCount: cells.length,
-      lines: lineCount,
-      faces: result.facesHit,
-      chain: run.chain,
-      honorBonus: honors.bonus,
-    })
-    board.addScore(score.total, lineCount)
     run.maxLinesOneMove = Math.max(run.maxLinesOneMove, lineCount)
     run.maxFacesOneMove = Math.max(run.maxFacesOneMove, result.facesHit)
     run.faceWipes += result.faceWiped.length
-    honors.ids.forEach((id) => {
-      run.honors.push(id)
-      run.honorCounts[id] = (run.honorCounts[id] || 0) + 1
+
+    if (run.scoreRulesVersion === SCORE_RULES_V1) {
+      // ---- version 1: the legacy formula, unchanged, for a run already in flight ----
+      const honors = resolveHonors({ lines: lineCount, faces: result.facesHit })
+      const level = feedbackLevel({ lines: lineCount, faces: result.facesHit })
+      const score = moveScore({
+        cellCount: cells.length,
+        lines: lineCount,
+        faces: result.facesHit,
+        chain: run.chain,
+        honorBonus: honors.bonus,
+      })
+      board.addScore(score.total, lineCount)
+      honors.ids.forEach((id) => {
+        run.honors.push(id)
+        run.honorCounts[id] = (run.honorCounts[id] || 0) + 1
+      })
+      // No `rewardEvent`: version 1 has no three-category result, and the presentation layer
+      // must not invent one for it (§5.2 旧特殊奖励无需新增专属演出).
+      return {
+        result, lines, lineCount, honors, level, score, rewardEvent: null, previousChain, step,
+      }
+    }
+
+    // ---- version 2: 基础分 + 三类额外奖励, settled once (§2/§4.1) -------------------
+    // `wipedFaces` is Board.place()'s faceWiped — the face IDS, not facesHit. A move that
+    // cleared nothing cannot have wiped a face (nothing was deleted), but the gate is stated
+    // anyway so the rule reads the same as the doc's §2.4.
+    const wipedFaces = lineCount > 0 ? [...result.faceWiped] : []
+    const score = settleScore({
+      cellCount: cells.length, lines: lineCount, chain: run.chain, wipedFaces,
     })
-    return { result, lines, lineCount, honors, level, score, previousChain, step }
+    run.rewardEventId += 1
+    const rewardEvent = {
+      eventId: run.rewardEventId,
+      scoreRulesVersion: SCORE_RULES_VERSION,
+      lines: lineCount,
+      chain: run.chain,
+      wipedFaces,
+      rewards: score.rewards,
+      primaryType: score.primaryType,
+      total: score.total,
+    }
+    score.rewards.forEach((reward) => { run.rewardCounts[reward.type] += 1 })
+    board.addScore(score.total, lineCount)
+    return {
+      result,
+      lines,
+      lineCount,
+      honors: NO_HONORS,
+      level: rewardLevel({ lines: lineCount, rewards: score.rewards }),
+      score,
+      rewardEvent,
+      previousChain,
+      step,
+    }
   }
 
   // ---- Items (refactor P6b-1) --------------------------------------------------
@@ -527,6 +598,13 @@ export function createGameSession() {
       director: serializeDirector(director),
       streams: streams.snapshot(),
       run: {
+        // v0.10.3 (§5): the SCORE rules the run is playing under travel with it, or a resumed
+        // version-1 run would silently be re-priced by version 2 on the first placement. The
+        // reward counters ride along for the same reason the chain does — they are run facts
+        // the settlement card reads at the end.
+        scoreRulesVersion: run.scoreRulesVersion,
+        rewardEventId: run.rewardEventId,
+        rewardCounts: { ...run.rewardCounts },
         chain: run.chain,
         bestChain: run.bestChain,
         maxLinesOneMove: run.maxLinesOneMove,
@@ -553,6 +631,17 @@ export function createGameSession() {
   // item bar, pause — is main's applySession(), which calls this in the middle of its own order.
   function applySnapshot(saved) {
     board.restore(saved.board)
+    // A run continues on the rules it STARTED on (handoff §5.2). Only a literal 1 buys the
+    // legacy formula; anything else — a version-2 save, a hand-built test object, a field
+    // that some future migration rewrote — plays the current rules.
+    run.scoreRulesVersion = saved.run.scoreRulesVersion === SCORE_RULES_V1
+      ? SCORE_RULES_V1
+      : SCORE_RULES_VERSION
+    run.rewardEventId = Number.isFinite(saved.run.rewardEventId) ? Math.max(0, Math.floor(saved.run.rewardEventId)) : 0
+    run.rewardCounts = Object.fromEntries(REWARD_ORDER.map((type) => {
+      const value = saved.run.rewardCounts?.[type]
+      return [type, Number.isFinite(value) && value > 0 ? Math.floor(value) : 0]
+    }))
     run.chain = saved.run.chain
     run.bestChain = saved.run.bestChain
     run.maxLinesOneMove = saved.run.maxLinesOneMove

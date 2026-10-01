@@ -13,6 +13,14 @@
 const ENV = import.meta.env || {}
 const LEADERBOARD_ENABLED = ENV.VITE_CRAZYGAMES_LEADERBOARD === 'on'
 const SCORE_KEY = ENV.VITE_CRAZYGAMES_SCORE_KEY || ''
+// v0.10.3 (docs/Technical/SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §5.5): the score rules
+// changed, so the platform board has to be ROUTED to the new rules before a version-2 score
+// may be submitted to it. Sending the new score to the old board would mix two scales in one
+// ranking, and the client cannot fix that by attaching a version field — the ranking is drawn
+// by the platform, not by us. So the route is a build-time decision, exactly like the
+// invitation itself: absent = version 2 has no board yet, and the game says so instead of
+// submitting.
+const BOARD_RULES_VERSION = Number(ENV.VITE_CRAZYGAMES_SCORE_RULES) === 2 ? 2 : 1
 
 // AES-GCM, per the platform's client submission flow: submitScore takes the plain
 // score for display AND an encrypted copy the server can trust. The exact wire
@@ -45,10 +53,24 @@ export function createCrazyGamesAdapter() {
     // Invited AND wired AND the SDK actually offers the call — otherwise the UI
     // greys the entry and says "即将开放" instead of firing a request that 4xxes.
     leaderboardAvailable: () => Boolean(LEADERBOARD_ENABLED && sdk?.user?.submitScore),
+    // §5.5: the board a given rules version would submit to, or null when the platform has
+    // no board for it. The leaderboard panel reads this to explain WHY the entry is greyed —
+    // "coming soon" and "no board for these rules yet" are different sentences, and a player
+    // who just scored under the new rules is owed the second one.
+    boardRulesVersion: () => BOARD_RULES_VERSION,
+    leaderboardAvailableFor: (rulesVersion = BOARD_RULES_VERSION) => (
+      Boolean(LEADERBOARD_ENABLED && sdk?.user?.submitScore) && Number(rulesVersion) === BOARD_RULES_VERSION
+    ),
     // Submit one finished run. Never throws, never blocks the Game Over panel, and
     // never reports failure to the player (§7.4: 失败即静默降级).
-    async submitScore(score, runToken = null) {
+    async submitScore(score, runToken = null, { rulesVersion = BOARD_RULES_VERSION } = {}) {
       if (!this.leaderboardAvailable()) return { submitted: false, reason: 'unavailable' }
+      // §5.5 不得以客户端多传一个版本字段就宣称完成分榜: without a route for these rules the
+      // submission is withheld outright rather than pointed at a board that ranks a different
+      // measurement.
+      if (Number(rulesVersion) !== BOARD_RULES_VERSION) {
+        return { submitted: false, reason: 'rules-version-unrouted', rulesVersion: Number(rulesVersion) }
+      }
       if (runToken !== null && runToken === submittedRun) return { submitted: false, reason: 'duplicate' }
       submittedRun = runToken
       try {

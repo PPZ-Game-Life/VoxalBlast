@@ -131,6 +131,14 @@ export function createEffects({
   // range has to leave first. main owns both of those states; this arrives as a getter and is
   // read per frame, never captured.
   getInputBusy = () => false,
+  // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2): boardView's local centre of a face
+  // plane. The FACE_CLEAR signature lights the face that was emptied, and the face's own centre
+  // is the only anchor that is right for all six faces without a per-face table here.
+  facePlaneLocalCenter = null,
+  // The doc states the reward shake in CSS pixels and this layer works in world units. Rather
+  // than baking a scale factor (the shipped framing makes one world unit ≈55px, so a guess
+  // would be off by an order of magnitude), main injects gameScene's own projection conversion.
+  getWorldPerPixel = () => 0.02,
 }) {
   // The effect surfaces (bands, marks) are scene-level: they are world-space objects, not part
   // of the cube, so they must not inherit its rotation.
@@ -430,6 +438,74 @@ export function createEffects({
     })
   }
 
+  // ---- FACE_CLEAR marks (v0.10.3, handoff §3.2) --------------------------------
+  // 「清空面的可见边框扫亮一次，面形小印章收束；背面只用文字/图标说明，不强转镜头」.
+  // The sweep is a face-shaped plaque on the emptied face's own plane, ONE pulse, never a
+  // flashing border and never a camera move: the pose is the player's, and a face that is
+  // currently facing away simply does not show its sweep — which is what 「不强转镜头」 means.
+  const faceSweepGeometry = buildRoundedRectGeometry(cubeSide * 0.86, cubeSide * 0.86, cubeSide * 0.12)
+  const faceStampGeometry = buildRoundedRectGeometry(cellSize * 0.62, cellSize * 0.62, cellSize * 0.16)
+
+  /** The world-space centre of a face plane, lifted off the surface like every other mark. */
+  function faceCentre(face) {
+    const local = facePlaneLocalCenter
+      ? facePlaneLocalCenter(face).clone()
+      : new THREE.Vector3(0, 0, 0)
+    return local.applyMatrix4(cubeGroup.matrixWorld)
+      .addScaledVector(faceNormalWorld(face), style.feedbackSurfaceOffset)
+  }
+
+  function spawnFaceSweep(face, delay, tailSeconds) {
+    const material = markMaterial(celebrationColors.cream, 0)
+    const sweep = new THREE.Mesh(faceSweepGeometry, material)
+    const normal = faceNormalWorld(face)
+    sweep.position.copy(faceCentre(face))
+    // Laid ON the face plane, not billboarded: this is the face lighting up, so it has to keep
+    // the face's own orientation as the cube turns under it.
+    sweep.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal)
+    const duration = Math.min(CELEBRATION.band.duration, tailSeconds)
+    addTransient({
+      object: sweep,
+      duration,
+      delay,
+      followCube: true,
+      kind: 'decoration',
+      update: (effect, delta) => {
+        effect.elapsed += delta
+        const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
+        // ONE pulse, and it starts at full size: a growing plaque would read as a shockwave,
+        // which §2.2 rules out for the same reason it rules out a scale pop on the band.
+        const pulse = progress < 0.18 ? progress / 0.18 : 1 - (progress - 0.18) / 0.82
+        effect.object.material.opacity = Math.max(0, pulse) * CELEBRATION.band.opacity * 0.5
+      },
+    })
+  }
+
+  /** The small square stamp that closes the face clear — 面形, so it is a plaque, not the seal. */
+  function spawnFaceStamp(face, delay, tailSeconds) {
+    const material = markMaterial(celebrationColors.gold, 0)
+    const stamp = new THREE.Mesh(faceStampGeometry, material)
+    stamp.position.copy(faceCentre(face))
+    const duration = Math.min(CELEBRATION.seal.duration, tailSeconds)
+    addTransient({
+      object: stamp,
+      duration,
+      delay,
+      followCube: true,
+      kind: 'decoration',
+      update: (effect, delta) => {
+        effect.elapsed += delta
+        const progress = THREE.MathUtils.clamp(effect.elapsed / effect.duration, 0, 1)
+        effect.object.quaternion.copy(camera.quaternion)
+        // 收束: it comes in slightly oversize and settles — the same stamp the honour seal uses,
+        // one size smaller and on the emptied face.
+        effect.object.scale.setScalar(progress < 0.18 ? 1.3 - (progress / 0.18) * 0.3 : 1)
+        const fade = progress > 0.6 ? 1 - (progress - 0.6) / 0.4 : 1
+        effect.object.material.opacity = Math.max(0, fade) * 0.95
+      },
+    })
+  }
+
   // ---------------------------------------------------------------- particle budgets
   function liveChipCount() {
     const now = performance.now()
@@ -512,10 +588,16 @@ export function createEffects({
 
   // ---------------------------------------------------------------- the event
   /**
-   * One settled placement = one event = one budget (§3). `level` is feedbackLevel()'s own
-   * return value: this function never re-derives a level and never re-counts lines.
+   * One settled placement = one event = one budget (§3). `level` is the rules layer's own
+   * feedback level (scoring.js `rewardLevel` for a version-2 run, honors.js `feedbackLevel` for
+   * a legacy one): this function never re-derives a level and never re-counts lines.
+   *
+   * `reward` is the rewardEvent (v0.10.3 §4.1). When it is present the three categories add
+   * their own visual signatures — a face sweep + stamp per emptied face, a double-beat sparkle
+   * pair for a streak — and the event record carries which category was the headline. It never
+   * changes the BUDGET: §3.3 粒子使用整次事件预算，不乘类别数、面数或共享格数.
    */
-  function spawnClearEffects(lines, level, { milestone = 0 } = {}) {
+  function spawnClearEffects(lines, level, { reward = null } = {}) {
     const ranked = Math.min(Math.max(0, Math.trunc(level) || 0), 5)
     const reduced = prefersReducedMotion()
     // §4.2: no safe margin means less decoration, not a smaller board.
@@ -545,9 +627,31 @@ export function createEffects({
     const decorationCap = quality.lowPower ? CELEBRATION.decorationCap.lowPower : CELEBRATION.decorationCap.standard
     let decorations = 0
     const budgetDecoration = (spawn) => {
-      if (decorations >= decorationCap) return
+      if (decorations >= decorationCap) return false
       decorations += 1
       spawn()
+      return true
+    }
+
+    // ---- FACE_CLEAR: the emptied faces light once and take a small stamp (§3.2) ------------
+    // Read from the EVENT's own `wipedFaces` — the face IDS Board.place() reported — never from
+    // facesHit: a shared edge counts a line on two faces, so facesHit would light faces that
+    // were not emptied at all (handoff §2.4).
+    const wipedFaces = Array.isArray(reward?.wipedFaces) ? reward.wipedFaces : []
+    for (const face of wipedFaces) {
+      // Reduced motion keeps a STATIC light instead of a sweep: the result is still announced,
+      // it just does not move (§8). The sweep is one pulse, never a flashing border.
+      if (!reduced) budgetDecoration(() => spawnFaceSweep(face, 0.02, tailSeconds))
+      budgetDecoration(() => spawnFaceStamp(face, reduced ? 0.02 : CELEBRATION.timing.bannerAt, tailSeconds))
+    }
+
+    // ---- CLEAR_STREAK: two short beats of star points, never a firework (§3.2) -------------
+    const streak = (reward?.rewards || []).find((entry) => entry.type === 'CLEAR_STREAK')
+    if (streak) {
+      const left = center.clone().addScaledVector(camera.up, 0.42 * cellSize)
+      const right = center.clone().addScaledVector(camera.up, -0.42 * cellSize)
+      budgetDecoration(() => spawnSparkle(left, 0.02, tailSeconds))
+      budgetDecoration(() => spawnSparkle(right, reduced ? 0.02 : 0.14, tailSeconds))
     }
 
     if (reduced) {
@@ -586,7 +690,11 @@ export function createEffects({
       spawned,
       decorations,
       cramped,
-      milestone,
+      // The headline category this event was presented as, or null for a plain clear. The
+      // probe reads it to tell "the note was owed" from "the note was painted".
+      primaryType: reward?.primaryType || null,
+      wipedFaces: [...wipedFaces],
+      streak: streak ? streak.count : 0,
       reducedMotion: reduced,
       startedAt: now,
       // §7.3 「效果注册到 eventId／runEpoch」: a restart, a scene change or a home press
@@ -706,7 +814,13 @@ export function createEffects({
     pruneSystems()
     // Read live, never captured: the drag preview and the tool scope both belong to the input
     // layer and can appear between two frames.
-    if (getInputBusy()) retreatDecorations()
+    if (getInputBusy()) {
+      retreatDecorations()
+      // §3.2: 「新拖拽开始立即收敛」. The reward shake is the one offset that could still be
+      // running when a new drag begins, and the drag's own hit-test raycasts through the very
+      // camera this offset moves — so it is cancelled here rather than left to decay.
+      cancelRewardShake()
+    }
   }
 
   function clearTransientEffects() {
@@ -721,6 +835,32 @@ export function createEffects({
 
   function triggerShake(amount) { cameraShake = Math.max(cameraShake, amount) }
 
+  // v0.10.3 (handoff §3.2): the REWARD shake, stated in CSS pixels and lasting a stated
+  // window. It is deliberately NOT `triggerShake(px)`:
+  //   * `px` is converted through the camera's own projection, so 「2px」 is 2px on screen at
+  //     any zoom or aspect instead of 2 world units (~55px at the shipped framing);
+  //   * it ENDS inside its window — a decaying amplitude (shakeDecay 0.42/s) would still be
+  //     moving a second later, which is not 「80ms」;
+  //   * reduced motion closes it outright (§3.2), and a new drag cancels it immediately
+  //     (§3.2 「新拖拽开始立即收敛」, in update() below).
+  // The offset is applied to the camera position ONLY, after main restores the resting
+  // position — the logical camera, the HUD, the candidate tray and the drag hit-test are not
+  // moved by it (main.js's frame loop reads `effects.updateShake` for the picture alone).
+  let shakePulse = null
+
+  function triggerRewardShake(px, ms) {
+    if (prefersReducedMotion()) return false
+    const pixels = Number(px)
+    const window = Number(ms)
+    if (!(pixels > 0) || !(window > 0)) return false
+    const worldPerPx = Number(getWorldPerPixel()) || 0
+    if (!(worldPerPx > 0)) return false
+    shakePulse = { amplitude: pixels * worldPerPx, startedAt: performance.now(), ms: window, px: pixels }
+    return true
+  }
+
+  function cancelRewardShake() { shakePulse = null }
+
   // The camera's RESTING position is not this module's business: gameScene owns the orbit
   // distance, the zoom and the direction vector, and main restores that position before asking
   // for the shake. So what comes back from here is the OFFSET alone - same decay, same clock,
@@ -734,17 +874,25 @@ export function createEffects({
 
   function updateShake(delta) {
     cameraShake = Math.max(0, cameraShake - delta * FEEDBACK_STYLE.shakeDecay)
+    let amplitude = cameraShake
+    if (shakePulse) {
+      const k = (performance.now() - shakePulse.startedAt) / shakePulse.ms
+      // A linear ramp to exactly zero: the offset is gone at the end of its own window rather
+      // than trailing off as an exponential tail.
+      if (k >= 1) shakePulse = null
+      else amplitude += shakePulse.amplitude * (1 - k)
+    }
     shakeOffset.set(0, 0, 0)
-    if (cameraShake > 0) {
+    if (amplitude > 0) {
       const time = performance.now() * 0.045
-      shakeOffset.x = Math.sin(time) * cameraShake
-      shakeOffset.y = Math.cos(time * 1.17) * cameraShake * 0.7
-      shakeOffset.z = Math.sin(time * 0.83) * cameraShake * 0.5
+      shakeOffset.x = Math.sin(time) * amplitude
+      shakeOffset.y = Math.cos(time * 1.17) * amplitude * 0.7
+      shakeOffset.z = Math.sin(time * 0.83) * amplitude * 0.5
     }
     return shakeOffset
   }
 
-  function resetShake() { cameraShake = 0 }
+  function resetShake() { cameraShake = 0; shakePulse = null }
   function clearSlowMo() { slowMo = null }
 
   // v0.9.19: the call goes through platform/haptics.js, which owns the one fact this line
@@ -809,6 +957,16 @@ export function createEffects({
       bands: countKind('band'),
       transients: transientEffects.length,
       shake: Number(cameraShake.toFixed(4)),
+      // The reward pulse, in the unit it was ASKED for and in the unit it is applied in. A
+      // headless check can then assert 「2px for 100ms」 without knowing the framing.
+      rewardShake: shakePulse
+        ? {
+          px: shakePulse.px,
+          ms: shakePulse.ms,
+          amplitude: Number(shakePulse.amplitude.toFixed(4)),
+          elapsed: Math.round(performance.now() - shakePulse.startedAt),
+        }
+        : null,
       slowMo: slowMo !== null,
       reducedMotion: prefersReducedMotion(),
       lowPower: Boolean(quality.lowPower),
@@ -828,6 +986,10 @@ export function createEffects({
     spawnClearEffects,
     retreatDecorations,
     triggerShake,
+    // v0.10.3: the reward signature's own offset (CSS px + window), and the cancel that a new
+    // drag performs. `triggerShake` stays for the world-unit callers that already exist.
+    triggerRewardShake,
+    cancelRewardShake,
     triggerSlowMo,
     clearTransientEffects,
     resetShake,

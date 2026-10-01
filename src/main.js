@@ -8,12 +8,13 @@ import * as THREE from 'three'
 // same instance — it only pins the ORDER.
 import './rendering/threeCompat.js'
 import { SH, FACES, isShell, faceLattice } from './game/board.js'
-import { lineMultiplier } from './game/scoring.js'
-import { resolveHonors, feedbackLevel } from './game/honors.js'
+import { settleScore, rewardLevel, SCORE_RULES_VERSION } from './game/scoring.js'
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
-import { getRenderQuality, HUD_STYLE, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle } from './rendering/config.js'
+import {
+  getRenderQuality, rewardFeedback, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle,
+} from './rendering/config.js'
 import './styles.css'
 import './toy.css'
 import './reference.css'
@@ -87,9 +88,6 @@ const {
   versionEl,
   scoreEl,
   bestEl,
-  chainEl,
-  chainValueEl,
-  chainBarEl,
   statusEl,
   toastEl,
   honorLayerEl,
@@ -171,6 +169,14 @@ let isPaused = false
 // The run record and the run token live in game/gameSession.js (refactor P6a); `run` is bound
 // above and the token is read through getRunId().
 let bestScore = recordStore.best().score
+// v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §5.3): BEST is a per-RULES-VERSION number.
+// The pill and the home cover show the pool of the run on screen, so this is re-read whenever
+// the run's rules change — a new run (version 2) and a resumed legacy run (version 1) each
+// compare against their own pool, and neither is shown the other's record as its own.
+function syncBestToRules() {
+  bestScore = recordStore.best(run.scoreRulesVersion).score
+  return bestScore
+}
 // The summary the Game Over card was last rendered from, so a language switch can re-render
 // the card the player is standing on instead of leaving the old language behind the modal.
 let lastSummary = null
@@ -191,7 +197,7 @@ let audio
 // here: every getter is lazy and the item state it reads is declared further down.
 const hud = createHud({
   els: {
-    statusEl, toastEl, scoreEl, bestEl, chainEl, chainValueEl, chainBarEl,
+    statusEl, toastEl, scoreEl, bestEl,
     sceneWrap, honorLayerEl, itemBarEl, axisPickEl, slotsEl,
     itemStatusEl, itemStatusIconEl, itemStatusNameEl, itemStatusHintEl, itemUseEl,
     refreshConfirmEl, refreshConfirmCopyEl, undoBarEl, undoBarTextEl,
@@ -226,10 +232,7 @@ const {
   showToast,
   updateHud,
   showScorePop,
-  updateChainHud,
-  breakChainFeedback,
-  celebrateChainMilestone,
-  showHonorBanner,
+  showRewardNote,
   clearHonorLayer,
   renderItemBar,
   renderAxisPick,
@@ -589,12 +592,17 @@ const effects = createEffects({
   // §7.2: decoration gives way to a live drag preview or a tool scope, and both of those live
   // in the input layer — read per frame because either can appear between two frames.
   getInputBusy: () => input.hasDrag() || input.hasItemActive(),
+  // v0.10.3: the FACE_CLEAR signature anchors on the emptied face's own plane centre, and the
+  // reward shake is stated in CSS pixels — both are boardView's/gameScene's to answer.
+  facePlaneLocalCenter,
+  getWorldPerPixel: () => scene3d.worldPerPixel(),
 })
 const {
   playHaptic,
   emitItemBurst,
   spawnClearEffects,
   retreatDecorations,
+  triggerRewardShake,
   triggerSlowMo,
   clearTransientEffects,
   resetShake,
@@ -995,9 +1003,13 @@ undoButtonEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 // list and the camera shake - lives in rendering/effects.js (refactor P5).
 
 // One settled placement, in the order the design fixes it: settle every face
-// (board.js) → chain → honors → score (§4.5) → present (§6). Keeping the whole
+// (board.js) → chain → score & rewards (§4.1) → present (§3). Keeping the whole
 // sequence here is what makes the HUD number auditable — it is the sum of the
 // named parts, and the parts are the ones the docs name.
+//
+// v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3/§4): the presentation below consumes the
+// ONE rewardEvent the session produced. Nothing here re-counts lines, re-decides whether a
+// bonus is owed, or plays a second melody: 账可以叠，演出不能叠 (§3.3).
 
 function onDrop({ piece, face, cells, origin }) {
   // A placement changes the board the undo was recorded against, so the window closes before
@@ -1005,45 +1017,39 @@ function onDrop({ piece, face, cells, origin }) {
   // it now sits here, in the same order, because the window is the item flow's (P6b).
   clearItemUndo()
   const {
-    result, lines, lineCount, honors, level, score, previousChain,
+    lines, lineCount, level, score, rewardEvent,
   } = settlePlacement(face, cells, origin, piece.shape.color)
-  // §6.1: ONE main cue per settled placement, decided here and nowhere else. A clearing
-  // placement plays `clear-lN`, which already contains the landing knock — the old
-  // place + honour + chain trio that used to stack three melodies is gone, and the chain
-  // milestone rides INSIDE this cue rather than opening a second phrase.
-  if (lineCount) audio.playClear(level, { milestone: score.chainMilestone })
+  // §6.1 of the audio handoff, as narrowed by §3.3 here: ONE main cue per settled placement,
+  // chosen by the reward event's headline category. `milestone` is only meaningful for a
+  // legacy version-1 run (version 2 pays the streak reward instead).
+  if (lineCount) audio.playClear(level, { reward: rewardEvent, milestone: score.chainMilestone || 0 })
   else audio.playPlace()
-  playHaptic(lineCount > 1 ? [18, 35, 22] : lineCount ? [18, 28, 16] : 12)
+  // §3.3: 震动强度取本手各类建议值的最大值，不相加. The picture offset and the buzz come from the
+  // same arbitration, so what is seen and what is felt agree; a placement with no reward keeps
+  // the plain landing buzz it always had.
+  const feedback = rewardFeedback(rewardEvent?.rewards)
+  if (feedback.shakePx > 0) triggerRewardShake(feedback.shakePx, feedback.shakeMs)
+  playHaptic(feedback.haptic || (lineCount > 1 ? [18, 35, 22] : lineCount ? [18, 28, 16] : 12))
   // The hand is the session's, so the flag that spends the candidate is set through it
   // (plan §6 P6a: 现存 currentDrag.piece.used = true 改由明确 session 动作执行，时机保持).
   session.usePiece(piece)
   renderBoard()
-  updateChainHud()
   updatePieceSlotSelection()
   if (lineCount) {
-    showToast(t('toast.clearScore', {
-      lines: lineCount,
-      multiplier: lineMultiplier(lineCount),
-      points: score.total,
-    }))
-    // §4.2: the result is announced BEFORE the celebration, and the score pop no longer carries
-    // a second copy of the honour name — the plate below is the one place it is said.
-    showScorePop(score.total, { lines: lineCount, faces: result.facesHit })
-    showHonorBanner(honors, level)
-    spawnClearEffects(lines, level, { milestone: score.chainMilestone })
-    // §3: the chain milestone is the RULE's field (5/10/15/20 are already scoring nodes); the HUD
-    // flashes the pill that already exists and never invents a second counter or a second
-    // celebration — its sound is the bell point inside the main cue above.
-    if (score.chainMilestone > 0) celebrateChainMilestone()
+    // §3.3: 一个主标题、一条合并明细、一个总分跳字. The note is the ONLY place the categories are
+    // named, and the pop carries the hand's TOTAL (基础分 + 三类奖励) — never a second total.
+    showRewardNote(rewardEvent)
+    showScorePop(score.total)
+    spawnClearEffects(lines, level, { reward: rewardEvent })
     triggerSlowMo(level)
     input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)
     setStatus(t('status.clearKeepBuilding'))
   } else {
-    // §4.1: a building turn still pays, and still says so. A chain that was real
-    // enough to be on screen must be seen breaking (§4.4).
+    // §4.1 of 08: a building turn still pays, and still says so. Nothing else is owed: a dead
+    // turn earns no reward, so it gets no note, no reward sound and no reward shake (§3.2
+    // 「普通放置、单线且无额外奖励、断链…不触发这套奖励震屏」).
     showScorePop(score.total, { quiet: true })
-    if (previousChain >= HUD_STYLE.chainMinVisible) breakChainFeedback(previousChain)
     setStatus(t('status.idle'))
   }
   // The resume slot is written on the same beat as the board change, and BEFORE the
@@ -1128,6 +1134,8 @@ const homeUi = createHome({
   getSavedRun: () => sessionStore.read(),
   getBest: () => bestScore,
   getRecords: () => recordStore.all(),
+  // §5.3: the panel ranks against the rules of the run on screen, so it asks the run.
+  getRulesVersion: () => run.scoreRulesVersion,
   platform,
   // Whoever changes the open state recomputes the pause lock — one place decides.
   onOpen: () => syncPause(),
@@ -1283,9 +1291,14 @@ function applySession(saved) {
   // Restore, not a move: the pill comes back ON the saved number instead of counting up to it
   // (v0.9.29 score roll).
   renderBoard(true)
-  updateChainHud()
+  // §5.3: BEST follows the rules the RESUMED run is playing under, and a version-1 run gets the
+  // one-off notice §5.2 asks for — the player is about to keep scoring on the old formula, and
+  // 「旧规则续局」 is the only honest way to say so without re-pricing a run in flight.
+  syncBestToRules()
+  updateHud({ snap: true })
   renderItemBar()
   syncPause()
+  if (run.scoreRulesVersion !== SCORE_RULES_VERSION) showToast(t('toast.legacyRules'), 3200)
   setStatus(t('status.idle'))
 }
 
@@ -1314,6 +1327,10 @@ function endGame() {
     faceWipes: run.faceWipes,
     pureCubes: board.occupied().length === 0 ? 1 : 0,
     honors: run.honors,
+    // §5.3: the score is filed under the rules that produced it, and the three category tallies
+    // travel with a version-2 run only.
+    scoreRulesVersion: run.scoreRulesVersion,
+    rewards: run.rewardCounts,
     at: Date.now(),
   })
   bestScore = summary.bestScore
@@ -1326,8 +1343,10 @@ function endGame() {
   clearSession()
   refreshHome()
   // Layer 2: exactly one submission per run, dropped silently when the game has no
-  // leaderboard invitation (§7.4).
-  platform.submitScore(finalScore, getRunId())
+  // leaderboard invitation (§7.4). §5.5: a score is only submitted to a board that is routed
+  // to its own rules — the platform layer refuses an unrouted version outright rather than
+  // mixing two scales in one ranking.
+  platform.submitScore(finalScore, getRunId(), { rulesVersion: run.scoreRulesVersion })
   // §4.4: the record is read from the summary the RECORD BOOK just returned — never from the
   // live score crossing BEST mid-run, and never a second time on a re-render. The scene moves
   // first so no in-run tail and no in-run cue can survive into the card; the ordinary ending
@@ -1376,7 +1395,8 @@ function resetGame() {
   resetCubeRotation()
   nextPieces()
   renderBoard()
-  updateChainHud()
+  // A new run plays the current rules, so BEST switches back to the current pool (§5.3).
+  syncBestToRules()
   setStatus(t('status.idle'))
   syncPause()
   if (!isPaused) platform.gameplayStart()
@@ -1517,7 +1537,6 @@ function refreshStatusLine() {
 
 onLocaleChange(() => {
   updateHud()
-  updateChainHud()
   renderItemBar()
   renderAxisPick()
   // The candidate slots carry a translated aria-label, and rebuilding them is the path a
@@ -1618,9 +1637,9 @@ function animate() {
 // snapshots). This file hands it the modules and the DEV callbacks; the module mounts the two
 // globals under the names the headless checks have always used.
 //
-// The callbacks stay HERE on purpose: a `jam()` that writes 60 cells or a `showChain()` that
-// moves the run record is a gameplay action, not a read-out, and the plan forbids diagnostics
-// from becoming the entry point for one (plan §2.1). They are built only under
+// The callbacks stay HERE on purpose: a `jam()` that writes 60 cells or a `demoReward()` that
+// drives a reward signature is a gameplay action, not a read-out, and the plan forbids
+// diagnostics from becoming the entry point for one (plan §2.1). They are built only under
 // import.meta.env.DEV, so the production bundle carries neither the bag nor the closures.
 const devHandles = import.meta.env.DEV
   ? {
@@ -1660,24 +1679,68 @@ const devHandles = import.meta.env.DEV
     // Visual triggers for the headless UI checks: they call the very same functions the
     // gameplay path calls, so a screenshot of them is a screenshot of the real rendering, not
     // a hand-built mock of it.
-    showChain: (chain) => {
-      run.chain = Math.max(0, Math.trunc(chain) || 0)
-      updateChainHud()
-    },
-    showHonor: (lines, faces) => {
-      const honors = resolveHonors({ lines, faces })
-      showHonorBanner(honors, feedbackLevel({ lines, faces }))
-      return honors
-    },
+    //
+    // v0.10.3: `showChain` / `showHonor` are GONE with the components they drove (the resident
+    // CHAIN pill and the honour banner). `demoReward` replaces them: it takes the three counts
+    // a reward is made of and runs the REAL rule (scoring.js settleScore) through the REAL
+    // presentation (the note, the main cue, the reward shake), which is what the five demos
+    // §6.4 asks for need.
     showScorePop: (points, options) => showScorePop(points, options),
+    demoReward: (lines = 0, chain = 0, wipedFaces = 0) => {
+      const lineCount = Math.max(1, Number(lines) || 1)
+      const chainCount = Number(chain) || 0
+      const faceCount = Math.max(0, Math.min(Number(wipedFaces) || 0, FACES.length))
+      const score = settleScore({
+        cellCount: 4, lines: lineCount, chain: chainCount, wipedFaces: faceCount,
+      })
+      const face = findFrontFace()
+      const descriptors = []
+      for (let index = 0; index < Math.min(lineCount, SH); index += 1) {
+        const axis = index % 2 === 0 ? 'row' : 'col'
+        descriptors.push({
+          face,
+          axis,
+          index,
+          cells: Array.from({ length: SH }, (_, k) => (axis === 'row'
+            ? faceLattice(face, index, k)
+            : faceLattice(face, k, index))),
+        })
+      }
+      // `wipedFaces` arrives as a COUNT (that is what the rule takes), but the presentation
+      // needs face IDS. The demo lights the first N faces in the board's own order — a real
+      // settle would name the faces it emptied, and a probe screenshot only ever sees the front
+      // one anyway (§3.2 「背面只用文字/图标说明，不强转镜头」).
+      const rewardEvent = {
+        eventId: -1, // a demo is not a settled placement and never enters the run's numbering
+        scoreRulesVersion: SCORE_RULES_VERSION,
+        lines: lineCount,
+        chain: chainCount,
+        wipedFaces: FACES.slice(0, faceCount),
+        rewards: score.rewards,
+        primaryType: score.primaryType,
+        total: score.total,
+      }
+      const level = rewardLevel({ lines: lineCount, rewards: score.rewards })
+      const feedback = rewardFeedback(score.rewards)
+      if (feedback.shakePx > 0) triggerRewardShake(feedback.shakePx, feedback.shakeMs)
+      showRewardNote(rewardEvent)
+      showScorePop(score.total)
+      spawnClearEffects(descriptors, level, { reward: rewardEvent })
+      audio.playClear(level, { reward: rewardEvent })
+      playHaptic(feedback.haptic || 12)
+      return { level, score, rewardEvent, feedback, ...effects.report() }
+    },
     // v0.10.1 clear-celebration probe (handoff §10 R2/R4). An L1–L5 clear cannot be arranged on
     // demand — the board would have to be filled to a specific pattern first — so this builds
     // REAL line descriptors off the front face's lattice and hands them to the very same
     // spawnClearEffects() and audio.playClear() the gameplay path calls. It competes for nothing:
     // the report it returns is the effects layer's own event record.
-    demoClear: (lineCount, faces = 1, milestone = 0) => {
+    //
+    // The third argument (the old `milestone`) and the second (`faces`) are both gone: version 2
+    // has no chain milestone, and facesHit stopped being a level input when the level moved to
+    // the reward result (§4.2 清理 demoClear 旧参数).
+    demoClear: (lineCount) => {
       const lines = Number(lineCount) || 1
-      const faceCount = Number(faces) || 1
       const face = findFrontFace()
       const descriptors = []
       for (let index = 0; index < Math.min(lines, SH); index += 1) {
@@ -1693,9 +1756,11 @@ const devHandles = import.meta.env.DEV
             : faceLattice(face, k, index))),
         })
       }
-      const level = feedbackLevel({ lines: lines, faces: faceCount })
-      spawnClearEffects(descriptors, level, { milestone: milestone })
-      audio.playClear(level, { milestone: milestone })
+      // A demo with no reward event: the level is the plain clear ladder (L1–L5 by line count),
+      // which is what the celebration budget and the clear cue are indexed by.
+      const level = rewardLevel({ lines, rewards: [] })
+      spawnClearEffects(descriptors, level)
+      audio.playClear(level)
       return { level, ...effects.report() }
     },
     clearCelebration: () => { clearTransientEffects() },

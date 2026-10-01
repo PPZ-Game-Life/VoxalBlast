@@ -20,9 +20,14 @@
 // them. Re-exported below so an existing `import { pickStorage } from './records.js'`
 // keeps working.
 import { pickStorage, probeStorage } from '../platform/storage.js'
+import { REWARD_ORDER, SCORE_RULES_V1, SCORE_RULES_VERSION } from './scoring.js'
 
 const STORAGE_KEY = 'voxalblast.records.v1'
-export const RECORDS_VERSION = 1
+// v0.10.3 (docs/Technical/SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §5.1/§5.3): the snapshot
+// gained a SECOND personal-best pool and a reward tally, so the format number moves. The
+// STORAGE KEY does not: an old save is read and migrated, never abandoned (08 §7.3
+// 「不得为加字段清档」).
+export const RECORDS_VERSION = 2
 const RECENT_LIMIT = 10
 // CrazyGames weekly season boundary: Monday 09:00 UTC. Shifting the timestamp by
 // the offset lets a plain ISO-week binning land on the platform's week.
@@ -47,8 +52,16 @@ const RECORD_KEYS = RECORD_FIELDS.map((field) => field.key)
 function emptyRecords() {
   return {
     v: RECORDS_VERSION,
+    // The LEGACY (score-rules v1) pool. `best`/`weekly` keep the exact names and meaning they
+    // have always had, so a snapshot written by any earlier build reads straight back into
+    // them and nothing has to be guessed about which formula produced those numbers.
     best: { score: 0, at: 0 },
     weekly: { key: null, score: 0 },
+    // The version-2 pool. A new score is compared ONLY against the pool of its own rules
+    // (§5.3): the whole point of the split is that a 234k v1 clear and a 990 v2 clear are not
+    // the same measurement, so 「NEW BEST」 必须按分制分别成立.
+    bestV2: { score: 0, at: 0 },
+    weeklyV2: { key: null, score: 0 },
     records: {
       maxChain: 0,
       maxLinesOneMove: 0,
@@ -59,11 +72,23 @@ function emptyRecords() {
       gamesPlayed: 0,
     },
     honors: {},
+    // How many times each of the three v2 reward categories fired, lifetime (§4.1). The
+    // settlement card and the leaderboard read these; nothing pays on them.
+    rewards: Object.fromEntries(REWARD_ORDER.map((type) => [type, 0])),
     recent: [],
   }
 }
 
 const toCount = (value) => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0)
+
+// `2` unless the caller says otherwise — the rules this BUILD ships, which is what a caller who
+// does not name a version is playing. The game itself always names it (`run.scoreRulesVersion`),
+// so this default only decides what a tool or a test that omits the field is describing.
+// A snapshot's MISSING field is a different question with a different answer, and migrate()
+// answers it: a save written before the split is a version-1 run (§5.1).
+export function normalizeRulesVersion(value) {
+  return value === SCORE_RULES_V1 ? SCORE_RULES_V1 : SCORE_RULES_VERSION
+}
 
 // ISO-8601 week id ("2026-W37") for the CrazyGames week (Mon 09:00 UTC boundary).
 export function weekKey(now = new Date()) {
@@ -93,6 +118,15 @@ export function migrate(raw) {
   records.best = { score: toCount(best.score), at: toCount(best.at) }
   const weekly = raw.weekly || {}
   records.weekly = { key: typeof weekly.key === 'string' ? weekly.key : null, score: toCount(weekly.score) }
+  // §5.3: the legacy pool above is READ-ONLY history from here on. A snapshot that never
+  // had a v2 pool gets an empty one, which is the truth — no v2 run has been recorded yet.
+  const bestV2 = raw.bestV2 || {}
+  records.bestV2 = { score: toCount(bestV2.score), at: toCount(bestV2.at) }
+  const weeklyV2 = raw.weeklyV2 || {}
+  records.weeklyV2 = {
+    key: typeof weeklyV2.key === 'string' ? weeklyV2.key : null,
+    score: toCount(weeklyV2.score),
+  }
   const stats = raw.records || {}
   RECORD_KEYS.forEach((key) => { records.records[key] = toCount(stats[key]) })
   records.records.gamesPlayed = toCount(stats.gamesPlayed)
@@ -102,6 +136,8 @@ export function migrate(raw) {
       if (count > 0) records.honors[id] = count
     })
   }
+  const rewards = raw.rewards && typeof raw.rewards === 'object' ? raw.rewards : {}
+  REWARD_ORDER.forEach((type) => { records.rewards[type] = toCount(rewards[type]) })
   if (Array.isArray(raw.recent)) {
     records.recent = raw.recent
       .filter((entry) => entry && typeof entry === 'object')
@@ -111,6 +147,8 @@ export function migrate(raw) {
         chain: toCount(entry.chain),
         facesLit: toCount(entry.facesLit),
         honors: Array.isArray(entry.honors) ? entry.honors.filter((id) => typeof id === 'string') : [],
+        // Which formula scored this run. Missing = a run from before the split = version 1.
+        rules: entry.rules === SCORE_RULES_VERSION ? SCORE_RULES_VERSION : SCORE_RULES_V1,
         at: toCount(entry.at),
       }))
       .slice(0, RECENT_LIMIT)
@@ -155,6 +193,12 @@ export function createRecordStore(rawStorage = pickStorage()) {
     }
   }
 
+  // The pool a rules version compares against. One function, so "which numbers may be
+  // compared with which" is stated once (§5.3) instead of at every call site.
+  const poolOf = (records, rulesVersion) => (normalizeRulesVersion(rulesVersion) === SCORE_RULES_VERSION
+    ? { best: records.bestV2, weekly: records.weeklyV2 }
+    : { best: records.best, weekly: records.weekly })
+
   return {
     persistent: Boolean(storage),
     all: read,
@@ -162,11 +206,18 @@ export function createRecordStore(rawStorage = pickStorage()) {
     // once (§8.4's 六面制霸 progress); `faceWipes` is the count of moves that
     // emptied a face. Returns everything the Game Over panel and the record wall
     // need, so neither has to re-read storage to render.
+    //
+    // v0.10.3: `run.scoreRulesVersion` decides WHICH pool the score is compared against and
+    // which pool a new record is written to. BEST / 周最佳 / NEW BEST 只比较相同规则版本
+    // (§5.3) — the legacy pools are returned as read-only history and are never overwritten
+    // by a version-2 run.
     recordRun(run = {}) {
       const records = read()
+      const rulesVersion = normalizeRulesVersion(run.scoreRulesVersion)
+      const pool = poolOf(records, rulesVersion)
       const score = toCount(run.score)
       const at = Number.isFinite(run.at) ? run.at : Date.now()
-      const previousBest = records.best.score
+      const previousBest = pool.best.score
       const isNewBest = score > previousBest
       const gapToBest = isNewBest ? 0 : previousBest - score
       const gapRatio = previousBest > 0 ? gapToBest / previousBest : 1
@@ -185,13 +236,23 @@ export function createRecordStore(rawStorage = pickStorage()) {
       const ids = Array.isArray(run.honors) ? run.honors.filter((id) => typeof id === 'string') : []
       ids.forEach((id) => { records.honors[id] = toCount(records.honors[id]) + 1 })
 
+      // The three v2 categories are tallied for version-2 runs only: a version-1 run has no
+      // such events, and counting an absent one as zero is the honest reading.
+      const rewards = run.rewards && typeof run.rewards === 'object' ? run.rewards : null
+      if (rulesVersion === SCORE_RULES_VERSION && rewards) {
+        REWARD_ORDER.forEach((type) => {
+          records.rewards[type] = toCount(records.rewards[type]) + toCount(rewards[type])
+        })
+      }
+
       const weeklyKey = weekKey(at)
       let weeklyImproved = false
-      if (records.weekly.key !== weeklyKey) {
-        records.weekly = { key: weeklyKey, score }
+      if (pool.weekly.key !== weeklyKey) {
+        pool.weekly.key = weeklyKey
+        pool.weekly.score = score
         weeklyImproved = score > 0
-      } else if (score > records.weekly.score) {
-        records.weekly.score = score
+      } else if (score > pool.weekly.score) {
+        pool.weekly.score = score
         weeklyImproved = true
       }
 
@@ -201,32 +262,48 @@ export function createRecordStore(rawStorage = pickStorage()) {
         chain: toCount(run.chain),
         facesLit: toCount(run.facesLit),
         honors: ids,
+        rules: rulesVersion,
         at,
       })
       records.recent = records.recent.slice(0, RECENT_LIMIT)
-      if (isNewBest) records.best = { score, at }
+      // In place, never by replacing the field: `pool.best` IS `records.best*`, and assigning a
+      // fresh object here would update the local view while the snapshot kept the old one.
+      if (isNewBest) {
+        pool.best.score = score
+        pool.best.at = at
+      }
 
       const saved = write(records)
       return {
+        rulesVersion,
         isNewBest,
         previousBest,
-        bestScore: records.best.score,
+        bestScore: pool.best.score,
         gapToBest,
         gapRatio,
-        weeklyBest: records.weekly.score,
+        weeklyBest: pool.weekly.score,
         weeklyKey,
         weeklyImproved,
         broken,
         honors: { ...records.honors },
+        rewards: { ...records.rewards },
+        // The other pool, read-only, for the panel's 「旧分制」 rows. A version-2 run must not
+        // silently present a version-1 best as its own record, and it must not hide it either.
+        legacy: rulesVersion === SCORE_RULES_VERSION
+          ? { best: records.best.score, weekly: records.weekly.key === weeklyKey ? records.weekly.score : 0 }
+          : { best: records.bestV2.score, weekly: records.weeklyV2.key === weeklyKey ? records.weeklyV2.score : 0 },
         recent: records.recent.slice(),
         persistent: saved,
       }
     },
-    weeklyBest(at = Date.now()) {
-      const records = read()
-      return records.weekly.key === weekKey(at) ? records.weekly.score : 0
+    // The personal best of ONE rules version (default: the current rules). The HUD's BEST
+    // pill, the home cover and the tier badge all read the pool of the run on screen, so a
+    // version-1 in-flight run compares against version-1 numbers.
+    best: (rulesVersion = SCORE_RULES_VERSION) => poolOf(read(), rulesVersion).best,
+    weeklyBest(at = Date.now(), rulesVersion = SCORE_RULES_VERSION) {
+      const pool = poolOf(read(), rulesVersion).weekly
+      return pool.key === weekKey(at) ? pool.score : 0
     },
-    best: () => read().best,
   }
 }
 

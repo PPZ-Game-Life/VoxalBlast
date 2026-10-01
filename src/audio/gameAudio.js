@@ -42,6 +42,23 @@ const CUE_RECIPES = Object.freeze({
   'clear-l4': Object.freeze({ duration: 0.76, peak: 0.22, notes: [[0, 60, 0.14, 'wood', 0.65], [0.055, 72, 0.28, 'mallet', 0.9], [0.15, 76, 0.29, 'mallet', 0.9], [0.25, 79, 0.31, 'mallet', 1], [0.35, 84, 0.34, 'bell', 0.65]], paper: [[0.05, 0.2, 0.09]] }),
   'clear-l5': Object.freeze({ duration: 0.92, peak: 0.24, notes: [[0, 60, 0.14, 'wood', 0.65], [0.055, 72, 0.27, 'mallet', 0.9], [0.15, 76, 0.3, 'mallet', 0.95], [0.25, 79, 0.32, 'mallet', 1], [0.36, 84, 0.45, 'bell', 0.65], [0.36, 76, 0.38, 'mallet', 0.35]], paper: [[0.05, 0.22, 0.1]] }),
   'chain-milestone': Object.freeze({ duration: 0.44, peak: 0.13, notes: [[0, 79, 0.23, 'mallet', 0.8], [0.1, 84, 0.29, 'bell', 0.7]], paper: [] }),
+  // v0.10.3 reward signatures (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2). The three
+  // categories have to be TELLABLE APART, and "a different pitch on the same run" is not
+  // that: the multi-clear keeps the ascending mallet run (clear-l2..l5 above), the streak is
+  // two short knocks that read as 「接上了」, and the face clear is a soft paper sweep under a
+  // bright CHORD — simultaneous notes, so it can never be mistaken for an ascending run.
+  // `streak-hi` is the capped variant: C>=3 adds one closing bell and stops there (§3.2
+  // 「C>=5 音型封顶」), because a streak that kept climbing would be the background hum this
+  // whole round removes.
+  'streak-2': Object.freeze({ duration: 0.38, peak: 0.17, notes: [[0, 72, 0.15, 'wood', 1], [0.13, 76, 0.2, 'mallet', 0.9]], paper: [] }),
+  'streak-hi': Object.freeze({ duration: 0.52, peak: 0.19, notes: [[0, 72, 0.15, 'wood', 1], [0.13, 76, 0.2, 'mallet', 0.9], [0.28, 79, 0.26, 'bell', 0.6]], paper: [] }),
+  // The same two knocks, TRIMMED, for the case where the streak is NOT the headline: it rides
+  // inside the main cue as one tail (§3.3 allows exactly one extra phrase). It is a separate cue
+  // id because a tail must not be a MAIN cue — starting one as `main` would replace the cue it is
+  // supposed to sit inside, which is precisely the "three melodies over each other" the audio
+  // handoff §6.1 exists to prevent.
+  'streak-tail': Object.freeze({ duration: 0.32, peak: 0.15, notes: [[0, 72, 0.14, 'wood', 0.9], [0.12, 76, 0.18, 'mallet', 0.8]], paper: [] }),
+  'face-clear': Object.freeze({ duration: 0.66, peak: 0.2, notes: [[0.05, 72, 0.3, 'mallet', 0.7], [0.05, 79, 0.34, 'mallet', 0.6], [0.05, 84, 0.44, 'bell', 0.5]], paper: [[0, 0.3, 0.12]] }),
   'new-best': Object.freeze({ duration: 1.12, peak: 0.25, notes: [[0, 60, 0.18, 'wood', 0.4], [0.08, 72, 0.29, 'mallet', 0.8], [0.2, 76, 0.31, 'mallet', 0.85], [0.32, 79, 0.34, 'mallet', 0.95], [0.46, 84, 0.5, 'bell', 0.8], [0.46, 76, 0.46, 'mallet', 0.4], [0.46, 79, 0.44, 'mallet', 0.35]], paper: [[0.14, 0.26, 0.1]] }),
   'item-hammer': Object.freeze({ duration: 0.25, peak: 0.16, notes: [[0, 53, 0.17, 'wood', 1], [0.035, 65, 0.16, 'mallet', 0.22]], paper: [[0.012, 0.07, 0.1]] }),
   'item-rocket': Object.freeze({ duration: 0.34, peak: 0.14, notes: [[0.04, 67, 0.19, 'mallet', 0.5], [0.12, 72, 0.18, 'mallet', 0.45]], paper: [[0, 0.24, 0.24]] }),
@@ -145,7 +162,17 @@ const CUE_META = Object.freeze({
   'clear-l3': { kind: 'clear', category: 'clear', main: true, priority: 5 },
   'clear-l4': { kind: 'clear', category: 'clear', main: true, priority: 6 },
   'clear-l5': { kind: 'clear', category: 'clear', main: true, priority: 7 },
+  // The legacy v1 chain milestone. Kept because a version-1 run in flight still earns those
+  // 5/10/15/20 nodes (SCORE_REWARD_SIMPLIFICATION_HANDOFF §5.2 不中途改价); NO version-2 run
+  // reaches it — version 2 pays the streak reward instead.
   'chain-milestone': { kind: 'chain', category: 'clear', main: false, priority: 4 },
+  // v0.10.3 reward signatures. All three are MAIN cues: one settled placement plays exactly
+  // one of them (§3.3 一个主声音), and a secondary streak is added as a trimmed tail inside it.
+  'streak-2': { kind: 'clear', category: 'clear', main: true, priority: 5 },
+  'streak-hi': { kind: 'clear', category: 'clear', main: true, priority: 5 },
+  // NOT main: this one is the tail that rides inside another cue (§3.3).
+  'streak-tail': { kind: 'clear', category: 'clear', main: false, priority: 3 },
+  'face-clear': { kind: 'clear', category: 'clear', main: true, priority: 6 },
   'new-best': { kind: 'new-best', category: 'result', main: true, priority: 9 },
   'game-over': { kind: 'game-over', category: 'result', main: true, priority: 6 },
   'item-hammer': { kind: 'item', category: 'item', main: true, priority: 6 },
@@ -426,15 +453,40 @@ export function createGameAudio({ getSoundOn, lowPower = false } = {}) {
   }
 
   // §6.1: ONE main cue per settled placement, and it already contains the landing knock.
-  // `milestone` is score.chainMilestone (the rule's own field — the audio never re-derives
-  // the 5/10/15/20 thresholds).
-  function playClear(level, { milestone = 0 } = {}) {
+  //
+  // v0.10.3: the cue is chosen by the reward EVENT's primary category (§3.3 主声音按主类别选音型),
+  // not by re-deriving anything from lines and faces:
+  //   FACE_CLEAR   → 'face-clear'  (paper sweep + bright chord)
+  //   CLEAR_STREAK → 'streak-2' / 'streak-hi'  (two short knocks, capped)
+  //   MULTI_CLEAR  → the ascending clear-lN the LADDER already owns, keyed by `level`
+  // A secondary streak rides INSIDE the same cue as one trimmed tail (§3.3 allows exactly one
+  // extra phrase, never three melodies), which is the same discipline the old milestone tail
+  // followed. `milestone` is the version-1 field and is only read for version-1 runs.
+  function playClear(level, { milestone = 0, reward = null } = {}) {
     rollTicks = 0
-    const id = CLEAR_CUES[Math.min(Math.max(level, 1), 5) - 1]
+    const ranked = Math.min(Math.max(level, 1), 5)
+    const primary = reward?.primaryType || null
+    const streak = (reward?.rewards || []).find((entry) => entry.type === 'CLEAR_STREAK') || null
+    let id = CLEAR_CUES[ranked - 1]
+    if (primary === 'FACE_CLEAR') id = 'face-clear'
+    else if (primary === 'CLEAR_STREAK') id = streak && streak.count >= 3 ? 'streak-hi' : 'streak-2'
     const started = startCue(id, { wantsDuck: true })
-    if (!started || !milestone) return started
+    if (!started) return started
+
+    if (reward) {
+      // A streak that is NOT the headline still has to be heard as 「接上了」 — one short tail
+      // inside the main cue, and nothing when the headline already IS the streak. `streak-tail`
+      // is deliberately NOT a main cue: a main cue replaces the one it is meant to sit inside.
+      if (primary !== 'CLEAR_STREAK' && streak) {
+        const delay = Math.min(Math.max(CUE_RECIPES[id].duration - 0.24, 0.2), 0.9 - CUE_RECIPES['streak-tail'].duration)
+        startCue('streak-tail', { delay, gain: 0.6, priority: 3 })
+      }
+      return started
+    }
+
+    if (!milestone) return started
     const duration = CUE_RECIPES[id].duration
-    if (level <= 2) {
+    if (ranked <= 2) {
       // L1/L2 may carry the milestone as the tail of the SAME phrasing, under §6.1's 0.9s cap.
       const delay = Math.min(Math.max(duration - 0.3, 0.12), Math.max(0.9 - CUE_RECIPES['chain-milestone'].duration, 0))
       startCue('chain-milestone', { delay, priority: 4 })

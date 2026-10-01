@@ -13,9 +13,15 @@ import { SHAPES, SHAPE_WEIGHTS, OPENING_SHAPES, pickShape, normalizeCells, maxOr
 import {
   SCORING, MAX_LINES_PER_MOVE, lineMultiplier, lineScore, faceBonus, placementScore, chainBonus,
   chainMilestoneBonus, nextChain, moveScore,
+  // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md): the version-2 rule set. Both sets live in
+  // the same module and both are exercised here — the legacy one because a run in flight still
+  // plays it, the new one because it is what the game now ships.
+  SCORING_V2, SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_TYPES, REWARD_ORDER, REWARD_PRIORITY,
+  settleScore, resolveRewards, rewardLevel, multiClearBonus, streakBonus, faceClearBonus,
+  normalizeWipedFaces,
 } from '../src/game/scoring.js'
 import { HONORS, resolveHonors, feedbackLevel } from '../src/game/honors.js'
-import { createRecordStore, weekKey, migrate, RECORD_FIELDS, pickStorage as pickStorageFromRecords, probeStorage as probeStorageFromRecords } from '../src/game/records.js'
+import { createRecordStore, weekKey, migrate, RECORD_FIELDS, RECORDS_VERSION, pickStorage as pickStorageFromRecords, probeStorage as probeStorageFromRecords } from '../src/game/records.js'
 import { createSessionStore, migrate as migrateSession, SESSION_VERSION, SESSION_KEY } from '../src/game/session.js'
 import { pickStorage, probeStorage, readPreferenceOn, writePreferenceOn } from '../src/platform/storage.js'
 import { KEY_BINDINGS, axisForKey } from '../src/rendering/keyboard.js'
@@ -174,6 +180,69 @@ group('sixface', () => {  // The precise bug this version fixes: the +z row v=0 
     `residual placements under the old rule: ${legacyResidual}`)
 })
 
+// ---------------------------------------------------------------- face wipe
+// SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §2.4 / §6.2. `faceWiped` is the ONE judgement the
+// 清除整面 reward is allowed to consume, and it is NOT `facesHit`: a shared edge counts a line on
+// two faces, and a face can be emptied by a line that lives entirely on a neighbouring face.
+// These are real board states, built and settled through the shipped Board.
+group('face-wipe', () => {
+  const cell = (x, y, z) => ({ x, y, z, color: 0xffffff })
+
+  // (1) 落子前空的面不奖励: from an empty cube, completing an INTERIOR row on +z empties +z — but
+  // +z had NOTHING on it before the drop, so the reward is not owed. (The row is at v=2 on
+  // purpose: a row along the edge is shared with a neighbouring face and would settle two lines.)
+  const fresh = new Board()
+  const freshSettle = fresh.place('+z', [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2]], { u: 0, v: 0 }, 0xffffff)
+  equal('an interior full row settles one line', freshSettle.lines.length, 1)
+  equal('and hits one face', freshSettle.facesHit, 1)
+  equal('a face that was already empty is not a wiped face', freshSettle.faceWiped.length, 0)
+  check('but it IS reported as empty', freshSettle.faceEmpty.includes('+z'),
+    JSON.stringify(freshSettle.faceEmpty))
+
+  // (2) A face can be emptied WITHOUT having a line of its own — the shared-cell case the doc
+  // calls out, and the reason 净面数 may exceed 消线命中面数.
+  //
+  //   -z ... (2,0,0)   +z ... (2,0,4)   -y ... both of those, plus (1,0,1)
+  //   The -y column u=2 (v=0..4) completes and clears. It takes the LAST cell of +z and of -z
+  //   with it, while -y itself keeps (1,0,1) and is not emptied at all.
+  const board = new Board()
+  board.addCells([cell(2, 0, 0), cell(2, 0, 4), cell(1, 0, 1)])
+  const settle = board.place('-y', [[0, 1], [0, 2], [0, 3]], { u: 2, v: 0 }, 0xffffff)
+  equal('the -y column is one line', settle.lines.length, 1)
+  equal('and it hits one face', settle.facesHit, 1)
+  equal('the face the line lives on is NOT the face that got emptied', settle.faceWiped.includes('-y'), false)
+  equal('two faces are emptied by that one line', settle.faceWiped.join(','), '+z,-z')
+  check('净面数 can exceed 消线命中面数 (2 > 1)', settle.faceWiped.length > settle.facesHit,
+    `${settle.faceWiped.length} vs ${settle.facesHit}`)
+  equal('the -y face keeps its other cell', board.faceOccupancy('-y'), 1)
+  equal('and the emptied faces are really at zero', board.faceOccupancy('+z') + board.faceOccupancy('-z'), 0)
+
+  // (3) 共享满棱 still counts TWO lines on two faces (the simplification does NOT touch it). The
+  // row runs along the y=0 / z=4 edge, so it belongs to -y AND +z — and its (0,0,4) end also
+  // belongs to -x, which is why THREE faces end up emptied by a two-line clear.
+  const shared = new Board()
+  const seedSharedEdge = (target) => {
+    ;[[0, 0, 4], [1, 0, 4], [2, 0, 4], [3, 0, 4]].forEach(([x, y, z]) => target.addCells([cell(x, y, z)]))
+    return target.place('+z', [[0, 0]], { u: 4, v: 0 }, 0xffffff)
+  }
+  const sharedSettle = seedSharedEdge(shared)
+  equal('a shared edge still settles two lines', sharedSettle.lines.length, 2)
+  equal('a shared edge still reports two faces', sharedSettle.facesHit, 2)
+  equal('the shared end cell empties a third face', sharedSettle.faceWiped.join(','), '-x,-y,+z')
+  equal('the two face lines pay the multi bonus', multiClearBonus(sharedSettle.lines.length), 100)
+  equal('and the three wiped faces pay the face bonus', faceClearBonus(sharedSettle.lines.length, sharedSettle.faceWiped), 900)
+
+  // (4) 同面重新占用后再清空，可以再次领奖: the board keeps no memory of a face it emptied once.
+  const wipeOnce = () => {
+    const b = new Board()
+    b.addCells([cell(2, 0, 0), cell(2, 0, 4), cell(1, 0, 1)])
+    return b.place('-y', [[0, 1], [0, 2], [0, 3]], { u: 2, v: 0 }, 0xffffff)
+  }
+  equal('first wipe', wipeOnce().faceWiped.join(','), '+z,-z')
+  equal('second wipe of the same faces', wipeOnce().faceWiped.join(','), '+z,-z')
+  equal('and a shared-edge wipe repeats too', seedSharedEdge(new Board()).faceWiped.join(','), '-x,-y,+z')
+})
+
 // ---------------------------------------------------------------- scoring
 group('scoring', () => {
   // 08 §4.2 multiplier table, 1..12 lines. The listed 线分 values are printed in the
@@ -211,6 +280,113 @@ group('scoring', () => {
   equal('a dead turn reports no chain points', dead.chain, 0)
   const sum = triple.placement + triple.line + triple.face + triple.chain + triple.honor
   equal('total is the sum of the named parts', triple.total, sum)
+})
+
+// ---------------------------------------------------------------- scoring v2
+// SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §2/§6.1. `P` is 4 everywhere, as the doc's table fixes
+// it: these are INDEPENDENT INPUT COMBINATIONS, and the doc is explicit that they are not each
+// claimed to be a reachable board state — reachability is asserted in the `face-wipe` group.
+group('scoring-v2', () => {
+  // The five constants, and the fact that the old terms are ABSENT rather than zeroed: a reader
+  // must not be able to find a multiplier curve or an honour bonus in the new table.
+  equal('placement is still 10 per cell', SCORING_V2.placePerCell, 10)
+  equal('a line is still 100', SCORING_V2.lineBase, 100)
+  equal('multi-clear steps by 100', SCORING_V2.multiStep, 100)
+  equal('the streak steps by 50', SCORING_V2.streakStep, 50)
+  equal('the streak caps at 4 steps', SCORING_V2.streakCap, 4)
+  equal('a wiped face pays 300', SCORING_V2.faceClear, 300)
+  check('the v2 table has no multiplier curve', SCORING_V2.lineMultipliers === undefined)
+  check('the v2 table has no cross-face bonus', SCORING_V2.faceBonus === undefined)
+  check('the v2 table has no chain milestone', SCORING_V2.chainMilestones === undefined)
+
+  // §2.1 一次多消: 2 线起, 每多一条线 +100.
+  equal('one line pays no multi bonus', multiClearBonus(1), 0)
+  equal('two lines pay +100', multiClearBonus(2), 100)
+  equal('three lines pay +200', multiClearBonus(3), 200)
+  equal('five lines pay +400', multiClearBonus(5), 400)
+  equal('twelve lines pay +1100 (linear, not the old curve)', multiClearBonus(12), 1100)
+
+  // §2.3 连续消除: 第二次起, 封顶 4 级.
+  equal('the first clear pays no streak bonus', streakBonus(1, 1), 0)
+  equal('the second pays +50', streakBonus(1, 2), 50)
+  equal('the third pays +100', streakBonus(1, 3), 100)
+  equal('the fifth pays +200', streakBonus(1, 5), 200)
+  equal('the twelfth still pays +200 (the count shows 12, the money caps)', streakBonus(1, 12), 200)
+  equal('a turn that cleared nothing pays no streak bonus', streakBonus(0, 9), 0)
+
+  // §2.4 清除整面: W faces, and never without a clear.
+  equal('one wiped face pays +300', faceClearBonus(1, 1), 300)
+  equal('two wiped faces pay +600', faceClearBonus(1, 2), 600)
+  equal('faces are deduped before they are priced', faceClearBonus(1, ['+z', '+z', '-y']), 600)
+  equal('no clear, no face bonus', faceClearBonus(0, 3), 0)
+  equal('a face list and a count mean the same thing', normalizeWipedFaces(['+z', '-y']), 2)
+
+  // §6.1 the doc's own table, row by row. `total` must equal the five named parts every time.
+  // `base` is 基础分 = 基础放置分 + 基础消线分, which is how the doc's table states it.
+  const table = [
+    { name: '普通放置', lines: 0, chain: 0, faces: 0, base: 40, multi: 0, streak: 0, face: 0, total: 40 },
+    { name: '第一消，单线', lines: 1, chain: 1, faces: 0, base: 140, multi: 0, streak: 0, face: 0, total: 140 },
+    { name: '同手两线', lines: 2, chain: 1, faces: 0, base: 240, multi: 100, streak: 0, face: 0, total: 340 },
+    { name: '第二次连续单线', lines: 1, chain: 2, faces: 0, base: 140, multi: 0, streak: 50, face: 0, total: 190 },
+    { name: '第五次连续单线', lines: 1, chain: 5, faces: 0, base: 140, multi: 0, streak: 200, face: 0, total: 340 },
+    { name: '第十二次连续单线', lines: 1, chain: 12, faces: 0, base: 140, multi: 0, streak: 200, face: 0, total: 340 },
+    { name: '单线带净一面', lines: 1, chain: 1, faces: 1, base: 140, multi: 0, streak: 0, face: 300, total: 440 },
+    { name: '三类同手', lines: 3, chain: 4, faces: 1, base: 340, multi: 200, streak: 150, face: 300, total: 990 },
+    { name: '六线净两面', lines: 6, chain: 1, faces: 2, base: 640, multi: 500, streak: 0, face: 600, total: 1740 },
+  ]
+  table.forEach((row) => {
+    const score = settleScore({ cellCount: 4, lines: row.lines, chain: row.chain, wipedFaces: row.faces })
+    equal(`${row.name}: base points`, score.placement + score.linePoints, row.base)
+    equal(`${row.name}: multi bonus`, score.multiBonus, row.multi)
+    equal(`${row.name}: streak bonus`, score.streakBonus, row.streak)
+    equal(`${row.name}: face bonus`, score.faceClearBonus, row.face)
+    equal(`${row.name}: total`, score.total, row.total)
+    equal(`${row.name}: total is the sum of the five named parts`, score.total,
+      score.placement + score.linePoints + score.multiBonus + score.streakBonus + score.faceClearBonus)
+  })
+
+  // §6.1 额外断言: no legacy term can leak into a version-2 score, whatever a caller passes.
+  const smuggled = settleScore({
+    cellCount: 4, lines: 3, chain: 1, wipedFaces: 1, faces: 3, honorBonus: 500, chainMilestone: 200,
+  })
+  equal('a passed faces/honorBonus/chainMilestone changes nothing', smuggled.total, 340 + 200 + 300)
+  equal('and none of them appear in the result', Object.keys(smuggled).sort().join(','),
+    'faceClearBonus,linePoints,multiBonus,placement,primaryType,rewards,streakBonus,total')
+  const stale = settleScore({ cellCount: 4, lines: 0, chain: 9, wipedFaces: 3 })
+  equal('a dead turn with a stale chain pays placement only', stale.total, 40)
+  equal('a dead turn earns no streak bonus', stale.streakBonus, 0)
+  equal('a dead turn earns no face bonus', stale.faceClearBonus, 0)
+
+  // §2.1 the reward LIST: zero-bonus categories are not entries, and the headline order is
+  // 清除整面 > 一次多消 > 连续消除 (§3.3).
+  const allThree = resolveRewards({ lines: 3, chain: 4, wipedFaces: 1 })
+  equal('three categories fire as three entries', allThree.rewards.length, 3)
+  equal('listed in the doc order', allThree.rewards.map((reward) => reward.type).join(','),
+    'MULTI_CLEAR,CLEAR_STREAK,FACE_CLEAR')
+  equal('each entry carries its own count', allThree.rewards.map((reward) => reward.count).join(','), '3,4,1')
+  equal('the headline is the face clear', allThree.primaryType, REWARD_TYPES.FACE_CLEAR)
+  equal('a two-line clear headlines the multi', resolveRewards({ lines: 2, chain: 1 }).primaryType, REWARD_TYPES.MULTI_CLEAR)
+  equal('a bare streak headlines the streak', resolveRewards({ lines: 1, chain: 3 }).primaryType, REWARD_TYPES.CLEAR_STREAK)
+  equal('a plain single line has no reward at all', resolveRewards({ lines: 1, chain: 1 }).rewards.length, 0)
+  equal('and no headline', resolveRewards({ lines: 1, chain: 1 }).primaryType, null)
+  equal('the priority list is the doc order', REWARD_PRIORITY.join(','), 'FACE_CLEAR,MULTI_CLEAR,CLEAR_STREAK')
+  equal('the reward order is the doc order', REWARD_ORDER.join(','), 'MULTI_CLEAR,CLEAR_STREAK,FACE_CLEAR')
+
+  // The presentation ladder is derived from the REWARD result, never from facesHit (§3.4).
+  const levelOf = (input) => {
+    const score = settleScore(input)
+    return rewardLevel({ lines: input.lines || 0, rewards: score.rewards })
+  }
+  equal('a plain single line is L1', levelOf({ cellCount: 4, lines: 1, chain: 1 }), 1)
+  equal('a two-line clear is L2', levelOf({ cellCount: 4, lines: 2, chain: 1 }), 2)
+  equal('one line that empties a face is L3', levelOf({ cellCount: 4, lines: 1, chain: 1, wipedFaces: 1 }), 3)
+  equal('two faces in one hand are L4', levelOf({ cellCount: 4, lines: 1, chain: 1, wipedFaces: 2 }), 4)
+  equal('five lines are L5', levelOf({ cellCount: 4, lines: 5, chain: 1 }), 5)
+  equal('a dead turn is L0', levelOf({ cellCount: 4, lines: 0, chain: 0 }), 0)
+  equal('a long streak lifts a single line', levelOf({ cellCount: 4, lines: 1, chain: 6 }), 4)
+  // facesHit is NOT an input: it is not even a parameter of the level any more.
+  equal('the level has no faces-hit input at all',
+    rewardLevel({ lines: 1, rewards: [] }), rewardLevel({ lines: 1, rewards: [], faces: 3 }))
 })
 
 // ---------------------------------------------------------------- honors
@@ -315,15 +491,47 @@ group('records', () => {
   equal('migration keeps a known field', partial.records.maxChain, 12)
   equal('migration keeps the best score', partial.best.score, 900)
   equal('migration keeps honor counts', partial.honors.QUAD, 3)
-  equal('migration reports the current version', partial.v, 1)
+  equal('migration reports the current version', partial.v, RECORDS_VERSION)
   equal('migration drops unknown fields', partial.unknownField, undefined)
+  // §5.3: a snapshot from before the scoring split has no version-2 pool, and the legacy one is
+  // read exactly as it was written — nothing is re-priced and nothing is dropped.
+  equal('a pre-split snapshot keeps its best in the legacy pool', partial.best.score, 900)
+  equal('and its version-2 pool starts empty', partial.bestV2.score, 0)
+  equal('a pre-split snapshot has no reward tally yet', partial.rewards.MULTI_CLEAR, 0)
 
   // A run in a later week must not overwrite this week's best.
-  const weekly = store.all().weekly
+  const weekly = store.all().weeklyV2
   equal('the weekly bucket is keyed by the CrazyGames week', weekly.key, weekKey(new Date()))
   const laterWeek = createRecordStore(storage)
   equal('a stale weekly key reads as empty', laterWeek.weeklyBest(Date.now()), weekly.score)
   check('record fields carry the i18n key of their label', RECORD_FIELDS.every((field) => field.labelKey && field.key))
+
+  // ---- v0.10.3 §5.3: BEST / 周最佳 / NEW BEST 只比较相同规则版本 ------------------------
+  // A store of its own, with a storage that really round-trips: `read()` re-parses the snapshot
+  // every time, so a pool written by one run has to survive the JSON trip to be seen by the next.
+  const isolatedStore = new Map()
+  const isolated = createRecordStore({
+    getItem: (key) => (isolatedStore.has(key) ? isolatedStore.get(key) : null),
+    setItem: (key, value) => isolatedStore.set(key, value),
+    removeItem: (key) => isolatedStore.delete(key),
+  })
+  const legacyRun = isolated.recordRun({ score: 250000, scoreRulesVersion: SCORE_RULES_V1, at: Date.now() })
+  check('a legacy run is a new best in the legacy pool', legacyRun.isNewBest)
+  equal('and it reports the legacy rules', legacyRun.rulesVersion, SCORE_RULES_V1)
+  const currentRun = isolated.recordRun({ score: 900, scoreRulesVersion: SCORE_RULES_VERSION, at: Date.now() })
+  check('a version-2 score is a new best of ITS OWN pool, not compared with the legacy 250k', currentRun.isNewBest)
+  equal('the version-2 best is 900, not 250000', currentRun.bestScore, 900)
+  equal('and the legacy best is untouched', isolated.all().best.score, 250000)
+  const smallerCurrent = isolated.recordRun({ score: 800, scoreRulesVersion: SCORE_RULES_VERSION, at: Date.now() })
+  check('a smaller version-2 score is not a new best', !smallerCurrent.isNewBest)
+  equal('the gap is measured inside the same pool', smallerCurrent.gapToBest, 100)
+  equal('the legacy pool is reported as read-only history', smallerCurrent.legacy.best, 250000)
+  equal('the version-2 tallies accumulate for version-2 runs only',
+    isolated.recordRun({ score: 10, scoreRulesVersion: SCORE_RULES_VERSION, rewards: { MULTI_CLEAR: 2, CLEAR_STREAK: 1 }, at: Date.now() }).rewards.MULTI_CLEAR, 2)
+  equal('a legacy run contributes no reward tally',
+    isolated.recordRun({ score: 10, scoreRulesVersion: SCORE_RULES_V1, rewards: { MULTI_CLEAR: 5 }, at: Date.now() }).rewards.MULTI_CLEAR, 2)
+  equal('the recent list tags every entry with its rules',
+    isolated.all().recent.map((entry) => entry.rules).join(','), '1,2,2,2,1')
 })
 
 // ---------------------------------------------------------------- tiers

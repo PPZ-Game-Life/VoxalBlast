@@ -426,7 +426,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transform: none;
   margin: 0 auto;
 }
-.chain-chip { order: 3; }
 .topbar .icon-button { order: 5; }
 .best-chip {
   order: 4;
@@ -446,42 +445,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .best-chip-label { color: #5e7db6; font-size: .54rem; font-weight: 900; letter-spacing: .07em; }
 .best-chip-value { font-size: .95rem; font-weight: 900; letter-spacing: -.03em; }
 
-/* Streak pill (08 §7.5). Hidden below HUD_STYLE.chainMinVisible: a chain that is
-   always on screen costs nothing to break, and the stake IS the mechanism. */
-.chain-chip {
-  grid-column: 3;
-  display: none;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px 6px;
-  border: 2px solid rgba(255,255,255,.42);
-  border-radius: 999px;
-  color: #fff;
-  background: rgba(23,40,79,.34);
-  box-shadow: 0 4px 12px rgba(23,40,79,.18);
-  white-space: nowrap;
-}
-.chain-chip.visible { display: inline-flex; }
-.chain-chip-label { font-size: .5rem; font-weight: 900; letter-spacing: .1em; opacity: .82; }
-.chain-chip-value { font-size: .95rem; font-weight: 900; letter-spacing: -.03em; }
-.chain-chip-bar { width: 34px; height: 5px; border-radius: 999px; background: rgba(255,255,255,.26); overflow: hidden; }
-.chain-chip-bar i { display: block; width: 100%; height: 100%; transform-origin: left center; transform: scaleX(0); border-radius: 999px; background: linear-gradient(90deg, #ffd85e, #ff9f34); transition: transform .18s ease-out; }
-.chain-chip.hot { background: linear-gradient(135deg, #ffb03a, #ff6f61); border-color: rgba(255,255,255,.78); }
-.chain-chip.broken { animation: chainBreak .62s ease-out; }
-@keyframes chainBreak {
-  0% { background: rgba(158,168,190,.72); border-color: rgba(255,255,255,.7); }
-  100% { background: rgba(23,40,79,.34); }
-}
+/* Streak pill: REMOVED in v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.1). The chain is
+   still counted and still pays the streak reward, but 常驻 CHAIN/Combo/×N 组件、增长弹跳与断链
+   样式 all go — and the layout takes the space back rather than hiding an empty box. The
+   streak is now heard and read only when it fires: the reward note + the streak cue. */
 
-/* Honor broadcast (08 §6). The layer sits in the info band above the cube — the
-   hard rule is that an L5 ceremony never covers the board and never blocks input,
-   so the whole layer is pointer-events:none and nothing here is modal. */
+/* Reward note + the honor broadcast layer (v0.10.3 §3.3). The layer sits in the info band
+   above the cube — the hard rule is that a reward moment never covers the board and never
+   blocks input, so the whole layer is pointer-events:none and nothing here is modal. */
 .honor-layer {
   position: absolute;
   left: 50%;
-  /* Pinned to the very top of the info band: a banner plus its badge row has to clear
-     the cube's roofline (the v0.3 screenshot run showed the badge row landing on it
-     at top:44px), and the hard rule is that a reward never covers the board. */
+  /* Pinned to the very top of the info band: the plate has to clear the cube's roofline
+     (the v0.3 screenshot run showed a second row landing on it at top:44px), and the hard
+     rule is that a reward never covers the board. */
   top: 4px;
   z-index: 4;
   display: flex;
@@ -493,29 +470,35 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transform: translateX(-50%);
   pointer-events: none;
 }
-.honor-banner {
+/* ONE main title + ONE merged detail line. The three categories share this plate and differ by
+   their accent colour, which is only ever an ASSIST: §3.2 requires the words and the rhythm to
+   carry the difference on their own (a player who cannot tell two accents apart must still be
+   able to read which reward this was). */
+.reward-note {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 2px;
   padding: 7px 20px 8px;
   border-radius: 18px;
   opacity: 0;
   transform: translateY(-8px) scale(.92);
   transition: .2s ease-out;
+  text-align: center;
 }
-.honor-banner.visible { opacity: 1; transform: none; }
-.honor-banner strong { font-size: 1.4rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
-.honor-banner small { font-size: .58rem; font-weight: 900; letter-spacing: .08em; opacity: .92; }
-.honor-banner-small { padding: 4px 14px 5px; border-radius: 999px; color: #203c7b; background: rgba(255,255,255,.94); box-shadow: 0 6px 16px rgba(23,40,79,.18); }
-.honor-banner-small strong { font-size: .8rem; }
-.honor-banner-small small { color: #55719b; }
-.honor-banner-name { color: #2a1d05; background: linear-gradient(135deg, #ffd85e, #ff9f34); box-shadow: 0 8px 0 rgba(140,84,10,.16), 0 16px 30px rgba(120,70,10,.26); }
-.honor-banner-large { padding: 9px 26px 10px; color: #fff; background: linear-gradient(135deg, #ffb03a, #ff6f61); box-shadow: 0 9px 0 rgba(140,60,20,.18), 0 18px 34px rgba(120,50,20,.28); }
-.honor-banner-large strong { font-size: 1.7rem; }
-.honor-banner-full { padding: 11px 32px 12px; color: #fff; background: linear-gradient(135deg, #a06bff, #5c4dff); box-shadow: 0 10px 0 rgba(50,30,140,.2), 0 22px 40px rgba(40,25,120,.3); }
-.honor-banner-full strong { font-size: 2rem; text-shadow: 0 2px 10px rgba(20,10,60,.3); }
-.honor-badges { display: flex; gap: 6px; opacity: 0; transform: translateY(-6px); transition: .2s ease-out; }
-.honor-badges.visible { opacity: 1; transform: none; }
+.reward-note.visible { opacity: 1; transform: none; }
+.reward-note strong { font-size: 1.25rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+/* The detail may wrap to a second line on a narrow screen (§3.3 窄屏允许同一张短签分成两行) —
+   the board is never scaled down to make room for it. */
+.reward-note small { font-size: .58rem; font-weight: 900; letter-spacing: .06em; opacity: .92; max-width: 78vw; }
+.reward-note-multi_clear { color: #2a1d05; background: linear-gradient(135deg, #ffd85e, #ff9f34); box-shadow: 0 8px 0 rgba(140,84,10,.16), 0 16px 30px rgba(120,70,10,.26); }
+.reward-note-multi_clear small { color: #5c4310; }
+.reward-note-clear_streak { padding: 5px 16px 6px; border-radius: 999px; color: #203c7b; background: rgba(255,255,255,.94); box-shadow: 0 6px 16px rgba(23,40,79,.18); }
+.reward-note-clear_streak strong { font-size: .92rem; }
+.reward-note-clear_streak small { color: #55719b; }
+.reward-note-face_clear { color: #fff; background: linear-gradient(135deg, #7fae86, #4f8f7a); box-shadow: 0 9px 0 rgba(30,80,60,.18), 0 18px 34px rgba(24,70,52,.28); }
+.reward-note-face_clear strong { font-size: 1.4rem; }
+.reward-note-face_clear small { color: #eaf6ee; }
 .honor-badge {
   padding: 3px 10px 4px;
   border: 1px solid rgba(255,255,255,.36);
@@ -595,9 +578,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 @media (max-width: 700px) {
   .honor-layer { top: 2px; }
-  .honor-banner strong { font-size: 1.2rem; }
-  .honor-banner-large strong { font-size: 1.45rem; }
-  .honor-banner-full strong { font-size: 1.6rem; }
+  .reward-note strong { font-size: 1.1rem; }
+  .reward-note-face_clear strong { font-size: 1.25rem; }
 }
 
 /* Narrow phones: the row must not wrap (04「UI 与发布」), so the chips get tighter
@@ -609,9 +591,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .score-chip-label { font-size: .6rem; }
   .score-chip-value { font-size: 1.4rem; }
   .app-version { padding: 2px 6px; font-size: .5rem; }
-  .chain-chip { padding: 4px 8px 5px; gap: 5px; }
-  .chain-chip-label { display: none; }
-  .chain-chip-bar { width: 24px; }
   .best-chip { padding: 4px 9px 5px; gap: 4px; }
   .best-chip-label { font-size: .48rem; }
   .best-chip-value { font-size: .82rem; }
@@ -1077,14 +1056,9 @@ kbd.active {
    docs/Technical/CLEAR_CELEBRATION_AUDIO_HANDOFF.md §3 / §4.3 / §4.4 / §8
    ============================================================ */
 
-/* §3 CHAIN：普通增长只更新 HUD，里程碑才给一次「纸结」闪动。它挂在本来就存在的链数
-   pill 上——不新增计数器，也不自创计分（分数仍由 score.chainMilestone 决定）。 */
-@keyframes chainMilestone {
-  0% { transform: scale(1); }
-  26% { transform: scale(1.14); }
-  100% { transform: scale(1); }
-}
-.chain-chip.milestone { animation: chainMilestone .6s ease-out; box-shadow: 0 0 0 3px rgba(231,183,95,.42), 0 12px 22px rgba(120,70,10,.28); }
+/* §3 CHAIN 里程碑闪动：REMOVED in v0.10.3 with the pill it animated. Version 2 has no chain
+   milestone at all (the streak reward replaced it), so the keyframes and the `.milestone`
+   class are gone rather than left as a rule nothing can trigger. */
 
 /* §4.3 图像刷新：换批的图是「托盘重排」，不是棋盘上的一次爆破。纯装饰——条带布局、
    按钮与它们的指针目标一个都不动。 */
@@ -1125,10 +1099,10 @@ kbd.active {
 }
 
 /* §8：减少动态效果是独立的一轴——它只关掉运动，不关声音、不关触感，也不丢信息：
-   纸彩不飞，但纪录标识与链数照常出现。 */
+   纸彩不飞，但纪录标识与奖励短签照常出现（短签本身是文字，位移只是它的入场）。 */
 @media (prefers-reduced-motion: reduce) {
-  .chain-chip.milestone { animation: none; }
   #piece-slots.sweeping .piece-slot { animation: none; }
   .game-over-best.stamped { animation: none; }
   .record-chip { animation: none; opacity: 0; }
+  .reward-note { transition: none; }
 }

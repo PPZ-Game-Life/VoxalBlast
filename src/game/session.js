@@ -23,6 +23,7 @@ import { FACES, SH, isShell } from './board.js'
 import { SHAPES } from './shapes.js'
 import { WARMUP_BATCHES } from './dealConfig.js'
 import { revive as reviveDirector } from './dealDirector.js'
+import { REWARD_ORDER } from './scoring.js'
 import { pickStorage, probeStorage } from '../platform/storage.js'
 
 export const SESSION_VERSION = 2
@@ -112,6 +113,17 @@ export function migrate(raw) {
   })
   const pose = raw.pose && typeof raw.pose === 'object' ? raw.pose : {}
 
+  // ---- v0.10.3: the SCORE rules the run is playing under (handoff §5.1) -------------------
+  // This is the SAVE's migration of a RULE version, and it deliberately defaults to 1: a
+  // snapshot written before this round has no field at all, and §5.1 fixes that case as
+  // 「缺字段的旧档视为版本 1」. Only an explicit 2 resumes into the new score. It is NOT
+  // SESSION_VERSION: that number versions this file's FORMAT (and is still 2), so the two
+  // must never share a field or a migration.
+  const scoreRulesVersion = rawRun.scoreRulesVersion === 2 ? 2 : 1
+  const rawRewardCounts = rawRun.rewardCounts && typeof rawRun.rewardCounts === 'object' ? rawRun.rewardCounts : {}
+  const rewardCounts = {}
+  REWARD_ORDER.forEach((type) => { rewardCounts[type] = toCount(rawRewardCounts[type]) })
+
   // ---- v0.9.0 P1: the run's difficulty progress (§4.3) ------------------------
   // A v1 save has no director at all. The spec's rules for that case are explicit:
   //   - do NOT reconstruct the step count from the score (it is not the same quantity, and a
@@ -146,6 +158,9 @@ export function migrate(raw) {
     director,
     streams,
     run: {
+      scoreRulesVersion,
+      rewardEventId: toCount(rawRun.rewardEventId),
+      rewardCounts,
       chain: toCount(rawRun.chain),
       bestChain: toCount(rawRun.bestChain),
       maxLinesOneMove: toCount(rawRun.maxLinesOneMove),

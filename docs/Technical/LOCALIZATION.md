@@ -43,22 +43,24 @@ v0.9.17 之前，游戏是"双语"的，但不是"本地化"的：设置/排行�
 ```js
 // en.js
 'toast.saved': 'Saved',
-'pop.faces': ({ n }) => `${n} FACE${n === 1 ? '' : 'S'}`,
+'reward.FACE_CLEAR.title': ({ n }) => `${n} FACE${n === 1 ? '' : 'S'} CLEARED`,
 // zh-Hans.js
 'toast.saved': '已保存',
-'pop.faces': ({ n }) => `${n} 面`,
+'reward.FACE_CLEAR.title': ({ n }) => `清空 ${n} 面`,
 ```
 
 ```js
 import { t } from '../i18n/index.js'
 setStatus(t('toast.saved'))
-setStatus(t('pop.faces', { n: count }))
+setStatus(t('reward.FACE_CLEAR.title', { n: count }))
 ```
 
 规则：
 
 - **键名分层**：`区域.用途`（`status.*` `toast.*` `item.*` `home.*` `settings.*` `controls.*`
-  `gameover.*` `leaderboard.*` `honor.<ID>.*` `record.<key>` `tier.<n>.*` `hud.*` `a11y.*`）。
+  `gameover.*` `leaderboard.*` `reward.<TYPE>.*` `honor.<ID>.*` `record.<key>` `tier.<n>.*`
+  `hud.*` `a11y.*`）。`reward.*` 是 v0.11.0 的三类奖励短签（一次多消／连续消除／清除整面）；
+  `honor.<ID>.*` 自 v0.11.0 起只服务 v1 旧局与只读历史，新局不再产生。
 - **值可以是字符串或函数**。单复数、量词、语序**留在语言文件里**：英文 `1 block / 2 blocks`
   是英语的语法，不是调用方该知道的事，中文那份直接忽略 `{n === 1}`。
 - **占位符必须两边一致**：`{n}` / `{points}` 的名字写错不会报错，只会把 `{points}` 印在屏幕上，

@@ -11,12 +11,10 @@ export default Object.freeze({
   // ---- HUD chrome -----------------------------------------------------------
   'hud.score': 'SCORE',
   'hud.best': 'BEST',
-  'hud.chain': 'CHAIN',
 
   // ---- Accessibility labels on static markup --------------------------------
   'a11y.score': 'Score',
   'a11y.bestScore': 'Best score',
-  'a11y.chain': 'Clear streak',
   'a11y.sound': 'Sound',
   'a11y.version': 'Game version',
   'a11y.controls': 'Controls',
@@ -60,11 +58,25 @@ export default Object.freeze({
   'toast.noSpotTryRefresh': 'No spot - try Refresh',
   'toast.nothingToRestore': 'Nothing to restore',
   'toast.offline': 'Offline mode',
-  'toast.clearScore': ({ lines, multiplier, points }) => `${lines} LINE${lines === 1 ? '' : 'S'}  x${multiplier}  +${points}`,
+  // §5.2: the one-off notice a resumed legacy run gets. It says what is true — the run keeps the
+  // scoring it started on — and nothing about what the player should do about it.
+  'toast.legacyRules': 'This run keeps the scoring it started on',
 
-  // ---- Score pop ------------------------------------------------------------
-  'pop.lines': ({ n }) => `${n} LINE${n === 1 ? '' : 'S'}`,
-  'pop.faces': ({ n }) => `${n} FACES`,
+  // ---- Reward note (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.2) ---------------
+  // ONE title per settled hand, chosen by the headline category, plus one merged detail line
+  // that names every category that paid. The three titles are the doc's own copy:
+  // 「一次消除 {L} 线」/ `{L}-LINE CLEAR`, 「连续消除 {C} 次」/ `STREAK {C}`,
+  // 「清空 {W} 面」/ `{W} FACE(S) CLEARED`. `{n}` is the category's own count (lines, streak,
+  // faces) — never the score, which the total pop carries.
+  'reward.MULTI_CLEAR.title': ({ n }) => `${n}-LINE CLEAR`,
+  'reward.MULTI_CLEAR.detail': ({ n }) => `${n} line${n === 1 ? '' : 's'}`,
+  'reward.MULTI_CLEAR.name': 'Multi-clear',
+  'reward.CLEAR_STREAK.title': ({ n }) => `STREAK ${n}`,
+  'reward.CLEAR_STREAK.detail': ({ n }) => `streak ${n}`,
+  'reward.CLEAR_STREAK.name': 'Streak',
+  'reward.FACE_CLEAR.title': ({ n }) => `${n} FACE${n === 1 ? '' : 'S'} CLEARED`,
+  'reward.FACE_CLEAR.detail': ({ n }) => `${n} face${n === 1 ? '' : 's'}`,
+  'reward.FACE_CLEAR.name': 'Face clear',
 
   // ---- Items (07-道具系统设计.md §8.10) -------------------------------------
   'item.name.refresh': 'Refresh',
@@ -188,14 +200,21 @@ export default Object.freeze({
   'gameover.newBest': '★ NEW BEST!',
   'gameover.gap': ({ n }) => `${n} short of the record`,
   'gameover.noHonors': 'No honors this run',
+  // v0.10.3 (§5.3): a version-2 run lists the three bonus categories it earned, not the six
+  // honours it can no longer win. The label is the empty state for that list.
+  'gameover.noRewards': 'No bonus clears this run',
   'gameover.facesLabel': 'SIX-FACE SWEEP',
   'gameover.dim.bigMove': ({ n }) => `Best move: ${n} lines at once`,
   'gameover.dim.triface': ({ n }) => `${n} triple-face clears`,
+  'gameover.dim.faceClear': ({ n }) => `${n} faces emptied`,
   'gameover.dim.chain': ({ n }) => `Longest chain ${n}`,
   'gameover.dim.faces': ({ n }) => `${n}/6 faces lit`,
   'gameover.stat.chain': 'Longest chain',
   'gameover.stat.lines': 'Most in one move',
   'gameover.stat.triface': 'Triple-face moves',
+  // The version-2 replacement for the triple-face count: under the new rules the number that
+  // says "you released space" is how many faces were emptied, and TRIFACE no longer exists.
+  'gameover.stat.faceClear': 'Faces emptied',
   'gameover.stat.weekly': 'Best this week',
 
   // ---- Leaderboard ----------------------------------------------------------
@@ -205,8 +224,18 @@ export default Object.freeze({
   'leaderboard.personalBest': 'Personal best',
   'leaderboard.best': 'Best score',
   'leaderboard.weekly': 'Best this week',
+  // §5.3: BEST and the weekly best are compared inside ONE scoring rule set. The legacy pool is
+  // shown read-only, labelled, and never overwritten by a run on the new rules.
+  'leaderboard.bestLegacy': 'Best score · old rules',
+  'leaderboard.weeklyLegacy': 'Best this week · old rules',
+  'leaderboard.recentLegacy': ({ n }) => `Last ${n} games · old rules`,
+  // How many of the stored games belong to the other rule set. They are not drawn as bars
+  // (§5.3 不把不同分制混榜) but they are not hidden either.
+  'leaderboard.recentOtherRules': ({ n }) => `${n} more game${n === 1 ? '' : 's'} stored under the other scoring rules`,
   'leaderboard.gamesPlayed': 'Games played',
   'leaderboard.honors': 'Honor collection',
+  'leaderboard.honorsLegacy': 'Honor collection · old rules',
+  'leaderboard.rewards': 'Bonus clears',
   'leaderboard.empty': 'No games recorded yet',
   'leaderboard.tierUncalibrated': 'Tiers not calibrated yet',
   'leaderboard.tierUncalibratedNote': 'Cut scores follow real player quantiles once the difficulty is final.',
@@ -214,4 +243,8 @@ export default Object.freeze({
   'leaderboard.globalBy': 'Global leaderboard by CrazyGames',
   'leaderboard.openGlobal': 'Open global leaderboard',
   'leaderboard.comingSoon': 'Coming soon',
+  // §5.5: the board is routed per scoring rule set. Until a route exists for the current rules
+  // the entry says so — 「not yet」 is a different statement from 「coming soon」, and a player who
+  // just scored under the new rules is owed the true one.
+  'leaderboard.rulesUnrouted': 'No global board for the current scoring rules yet',
 })

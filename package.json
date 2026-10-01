@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.10.1",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -30,6 +30,7 @@
     "gates": "node tools/i18n-tests.mjs && node tools/rule-tests.mjs && node tools/game-session-tests.mjs && node tools/refactor-interaction-probe.mjs && node tools/refactor-ui-probe.mjs && node tools/refactor-churn-probe.mjs",
     "reachability": "node tools/reachability.mjs all",
     "probe:celebration": "node tools/celebration-audio-probe.mjs",
+    "demo:rewards": "node tools/reward-demo.mjs",
     "fixtures:grounding": "node tools/material-grounding-fixtures.mjs",
     "probe:grounding": "node tools/material-grounding-probe.mjs"
   },

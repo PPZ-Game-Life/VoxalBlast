@@ -1,12 +1,24 @@
-// VoxalBlast score model (v0.3) — docs/Planning/08-荣誉与排行榜系统.md §4.
+// VoxalBlast score model — TWO rule sets, one file.
 //
-// Every coefficient of the score lives HERE and nowhere else. Retuning the
-// balance must be an edit to SCORING, never a hunt through main.js; the four
-// layers are pure functions so tools/rule-tests.mjs can drive them directly.
+// v0.10.3 (docs/Technical/SCORE_REWARD_SIMPLIFICATION_HANDOFF.md): the game ships a second
+// scoring rule set. Both live here, because "every coefficient of the score lives HERE and
+// nowhere else" is the property that makes the balance auditable, and splitting them across
+// two modules would make "which formula did this run use" a question about file layout.
 //
-// Main score stays reproducible by design (08 §5.4): no random crit, no item
-// multiplier, no probabilistic trigger. A score that cannot be replayed cannot
-// back a leaderboard.
+//   * SCORE_RULES_V1 / SCORING / moveScore()      — the shipped 08 §4 rules.
+//     LEGACY ONLY. A run that was already in progress on a version-1 save finishes on these
+//     rules (§5.2: 不中途改价), and tools/reachability.mjs + the old-formula regression in
+//     tools/rule-tests.mjs still drive them. No new run reaches them.
+//   * SCORE_RULES_VERSION / SCORING_V2 / settleScore() — this round's simplification:
+//     基础放置分 + 基础消线分 + 三类额外奖励（一次多消 / 连续消除 / 清除整面）, and nothing
+//     else. No cross-face bonus, no chain milestone, no honour bonus, no multiplier stacking.
+//
+// Both are pure functions so tools/rule-tests.mjs can drive them directly, and both stay
+// reproducible by design (08 §5.4): no random crit, no item multiplier, no probabilistic
+// trigger. A score that cannot be replayed cannot back a leaderboard.
+export const SCORE_RULES_V1 = 1
+export const SCORE_RULES_VERSION = 2
+
 export const SCORING = Object.freeze({
   // §4.1 placement score — paid for every cell that lands, cleared or not, so a
   // turn spent building still reads as progress instead of a waste.
@@ -41,11 +53,52 @@ export const SCORING = Object.freeze({
   ]),
 })
 
-// Proven per-move ceiling (08 §2.2 / 09 §1.1). A count above it can only come
-// from a rule change, so it clamps rather than inventing a multiplier.
+// ---- v2: the simplified table (handoff §2.1, 首轮推荐值) ------------------------
+//
+// Five numbers, plus the two caps the doc states as caps. Everything else the old rules
+// paid for is gone: the凸 multiplier curve, the cross-face bonus, the chain milestone and
+// the six honour bonuses are all absent rather than set to zero, so a future reader cannot
+// mistake a disabled branch for a live one.
+//
+// The multi-clear bonus is deliberately LINEAR (`100 × (L-1)`): the doc accepts that this
+// weakens the old ultra-rare 5+ line payout, because 玩家能算清楚自己的分数 outranks it
+// (handoff §7 「这是简化的代价」). Do not put the honour bonus back to compensate.
+export const SCORING_V2 = Object.freeze({
+  placePerCell: 10,
+  lineBase: 100,
+  multiStep: 100, // 每多一条线 +100, from the 2nd line on
+  streakStep: 50, // 连续消除第 2 次起，每级 +50 ...
+  streakCap: 4, // ... 最高 4 级（第 5 次起封顶 +200，次数仍显示真实值）
+  faceClear: 300, // 每个净面 +300
+})
+
+// The three reward categories, fixed ids (§4.1). `REWARD_ORDER` is the order they are
+// built and listed in (the doc's own §2.1 order); `REWARD_PRIORITY` is the MAIN-TITLE
+// order of §3.3 — 清除整面 > 一次多消 > 连续消除. They are two different questions
+// ("which do we list" vs "which do we headline") and are kept apart on purpose.
+export const REWARD_TYPES = Object.freeze({
+  MULTI_CLEAR: 'MULTI_CLEAR',
+  CLEAR_STREAK: 'CLEAR_STREAK',
+  FACE_CLEAR: 'FACE_CLEAR',
+})
+export const REWARD_ORDER = Object.freeze([
+  REWARD_TYPES.MULTI_CLEAR, REWARD_TYPES.CLEAR_STREAK, REWARD_TYPES.FACE_CLEAR,
+])
+export const REWARD_PRIORITY = Object.freeze([
+  REWARD_TYPES.FACE_CLEAR, REWARD_TYPES.MULTI_CLEAR, REWARD_TYPES.CLEAR_STREAK,
+])
+
+// Proven per-move ceiling (08 §2.2 / 09 §1.1). A count above it can only come from
+// a rule change, so it clamps rather than inventing a multiplier.
 export const MAX_LINES_PER_MOVE = SCORING.lineMultipliers.length - 1
 
 const count = (value) => Math.max(0, Math.trunc(value) || 0)
+
+// ----------------------------------------------------------------------------
+// v1 — legacy formula. Kept byte-for-byte identical to what shipped, because a
+// version-1 run in flight is still scored by it and the frozen measurements in
+// docs/Technical/DIFFICULTY_*.md were taken against these exact numbers.
+// ----------------------------------------------------------------------------
 
 export function lineMultiplier(lineCount) {
   return SCORING.lineMultipliers[Math.min(MAX_LINES_PER_MOVE, count(lineCount))]
@@ -76,11 +129,12 @@ export function chainMilestoneBonus(chain) {
 // The streak rule itself (§4.4): a placement that cleared something extends the
 // chain, one that cleared nothing drops it to zero. Tiny and pure on purpose — it is
 // the one line the balance of the whole streak layer hangs on, so it is stated once.
+// v2 keeps this rule unchanged (§2.3: 同一口径，只是第二次才开始给奖).
 export function nextChain(chain, lines) {
   return count(lines) > 0 ? count(chain) + 1 : 0
 }
 
-// One place that turns a settled move into points (§4.5):
+// One place that turns a settled move into points, LEGACY rules (§4.5):
 //   放置分 + 线分 + 跨面奖励 + 链加成(含里程碑) + Σ 荣誉加分
 //
 // `chain` is the chain length AFTER this move — a clearing move increments first,
@@ -104,4 +158,114 @@ export function moveScore({ cellCount = 0, lines = 0, faces = 0, chain = 0, hono
     honor,
     total: placement + line + face + chainLinks + milestone + honor,
   }
+}
+
+// ----------------------------------------------------------------------------
+// v2 — the simplified formula (handoff §2)
+// ----------------------------------------------------------------------------
+
+// `wipedFaces` arrives as Board.place()'s `faceWiped` — a list of face IDS, not a count,
+// because the presentation layer needs to know WHICH faces to outline (§4.1). Anything
+// else (a number, a stale save field, undefined) normalizes to an id-free count so a
+// caller can never be paid twice for the same face.
+//   - `undefined`/absent → 0 faces (看得见的“没传”比猜一个数安全)
+//   - a number           → that many anonymous faces
+//   - an array           → its DISTINCT entries
+export function normalizeWipedFaces(wipedFaces) {
+  if (Array.isArray(wipedFaces)) return [...new Set(wipedFaces)].length
+  return count(wipedFaces)
+}
+
+// §2.1 一次多消: 同手 L 条线，L>=2 起 +100×(L-1)。一次多消 only looks at THIS hand.
+export function multiClearBonus(lines) {
+  const lineCount = count(lines)
+  return lineCount >= 2 ? SCORING_V2.multiStep * (lineCount - 1) : 0
+}
+
+// §2.3 连续消除: 第二次连续消除起给奖，C-1 级、封顶 4 级（C>=5 都是 +200）。
+// The CHAIN still counts真实次数 (显示「连续消除 12 次」), only the money caps.
+export function streakBonus(lines, chain) {
+  if (count(lines) <= 0) return 0
+  const step = Math.min(Math.max(count(chain) - 1, 0), SCORING_V2.streakCap)
+  return SCORING_V2.streakStep * step
+}
+
+// §2.4 清除整面: 落子前非空 → 正常结算后为空。That test is Board.place()'s `faceWiped`;
+// this function只负责定价，不做判定（判定只有一个来源）。
+export function faceClearBonus(lines, wipedFaces) {
+  if (count(lines) <= 0) return 0
+  return SCORING_V2.faceClear * normalizeWipedFaces(wipedFaces)
+}
+
+// The three bonuses, each settled ONCE, as the reward list §4.1 asks for: zero-bonus
+// categories produce NO entry (so the presentation layer can never print "+0").
+//
+// `primaryType` is the §3.3 headline: 清除整面 > 一次多消 > 连续消除. It is a statement
+// about reading order, not a claim about rarity.
+export function resolveRewards({ lines = 0, chain = 0, wipedFaces = 0 } = {}) {
+  const bonusOf = {
+    [REWARD_TYPES.MULTI_CLEAR]: multiClearBonus(lines),
+    [REWARD_TYPES.CLEAR_STREAK]: streakBonus(lines, chain),
+    [REWARD_TYPES.FACE_CLEAR]: faceClearBonus(lines, wipedFaces),
+  }
+  const counts = {
+    [REWARD_TYPES.MULTI_CLEAR]: count(lines),
+    [REWARD_TYPES.CLEAR_STREAK]: count(chain),
+    [REWARD_TYPES.FACE_CLEAR]: normalizeWipedFaces(wipedFaces),
+  }
+  const rewards = REWARD_ORDER
+    .filter((type) => bonusOf[type] > 0)
+    .map((type) => ({ type, count: counts[type], bonus: bonusOf[type] }))
+  const primaryType = REWARD_PRIORITY.find((type) => bonusOf[type] > 0) || null
+  return {
+    rewards,
+    primaryType,
+    multiBonus: bonusOf[REWARD_TYPES.MULTI_CLEAR],
+    streakBonus: bonusOf[REWARD_TYPES.CLEAR_STREAK],
+    faceClearBonus: bonusOf[REWARD_TYPES.FACE_CLEAR],
+  }
+}
+
+// ONE settled move → the whole score, in the shape §4.1 fixes:
+//   { placement, linePoints, multiBonus, streakBonus, faceClearBonus, total, rewards, primaryType }
+//
+// `total` is ALWAYS the sum of the five named parts (the assertion in §6.1), and there is
+// no path through here that adds a sixth term — no honour bonus, no cross-face bonus, no
+// milestone, no multiplier. The old `faces` (facesHit) argument is deliberately NOT
+// accepted: a shared edge counts a line on two faces, so paying for facesHit would pay
+// the same clear twice (handoff §2.4 「后者绝不能直接拿来发整面奖」).
+export function settleScore({ cellCount = 0, lines = 0, chain = 0, wipedFaces = 0 } = {}) {
+  const lineCount = count(lines)
+  const placement = SCORING_V2.placePerCell * count(cellCount)
+  const linePoints = SCORING_V2.lineBase * lineCount
+  const reward = resolveRewards({ lines: lineCount, chain, wipedFaces })
+  return {
+    placement,
+    linePoints,
+    multiBonus: reward.multiBonus,
+    streakBonus: reward.streakBonus,
+    faceClearBonus: reward.faceClearBonus,
+    rewards: reward.rewards,
+    primaryType: reward.primaryType,
+    total: placement + linePoints + reward.multiBonus + reward.streakBonus + reward.faceClearBonus,
+  }
+}
+
+// Presentation intensity of a settled v2 move — the SAME L0–L5 ladder the celebration
+// budget, the clear cue and the L5 dip are indexed by, derived from the reward result
+// instead of re-reading lines and facesHit (handoff §3.4: 新奖励展示必须直接消费本次统一
+// 奖励事件，不能按 facesHit 自行升级).
+//
+// This is a RULE-side number (honors.js kept the v1 one); the seconds, the paper counts
+// and the shake it maps to are presentation numbers and live in rendering/config.js.
+export function rewardLevel({ lines = 0, rewards = [] } = {}) {
+  const lineCount = count(lines)
+  let level = lineCount >= 5 ? 5 : lineCount >= 1 ? lineCount : 0
+  const bump = (value) => { level = Math.max(level, value) }
+  for (const reward of rewards || []) {
+    if (reward.type === REWARD_TYPES.MULTI_CLEAR) bump(reward.count >= 5 ? 5 : reward.count >= 4 ? 4 : reward.count >= 3 ? 3 : 2)
+    else if (reward.type === REWARD_TYPES.CLEAR_STREAK) bump(reward.count >= 5 ? 4 : reward.count >= 3 ? 3 : 2)
+    else if (reward.type === REWARD_TYPES.FACE_CLEAR) bump(reward.count >= 2 ? 4 : 3)
+  }
+  return level
 }

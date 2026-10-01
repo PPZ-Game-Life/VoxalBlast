@@ -13,6 +13,7 @@
 import { createGameSession } from '../src/game/gameSession.js'
 import { SH, FACES, faceLattice, isShell } from '../src/game/board.js'
 import { SHAPES, normalizeCells } from '../src/game/shapes.js'
+import { SCORE_RULES_V1, SCORE_RULES_VERSION, REWARD_TYPES } from '../src/game/scoring.js'
 
 let total = 0
 let passed = 0
@@ -87,6 +88,14 @@ function fillRowExceptOne(s, face, v, exceptU) {
   return records.length
 }
 
+// One cell on `face`, away from the row `v` that is about to be cleared, so the clear does NOT
+// empty the face. Without it a single-line hand also wipes the face it cleared (the face had
+// nothing else on it), and the hand would stop being the "plain line" these tests describe.
+function keepFaceFromEmptying(s, face, v) {
+  const [x, y, z] = faceLattice(face, 0, v === 1 ? 3 : 1)
+  s.board.addCells([{ x, y, z, color: 0 }])
+}
+
 // ---- 4. placement, clearing and the return shape --------------------------------
 // An INTERIOR row (v = 2): its cells are not shared with a neighbouring face, so exactly one line
 // is completed. The edge rows are covered separately in test 5 - they really do clear two faces.
@@ -100,7 +109,7 @@ function fillRowExceptOne(s, face, v, exceptU) {
   const settled = s.settlePlacement(face, [[0, 0]], { u: 4, v: 2 }, 3)
   const keys = Object.keys(settled).sort().join(',')
   check('settlePlacement returns the documented shape',
-    keys === 'honors,level,lineCount,lines,previousChain,result,score,step', keys)
+    keys === 'honors,level,lineCount,lines,previousChain,result,rewardEvent,score,step', keys)
   // v0.9.0 P1: `step` is the director's answer to "this was placement N" — the counter the
   // tier ladder and the challenge stretch are derived from. It is asserted here so the one
   // path that may increment it stays exactly this one.
@@ -154,6 +163,128 @@ function fillRowExceptOne(s, face, v, exceptU) {
   check('the dead turn still scored', dead.score.total > 0 && s.board.score > 0)
   check('the dead turn put its cell on the board', s.board.occupied().length === 1, `${s.board.occupied().length}`)
   check('the dead turn earned no honor', dead.honors.ids.length === 0 && s.run.honors.length === 0)
+}
+
+// ---- 6b. the three rewards, settled by the session (v0.10.3 §4.1) ----------------
+// The reward EVENT is the single source of truth the presentation consumes: it must carry the
+// event id, the rules version, the three counts and the per-category bonus — and the run's own
+// tally must count EVENTS, not points.
+{
+  const s = fresh()
+  check('a fresh run plays the current rules', s.run.scoreRulesVersion === SCORE_RULES_VERSION,
+    `v${s.run.scoreRulesVersion}`)
+  check('a fresh run has no reward tally', Object.values(s.run.rewardCounts).every((value) => value === 0))
+  check('a fresh run has no reward events yet', s.run.rewardEventId === 0)
+
+  // One line, one hand: no extra reward, and the event says so with an empty list.
+  fillRowExceptOne(s, '+z', 2, 4)
+  keepFaceFromEmptying(s, '+z', 2)
+  const first = s.settlePlacement('+z', [[0, 0]], { u: 4, v: 2 }, 3)
+  check('the plain line really cleared one line and no face', first.lineCount === 1 && first.result.faceWiped.length === 0,
+    `lines=${first.lineCount} wiped=${first.result.faceWiped.join(',')}`)
+  check('a plain single line produces an event', first.rewardEvent !== null)
+  check('the event carries the event id 1', first.rewardEvent.eventId === 1, `${first.rewardEvent.eventId}`)
+  check('the event carries the rules version', first.rewardEvent.scoreRulesVersion === SCORE_RULES_VERSION)
+  check('the event has no reward entry for a plain line', first.rewardEvent.rewards.length === 0)
+  check('and no headline', first.rewardEvent.primaryType === null)
+  check('the event total is the hand total', first.rewardEvent.total === first.score.total,
+    `${first.rewardEvent.total} vs ${first.score.total}`)
+
+  // Second consecutive line: the streak pays, and only from the second clear on.
+  fillRowExceptOne(s, '+x', 2, 4)
+  keepFaceFromEmptying(s, '+x', 2)
+  const second = s.settlePlacement('+x', [[0, 0]], { u: 4, v: 2 }, 3)
+  const streak = second.rewardEvent.rewards.find((reward) => reward.type === REWARD_TYPES.CLEAR_STREAK)
+  check('the second consecutive clear pays the streak reward', Boolean(streak), JSON.stringify(second.rewardEvent.rewards))
+  check('the streak reward carries the real chain length', streak.count === 2, `${streak.count}`)
+  check('the streak reward pays 50 at C=2', streak.bonus === 50, `${streak.bonus}`)
+  check('the streak headlines a single line', second.rewardEvent.primaryType === REWARD_TYPES.CLEAR_STREAK)
+  check('the run tallied one streak event', s.run.rewardCounts.CLEAR_STREAK === 1, `${s.run.rewardCounts.CLEAR_STREAK}`)
+  check('the run tallied no multi event', s.run.rewardCounts.MULTI_CLEAR === 0)
+  check('the event id advanced', s.run.rewardEventId === 2, `${s.run.rewardEventId}`)
+
+  // A dead turn breaks the chain and produces no reward at all — and still counts as an event.
+  const dead = s.settlePlacement('+z', [[0, 0]], { u: 0, v: 0 }, 3)
+  check('a dead turn still produces an event', dead.rewardEvent !== null && dead.rewardEvent.eventId === 3)
+  check('the dead turn has no rewards', dead.rewardEvent.rewards.length === 0)
+  check('the dead turn reset the chain', dead.rewardEvent.chain === 0, `${dead.rewardEvent.chain}`)
+  check('the dead turn left the tallies exactly as they were',
+    s.run.rewardCounts.CLEAR_STREAK === 1 && s.run.rewardCounts.MULTI_CLEAR === 0 && s.run.rewardCounts.FACE_CLEAR === 0,
+    JSON.stringify(s.run.rewardCounts))
+}
+
+// ---- 6c. an edge clear pays the multi bonus AND the face bonus -------------------
+// The one hand that can hit two categories at once without any setup trickery: an edge row is
+// two lines on two faces, and it empties both of them (they had nothing else on them).
+{
+  const s = fresh()
+  fillRowExceptOne(s, '+z', 0, 4)
+  const settled = s.settlePlacement('+z', [[0, 0]], { u: 4, v: 0 }, 3)
+  const event = settled.rewardEvent
+  check('the edge clear produces two rewards', event.rewards.length === 2, JSON.stringify(event.rewards))
+  check('the multi reward counts the two lines', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.count === 2)
+  check('the multi reward pays 100', event.rewards.find((r) => r.type === REWARD_TYPES.MULTI_CLEAR)?.bonus === 100)
+  const face = event.rewards.find((r) => r.type === REWARD_TYPES.FACE_CLEAR)
+  check('the face reward counts the emptied faces', face?.count === 3, `${face?.count}`)
+  check('the face reward pays 300 per face', face?.bonus === 900, `${face?.bonus}`)
+  check('the headline is the face clear', event.primaryType === REWARD_TYPES.FACE_CLEAR)
+  check('the wiped faces are reported by ID, not just counted', event.wipedFaces.join(',') === '-x,-y,+z',
+    event.wipedFaces.join(','))
+  check('the run tallied both categories',
+    s.run.rewardCounts.MULTI_CLEAR === 1 && s.run.rewardCounts.FACE_CLEAR === 1,
+    JSON.stringify(s.run.rewardCounts))
+  check('the run counted three net faces', s.run.faceWipes === 3, `${s.run.faceWipes}`)
+}
+
+// ---- 6d. a tool clears nothing and earns nothing (v0.10.3 §2.4) ------------------
+// 锤子/火箭/炸弹 directly remove cells: no line settles, no chain moves, no reward is paid, and
+// a later normal placement does not back-pay the face a tool emptied.
+{
+  const s = fresh()
+  fillRowExceptOne(s, '+z', 2, 4)
+  s.settlePlacement('+z', [[0, 0]], { u: 4, v: 2 }, 3)
+  const tallyBefore = { ...s.run.rewardCounts }
+  const chainBefore = s.run.chain
+  const scoreBefore = s.board.score
+  const eventBefore = s.run.rewardEventId
+  // The rocket takes the whole row v=2 on +z — four cells, one of them the row's own remainder.
+  const scope = s.toolScopeCells('rocket', '+z', 0, 2, 'row')
+  s.applyItem('rocket', '+z', 0, 2, 'row')
+  check('the tool really removed cells', s.board.occupied().length < scope.length,
+    `${s.board.occupied().length}`)
+  check('a tool pays no reward', JSON.stringify(s.run.rewardCounts) === JSON.stringify(tallyBefore))
+  check('a tool does not move the chain', s.run.chain === chainBefore, `${s.run.chain}`)
+  check('a tool does not score', s.board.score === scoreBefore, `${s.board.score}`)
+  check('a tool does not create a reward event', s.run.rewardEventId === eventBefore)
+}
+
+// ---- 6e. a version-1 run keeps playing version 1 (v0.10.3 §5.2) ------------------
+// A save that predates the split resumes on the OLD formula until it ends, and it produces no
+// three-category event at all — the presentation must not invent one for it.
+{
+  const legacy = fresh()
+  legacy.run.scoreRulesVersion = SCORE_RULES_V1
+  fillRowExceptOne(legacy, '+z', 2, 4)
+  keepFaceFromEmptying(legacy, '+z', 2)
+  const settled = legacy.settlePlacement('+z', [[0, 0]], { u: 4, v: 2 }, 3)
+  check('a legacy run reports no reward event', settled.rewardEvent === null)
+  check('a legacy run still gets its honour object', settled.honors !== null && Array.isArray(settled.honors.ids))
+  // 10 placement + 100 line + 25 chain-per-link(1) = 135. The chain is paid from the FIRST clear
+  // under the old rules, which is exactly what version 2 removed.
+  check('a legacy run is scored by the legacy formula', settled.score.total === 135,
+    `${settled.score.total}`)
+  check('a legacy run has no v2 score fields', settled.score.multiBonus === undefined)
+  check('a legacy run leaves the reward tally empty', Object.values(legacy.run.rewardCounts).every((v) => v === 0))
+
+  // The same move under the current rules: 10 + 100, and nothing else. The two numbers differ,
+  // which is the whole reason the two pools cannot share a BEST.
+  const modern = fresh()
+  fillRowExceptOne(modern, '+z', 2, 4)
+  keepFaceFromEmptying(modern, '+z', 2)
+  const priced = modern.settlePlacement('+z', [[0, 0]], { u: 4, v: 2 }, 3)
+  check('the same single line under the current rules', priced.score.total === 110, `${priced.score.total}`)
+  check('the two rule sets really price one move differently', settled.score.total !== priced.score.total,
+    `${settled.score.total} vs ${priced.score.total}`)
 }
 
 // ---- 7. a placement is refused where the board says no --------------------------

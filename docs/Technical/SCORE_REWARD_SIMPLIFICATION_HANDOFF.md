@@ -1,5 +1,20 @@
 # 局内计分简化与三类奖励反馈｜Jeffy 实现交接
 
+> **实现状态（Jeffy，2026-10-01，v0.11.0）：本稿已实现并过门禁。**
+> 落点：`src/game/scoring.js`（`SCORING_V2` / `settleScore` / `resolveRewards` / `rewardLevel`，
+> 旧公式 `SCORING` / `moveScore` 保留给 v1 旧局）、`src/game/gameSession.js`（统一 `rewardEvent`）、
+> `src/ui/hud.js`（合并奖励短签）、`src/audio/gameAudio.js`（`streak-2` / `streak-hi` / `streak-tail` / `face-clear`）、
+> `src/rendering/effects.js`（面扫亮 + 面印章、`triggerRewardShake`）、`src/game/records.js`（分制隔离）、
+> `src/game/session.js`（`scoreRulesVersion` 白名单）。
+> 证据：`npm test` 全绿（含 §6.1 数值表逐行断言与净面边界）；`npm run probe:celebration` 全绿；
+> `npm run demo:rewards` 58/58（桌面 + 竖屏 + 旧档兼容，13 张实机截图落在 `artifacts/visual/reward-*.png`）；
+> `npm run probe:ui` / `probe:score` / `probe:churn` / `probe:interaction` / `probe:drag` / `probe:framing` 全绿。
+> **与设计稿的偏差（均为实现口径，需制作人裁决）**：① 版本号取 `0.11.0` 而非 `0.10.2`——0.10.2 已被
+> revert 过一次，复用会与那条历史撞名；② §5.5 平台分榜：构建期新增 `VITE_CRAZYGAMES_SCORE_RULES`
+> 路由开关，未开时 v2 成绩**不提交**并在榜面板写明「当前分制暂无全球榜」；③ `demoClear` 的
+> `faces`/`milestone` 两个旧参数已删除（探针同步改）；④ `reduced-motion` 下面扫亮降级为静态印章。
+> **未验证**：真人试玩、净面触发频率、三类分值平衡——本稿 §7.4 的前提没有变，仍缺真人样本。
+
 > Luka → Jeffy｜2026-09-30｜方案 v1.0，待实现与试玩验收。
 > 核对基线：`package.json` v0.10.1，HEAD `be52026`。本轮只新增方案，不修改游戏代码、不升版、不声称已完成实机验证。
 > **制作人已明确的方向**：额外奖励只保留「一次多消、连续消除、清除整面」；三类有不同触发表现；取消常驻 Combo。

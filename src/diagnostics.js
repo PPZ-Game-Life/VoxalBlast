@@ -216,15 +216,22 @@ export function createDiagnostics({
       fullLines: session.board.findAllFullLines().map((line) => `${line.face}:${line.axis}:${line.axis === 'row' ? line.v : line.u}`),
       faceOccupancy: Object.fromEntries(FACES.map((face) => [face, session.board.faceOccupancy(face)])),
     }),
-    // The run in progress: chain, per-run bests, which faces have been cleared and the honors
+    // The run in progress: chain, per-run bests, which faces have been cleared and the honours
     // earned — what the Game Over panel and the records layer are fed from.
+    //
+    // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §4.1): `scoreRulesVersion` says which formula
+    // is pricing this run, and `rewardCounts` is the three-category tally a version-2 settlement
+    // card lists. Both are read-only here, like everything else in this hook.
     run: () => ({
+      scoreRulesVersion: session.run.scoreRulesVersion,
       chain: session.run.chain,
       bestChain: session.run.bestChain,
       maxLinesOneMove: session.run.maxLinesOneMove,
       maxFacesOneMove: session.run.maxFacesOneMove,
       facesLit: [...session.run.facesLit],
       faceWipes: session.run.faceWipes,
+      rewardEventId: session.run.rewardEventId,
+      rewardCounts: { ...session.run.rewardCounts },
       honors: [...session.run.honors],
       honorCounts: { ...session.run.honorCounts },
     }),
@@ -327,13 +334,17 @@ export function createDiagnostics({
         // Visual triggers for the headless UI checks: they call the very same functions the
         // gameplay path calls, so a screenshot of them is a screenshot of the real rendering,
         // not a hand-built mock of it.
-        showChain: (chain) => dev.showChain(chain),
-        showHonor: (lines, faces) => dev.showHonor(lines, faces),
+        //
+        // v0.10.3: `showChain` / `showHonor` were removed with the resident CHAIN pill and the
+        // honour banner. `demoReward(lines, chain, wipedFaces)` replaces them: it runs the real
+        // rule (scoring.js settleScore) through the real presentation, which is what the five
+        // demos the handoff's §6.4 asks for are made of.
+        demoReward: (lines, chain, wipedFaces) => dev.demoReward(lines, chain, wipedFaces),
         showScorePop: (points, options) => dev.showScorePop(points, options),
         // v0.10.1 clear-celebration probe: an L1–L5 clear cannot be arranged by playing, so the
         // probe drives the very same spawnClearEffects() the gameplay path calls, plus the two
         // audio-window handles that make "was anything heard since here" answerable.
-        demoClear: (lines, faces, milestone) => dev.demoClear(lines, faces, milestone),
+        demoClear: (lines) => dev.demoClear(lines),
         clearCelebration: () => dev.clearCelebration(),
         audioReset: () => dev.audioReset(),
         audioUnlock: () => dev.audioUnlock(),

@@ -16,6 +16,12 @@
 //   - 荣誉：src/game/honors.js（v0.4 五枚规模系 + 理论区）
 // 这样"模型与规则漂移"不再可能：规则一改，验证器的结论跟着改。
 //
+// ⚠️ v0.11.0（2026-10-01）：本工具用的 `moveScore` 是 **旧分制 v1**，新局已改用
+//    `settleScore()`（基础分 + 三类奖励，无倍率/跨面/里程碑/荣誉奖金）。本工具的
+//    **分数类**输出因此只描述 v1；`tools/results/*.html` 与 `docs/Technical/DIFFICULTY_*.md`
+//    里的历史分数同样是 v1 口径，按「历史数据不重写」原则原样冻结，**不批量重跑**。
+//    可达性与频率类结论（哪些事件可能出现、多少局出现一次）不受分制影响，继续有效。
+//
 // 用法：
 //   node tools/reachability.mjs all
 //   node tools/reachability.mjs p1                                  # 仅完备穷举

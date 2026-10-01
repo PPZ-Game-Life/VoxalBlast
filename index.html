@@ -22,13 +22,10 @@
           <span class="score-chip-label" data-i18n="hud.score">SCORE</span>
           <span id="score" class="score-chip-value">0000</span>
         </div>
-        <!-- CHAIN (v0.3, 08 §7.5): the stake of the streak. Hidden below a chain of
-             HUD_STYLE.chainMinVisible so that breaking it costs something. -->
-        <div id="chain" class="chain-chip" aria-hidden="true" aria-label="Clear streak" data-i18n-aria-label="a11y.chain">
-          <span class="chain-chip-label" data-i18n="hud.chain">CHAIN</span>
-          <span class="chain-chip-value">×<b id="chain-value">0</b></span>
-          <span class="chain-chip-bar" aria-hidden="true"><i id="chain-bar"></i></span>
-        </div>
+        <!-- CHAIN pill removed in v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.1): the
+             chain is still counted and still pays the streak reward, but it has no permanent
+             home on screen — 常驻计数器/进度条/角标换个名字装回来 is exactly what the round
+             forbids. The row below keeps BEST and the icon cluster in the same order. -->
         <!-- BEST is allowed again since 2026-09-11 (04「UI 与发布」修订): it must
              stay visually below SCORE and the row must never wrap. -->
         <div class="best-chip" aria-label="Best score" data-i18n-aria-label="a11y.bestScore">

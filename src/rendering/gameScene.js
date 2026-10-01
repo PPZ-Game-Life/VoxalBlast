@@ -584,6 +584,16 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     }
   }
 
+  // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2): the reward shake is stated in CSS
+  // pixels, and the effects layer applies its offset in world units. This is the SAME
+  // projection conversion the camera lift and the platform fit already use (never a hand-rolled
+  // tan(fov/2)) — one definition of "how big is a pixel here", read by one more caller.
+  function worldPerPixel() {
+    const rect = renderer.domElement.getBoundingClientRect()
+    return (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance)
+      / Math.max(rect.height, 1)
+  }
+
   function framingReport() {
     const rect = renderer.domElement.getBoundingClientRect()
     const solid = cubeScreenBounds()
@@ -631,6 +641,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     stopObservingResize,
     report,
     framingReport,
+    worldPerPixel,
     tuneShadows: (values) => boardShadows?.tune(values),
     // G1 grounding diagnostics. DEV-only by wiring (diagnostics.js mounts them under
     // `__voxalblastDev`), never called by a gameplay path.

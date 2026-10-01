@@ -144,10 +144,19 @@ try {
   }
 
   const clearBus = () => evalJs('globalThis.__voxalblastDev.clearCelebration()')
-  const demo = async (lines, faces = 1, milestone = 0) => {
+  const demo = async (lines) => {
     await clearBus()
     await evalJs('globalThis.__voxalblastDev.audioReset()')
-    return json(`globalThis.__voxalblastDev.demoClear(${lines}, ${faces}, ${milestone})`)
+    return json(`globalThis.__voxalblastDev.demoClear(${lines})`)
+  }
+  // v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3): the three reward signatures. `demoReward`
+  // runs the REAL rule (scoring.js settleScore) through the REAL presentation — the merged note,
+  // the main cue chosen by the headline category, the reward shake — so what this probe hears is
+  // what a settled placement hears.
+  const demoReward = async (lines, chain = 0, wipedFaces = 0) => {
+    await clearBus()
+    await evalJs('globalThis.__voxalblastDev.audioReset()')
+    return json(`globalThis.__voxalblastDev.demoReward(${lines}, ${chain}, ${wipedFaces})`)
   }
   const bus = () => json('globalThis.__voxalblast.audio()')
 
@@ -224,7 +233,7 @@ try {
     await clearBus()
     await sleep(400)
     await evalJs(watchBoard(centre.x, centre.y))
-    await evalJs('globalThis.__voxalblastDev.demoClear(5, 1, 0)')
+    await evalJs('globalThis.__voxalblastDev.demoClear(5)')
     await sleep(1500)
     const watch = await json('globalThis.__boardWatch')
     const peak = watch.reduce((best, entry) => (entry[1] > best[1] ? entry : best), [-1, -1])
@@ -261,19 +270,70 @@ try {
       `cramped=${roomy.event.cramped} spawned=${roomy.event.spawned}`)
   }
 
-  // ---- 3. one main cue per event, and the milestone rides inside it ---------------------
+  // ---- 3. one main cue per event, chosen by the reward headline -------------------------
+  // v0.10.3: the old assertion here was "the chain milestone rides inside the main cue", and the
+  // chain milestone no longer exists. What replaced it is stronger and is what §3.2 asks for:
+  // each of the three categories gets its OWN identifiable cue, a secondary streak is added as
+  // one trimmed tail inside the main one, and the whole thing is still one event.
   const plain = await demo(3)
   const busAfterPlain = await bus()
   check('L3 plays ONE main cue and no stack', busAfterPlain.lastCue === 'clear-l3' && busAfterPlain.voices <= 1,
     `lastCue=${busAfterPlain.lastCue} voices=${busAfterPlain.voices}`)
-  const withMilestone = await demo(3, 1, 10)
-  const busAfterMilestone = await bus()
-  check('the chain milestone is added INSIDE the main cue, not as a second event',
-    busAfterMilestone.lastCue === 'chain-milestone' && busAfterMilestone.voices <= 2,
-    `lastCue=${busAfterMilestone.lastCue} voices=${busAfterMilestone.voices}`)
-  check('the milestone does not change the visual budget',
-    withMilestone.event.budget === plain.event.budget,
-    `${plain.event.budget} -> ${withMilestone.event.budget}`)
+
+  // 一次多消: the ascending clear-lN the ladder already owns — and the shake the doc states for
+  // it (3 线约 2px/100ms), measured in the unit it was asked for.
+  const multi = await demoReward(3)
+  const busAfterMulti = await bus()
+  check('a multi-clear plays the ascending clear cue', busAfterMulti.lastCue === 'clear-l3',
+    `lastCue=${busAfterMulti.lastCue}`)
+  check('the multi-clear shakes 2px for 100ms', multi.rewardShake?.px === 2 && multi.rewardShake?.ms === 100,
+    JSON.stringify(multi.rewardShake))
+  check('and its headline is reported on the event', multi.event.primaryType === 'MULTI_CLEAR',
+    `${multi.event.primaryType}`)
+
+  // 连续消除: its own two-knock cue, NOT the ascending run — that is the whole point of §3.2.
+  const streak = await demoReward(1, 2)
+  const busAfterStreak = await bus()
+  check('a streak plays its own cue, not the ascending run', busAfterStreak.lastCue === 'streak-2',
+    `lastCue=${busAfterStreak.lastCue}`)
+  check('a long streak caps the cue instead of climbing', (await demoReward(1, 9)).event.primaryType === 'CLEAR_STREAK'
+    && (await bus()).lastCue === 'streak-hi', `lastCue=${(await bus()).lastCue}`)
+  check('the streak shake is the doc’s 1px/60ms', streak.rewardShake?.px === 1 && streak.rewardShake?.ms === 60,
+    JSON.stringify(streak.rewardShake))
+
+  // 清除整面: a paper sweep under a bright chord, deliberately NOT an ascending melody.
+  const face = await demoReward(1, 1, 1)
+  const busAfterFace = await bus()
+  check('a face clear plays the face cue', busAfterFace.lastCue === 'face-clear', `lastCue=${busAfterFace.lastCue}`)
+  check('the face clear lights the face it emptied', face.event.wipedFaces.length === 1 && face.event.primaryType === 'FACE_CLEAR',
+    `wiped=${face.event.wipedFaces.join(',')} primary=${face.event.primaryType}`)
+  check('the face shake is the doc’s 2px/100ms', face.rewardShake?.px === 2 && face.rewardShake?.ms === 100,
+    JSON.stringify(face.rewardShake))
+  const twoFaces = await demoReward(1, 1, 2)
+  check('two faces shake harder but still cap', twoFaces.rewardShake?.px === 3 && twoFaces.rewardShake?.ms === 140,
+    JSON.stringify(twoFaces.rewardShake))
+
+  // 同手多类: ONE main cue, at most ONE extra tail, and the shake is the MAXIMUM (never a sum).
+  const stacked = await demoReward(3, 4, 1)
+  const busAfterStacked = await bus()
+  check('a three-category hand is still one event with one headline', stacked.event.primaryType === 'FACE_CLEAR',
+    `${stacked.event.primaryType}`)
+  check('the headline cue plays, with one streak tail inside it',
+    busAfterStacked.voices === 2 && busAfterStacked.lastCue === 'streak-tail',
+    `lastCue=${busAfterStacked.lastCue} voices=${busAfterStacked.voices}`)
+  // 3 lines (2px) + streak (1px) + one face (2px): the answer is the MAXIMUM, so 2px — never the
+  // 5px a sum would give, and never the 3px that only two emptied faces are allowed to ask for.
+  check('the stacked shake is the maximum of the three, not their sum',
+    stacked.rewardShake?.px === 2 && stacked.rewardShake?.px < 2 + 1 + 2, JSON.stringify(stacked.rewardShake))
+  check('and it matches the largest single category in the hand',
+    stacked.rewardShake?.px === Math.max(multi.rewardShake.px, streak.rewardShake.px, face.rewardShake.px),
+    `${stacked.rewardShake?.px}`)
+  check('the reward never changes the visual budget',
+    stacked.event.budget === table[stacked.event.level],
+    `${table[stacked.event.level]} -> ${stacked.event.budget}`)
+  check('and a plain clear still has no reward signature at all',
+    plain.event.primaryType === null && plain.rewardShake === null,
+    `primary=${plain.event.primaryType} shake=${JSON.stringify(plain.rewardShake)}`)
 
   // ---- 4. reduced motion closes MOTION, not the event, and not the sound ----------------
   await send(ws, nextId++, 'Emulation.setEmulatedMedia', {

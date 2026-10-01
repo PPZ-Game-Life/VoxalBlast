@@ -34,12 +34,10 @@ export function collectDom(root = document) {
     app: need('#app'),
     versionEl: need('#app-version'),
 
-    // HUD: score, best, chain, status line and the transient toast.
+    // HUD: score, best, status line and the transient toast. The CHAIN pill's three handles
+    // were removed with the component in v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF §3.1).
     scoreEl: need('#score'),
     bestEl: need('#best'),
-    chainEl: need('#chain'),
-    chainValueEl: need('#chain-value'),
-    chainBarEl: need('#chain-bar'),
     statusEl: need('#status'),
     toastEl: need('#toast'),
     honorLayerEl: need('#honor-layer'),

@@ -167,7 +167,7 @@ npm run dev 启动开发；npm test 执行 tools/rule-tests.mjs（v0.5.0 时为 
 | home | homeUi 的封面报告 + sessionStore 的 `persistent`；intro / candidateFrames / effects 分别是 boardView 的波次报告、pieceView 的候选包围盒、effects 的 `trackedSystems`/`transients`/`shake`/`slowMo` |
 | keys / controls / shapes | keyboard 的键位表、settingsUi 的报告、shapes 的候选池 |
 
-`__voxalblastDev` 只在 `import.meta.env.DEV` 为真时挂载（vite 在生产包里把该标志替换成 `false`，因此生产产物既没有这个对象也没有它背后的闭包）：`endGame` / `openLeaderboard` / `records` / `replayIntro` / `settleIntro` / `triggerSlowMo` / `setItems` / `items` / `jam` / `stuckCheck` / `showChain` / `showHonor` / `showScorePop`。回调本身在 `src/main.js` 里构建——`jam()` 会写满自由格、`showChain()` 会改 run 账本，它们是玩法动作而不是读出口，diagnostics 只负责把名字挂上去。
+`__voxalblastDev` 只在 `import.meta.env.DEV` 为真时挂载（vite 在生产包里把该标志替换成 `false`，因此生产产物既没有这个对象也没有它背后的闭包）：`endGame` / `openLeaderboard` / `records` / `replayIntro` / `settleIntro` / `triggerSlowMo` / `setItems` / `items` / `jam` / `stuckCheck` / `demoReward` / `demoClear` / `showScorePop`。回调本身在 `src/main.js` 里构建——`jam()` 会写满自由格、`demoReward()` 会驱动一次真实的三类奖励演出（走 `settleScore` 与同一套表现入口），它们是玩法动作而不是读出口，diagnostics 只负责把名字挂上去。（`showChain` / `showHonor` 在 v0.11.0 随常驻链牌与荣誉横幅一起删除。）
 
 探针脚本与它们钉住的契约（`npm test` 现在串跑规则与会话两套；`npm run gates` 再串上三个重构回归探针，一次跑完下面这张表里的 1、2、4、5、6 行）：
 

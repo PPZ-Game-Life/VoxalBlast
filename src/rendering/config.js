@@ -703,6 +703,12 @@ export const PIECE_SPIN = Object.freeze({
 // below, one entry per level, shared cells deduped) and a line can never multiply it.
 // `shake` is gone for the same reason the doc gives a target of 0: the celebration is
 // paper in a garden, not a detonation.
+//
+// v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3): the L0–L5 ladder survives as the
+// BASE CLEAR's resource intensity (band, paper budget, tail, the L5 dip). It no longer
+// carries a banner — the reward note replaced the honour banner — and `honorBannerMs` went
+// with it rather than lingering as an unread table. The three reward signatures have their
+// own table (REWARD_STYLE below), because their durations are the doc's, not the ladder's.
 export const FEEDBACK_STYLE = Object.freeze({
   levels: Object.freeze([
     /* 0 nothing cleared */ Object.freeze({ duration: 0, banner: 'none' }),
@@ -715,7 +721,6 @@ export const FEEDBACK_STYLE = Object.freeze({
     /* 5 PENTA+ */ Object.freeze({ duration: 1.4, banner: 'full', slowMo: Object.freeze({ scale: 0.6, ms: 400 }) }),
   ]),
   shakeDecay: 0.42, // per-second falloff of the camera shake
-  honorBannerMs: Object.freeze({ small: 700, name: 900, large: 1400, full: 2200 }),
 })
 
 // ============================================================
@@ -814,9 +819,85 @@ export const CELEBRATION = Object.freeze({
   // is halved and the side ribbons are dropped — the board is NEVER scaled down to make room, and
   // the line band, the real score and the main sound are never withheld either.
   cramped: Object.freeze({ maxHeight: 620, maxWidth: 360, budgetFactor: 0.5 }),
-  // §3 相机震动 = 0. Kept as a named number instead of a hard-coded zero so the one
-  // place that could ever raise it is greppable.
+  // §3 相机震动 = 0 for a PLAIN clear. Kept as a named number instead of a hard-coded zero so
+  // the one place that could ever raise it is greppable. The three REWARD signatures do shake
+  // (REWARD_STYLE below) — that is a separate, per-category table by design, so "an ordinary
+  // single line does not shake" cannot be accidentally changed by tuning a reward.
   shake: 0,
+})
+
+// ============================================================
+// Reward feedback signatures (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2)
+// ============================================================
+// The three categories must be TELLABLE APART, not just louder or quieter: each has its own
+// copy (i18n `reward.*`), its own sound (audio/gameAudio.js) and its own shake here.
+//
+// `shakePx` is 「棋盘画面在屏幕上的最大偏移量」 in CSS pixels — the doc's own unit. It is NOT
+// the world-space `shake` the effects layer's offset machinery is written in: main converts
+// through the camera's own projection (`worldPerPixel()` in rendering/gameScene.js), because
+// a world unit is ~55px at the shipped framing and the doc's numbers are 1.5–3px.
+//
+// `tiers[count]` is the value for a reward whose own count is `count` (lines for MULTI_CLEAR,
+// chain for CLEAR_STREAK, faces for FACE_CLEAR); `cap` is what every count above the table
+// gets. A table that keeps growing with the count is exactly the 「不无限升调」 the doc forbids.
+//
+// `haptic` is a `navigator.vibrate` pattern in ms ([buzz, gap, buzz]) — the SAME platform call
+// the shipped haptics already use. reduced-motion closes the SHAKE, never the haptics and never
+// the sound (§6.3 「不得把三项偏好绑成一个开关」).
+export const REWARD_STYLE = Object.freeze({
+  MULTI_CLEAR: Object.freeze({
+    // 2 线 1.5px/80ms · 3 线 2px/100ms · 4+ 线 3px/120ms
+    tiers: Object.freeze([null, null,
+      Object.freeze({ px: 1.5, ms: 80 }), Object.freeze({ px: 2, ms: 100 }) ]),
+    cap: Object.freeze({ px: 3, ms: 120 }),
+    haptic: Object.freeze([18, 34, 20]),
+  }),
+  CLEAR_STREAK: Object.freeze({
+    // 约 1 CSS px/60ms 的短双脉冲，合计在窗口内结束 — the same value at every count: a streak
+    // that got LOUDER every link would be the background hum the whole round is removing.
+    tiers: Object.freeze([null, null,
+      Object.freeze({ px: 1, ms: 60 })]),
+    cap: Object.freeze({ px: 1, ms: 60 }),
+    haptic: Object.freeze([10, 42, 10]),
+  }),
+  FACE_CLEAR: Object.freeze({
+    // 1 面 2px/100ms · 2+ 面 3px/140ms，封顶
+    tiers: Object.freeze([null, Object.freeze({ px: 2, ms: 100 })]),
+    cap: Object.freeze({ px: 3, ms: 140 }),
+    haptic: Object.freeze([18, 36, 22]),
+  }),
+})
+
+// One settled placement's feedback, from its own reward list (§3.3): the shake is the
+// MAXIMUM of the categories that fired — never their sum — and the haptic is the pattern of
+// the category with that maximum, so the buzz and the picture agree.
+export function rewardFeedback(rewards = []) {
+  let best = null
+  let bestPx = 0
+  for (const reward of rewards || []) {
+    const style = REWARD_STYLE[reward?.type]
+    if (!style) continue
+    const tier = style.tiers[reward.count] || style.cap
+    if (!tier || tier.px <= bestPx) continue
+    bestPx = tier.px
+    best = { shakePx: tier.px, shakeMs: tier.ms, haptic: [...style.haptic], type: reward.type }
+  }
+  return best || { shakePx: 0, shakeMs: 0, haptic: null, type: null }
+}
+
+// The reward NOTE's wall-clock beats (handoff §3.4). The doc gives the windows, not the
+// milliseconds, so these sit in the middle of each one:
+//   0–120ms    消线位置确认 / 一次短震与奖励主音起音   (the cue's own attack, not this table)
+//   100–240ms  合并奖励短签出现                        → `enterMs`
+//   160–450ms  本手一个总分跳字                        (ui/hud.js SCORE_ROLL already owns it)
+//   700–1000ms 短签退场；多类并发可到 1200ms，不能常驻   → `holdMs` / `holdMultiMs`
+// `exitMs` is the CSS fade after the hold, which must not leave the plate on screen: a note
+// that outlives its window is exactly the 「常驻」 the round removes.
+export const REWARD_NOTE = Object.freeze({
+  enterMs: 120,
+  holdMs: 820,
+  holdMultiMs: 1080,
+  exitMs: 320,
 })
 
 // ============================================================
@@ -848,13 +929,15 @@ export const AUDIO_STYLE = Object.freeze({
   compressor: Object.freeze({ threshold: -18, knee: 12, ratio: 3, attack: 0.004, release: 0.18 }),
 })
 
-// HUD rules that the design fixes rather than the art: the chain pill only exists
-// once a chain is real (08 §7.5 — a "CHAIN ×1" that is always on screen would make
-// breaking it cost nothing), and the Game Over copy calls a gap "就差一点" only
-// inside this ratio of the record (08 §7.5 差值文案一等公民).
+// HUD rules that the design fixes rather than the art: the Game Over copy calls a gap
+// "就差一点" only inside this ratio of the record (08 §7.5 差值文案一等公民).
+//
+// v0.10.3 (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.1): `chainMinVisible` / `chainBarCap`
+// are GONE with the resident CHAIN pill they sized. The chain itself is still counted and
+// still saved (it is what pays the streak reward) — it simply has no permanent home on
+// screen any more, so leaving two numbers here for a component that no longer exists would
+// be the "renamed Combo" the doc forbids.
 export const HUD_STYLE = Object.freeze({
-  chainMinVisible: 2,
-  chainBarCap: 20, // chain length that fills the indicator bar
   bestGapRatio: 0.1,
 })
 

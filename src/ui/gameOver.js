@@ -6,6 +6,7 @@
 // the resume slot — the order "local record first, then clear the snapshot, then submit to
 // the platform" is orchestration and stays in main.endGame() where it always was.
 import { FACES } from '../game/board.js'
+import { SCORE_RULES_VERSION } from '../game/scoring.js'
 import { HUD_STYLE } from '../rendering/config.js'
 import { formatNumber, t } from '../i18n/index.js'
 
@@ -62,10 +63,23 @@ export function createGameOver({ els, getRun }) {
   // applySession() rewrite these counters (and swap `facesLit` for a new Set) in place, so
   // a destructured copy taken once at construction would silently go stale — the exact trap
   // the plan's state table calls out.
+  //
+  // v0.10.3 (§5.3): the card follows the rules the finished run played under. A version-2 run
+  // has no honours to name — listing 「本局 TRIPLE +150」 for one would be a description of a
+  // reward it could not win — and a version-1 run has no three-category tally. The two branches
+  // below are the only place that decides which vocabulary the card speaks.
+  function isCurrentRules(run) {
+    return run.scoreRulesVersion === SCORE_RULES_VERSION
+  }
+
   function bestDimensionLabel() {
     const run = getRun()
     if (run.maxLinesOneMove >= 4) return t('gameover.dim.bigMove', { n: run.maxLinesOneMove })
-    if (run.honorCounts.TRIFACE) return t('gameover.dim.triface', { n: run.honorCounts.TRIFACE })
+    if (isCurrentRules(run)) {
+      if (run.faceWipes > 0) return t('gameover.dim.faceClear', { n: run.faceWipes })
+    } else if (run.honorCounts.TRIFACE) {
+      return t('gameover.dim.triface', { n: run.honorCounts.TRIFACE })
+    }
     if (run.bestChain >= 3) return t('gameover.dim.chain', { n: run.bestChain })
     return t('gameover.dim.faces', { n: run.facesLit.size })
   }
@@ -101,19 +115,29 @@ export function createGameOver({ els, getRun }) {
       + FACES.map((face, index) => `<i class="${index < lit ? 'lit' : ''}"></i>`).join('')
       + `<small>${lit}/6</small>`
 
-    // The badge wears the honour's NAME, not its id: 'TRIPLE ×2' is a database row, and the
-    // catalogue is where that name is translated (08 §5).
-    const earned = Object.entries(run.honorCounts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, times]) => `<span class="honor-badge">${t(`honor.${id}.title`)} ×${times}</span>`)
+    // The badge wears the reward's NAME, not its id: '一次多消 ×2' is a database row, and the
+    // catalogue is where that name is translated. A version-1 run still lists its honours —
+    // that history is not rewritten, it is simply no longer earnable (§5.3). Both are sorted by
+    // count, biggest first, which is the reading order the honour row always used.
+    const current = isCurrentRules(run)
+    const tally = (current
+      ? Object.entries(run.rewardCounts || {}).map(([type, times]) => ({ label: t(`reward.${type}.name`), times }))
+      : Object.entries(run.honorCounts).map(([id, times]) => ({ label: t(`honor.${id}.title`), times })))
+      .filter((entry) => entry.times > 0)
+      .sort((a, b) => b.times - a.times)
+      .map((entry) => `<span class="honor-badge${current ? ' reward-badge' : ''}">${entry.label} ×${entry.times}</span>`)
       .join('')
-    gameOverHonorsEl.innerHTML = earned
-      || `<span class="game-over-empty">${t('gameover.noHonors')}</span>`
+    gameOverHonorsEl.innerHTML = tally
+      || `<span class="game-over-empty">${t(current ? 'gameover.noRewards' : 'gameover.noHonors')}</span>`
 
     gameOverStatsEl.innerHTML = [
       { label: 'gameover.stat.chain', value: run.bestChain },
       { label: 'gameover.stat.lines', value: run.maxLinesOneMove },
-      { label: 'gameover.stat.triface', value: run.honorCounts.TRIFACE || 0 },
+      // 三面同爆 is a version-1 statistic: under the current rules the same slot reports the
+      // faces actually emptied, which is what the round pays for (§2.4).
+      current
+        ? { label: 'gameover.stat.faceClear', value: run.faceWipes }
+        : { label: 'gameover.stat.triface', value: run.honorCounts.TRIFACE || 0 },
       { label: 'gameover.stat.weekly', value: formatNumber(summary.weeklyBest) },
     ].map(({ label, value }) => `<span>${t(label)} <strong>${value}</strong></span>`).join('')
   }

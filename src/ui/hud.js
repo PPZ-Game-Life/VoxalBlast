@@ -1,10 +1,16 @@
-// HUD presentation: score/best pills, status line, toast, chain indicator, score pop,
-// honor banner and the item bar / rocket Row-Col readout.
+// HUD presentation: score/best pills, status line, toast, the reward note, the score pop and
+// the item bar / rocket Row-Col readout.
 //
 // Refactor P1 (temp/VoxalBlast-渐进式模块拆分重构执行计划.md §6). Everything here is DOM:
 // markup templates, class toggles and their own one-shot timers. Nothing here decides a
 // rule — the values arrive through getters and the one action that is not presentation
-// (the chain-break sound, which belongs to effects in P5) arrives as a callback.
+// (the reward note's own sound, which belongs to the audio bus) arrives with the event.
+//
+// v0.10.3 (docs/Technical/SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.1): the resident CHAIN pill
+// is GONE — the component, its bar, its milestone flash and its break animation — and the
+// honour banner is replaced by ONE merged reward note. The chain itself is still counted and
+// still saved (it is what pays the streak reward); it just has no permanent home on screen any
+// more, and the space it took is given back to the layout instead of being hidden in place.
 //
 // Live state is read through GETTERS, never captured: resetRun()/applySession() rewrite
 // `run`, `itemCounts` and `itemActive` in place, so a copy taken once at construction would
@@ -16,7 +22,7 @@
 // holds a renderer, which is the part of the plan's contract that matters. The single
 // Three.js use below is a colour formatter, not a renderer.
 import * as THREE from 'three'
-import { AUDIO_STYLE, FEEDBACK_STYLE, HUD_STYLE } from '../rendering/config.js'
+import { AUDIO_STYLE, REWARD_NOTE } from '../rendering/config.js'
 import { formatNumber, t } from '../i18n/index.js'
 import { ITEM_COPY, ITEM_NAME } from './itemCopy.js'
 
@@ -63,7 +69,6 @@ export function createHud({
   els,
   getScore,
   getBest,
-  getChain,
   getItemCounts,
   getItemActive,
   canUseItems,
@@ -76,12 +81,11 @@ export function createHud({
   bindSlot,
   disposePiecePreviews,
   createPiecePreview,
-  onChainBreak,
-  // The score roll's two noises (v0.9.29). Same rule as onChainBreak: the sound is not this
-  // module's to make, so it arrives as a callback and hud.js decides only WHEN a tick is owed
-  // (the counting click, with how far the roll has run) and when the number is DONE (the
-  // landing chord, with how many points it just landed). Whether anything is heard at all is
-  // effects' and the sound switch's business.
+  // The score roll's two noises (v0.9.29). The sound is not this module's to make, so it
+  // arrives as a callback and hud.js decides only WHEN a tick is owed (the counting click,
+  // with how far the roll has run) and when the number is DONE (the landing chord, with how
+  // many points it just landed). Whether anything is heard at all is effects' and the sound
+  // switch's business.
   onScoreTick,
   onScoreSettle,
 }) {
@@ -90,9 +94,6 @@ export function createHud({
     toastEl,
     scoreEl,
     bestEl,
-    chainEl,
-    chainValueEl,
-    chainBarEl,
     sceneWrap,
     honorLayerEl,
     itemBarEl,
@@ -252,77 +253,57 @@ export function createHud({
     fitScores()
   }
 
-  // 08 §6: the score pop grew from two rows to four — +分数 / N LINES / M FACES /
-  // 荣誉名号 — and the point of the placement-score layer (§4.1) is that a placement
-  // clearing nothing still pops its score: "this turn built instead of clearing" must not
-  // read as nothing happened. Overlay only; nothing here is modal or eats a gesture.
-  //
-  // v0.10.1 (§4.2): the honour row is GONE. There is one honour statement per event and it is
-  // the banner; repeating the same name under the number made the reward moment say the same
-  // thing twice. `N LINES / M FACES` stay — they are the real result the player has to read.
-  function showScorePop(points, { lines = 0, faces = 1, quiet = false } = {}) {
+  // 08 §6's score pop, as narrowed by v0.10.3 §3.3: 一个总分跳字, and the number it carries is
+  // the hand's TOTAL (基础分 + 三类奖励). It deliberately says nothing else — the categories,
+  // their counts and their own `+N` are the reward note's job, and two plates naming the same
+  // hand is the duplication the round exists to remove. `quiet` keeps the small variant for a
+  // placement that cleared nothing but still paid (§4.1 放置分).
+  function showScorePop(points, { quiet = false } = {}) {
     const pop = document.createElement('div')
     pop.className = quiet ? 'score-pop quiet' : 'score-pop'
-    const rows = [`<strong>+${points}</strong>`]
-    if (lines > 0) rows.push(`<span>${t('pop.lines', { n: lines })}</span>`)
-    if (faces > 1) rows.push(`<span class="score-pop-faces">${t('pop.faces', { n: faces })}</span>`)
-    pop.innerHTML = rows.join('')
+    pop.innerHTML = `<strong>+${points}</strong>`
     sceneWrap.appendChild(pop)
     requestAnimationFrame(() => pop.classList.add('visible'))
     setTimeout(() => pop.remove(), quiet ? 640 : 920)
   }
 
-  // Chain indicator (08 §7.5): absent below HUD_STYLE.chainMinVisible and brighter as
-  // it grows. A chain that is always on screen costs nothing to break, and the whole
-  // mechanism is the stake (08 §4.4).
-  function updateChainHud() {
-    const chain = getChain()
-    const visible = chain >= HUD_STYLE.chainMinVisible
-    chainEl.classList.toggle('visible', visible)
-    chainEl.classList.toggle('hot', chain >= HUD_STYLE.chainMinVisible)
-    chainEl.setAttribute('aria-hidden', String(!visible))
-    chainValueEl.textContent = String(chain)
-    chainBarEl.style.transform = `scaleX(${Math.min(1, chain / HUD_STYLE.chainBarCap)})`
-  }
-
-  function breakChainFeedback(chain) {
-    chainEl.classList.add('broken')
-    setTimeout(() => chainEl.classList.remove('broken'), 620)
-    // Sound is effects' business (P5); main wires this to playChainBreakSound.
-    onChainBreak?.(chain)
-  }
-
-  // §5.3: ONE primary banner (the rarest honor wins). Overlay-only — the design forbids a
-  // reward moment that blocks input, so nothing here is modal and nothing here can eat a gesture.
+  // ---- the reward note (v0.10.3 §3.3) -------------------------------------------
+  // ONE main title, ONE merged detail line, and nothing else: 不顺次弹三张奖状、不另起附属荣誉
+  // 徽章行. It consumes the rewardEvent the settlement produced — it never re-counts lines,
+  // never re-decides whether a bonus was owed, and never shows a zero-bonus category.
   //
-  // v0.10.1 (§「一个主庆祝」): the in-run badge ROW is gone. Every honour, bonus and record badge
-  // is still kept — the settlement card prints the whole collection — but in play one event says
-  // one thing. The `.honor-badge` CSS stays: ui/gameOver.js is still using it.
-  function showHonorBanner(honors, level) {
-    const feedback = FEEDBACK_STYLE.levels[level] || FEEDBACK_STYLE.levels[0]
-    if (!honors.primary) return
-    const banner = document.createElement('div')
-    banner.className = `honor-banner honor-banner-${feedback.banner}`
-    banner.innerHTML = `<strong>${t(`honor.${honors.primary.id}.title`)}</strong><small>${t(`honor.${honors.primary.id}.label`)} · +${honors.primary.bonus}</small>`
-    honorLayerEl.appendChild(banner)
-    requestAnimationFrame(() => banner.classList.add('visible'))
-    const ms = FEEDBACK_STYLE.honorBannerMs[feedback.banner] || 900
+  // The title's category is also the first entry of the detail, exactly as the doc's own
+  // example reads (「清空 1 面」/「3 线 +200 · 连消 4 次 +150 · 清面 +300」), because the detail
+  // is the receipt for the whole hand and not "everything except the headline".
+  const rewardTitle = (reward) => t(`reward.${reward.type}.title`, { n: reward.count })
+  const rewardDetail = (reward) => `${t(`reward.${reward.type}.detail`, { n: reward.count })} +${reward.bonus}`
+
+  function showRewardNote(event) {
+    const rewards = event?.rewards || []
+    if (!rewards.length) return null
+    const primary = rewards.find((reward) => reward.type === event.primaryType) || rewards[0]
+    const note = document.createElement('div')
+    note.className = `reward-note reward-note-${String(event.primaryType || primary.type).toLowerCase()}`
+    // The eventId is on the DOM so a headless check can prove one placement produced one note,
+    // and a re-render (resize, language switch) did not produce a second.
+    note.dataset.eventId = String(event.eventId)
+    note.innerHTML = `<strong>${rewardTitle(primary)}</strong>`
+      + `<small>${rewards.map(rewardDetail).join(' · ')}</small>`
+    honorLayerEl.appendChild(note)
+    requestAnimationFrame(() => note.classList.add('visible'))
+    // §3.4: 700–1000ms for one category, up to 1200ms when several fired — and never resident.
+    const hold = rewards.length > 1 ? REWARD_NOTE.holdMultiMs : REWARD_NOTE.holdMs
     setTimeout(() => {
-      banner.classList.remove('visible')
-      setTimeout(() => banner.remove(), 320)
-    }, ms)
+      note.classList.remove('visible')
+      setTimeout(() => note.remove(), REWARD_NOTE.exitMs)
+    }, hold)
+    return note
   }
 
-  // §3 「CHAIN 普通增长只更新 HUD」: an ordinary link is the pill's own number moving. The 5/10/15/20
-  // milestones are the rule's (`score.chainMilestone`) and get ONE paper-knot flash on the pill
-  // that already exists — no new counter, no new score, no second celebration beside the clear.
-  let chainMilestoneTimer
-  function celebrateChainMilestone() {
-    chainEl.classList.remove('milestone')
-    void chainEl.offsetWidth
-    chainEl.classList.add('milestone')
-    clearTimeout(chainMilestoneTimer)
-    chainMilestoneTimer = setTimeout(() => chainEl.classList.remove('milestone'), 620)
+  // A new run, a resume or a home press takes the note with it: a reward plate that survives
+  // into the next board would describe a placement the player cannot see any more.
+  function clearRewardNotes() {
+    honorLayerEl.querySelectorAll('.reward-note').forEach((note) => note.remove())
   }
 
   function clearHonorLayer() {
@@ -481,10 +462,8 @@ export function createHud({
     showToast,
     updateHud,
     showScorePop,
-    updateChainHud,
-    breakChainFeedback,
-    celebrateChainMilestone,
-    showHonorBanner,
+    showRewardNote,
+    clearRewardNotes,
     clearHonorLayer,
     renderItemBar,
     renderAxisPick,
