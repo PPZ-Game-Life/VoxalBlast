@@ -25,6 +25,7 @@
 // geometry and materials, and the reason this file used to say "never dispose those" is exactly
 // why the whole path is better gone than disabled.
 import { HONORS } from '../game/honors.js'
+import { rankBoard } from '../game/leaderboardRanking.js'
 import { RECORD_FIELDS, weekKey } from '../game/records.js'
 import { REWARD_ORDER, SCORE_RULES_VERSION } from '../game/scoring.js'
 import { TIER_CUTS, tierForScore, tiersReady } from '../game/tiers.js'
@@ -40,6 +41,10 @@ export function createHome({
   // arrives as a getter like every other live value here.
   getRulesVersion = () => SCORE_RULES_VERSION,
   platform,
+  // v0.12.0: the global board's data source — see platform/leaderboardFeed.js. Injected the same
+  // way `platform` is, so this module renders standings without knowing where they came from and
+  // the sample board can be replaced by a real feed without touching the panel.
+  globalFeed,
   onOpen,
   onClose,
 }) {
@@ -53,6 +58,10 @@ export function createHome({
     homeNewEl,
     leaderboardEl,
     leaderboardBodyEl,
+    leaderboardGlobalEl,
+    leaderboardTabsEl,
+    lbTabGlobalEl,
+    lbTabLocalEl,
     leaderboardCloseEl,
     leaderboardPlatformEl,
     gameLayers,
@@ -107,15 +116,63 @@ export function createHome({
   function focusPrimary() { homePrimaryEl.focus() }
 
   // ---- Leaderboard panel (08 §7.5) ------------------------------------------
-  // The panel has three entry points (Game Over, the home cover, the dev handle), so focus
-  // is returned to whoever opened it instead of to one hard-coded button — returning to the
-  // Game Over button while the cover is up would drop focus onto a covered element.
+  // Two views over one card since v0.12.0: the seasonal GLOBAL board and the LOCAL record wall
+  // (Layer 1). Both panes are rendered on open — and again on a language switch — and BOTH stay
+  // in the DOM: the tabs toggle `.hidden`, so switching is instant, a check that reads one pane
+  // never depends on which tab is selected, and nothing has to be re-fetched.
+  //
+  // Where the global standings COME FROM is not this module's business. It asks `globalFeed` and
+  // renders what comes back together with the honesty flag the feed returned (`sample`, and `me`
+  // when the source already knows the player's standing). platform/leaderboardFeed.js is the one
+  // swap point; nothing in this file changes when the sample board is replaced by real data.
+  //
+  // The panel has three entry points (Game Over, the home cover, the dev handle), so focus is
+  // returned to whoever opened it instead of to one hard-coded button — returning to the Game
+  // Over button while the cover is up would drop focus onto a covered element.
+  let activeTab = 'global'
+  // Guard for the global pane's ASYNC render: a slow answer must never paint over a newer board.
+  let globalRenderId = 0
+
   function openLeaderboard() {
+    // The tab state is re-applied rather than assumed: it survives a close (the player returns to
+    // the view they left) and this is the one line that guarantees the panes and the flags agree.
+    selectTab(activeTab)
     renderLeaderboard()
     leaderboardOpener = document.activeElement
     leaderboardEl.classList.remove('hidden')
     leaderboardCloseEl.focus()
   }
+
+  // One tab state, read by the panes and written only here. `aria-selected` IS the state — the
+  // CSS styles the selected plate off that attribute, so what a screen reader is told and what
+  // is on screen cannot drift apart.
+  function selectTab(tab, { focus = false } = {}) {
+    activeTab = tab === 'local' ? 'local' : 'global'
+    const isGlobal = activeTab === 'global'
+    leaderboardGlobalEl.classList.toggle('hidden', !isGlobal)
+    leaderboardBodyEl.classList.toggle('hidden', isGlobal)
+    for (const [el, selected] of [[lbTabGlobalEl, isGlobal], [lbTabLocalEl, !isGlobal]]) {
+      el.setAttribute('aria-selected', selected ? 'true' : 'false')
+      // Roving tabindex: one tab is reachable with Tab, the arrow keys move between them.
+      el.tabIndex = selected ? 0 : -1
+      if (focus && selected) el.focus()
+    }
+  }
+
+  function stepTab() {
+    selectTab(activeTab === 'global' ? 'local' : 'global', { focus: true })
+  }
+
+  // Bound once, here, because these three elements exist for the life of the page and the tab
+  // state is this module's own. The panel's other listeners (the two openers, the close button,
+  // the backdrop) stay in main.js, where they have always been.
+  lbTabGlobalEl.addEventListener('click', () => selectTab('global'))
+  lbTabLocalEl.addEventListener('click', () => selectTab('local'))
+  leaderboardTabsEl.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    stepTab()
+  })
 
   function closeLeaderboard() {
     leaderboardEl.classList.add('hidden')
@@ -125,6 +182,15 @@ export function createHome({
   }
 
   function renderLeaderboard() {
+    renderLocalPane()
+    renderPlatformEntry()
+    // The global pane repaints from the feed: a sample board resolves on the next microtask, a
+    // platform board whenever the network answers. Nothing waits on it — the panel is already
+    // open, the local pane is already correct, and the global pane shows its own loading line.
+    renderGlobalBoard()
+  }
+
+  function renderLocalPane() {
     const records = getRecords()
     // §5.3: every number on this panel belongs to ONE rule set. The current one leads; the other
     // is printed as read-only history when it has anything in it, so a player who has been here
@@ -200,18 +266,94 @@ export function createHome({
       ? `<section class="lb-section"><h2>${t('leaderboard.honorsLegacy')}</h2><ul class="lb-list lb-list-honors">${honorRows}</ul></section>`
       : ''}`
 
-    // Layer 2 entry: without an invitation the platform has nothing to show, so the
-    // button is greyed with "coming soon" and never fires a request (§7.4). v0.10.3 adds a
-    // second reason to be greyed — §5.5, a rules set the platform board is not routed to — and
-    // it says which one, because "not yet for these rules" is not "coming soon".
-    const invited = typeof platform.leaderboardAvailableFor === 'function'
-      ? platform.leaderboardAvailableFor(rules)
-      : platform.leaderboardAvailable()
+  }
+
+  // ---- The GLOBAL pane (08 §7.5) ---------------------------------------------
+  // The seasonal ranking, drawn from whatever `globalFeed` hands over. Two things this file
+  // decides on its own: the avatar (a letter on a hue derived from the name — a real board has no
+  // avatar upload either) and the player's OWN row, which is the local best when the source does
+  // not already know the standing.
+  //
+  // An entry's name is DATA, and after the platform integration it is REMOTE data: it is escaped
+  // on the way into innerHTML. The sample board's names are harmless, which is exactly why the
+  // escape belongs here now rather than being added later, in a hurry, with real names on screen.
+  const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ESCAPES[char])
+
+  function avatarHue(name) {
+    let hue = 0
+    for (let index = 0; index < name.length; index += 1) hue = (hue * 31 + name.charCodeAt(index)) % 360
+    return hue
+  }
+
+  function toScore(value) {
+    const score = Number(value)
+    return Number.isFinite(score) ? Math.max(0, Math.trunc(score)) : 0
+  }
+
+  function boardRow(entry) {
+    const name = escapeHtml(entry.name)
+    return `<li class="lb-row${entry.rank <= 3 ? ` top top-${entry.rank}` : ''}">`
+      + `<span class="lb-rank">${entry.rank}</span>`
+      + `<i class="lb-avatar" style="--lb-hue:${avatarHue(entry.name)}" aria-hidden="true">${escapeHtml(entry.name.trim().charAt(0).toUpperCase() || '?')}</i>`
+      + `<span class="lb-name">${name}</span>`
+      + `<strong class="lb-score">${formatNumber(entry.score)}</strong></li>`
+  }
+
+  async function renderGlobalBoard() {
+    const renderId = (globalRenderId += 1)
+    const records = getRecords()
+    const current = getRulesVersion() === SCORE_RULES_VERSION
+    // §5.3: the player's own standing is read from the pool of the rules the run on screen was
+    // played under, exactly as the local pane reads it.
+    const myScore = (current ? records.bestV2 : records.best).score
+    leaderboardGlobalEl.innerHTML = `<p class="lb-note">${t('leaderboard.loading')}</p>`
+
+    const board = await globalFeed.global()
+    // A second open, or a language switch, may have started a newer render. Only the newest one
+    // may paint; a slow answer landing late must not overwrite a newer board.
+    if (renderId !== globalRenderId) return
+
+    // The player's own row: the source's answer when it has one (a real board knows the standing),
+    // otherwise the local best ranked against this very board. Ranking it here is not a claim that
+    // the board is real — it is the same arithmetic, done on the one score this device owns, and
+    // it lives in game/leaderboardRanking.js where the Node test can drive it.
+    const me = board.me
+      ? { name: String(board.me.name || t('leaderboard.you')), score: toScore(board.me.score) }
+      : (myScore > 0 ? { name: t('leaderboard.you'), score: myScore } : null)
+    const ranked = rankBoard(board.entries, me)
+    const rows = ranked.board.map(boardRow).join('')
+
+    const meHtml = ranked.mine
+      ? `<div class="lb-me"><span class="lb-me-label">${t('leaderboard.myRank')}<span class="lb-me-rank">${t('leaderboard.rankOf', { n: ranked.mine.rank })}</span></span><strong class="lb-me-score">${formatNumber(ranked.mine.score)}</strong></div>`
+      : `<div class="lb-me unranked"><span class="lb-me-label">${t('leaderboard.myRank')}<span class="lb-me-rank">${t('leaderboard.notRanked')}</span></span><strong class="lb-me-score">—</strong></div>`
+
+    leaderboardGlobalEl.innerHTML = `
+    <div class="lb-season">
+      <span class="lb-season-name">${t('leaderboard.season', { key: escapeHtml(board.season) })}</span>
+      ${board.sample ? `<span class="lb-sample-chip">${t('leaderboard.sample')}</span>` : ''}
+    </div>
+    <ol class="lb-board">${rows}</ol>
+    ${board.sample ? `<p class="lb-note lb-sample-note">${t('leaderboard.sampleNote')}</p>` : ''}
+    ${meHtml}`
+  }
+
+  // Layer 2 (the platform's own board drawer). v0.12.0: the panel renders the standings itself
+  // now, so this row is no longer the panel's explanation of why there is nothing to show — when
+  // the platform cannot be opened it stays EMPTY, and the global pane's own copy carries the
+  // truth about the numbers. §5.5 still has a sentence here: invited, but no route for the rules
+  // the run on screen is playing, is a different state from not invited at all.
+  function renderPlatformEntry() {
+    const rules = getRulesVersion()
+    if (typeof platform.leaderboardAvailable !== 'function' || !platform.leaderboardAvailable()) {
+      leaderboardPlatformEl.innerHTML = ''
+      return
+    }
     const routed = typeof platform.boardRulesVersion !== 'function' || platform.boardRulesVersion() === rules
     leaderboardPlatformEl.innerHTML = `<p>${t('leaderboard.globalBy')}</p>`
-      + (invited
+      + (routed
         ? `<button id="platform-button" class="ghost-button" type="button">${t('leaderboard.openGlobal')}</button>`
-        : `<button class="ghost-button disabled" type="button" disabled>${t(routed ? 'leaderboard.comingSoon' : 'leaderboard.rulesUnrouted')}</button>`)
+        : `<button class="ghost-button disabled" type="button" disabled>${t('leaderboard.rulesUnrouted')}</button>`)
     leaderboardPlatformEl.querySelector('#platform-button')?.addEventListener('click', () => platform.openLeaderboard())
   }
 
@@ -238,6 +380,9 @@ export function createHome({
     openLeaderboard,
     closeLeaderboard,
     renderLeaderboard,
+    // v0.12.0: the two leaderboard tabs. Exposed for the probes (the gate switches tabs through
+    // the real click path, but a check that needs a specific view can also ask for one).
+    selectTab,
     report,
   }
 }

@@ -104,10 +104,16 @@ export function collectDom(root = document) {
     gameOverHonorsEl: need('#game-over-honors'),
     gameOverStatsEl: need('#game-over-stats'),
 
-    // Leaderboard panel.
+    // Leaderboard panel. v0.12.0: two tabs and two panes — `leaderboardBodyEl` is the local
+    // record wall (its id is unchanged so the existing checks keep reading the same node) and
+    // `leaderboardGlobalEl` is the seasonal board.
     leaderboardButtonEl: need('#leaderboard-button'),
     leaderboardEl: need('#leaderboard'),
     leaderboardBodyEl: need('#leaderboard-body'),
+    leaderboardGlobalEl: need('#leaderboard-global'),
+    leaderboardTabsEl: need('#leaderboard-tabs'),
+    lbTabGlobalEl: need('#lb-tab-global'),
+    lbTabLocalEl: need('#lb-tab-local'),
     leaderboardCloseEl: need('#leaderboard-close'),
     leaderboardPlatformEl: need('#leaderboard-platform'),
 

@@ -554,6 +554,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
    the record list grows. */
 .leaderboard-card { display: flex; flex-direction: column; width: min(440px, 100%); max-height: min(86vh, 720px); padding: 26px; text-align: left; overflow: hidden; }
 .leaderboard-card h1 { margin: 6px 0 0; font-size: 1.55rem; }
+
+/* v0.12.0 — the two tabs. One segmented pill rather than two buttons: the pair reads as a
+   single control that is showing one of two views, which is what it is. The selected tab is
+   the white plate (the same raised paper every other selected surface uses); `aria-selected`
+   is the state, so the styling cannot drift from what a screen reader is told. */
+.lb-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: 0 0 auto; margin-top: 14px; padding: 4px; border-radius: 14px; background: rgba(23,40,79,.09); }
+.lb-tab { padding: 8px 10px; border: 0; border-radius: 11px; color: #55719b; background: transparent; font-size: .68rem; font-weight: 900; letter-spacing: .04em; transition: .18s; }
+.lb-tab[aria-selected="true"] { color: #203c7b; background: #fff; box-shadow: 0 3px 0 rgba(23,40,79,.12); }
+.lb-tab:focus-visible { outline: 2px solid #3f7ce0; outline-offset: 2px; }
+
+/* `.hidden` is not global in this stylesheet (each surface declares its own), so the pane
+   needs its own line — and it must beat `.leaderboard-body`'s `display: grid`. */
+.lb-pane.hidden { display: none; }
 .leaderboard-body { display: grid; gap: 16px; margin-top: 16px; overflow-y: auto; min-height: 0; padding-right: 2px; }
 .lb-tier { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: linear-gradient(135deg, rgba(255,216,94,.4), rgba(255,159,52,.3)); }
 .lb-tier.uncalibrated { background: rgba(23,40,79,.07); }
@@ -575,6 +588,41 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lb-note, .lb-empty { margin: 8px 0 0; color: #7d92b5; font-size: .6rem; font-weight: 800; line-height: 1.55; }
 .leaderboard-platform { display: grid; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 2px solid rgba(23,40,79,.08); flex: 0 0 auto; }
 .leaderboard-platform p { margin: 0; color: #55719b; font-size: .62rem; font-weight: 800; }
+/* v0.12.0: with the global tab carrying its own standings, this row is only filled when the
+   platform can actually be opened. Empty, it must take no room at all — an empty bordered
+   strip at the bottom of the card reads as a broken entry. */
+.leaderboard-platform:empty { display: none; }
+
+/* ---- Global tab (08 §7.5, docs/Technical/LEADERBOARD_GLOBAL_BOARD_HANDOFF.md) ----------
+   The seasonal board: a season line, twenty ranked rows, the player's own row, and the
+   sample note. Rank 1–3 get the metal plates; everyone else is a plain row and the player's
+   own row is the one highlighted band, so "where am I" needs no reading. */
+.lb-season { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lb-season-name { color: #55719b; font-size: .62rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.lb-sample-chip { flex: 0 0 auto; padding: 3px 9px 4px; border-radius: 999px; color: #a9600a; background: rgba(255,159,52,.24); font-size: .54rem; font-weight: 900; letter-spacing: .06em; }
+.lb-board { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.lb-row { display: grid; grid-template-columns: 20px 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 12px; }
+.lb-row:nth-child(odd) { background: rgba(23,40,79,.05); }
+.lb-row.top-1 { background: linear-gradient(90deg, rgba(255,216,94,.44), rgba(255,216,94,0)); }
+.lb-row.top-2 { background: linear-gradient(90deg, rgba(193,208,230,.52), rgba(193,208,230,0)); }
+.lb-row.top-3 { background: linear-gradient(90deg, rgba(243,178,124,.44), rgba(243,178,124,0)); }
+.lb-rank { color: #7d92b5; font-size: .62rem; font-weight: 900; text-align: center; }
+.lb-row.top .lb-rank { color: #203c7b; font-size: .7rem; }
+/* The avatar is drawn, not stored: a letter on a hue derived from the name, so a board of
+   twenty reads as twenty people without a single image request. `--lb-hue` is the only thing
+   the renderer sets per row. */
+.lb-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; color: #fff; font-size: .66rem; font-weight: 900; background: linear-gradient(140deg, hsl(var(--lb-hue), 78%, 66%), hsl(var(--lb-hue), 70%, 47%)); box-shadow: inset 0 -2px 0 rgba(23,40,79,.16); }
+.lb-name { overflow: hidden; color: #203c7b; font-size: .7rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.lb-score { color: #203c7b; font-size: .74rem; font-weight: 900; }
+/* The player's own row. It is STICKY to the bottom of the scrolling pane: the board is twenty
+   rows and the one line the player is looking for must not be the one that needs a scroll. The
+   background is opaque (the plate, not a wash) because rows pass behind it. */
+.lb-me { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; border-radius: 14px; background: linear-gradient(135deg, #fff2c9, #ffdfa4); box-shadow: 0 -8px 14px rgba(255,255,255,.92), 0 2px 0 rgba(23,40,79,.1); }
+.lb-me.unranked { background: #e9eff8; box-shadow: 0 -8px 14px rgba(255,255,255,.92); }
+.lb-me-label { display: flex; align-items: baseline; gap: 8px; color: #55719b; font-size: .6rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.lb-me-rank { color: #203c7b; font-size: .74rem; font-weight: 900; letter-spacing: 0; text-transform: none; }
+.lb-me-score { color: #203c7b; font-size: .82rem; font-weight: 900; }
+.lb-sample-note { margin-top: 2px; }
 
 @media (max-width: 700px) {
   .honor-layer { top: 2px; }

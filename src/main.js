@@ -12,6 +12,10 @@ import { settleScore, rewardLevel, SCORE_RULES_VERSION } from './game/scoring.js
 import { recordStore } from './game/records.js'
 import { sessionStore } from './game/session.js'
 import { createCrazyGamesAdapter } from './platform/crazygames.js'
+// v0.12.0: the global leaderboard tab's data source. It answers with a sample board today and
+// with the platform's entries once the integration lands — the panel renders both the same way
+// (docs/Technical/LEADERBOARD_GLOBAL_BOARD_HANDOFF.md).
+import { createLeaderboardFeed } from './platform/leaderboardFeed.js'
 import {
   getRenderQuality, rewardFeedback, BOARD_STYLE as style, ROTATE_STYLE as rotateStyle,
 } from './rendering/config.js'
@@ -135,6 +139,10 @@ const {
   leaderboardButtonEl,
   leaderboardEl,
   leaderboardBodyEl,
+  leaderboardGlobalEl,
+  leaderboardTabsEl,
+  lbTabGlobalEl,
+  lbTabLocalEl,
   leaderboardCloseEl,
   leaderboardPlatformEl,
   homeEl,
@@ -1129,6 +1137,10 @@ const homeUi = createHome({
     homeNewEl,
     leaderboardEl,
     leaderboardBodyEl,
+    leaderboardGlobalEl,
+    leaderboardTabsEl,
+    lbTabGlobalEl,
+    lbTabLocalEl,
     leaderboardCloseEl,
     leaderboardPlatformEl,
     gameLayers,
@@ -1139,6 +1151,7 @@ const homeUi = createHome({
   // §5.3: the panel ranks against the rules of the run on screen, so it asks the run.
   getRulesVersion: () => run.scoreRulesVersion,
   platform,
+  globalFeed: createLeaderboardFeed({ platform }),
   // Whoever changes the open state recomputes the pause lock — one place decides.
   onOpen: () => syncPause(),
   onClose: () => syncPause(),

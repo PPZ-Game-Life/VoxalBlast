@@ -2,7 +2,7 @@
 
 六面贴块消除小游戏，使用 Vite + 原生 JavaScript + Three.js。
 
-> 当前实现基线：**v0.9.18**（`package.json`）。本轮是**本地化**：全部用户可见文案搬进 `src/i18n/locales/*`，**英文为默认版本**、简体中文为第二语言，静态标记 `data-i18n*` / 动态文本渲染时 `t()` 取词，设置面板新增「语言」行一点即切、`?lang=zh-Hans` 可深链首帧即中文；行为标准见 [本地化标准](docs/Technical/LOCALIZATION.md)，守卫 `npm run test:i18n`（151 项）已进 `npm test` 与 `npm run gates`。上一轮是 [道具系统设计 §8](docs/Planning/07-道具系统设计.md) 的**道具交互重设计 v1**（v0.9.17），再往前是 [交互与表现需求 §3.1](docs/Planning/03-交互与表现需求.md) 的「一次手势只翻一面」（v0.9.7）与竖屏尺寸 / 发牌难度（v0.9.1 / [发牌与渐进难度 P1 实现记录](docs/Technical/DEALING_P1.md)）。不代表远端部署版本。
+> 当前实现基线：**v0.12.0**（`package.json`）。本轮是**排行榜的「全球榜」tab（示例数据）**：面板拆成「全球榜 / 我的纪录」两个 tab，全球榜自绘 20 行（名次/头像/昵称/分数、前三名金属色、贴底的「我的排名」行、赛季取自 `weekKey()`）；**榜上成绩是虚构的示例数据**，面板如实标注「示例数据」，真数据的唯一替换点是 `src/platform/leaderboardFeed.js`，见 [全局榜交接单](docs/Technical/LEADERBOARD_GLOBAL_BOARD_HANDOFF.md)。上一轮是 v0.11.x 的净面/计分口径与开机遮罩。更早：v0.9.18 **本地化**（全部文案走 `src/i18n/locales/*`，英文默认、简体中文第二语言，守卫 `npm run test:i18n`）。不代表远端部署版本。
 
 ## 当前游戏
 
@@ -17,9 +17,10 @@
 - **同批消除**：每次成功落子检查六面满行/满列，共享格只删除一次；支持连击、跨面与荣誉计分。
 - **有限道具救场**：每局换批 ×2、锤子 ×1、火箭 ×1、炸弹 ×1；没有局内补给、广告领取或购买。剩余候选都放不下时，先提示换批；无换批但清理道具有余量时保留局面；四项均耗尽才结算。只查次数，不保证道具一定救活。
 - **交互与存档**：鼠标/触摸拖放、取消、世界轴翻面、方位微调、键盘旋转、滚轮缩放；主页、设置、单局续玩、本地纪录与荣誉墙。
+- **排行榜两个 tab（v0.12.0）**：「全球榜」按赛季展示名次/昵称/分数并有贴底的「我的排名」行，**成绩目前是示例数据、面板已如实标注**；「我的纪录」是原来那面本地纪录墙（阶位、最近十局、个人最佳、奖励与荣誉）。真数据接入后只换 `src/platform/leaderboardFeed.js`，面板形态不变。
 - **参考图田园视觉**：98 个实时 3D 亮面方块，奶油桃木色空格；生成的透明 UI 切图、横竖屏田园背景和花草石台随包发布，背景加载失败时使用程序 SVG 兜底。
 
-**尚不能宣称已完成**：全球排行榜、平台广告闭环、阶位标定、六面制霸徽章、道具获取系统、每日挑战。短局目标和机器人模拟都不等于真人体验验证。详见 [已知缺口](docs/Technical/KNOWN_GAPS.md)。
+**尚不能宣称已完成**：真实全球排行榜（面板形态已交付，成榜数据为示例）、平台广告闭环、阶位标定、六面制霸徽章、道具获取系统、每日挑战。短局目标和机器人模拟都不等于真人体验验证。详见 [已知缺口](docs/Technical/KNOWN_GAPS.md)。
 
 ## 开发与按需验证
 
@@ -28,9 +29,11 @@ npm ci                 # 按锁文件安装依赖
 npm run dev            # 开发服务器
 npm test               # 本地化守卫 + 规则层检查
 npm run test:i18n      # 只跑本地化守卫（词条表对齐、无硬编码文案）
+npm run test:leaderboard # 全球榜排名纯函数（插入后名次顺延、并列不给先、脏分数归零）
 npm run build          # 生产构建
 npm run preview        # 预览生产产物
-npm run shot           # 无头浏览器 14 组截图/断言，需可访问开发服务
+npm run shot           # 无头浏览器 16 组截图/断言，需可访问开发服务
+                       #   只看排行榜两套：SHOT_ONLY=desktop-leaderboard,mobile-leaderboard,desktop-leaderboard-local,mobile-leaderboard-local npm run shot
                        #   中文那套：node tools/screenshot.mjs "http://127.0.0.1:5173/?lang=zh-Hans" artifacts/visual-zh
 npm run probe:intro    # 开场两阶段动画（启动入口、底漆/上色、节奏、结束位姿，并录下启动帧序）
 npm run probe:swipe     # 手势方向

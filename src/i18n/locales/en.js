@@ -30,6 +30,7 @@ export default Object.freeze({
   'a11y.openSettings': 'Open settings',
   'a11y.closeSettings': 'Close settings',
   'a11y.closeLeaderboard': 'Close leaderboard',
+  'a11y.leaderboardTabs': 'Leaderboard views',
   'a11y.items': 'Items',
   'a11y.refreshConfirm': 'Refresh confirmation',
   'a11y.rocketAxis': 'Rocket direction',
@@ -224,8 +225,24 @@ export default Object.freeze({
   'gameover.stat.weekly': 'Best this week',
 
   // ---- Leaderboard ----------------------------------------------------------
-  'leaderboard.eyebrow': 'LOCAL RECORDS',
+  'leaderboard.eyebrow': 'RANKINGS',
   'leaderboard.title': 'Leaderboard',
+  // v0.12.0 (docs/Technical/LEADERBOARD_GLOBAL_BOARD_HANDOFF.md): the panel has two tabs — the
+  // seasonal GLOBAL board, and MY RECORDS, the local record wall that used to be the whole panel.
+  'leaderboard.tab.global': 'Global',
+  'leaderboard.tab.local': 'My records',
+  'leaderboard.season': ({ key }) => `Season ${key}`,
+  'leaderboard.loading': 'Loading the board…',
+  'leaderboard.myRank': 'Your rank',
+  'leaderboard.rankOf': ({ n }) => `#${n}`,
+  'leaderboard.notRanked': 'Not ranked yet',
+  'leaderboard.you': 'You',
+  // The global board is SAMPLE DATA until the platform integration lands: the chip and the note
+  // are what keep a made-up board from being read as a real one (platform/leaderboardFeed.js).
+  // Both disappear on their own — the panel asks the feed, it is not told by a build flag — so a
+  // build with a real feed cannot show them and a build with the sample board cannot hide them.
+  'leaderboard.sample': 'Sample data',
+  'leaderboard.sampleNote': 'This board is placeholder data. Real standings arrive with the platform integration.',
   'leaderboard.recent': ({ n }) => `Last ${n} games`,
   'leaderboard.personalBest': 'Personal best',
   'leaderboard.best': 'Best score',
@@ -248,9 +265,10 @@ export default Object.freeze({
   'leaderboard.tierNote': 'Tier cuts come from real player quantiles and will be set in one pass once the difficulty is final; no numbers are published yet.',
   'leaderboard.globalBy': 'Global leaderboard by CrazyGames',
   'leaderboard.openGlobal': 'Open global leaderboard',
-  'leaderboard.comingSoon': 'Coming soon',
   // §5.5: the board is routed per scoring rule set. Until a route exists for the current rules
   // the entry says so — 「not yet」 is a different statement from 「coming soon」, and a player who
-  // just scored under the new rules is owed the true one.
+  // just scored under the new rules is owed the true one. (v0.12.0 dropped 「coming soon」: with
+  // the global tab rendering the standings itself, the un-invited state shows no platform row at
+  // all rather than a greyed button that describes a board the player can already see.)
   'leaderboard.rulesUnrouted': 'No global board for the current scoring rules yet',
 })

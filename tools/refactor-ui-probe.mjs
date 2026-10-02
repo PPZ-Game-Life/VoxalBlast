@@ -363,6 +363,18 @@ function mouse(client) {
       }
       await sleep(260)
     },
+    // v0.12.0: the leaderboard's two views are a tablist, so the arrow keys are part of their
+    // contract and have to arrive as real key events — a click on the other tab would not test
+    // the roving-tabindex binding at all.
+    async arrow(key) {
+      const virtualKeyCode = { ArrowLeft: 37, ArrowRight: 39 }[key]
+      for (const type of ['rawKeyDown', 'keyUp']) {
+        await client.send('Input.dispatchKeyEvent', {
+          type, key, code: key, windowsVirtualKeyCode: virtualKeyCode, nativeVirtualKeyCode: virtualKeyCode,
+        })
+      }
+      await sleep(220)
+    },
   }
 }
 
@@ -550,6 +562,75 @@ async function caseLeaderboardFromHome(client, input) {
     `activeElement=#${shown.activeId}`)
   check('D the leaderboard renders its body', await client.evaluate(
     'document.querySelector("#leaderboard-body").children.length > 0'), 'body has sections')
+
+  // v0.12.0 (docs/Technical/LEADERBOARD_GLOBAL_BOARD_HANDOFF.md): the panel has two views — the
+  // seasonal GLOBAL board and MY RECORDS, the local wall that used to be the whole panel. These
+  // checks do not care what the board's scores are (they are sample data until the platform
+  // integration lands); they gate the WIRING, which is what a screenshot cannot show: which tab
+  // the panel opens on, that the two panes are mutually exclusive, that the local wall is still
+  // rendered while the global tab is up, that a sample board is labelled as one, that the
+  // player's own row states a standing the record book agrees with, and that the arrow keys move
+  // the selection through real key events.
+  const readTabs = () => client.readJson(`(() => {
+    const global = document.querySelector('#leaderboard-global')
+    const local = document.querySelector('#leaderboard-body')
+    const rows = [...global.querySelectorAll('.lb-board .lb-row')]
+    return {
+      globalSelected: document.querySelector('#lb-tab-global').getAttribute('aria-selected'),
+      localSelected: document.querySelector('#lb-tab-local').getAttribute('aria-selected'),
+      globalDisplay: getComputedStyle(global).display,
+      localDisplay: getComputedStyle(local).display,
+      rows: rows.length,
+      ranks: rows.map((row) => row.querySelector('.lb-rank').textContent).join(','),
+      sampleChip: Boolean(global.querySelector('.lb-sample-chip')),
+      sampleNote: global.querySelector('.lb-sample-note')?.textContent ?? '',
+      season: global.querySelector('.lb-season-name')?.textContent ?? '',
+      meRow: global.querySelector('.lb-me')?.textContent ?? '',
+      localSections: local.children.length,
+      activeId: document.activeElement?.id ?? null,
+    }
+  })()`)
+
+  const onOpen = await readTabs()
+  check('D the panel opens on the global tab, with the local pane hidden',
+    onOpen.globalSelected === 'true' && onOpen.localSelected === 'false'
+    && onOpen.globalDisplay !== 'none' && onOpen.localDisplay === 'none',
+    `global=${onOpen.globalDisplay}/sel=${onOpen.globalSelected} local=${onOpen.localDisplay}/sel=${onOpen.localSelected}`)
+  const expectedRanks = Array.from({ length: onOpen.rows }, (_, index) => index + 1).join(',')
+  check('D the global board is ranked 1..n with no gap and no repeat',
+    onOpen.rows >= 10 && onOpen.ranks === expectedRanks, `${onOpen.rows} rows: ${onOpen.ranks}`)
+  check('D the board names its season', onOpen.season.trim().length > 0, `"${onOpen.season}"`)
+  check('D a sample board is labelled as sample data, not presented as real',
+    onOpen.sampleChip && onOpen.sampleNote.trim().length > 0, `chip=${onOpen.sampleChip} note="${onOpen.sampleNote}"`)
+  check('D the local record wall is rendered even while the global tab is up',
+    onOpen.localSections > 0, `${onOpen.localSections} sections`)
+  const myBest = await client.readJson('globalThis.__voxalblast.records().bestV2.score')
+  check('D the player’s own row states a standing the record book agrees with',
+    myBest > 0 ? /#\d+/.test(onOpen.meRow) : onOpen.meRow.includes(t('leaderboard.notRanked')),
+    `bestV2=${myBest} meRow="${onOpen.meRow}"`)
+
+  await input.click('#lb-tab-local', { label: 'the my-records tab' })
+  const onLocal = await readTabs()
+  check('D clicking MY RECORDS swaps the panes',
+    onLocal.globalDisplay === 'none' && onLocal.localDisplay !== 'none'
+    && onLocal.localSelected === 'true' && onLocal.globalSelected === 'false',
+    `global=${onLocal.globalDisplay} local=${onLocal.localDisplay}`)
+  check('D the selected tab keeps the focus the click gave it',
+    onLocal.activeId === 'lb-tab-local', `activeElement=#${onLocal.activeId}`)
+
+  await input.arrow('ArrowLeft')
+  const viaArrow = await readTabs()
+  check('D the left arrow key moves the selection back to the global tab',
+    viaArrow.globalSelected === 'true' && viaArrow.activeId === 'lb-tab-global',
+    `sel=${viaArrow.globalSelected} activeElement=#${viaArrow.activeId}`)
+  await input.arrow('ArrowRight')
+  const viaArrowBack = await readTabs()
+  check('D the right arrow key moves it to the other view',
+    viaArrowBack.localSelected === 'true' && viaArrowBack.activeId === 'lb-tab-local',
+    `sel=${viaArrowBack.localSelected} activeElement=#${viaArrowBack.activeId}`)
+  // Back to the tab the player left the panel on (GLOBAL), so the checks below photograph the
+  // state the panel really opens in.
+  await input.click('#lb-tab-global', { label: 'the global tab' })
 
   await input.click('#leaderboard-close', { label: 'the leaderboard close button' })
   const shut = await client.readJson(STATE)

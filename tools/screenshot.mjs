@@ -69,6 +69,11 @@ const SHOTS = [
   { name: 'mobile-settings', width: 390, height: 844, mode: 'settings' },
   { name: 'desktop-leaderboard', width: 1440, height: 900, mode: 'leaderboard' },
   { name: 'mobile-leaderboard', width: 390, height: 844, mode: 'leaderboard' },
+  // v0.12.0: the panel's other view — MY RECORDS, the local record wall. The two shots above open
+  // on the tab the panel really starts on (GLOBAL, the seasonal board), so the pair covers the
+  // whole surface; a tab that only renders when it is clicked would be invisible to the other.
+  { name: 'desktop-leaderboard-local', width: 1440, height: 900, mode: 'leaderboard-local' },
+  { name: 'mobile-leaderboard-local', width: 390, height: 844, mode: 'leaderboard-local' },
 ]
 
 // Only the screenshot page receives this seed; gameplay remains genuinely random.
@@ -297,7 +302,7 @@ async function capture(browser, shot) {
       // The leaderboard is captured from a FINISHED run (the Game Over card's own entry), not
       // from the home cover: the cover would hide the live board behind the panel and every
       // board gate below would be graded on a covered scene.
-      if (mode === 'leaderboard') {
+      if (mode === 'leaderboard' || mode === 'leaderboard-local') {
         const ended = await send(ws, 23, 'Runtime.evaluate', {
           expression: '(() => { const dev = globalThis.__voxalblastDev; if (typeof dev?.endGame !== "function") return "no-dev-handle"; dev.endGame(); return "ended"; })()',
           returnByValue: true,
@@ -309,6 +314,15 @@ async function capture(browser, shot) {
           returnByValue: true,
         })
         await sleep(600)
+        // The panel opens on GLOBAL; the local wall is the second tab, switched the way a player
+        // switches it (a real click on the tab, not a second render path).
+        if (mode === 'leaderboard-local') {
+          await send(ws, nextId++, 'Runtime.evaluate', {
+            expression: '(() => { document.querySelector("#lb-tab-local").click(); return "tab"; })()',
+            returnByValue: true,
+          })
+          await sleep(500)
+        }
       }
 
       // Two rAFs and a short pause: the last state has to reach the compositor,
@@ -612,7 +626,7 @@ async function capture(browser, shot) {
         // panel (the board is paused behind it), so the gate is about the states a player is
         // meant to be able to play from. The leaderboard shot is taken after a finished run
         // for the first of those reasons.
-        const stuckItems = mode === 'gameover' || mode === 'leaderboard' || mode === 'settings'
+        const stuckItems = mode === 'gameover' || mode === 'leaderboard' || mode === 'leaderboard-local' || mode === 'settings'
           ? []
           : (parsed.items || []).filter((item) => item.count > 0 && item.disabled)
         if (stuckItems.length) failures.push(`item buttons are left disabled although they have charges (${JSON.stringify(stuckItems)})`)

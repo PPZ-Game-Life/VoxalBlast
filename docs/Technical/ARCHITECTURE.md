@@ -40,7 +40,7 @@
 | src/ui/icons.js | 代码生成的入口与道具 SVG 图标 |
 | src/ui/dom.js | 静态 DOM 句柄一次性收集（缺失必需节点直接报选择器；动态节点不缓存） |
 | src/ui/hud.js | HUD 展示（分数/连击/状态/toast/荣誉/道具条/轴选择）与候选槽 DOM 模板；分数滚动（`SCORE_ROLL` 与 `#score` 的 `.rolling` / `.settled`，08 §4.1）连同它的两个音效回调都在这里接；预览的建与释放经回调交给 pieceView |
-| src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位 |
+| src/ui/home.js | 主页封面与排行榜面板：封面 DOM、`homeOpen`、主页缩影 renderer、per-opener 焦点回位；**v0.12.0 起排行榜是两个 tab（GLOBAL 全球榜 / MY RECORDS 我的纪录），`activeTab` 与 `selectTab()` / `stepTab()` 在这里，两个面板都常驻 DOM、只切 `.hidden`**。榜单渲染只消费 `globalFeed` 的返回值（含 `sample` 与 `me` 两个诚实标记），自己不知道数据来自哪里 |
 | src/ui/bootScreen.js | 开机遮罩（v0.11.2）：只拥有 `#boot-screen` 的状态机（showing → fading → done）与"场景是否完整"的判定循环；**"完整"的定义是调用方的**（main 传入 `isReady` 谓词）。两条护栏：连续两帧 ready、硬超时 9s |
 | src/ui/gameOver.js | 结算卡展示（读 run 与结算摘要；不写纪录、不清续玩槽） |
 | src/ui/settings.js | 设置面板、操作说明卡与键位提示；拥有 `settingsOpen` / `controlsOpen` / `soundOn` / `hapticsOn`，偏好经 platform/storage.js 读写；v0.9.19 起 `hapticsSupported()` 为假时触感行 `disabled` 且小字换成 `settings.hapticsUnsupported`（偏好不被改写） |
@@ -50,6 +50,9 @@
 | src/ui/itemCopy.js | 道具子系统的取词门面：键 → getter，调用点因此不随语言切换而失效（**导入时捕获字符串就是 bug**） |
 | src/platform/storage.js | 存储边界：`pickStorage()` / `probeStorage()` 与三个 `'on'/'off'` 偏好的转发；schema / `migrate()` / 内存降级仍留在各自 store |
 | src/platform/crazygames.js | 可选平台 SDK 包装和降级路径 |
+| src/platform/leaderboardFeed.js | **全局榜取数缝（v0.12.0）**：`global()` 返回 `{ entries, season, me, sample }`，**第一个分支就是替换点**——平台有 `fetchLeaderboard({limit})` 就先用它（`sample: false`），否则返回示例榜单（`sample: true`）。赛季取自 `records.weekKey()`；取数失败静默落回示例，**不 reject**。面板不 import 示例数据，也不被构建开关告知真假，见 [全局榜交接单](LEADERBOARD_GLOBAL_BOARD_HANDOFF.md) |
+| src/platform/leaderboardMock.js | **示例榜单（占位数据，接入平台后删除）**：20 个虚构昵称与分数，只为确认形态；**赛季不在这里**（是真算的）。面板从不直接 import 它 |
+| src/game/leaderboardRanking.js | 全局榜排名的**纯函数**（`rankBoard(entries, me)`）：玩家分数插进榜单后统一排序（单一名次来源，不会出现两行同名次）、并列不给先（稳定排序，同分排在已在榜者之后）、脏分数归零不产生 NaN。无 DOM、无语言，由 `npm run test:leaderboard` 驱动 |
 | src/platform/haptics.js | v0.9.19 震动能力判定：`hapticsSupported()`（API 存在 **且** 移动端档位）与不抛异常的 `vibrate()`。**必须走这里判断，不能写成 `if (navigator.vibrate)`**——桌面 Chrome/Edge 暴露该函数且调用返回 `true`，但机器没有振动马达，调用是 no-op；iOS 上全部 WebView 不暴露它。设置面板据此把该行置灰，玩法侧不据此分叉 |
 
 ## 状态归属
@@ -65,6 +68,7 @@
 | particleSystems / transientEffects / cameraShake / slowMo / audioContext | src/rendering/effects.js | main 只拿 `effects.timestep(raw)`（缩放后的 delta）、`effects.updateShake(delta)`（机位偏移）与只读 `effects.report()`；不读内部计数 |
 | 候选预览 / 落点组 / 拖拽幽灵 / 道具覆盖层 | src/rendering/pieceView.js | 只经 `landingCells()` / `landingCount()` / `ghostReport()` / `candidateFrames()` 只读投影；建与画由 main 按参数调用（`showLanding` / `syncDragGhost` / `showItemOverlay`） |
 | homeOpen | src/ui/home.js | `homeUi.isOpen()`；状态变化经 `onOpen` / `onClose` 回调通知 main 重算暂停锁 |
+| 排行榜 tab（`activeTab`）与全局榜渲染令牌（`globalRenderId`） | src/ui/home.js | 只经 `selectTab()` / `stepTab()` 切换；可观察状态是面板 DOM 的 `aria-selected` 与两个面板的 `.hidden`。渲染令牌保证慢响应不会覆盖更新的榜单——全局榜是**异步**渲染，只有最新一次取数结果会落笔 |
 | settingsOpen / controlsOpen / soundOn / hapticsOn / controlSpin / axisHintTimer | src/ui/settings.js | `isOpen()` / `isControlsOpen()` / `getSoundOn()` / `getHapticsOn()`；effects 在发声/振动那一刻经 main 注入的实时 getter 读，不捕获布尔值。v0.9.19 的 `hapticsSupported` 是**只读常量**（每页读一次，设备不会中途长出马达），由 `platform/haptics.js` 判定，`__voxalblast.preferences()` 一并报出 |
 | isPaused | src/main.js（唯一计算点） | `syncPause()` 是唯一写者，以只读 getter 注入 input / boardView / effects，并由各 UI 的 `onOpen` / `onClose` 回调触发重算；没有第二个模块可以写它 |
 | bestScore | src/main.js（显示缓存） | 真值是 `game/records.js` 的 `voxalblast.records.v1`；main 在 `endGame()` 后刷新缓存，hud 经 `getBest()` 读 |

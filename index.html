@@ -305,15 +305,29 @@
           </div>
         </div>
       </div>
-      <!-- Local leaderboard panel (08 §7.5): Layer 1 only, plus the platform entry.
-           Rows are rendered in main.js from src/game/records.js. -->
+      <!-- Leaderboard panel (08 §7.5), TWO tabs since v0.12.0:
+             GLOBAL    — the seasonal ranking. Sample standings until the platform integration
+                         lands; src/platform/leaderboardFeed.js is the one swap point, and the
+                         pane labels itself as a sample for as long as the feed says so.
+             MY RECORDS— Layer 1, the local record wall (src/game/records.js), unchanged.
+           Both panes are rendered by src/ui/home.js and BOTH stay in the DOM (the tabs toggle
+           `.hidden`), so a check that reads one of them never depends on which tab happens to be
+           selected, and switching back is instant. -->
       <div id="leaderboard" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="leaderboard-title">
         <div class="modal-content leaderboard-card">
           <div class="settings-header">
-            <div><div class="eyebrow" data-i18n="leaderboard.eyebrow">LOCAL RECORDS</div><h1 id="leaderboard-title" data-i18n="leaderboard.title">Leaderboard</h1></div>
+            <div><div class="eyebrow" data-i18n="leaderboard.eyebrow">RANKINGS</div><h1 id="leaderboard-title" data-i18n="leaderboard.title">Leaderboard</h1></div>
             <button id="leaderboard-close" class="modal-close" type="button" aria-label="Close leaderboard" data-i18n-aria-label="a11y.closeLeaderboard">×</button>
           </div>
-          <div id="leaderboard-body" class="leaderboard-body"></div>
+          <!-- A tablist with the roving-tabindex pattern: one tab is reachable with Tab, the
+               arrow keys move between them and select on the way (src/ui/home.js selectTab /
+               stepTab, bound once in src/main.js). -->
+          <div id="leaderboard-tabs" class="lb-tabs" role="tablist" aria-label="Leaderboard views" data-i18n-aria-label="a11y.leaderboardTabs">
+            <button id="lb-tab-global" class="lb-tab" type="button" role="tab" aria-selected="true" aria-controls="leaderboard-global" data-i18n="leaderboard.tab.global">Global</button>
+            <button id="lb-tab-local" class="lb-tab" type="button" role="tab" aria-selected="false" aria-controls="leaderboard-body" tabindex="-1" data-i18n="leaderboard.tab.local">My records</button>
+          </div>
+          <div id="leaderboard-global" class="leaderboard-body lb-pane" role="tabpanel" aria-labelledby="lb-tab-global" tabindex="0"></div>
+          <div id="leaderboard-body" class="leaderboard-body lb-pane hidden" role="tabpanel" aria-labelledby="lb-tab-local" tabindex="0"></div>
           <div id="leaderboard-platform" class="leaderboard-platform"></div>
         </div>
       </div>
