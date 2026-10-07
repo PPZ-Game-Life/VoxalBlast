@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-book (help / instruction manual). 128x128. Cream open pages + blue spine and text rules.
+       Outline #20334C. Analytic content bounds incl. stroke: x21-107 / y27-98 (padding >=21). No text, no filter, no raster. -->
+  <path d="M62 38 C48 31 34 30 24 35 L24 92 C34 87 48 88 62 95 Z" fill="#FFF1CE" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M66 38 C80 31 94 30 104 35 L104 92 C94 87 80 88 66 95 Z" fill="#FFF1CE" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M62 38 L66 38 L66 95 L62 95 Z" fill="#4C86D8" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <g stroke="#4C86D8" stroke-width="5" stroke-linecap="round" fill="none">
+    <path d="M36 56 L54 56"/>
+    <path d="M36 68 L54 68"/>
+    <path d="M74 56 L92 56"/>
+    <path d="M74 68 L92 68"/>
+  </g>
+</svg>

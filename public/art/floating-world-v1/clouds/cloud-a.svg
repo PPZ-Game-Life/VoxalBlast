@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="192" viewBox="0 0 512 192" fill="none">
+  <!-- VoxalBlast floating-world-v1 / cloud-a. 512x192 transparent. Two flat colours only (#FFF8E6 body, #E7E7DD lower shade), no outline.
+       Solid connected silhouette for sprite alpha. Body bbox x52-460 / y22-160 (80% of width, safe margin left/right 52u, top 22u, bottom 32u). -->
+  <rect x="52" y="112" width="408" height="48" rx="24" fill="#FFF8E6"/>
+  <circle cx="124" cy="106" r="46" fill="#FFF8E6"/>
+  <circle cx="252" cy="86" r="64" fill="#FFF8E6"/>
+  <circle cx="372" cy="106" r="50" fill="#FFF8E6"/>
+  <rect x="68" y="136" width="376" height="22" rx="11" fill="#E7E7DD"/>
+</svg>

@@ -1,0 +1,54 @@
+{
+  "scope": "isolated art preview, NOT game integration or physical-device QA",
+  "viewport": {
+    "width": 1440,
+    "height": 1433
+  },
+  "staticStats": {
+    "boardCells": 98,
+    "models": 3,
+    "clouds": 3,
+    "drawCalls": 139,
+    "triangles": 68722,
+    "time": 0,
+    "cloudX": [
+      -8,
+      -1,
+      6
+    ],
+    "still": true,
+    "reducedMotion": false
+  },
+  "animation": {
+    "timeBefore": 0.05,
+    "timeAfter": 0.5273,
+    "cloudXBefore": [
+      -7.991,
+      -0.9909999999999997,
+      6.009
+    ],
+    "cloudXAfter": [
+      -7.905086,
+      -0.9050860000000007,
+      6.094913999999999
+    ]
+  },
+  "cloudPngExports": [
+    "cloud-a",
+    "cloud-b",
+    "cloud-c"
+  ],
+  "browser": "msedge.exe",
+  "staticValidation": {
+    "resourceFilesExcludingManifest": 39,
+    "svgParsed": 28,
+    "modelsMeshNodes": {
+      "block-unit.glb": 1,
+      "floating-arch.glb": 13,
+      "floating-ledge.glb": 10,
+      "floating-stairs.glb": 12
+    },
+    "localMarkdownLinks": 46,
+    "scope": "assets and documentation only; not runtime regression"
+  }
+}

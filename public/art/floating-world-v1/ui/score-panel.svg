@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160" viewBox="0 0 320 160" fill="none">
+  <!-- VoxalBlast floating-world-v1 / score-panel (no label, no crown, no flowers). 320x160.
+       9-slice safe insets 56u. Inner field x28-292 / y34-114 is the score text area. -->
+  <rect x="10" y="10" width="300" height="140" rx="34" fill="#DDA965"/>
+  <rect x="10" y="10" width="300" height="128" rx="34" fill="#FFF1CE"/>
+  <rect x="28" y="34" width="264" height="80" rx="22" fill="#FFF8E6"/>
+  <rect x="32" y="22" width="256" height="18" rx="9" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="10" y="10" width="300" height="140" rx="34" stroke="#20334C" stroke-width="12"/>
+</svg>

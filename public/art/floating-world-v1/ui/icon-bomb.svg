@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-bomb. 128x128. Purple body to match the approved V4 reference (not navy).
+       Outline #20334C. Safe padding 9u on the spark side. No text, no filter, no raster. -->
+  <path d="M82 46 C 90 36 92 30 98 26" stroke="#DDA965" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M100 8 L104.5 19.5 L116 24 L104.5 28.5 L100 40 L95.5 28.5 L84 24 L95.5 19.5 Z" fill="#FFD56A" stroke="#20334C" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="72" y="34" width="20" height="16" rx="7" transform="rotate(36 82 42)" fill="#DDA965" stroke="#20334C" stroke-width="6"/>
+  <circle cx="58" cy="76" r="32" fill="#6B4FB5" stroke="#20334C" stroke-width="6"/>
+  <path d="M34 66 C 38 52 50 46 62 46 C 52 52 44 58 40 70 Z" fill="#FFF1CE" opacity="0.4"/>
+</svg>

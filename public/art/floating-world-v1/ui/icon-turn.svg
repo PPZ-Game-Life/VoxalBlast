@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-turn. 128x128. ONE isometric cube + a single 120-degree turn arc with one arrowhead
+       (deliberately NOT the two-arrow reroll ring of icon-refresh). Outline #20334C.
+       Analytic content bounds incl. stroke: x21.9-109.8 / y20-107 (padding >=18). No text, no filter, no raster. -->
+  <path d="M99.83 53.69C95.43 41.6 84.92 32.78 72.25 30.55C59.59 28.31 46.69 33.01 38.42 42.86"
+        stroke="#20334C" stroke-width="20" stroke-linecap="round" fill="none"/>
+  <path d="M99.83 53.69C95.43 41.6 84.92 32.78 72.25 30.55C59.59 28.31 46.69 33.01 38.42 42.86"
+        stroke="#4C86D8" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <path d="M94.99 37.01C86.42 28.44 74.5 24.1 62.43 25.16" stroke="#729AD0" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <path d="M54 52 L78 66 L54 80 L30 66 Z" fill="#FFF1CE" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M30 66 L54 80 L54 104 L30 90 Z" fill="#4C86D8" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M54 80 L78 66 L78 90 L54 104 Z" fill="#3C6EA9" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M24.92 58.95 L47.61 50.57 L29.23 35.15 Z" fill="#4C86D8" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+</svg>

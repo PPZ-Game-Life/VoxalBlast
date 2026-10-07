@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-button tile (cream base, NO icon baked in). 128x128.
+       Face area x13-115 / y13-99. Recommended inner icon: 104x104 placed at (12,6). -->
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="#DDA965"/>
+  <rect x="8" y="8" width="112" height="96" rx="26" fill="#FFF1CE"/>
+  <rect x="22" y="18" width="84" height="14" rx="7" fill="#FFFFFF" opacity="0.55"/>
+  <rect x="8" y="8" width="112" height="112" rx="26" stroke="#20334C" stroke-width="10"/>
+</svg>

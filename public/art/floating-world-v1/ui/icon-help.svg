@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-help. 128x128. Outline #20334C. Safe padding 18u. Question mark is a stroked path, no font, no text node. -->
+  <path d="M46 46 C 46 28 84 26 84 48 C 84 62 64 62 64 76 L 64 82" stroke="#20334C" stroke-width="24" stroke-linecap="round" fill="none"/>
+  <path d="M46 46 C 46 28 84 26 84 48 C 84 62 64 62 64 76 L 64 82" stroke="#FFD56A" stroke-width="15" stroke-linecap="round" fill="none"/>
+  <circle cx="64" cy="101" r="9" fill="#FFD56A" stroke="#20334C" stroke-width="6"/>
+</svg>

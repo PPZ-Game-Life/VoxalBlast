@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-home. 128x128. Cream house + blue roof (two colours + deep-ink outline).
+       Outline #20334C. Analytic content bounds incl. stroke: x19-109 / y21-109 (padding >=19). No text, no filter, no raster. -->
+  <path d="M64 24 L106 64 L22 64 Z" fill="#4C86D8" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M50 42 L34 57" stroke="#729AD0" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <rect x="36" y="60" width="56" height="46" rx="10" fill="#FFF1CE" stroke="#20334C" stroke-width="6"/>
+  <rect x="56" y="82" width="16" height="24" rx="6" fill="#4C86D8" stroke="#20334C" stroke-width="5"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-haptics. 128x128. Cream phone + blue screen, one long + one short vibration bar per side.
+       Outline #20334C. Analytic content bounds incl. stroke: x20.5-107.5 / y19-109 (padding >=19). No text, no filter, no raster. -->
+  <g stroke="#4C86D8" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M35 46 L35 70"/>
+    <path d="M24 54 L24 62"/>
+    <path d="M93 46 L93 70"/>
+    <path d="M104 54 L104 62"/>
+  </g>
+  <rect x="46" y="22" width="36" height="84" rx="9" fill="#FFF1CE" stroke="#20334C" stroke-width="6"/>
+  <rect x="52" y="34" width="24" height="52" rx="5" fill="#4C86D8"/>
+  <circle cx="64" cy="95" r="4.5" fill="#4C86D8"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-plus. 128x128. Blue to match the approved V4 reference's New-game plus.
+       Outline #20334C. Safe padding 29u. No text, no filter, no raster. -->
+  <path d="M56 32 L72 32 L72 56 L96 56 L96 72 L72 72 L72 96 L56 96 L56 72 L32 72 L32 56 L56 56 Z" fill="#4C86D8" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M57 37 L71 37 L71 61 L94 61 L94 67 L57 67 Z" fill="#8FB6E6" opacity="0.7"/>
+</svg>

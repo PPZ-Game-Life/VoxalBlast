@@ -1,0 +1,86 @@
+{
+  "schema": "voxalblast-floating-world-art/1",
+  "status": "handoff-not-integrated",
+  "units": "One logical board lattice pitch is 1. GLB assets use Y-up, metres interpreted as one pitch, pivot as declared below.",
+  "seed": 74123,
+  "palette": {
+    "ink": "#20334C", "skyTop": "#42ABF2", "skyBottom": "#B8E5F7",
+    "empty": "#F4E4C0", "emptyActive": "#FFF1CC", "hull": "#243A4A",
+    "cream": "#FFF1CE", "sand": "#E7D6AE", "blue": "#8CB8DB", "sage": "#A6C49B", "yellow": "#F1D17A",
+    "royalBlue": "#2F70E8", "teal": "#18BBA6", "violet": "#9454D9", "raspberry": "#E65B86"
+  },
+  "paintMapping": {
+    "0xc22b58": "#E65B86", "0x3f8fe0": "#368CEF", "0x293894": "#F5C846", "0x8b57c9": "#9454D9",
+    "0x217d6e": "#18BBA6", "0x2f5fc4": "#2F70E8", "0xe0658f": "#EF79A0", "0x4faa4a": "#51B991",
+    "0xc03fa0": "#BE55C9", "0x35b6c9": "#31AFD1", "0x3fa87a": "#21AFA0", "0x90c22d": "#A2C758",
+    "0x6a5fb0": "#7268CB", "0xa94fc4": "#AE70D8"
+  },
+  "geometry": {
+    "board": { "size": 0.95, "radius": 0.13, "segments": 3, "pitch": 1 },
+    "background": { "size": 0.96, "radius": 0.075, "segments": 2, "pitch": 1 }
+  },
+  "materials": {
+    "empty": { "roughness": 0.72, "metalness": 0, "clearcoat": 0.05, "clearcoatRoughness": 0.55, "envMapIntensity": 0.25, "specularIntensity": 0.45, "ior": 1.4 },
+    "paint": { "roughness": 0.58, "metalness": 0, "clearcoat": 0.12, "clearcoatRoughness": 0.5, "envMapIntensity": 0.35, "specularIntensity": 0.5, "ior": 1.4 },
+    "background": { "roughness": 0.86, "metalness": 0, "clearcoat": 0, "envMapIntensity": 0.18 },
+    "shared": { "opacity": 1, "transparent": false, "transmission": 0, "scatter": 0, "internalReflection": 0, "coreAbsorption": 0, "woodGrainEnabled": false }
+  },
+  "lighting": {
+    "key": { "color": "#FFF1DC", "intensity": 1.8, "position": [-3.5, 7, 9] },
+    "hemisphere": { "sky": "#DCF1FF", "ground": "#E6D3AB", "intensity": 1.0 },
+    "fill": { "color": "#D8EDFF", "intensity": 0.4, "position": [5, 2, -4] },
+    "rim": { "color": "#FFF2D9", "intensity": 0.2, "position": [-4, 4, -5] },
+    "environment": { "intensity": 0.3, "reflectionGlintIntensity": 0, "reflectionCardIntensity": 0.6, "reflectionKeyIntensity": 1.5, "reflectionRimIntensity": 0.5 },
+    "exposure": 1.0,
+    "shadow": { "mapSize": 1024, "extent": 4.8, "bias": -0.00015, "normalBias": 0.012, "floorY": -4.8, "receiverOpacity": 0.18, "blobOpacity": 0.14 }
+  },
+  "motion": {
+    "board": { "amplitudeCell": 0.02, "periodSeconds": 5.5, "phaseRadians": 0, "freezeDuringInteraction": true, "resumeBlendSeconds": 0.25 },
+    "cluster": { "amplitudeCell": 0.12, "periodSeconds": 7.5, "tiltDegrees": 0, "phaseStepRadians": 1.3 },
+    "looseBlock": { "amplitudeCell": 0.16, "periodSeconds": 6.5, "tiltDegrees": 1.5, "phaseStepRadians": 1.7 },
+    "clouds": { "speedScreenWidthsPerSecond": [0.006, 0.008, 0.01], "wrapMarginScreenWidths": 0.2, "verticalAmplitudeScreenHeights": 0.002, "verticalPeriodSeconds": 16 },
+    "maxDeltaSeconds": 0.05,
+    "reducedMotion": "freeze all ambient displacement and rotation; retain a readable static floating pose and shadows",
+    "hidden": "stop time accumulation and all rendering; reset frame timestamp on visibility resume"
+  },
+  "prefabs": {
+    "floating-arch": {
+      "pivot": [0, 2, 0],
+      "cells": [[-2,0,0,"cream"],[2,0,0,"cream"],[-2,1,0,"cream"],[2,1,0,"cream"],[-2,2,0,"cream"],[2,2,0,"cream"],[-2,3,0,"blue"],[-1,3,0,"blue"],[0,3,0,"blue"],[1,3,0,"blue"],[2,3,0,"blue"],[-1,4,0,"sage"],[1,4,0,"sage"]]
+    },
+    "floating-stairs": {
+      "pivot": [0, 1, 0.5],
+      "cells": [[-1,0,0,"blue"],[0,0,0,"blue"],[1,0,0,"blue"],[-1,0,1,"blue"],[0,0,1,"blue"],[1,0,1,"blue"],[0,1,0,"cream"],[1,1,0,"cream"],[0,1,1,"cream"],[1,1,1,"cream"],[1,2,0,"sage"],[1,2,1,"sage"]]
+    },
+    "floating-ledge": {
+      "pivot": [0, 0, 0.5],
+      "cells": [[-1,0,0,"blue"],[0,0,0,"blue"],[1,0,0,"blue"],[-1,0,1,"blue"],[0,0,1,"blue"],[1,0,1,"blue"],[-1,1,0,"cream"],[0,1,0,"cream"],[1,1,0,"sage"],[0,-1,0,"cream"]]
+    }
+  },
+  "layout": {
+    "anchorConvention": "NDC of full viewport: left=-1 right=+1 top=+1 bottom=-1. Not gameplay-local NDC. Resolve world positions once on resize using the actual full-frame render camera. screenHeightFraction includes full prefab bounds; keep-out rects override these seeds.",
+    "gameplay": [
+      { "id": "arch-left", "prefab": "floating-arch", "anchor": [-0.94,0.35], "screenHeightFraction": 0.15, "yawDegrees": 12, "phaseRadians": 0 },
+      { "id": "steps-right", "prefab": "floating-stairs", "anchor": [0.94,0.24], "screenHeightFraction": 0.12, "yawDegrees": -18, "phaseRadians": 1.3 },
+      { "id": "ledge-left", "prefab": "floating-ledge", "anchor": [-0.98,-0.38], "screenHeightFraction": 0.10, "yawDegrees": 8, "phaseRadians": 2.6 }
+    ],
+    "home": [
+      { "id": "arch-left", "prefab": "floating-arch", "anchor": [-0.95,0.58], "screenHeightFraction": 0.12, "yawDegrees": 12, "phaseRadians": 0 },
+      { "id": "steps-right", "prefab": "floating-stairs", "anchor": [0.96,0.48], "screenHeightFraction": 0.10, "yawDegrees": -18, "phaseRadians": 1.3 },
+      { "id": "ledge-right", "prefab": "floating-ledge", "anchor": [0.97,0.03], "screenHeightFraction": 0.11, "yawDegrees": -8, "phaseRadians": 2.6 }
+    ],
+    "looseBlocks": [
+      { "anchor": [-0.76,0.63], "color": "cream", "screenHeightFraction": 0.025, "phaseRadians": 0.4 },
+      { "anchor": [0.79,0.70], "color": "yellow", "screenHeightFraction": 0.03, "phaseRadians": 2.1 },
+      { "anchor": [0.86,0.12], "color": "blue", "screenHeightFraction": 0.022, "phaseRadians": 3.8 }
+    ],
+    "cloudSeeds": [[-0.85,0.78,0.23,0],[-0.30,0.92,0.17,1],[0.50,0.68,0.25,2],[0.91,0.32,0.18,0],[-0.90,-0.05,0.16,1],[0.14,0.50,0.22,2]],
+    "keepOutPaddingCssPx": 24,
+    "cullOverlappingDecorations": true
+  },
+  "quality": {
+    "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": true, "shadowMapSize": 1024, "ssao": true },
+    "medium": { "clusters": 2, "looseBlocks": 2, "clouds": 4, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false },
+    "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false }
+  }
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-rocket. 128x128. Outline #20334C. Safe padding 16u. No text, no filter, no raster. -->
+  <g transform="rotate(-35 64 68)">
+    <path d="M50 76 L36 94 L50 94 Z" fill="#E0574A" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M78 76 L92 94 L78 94 Z" fill="#E0574A" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="50" y="30" width="28" height="68" rx="14" fill="#FFF1CE" stroke="#20334C" stroke-width="6"/>
+    <path d="M50 54 C 52 34 58 22 64 22 C 70 22 76 34 78 54 Z" fill="#E0574A" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+    <circle cx="64" cy="62" r="8" fill="#6FA8E8" stroke="#20334C" stroke-width="6"/>
+    <rect x="54" y="34" width="4" height="16" rx="2" fill="#FFFFFF" opacity="0.65"/>
+  </g>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-settings. 128x128. 8-tooth cog, tip r34 / root r23, real evenodd centre hole r9.
+       Deep blue body #3C6EA9 + #729AD0 highlight to match the approved reference, so it is NOT in the crown/trophy honey family.
+       Outline #20334C. Safe padding 27u. No text, no filter, no raster. -->
+  <path fill-rule="evenodd" fill="#3C6EA9" stroke="#20334C" stroke-width="6" stroke-linejoin="round"
+        d="M85.61 71.87 L97.38 70.49 L97.38 57.51 L85.61 56.13 L84.85 54.28 L92.19 44.99 L83.01 35.81 L73.72 43.15 L71.87 42.39 L70.49 30.62 L57.51 30.62 L56.13 42.39 L54.28 43.15 L44.99 35.81 L35.81 44.99 L43.15 54.28 L42.39 56.13 L30.62 57.51 L30.62 70.49 L42.39 71.87 L43.15 73.72 L35.81 83.01 L44.99 92.19 L54.28 84.85 L56.13 85.61 L57.51 97.38 L70.49 97.38 L71.87 85.61 L73.72 84.85 L83.01 92.19 L92.19 83.01 L84.85 73.72 Z
+           M64 55 A9 9 0 1 0 64 73 A9 9 0 1 0 64 55 Z"/>
+  <path d="M61.22 48.24 A16 16 0 0 0 48.96 58.53" stroke="#729AD0" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.9"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="144" viewBox="0 0 720 144" fill="none">
+  <!-- VoxalBlast floating-world-v1 / candidate-tray (three empty equal slots, no candidate blocks). 720x144.
+       Slot boxes x24/252/480, each 216x86 at y24. Do NOT 9-slice horizontally: the slot rhythm is fixed content. -->
+  <rect x="10" y="10" width="700" height="124" rx="26" fill="#DDA965"/>
+  <rect x="10" y="10" width="700" height="114" rx="26" fill="#FFF1CE"/>
+  <rect x="34" y="16" width="652" height="7" rx="3.5" fill="#FFFFFF" opacity="0.5"/>
+  <rect x="24" y="24" width="216" height="86" rx="18" fill="#FFF8E6" stroke="#DDA965" stroke-width="4"/>
+  <rect x="252" y="24" width="216" height="86" rx="18" fill="#FFF8E6" stroke="#DDA965" stroke-width="4"/>
+  <rect x="480" y="24" width="216" height="86" rx="18" fill="#FFF8E6" stroke="#DDA965" stroke-width="4"/>
+  <rect x="10" y="10" width="700" height="124" rx="26" stroke="#20334C" stroke-width="12"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-undo. 128x128. 145-degree back-rotating arc (r26, centre 64/70) whose endpoint is the
+       arrowhead's base centre, so the head never merges into the stroke. Distinct from the two-arrow ring in icon-refresh.
+       Outline #20334C (outer 20u / inner 11u). Safe padding 22u. No text, no filter, no raster. -->
+  <path d="M86.52 57 C80.84 47.17 69.45 42.16 58.37 44.62 C47.29 47.07 39.09 56.43 38.1 67.73"
+        stroke="#20334C" stroke-width="20" stroke-linecap="round" fill="none"/>
+  <path d="M86.52 57 C80.84 47.17 69.45 42.16 58.37 44.62 C47.29 47.07 39.09 56.43 38.1 67.73"
+        stroke="#FFD56A" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <path d="M69.38 39.47 A31 31 0 0 0 42.08 48.08" stroke="#FFF8E6" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M36.18 89.65 L51.05 68.87 L25.15 66.6 Z" fill="#FFD56A" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+</svg>

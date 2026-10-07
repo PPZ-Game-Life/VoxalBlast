@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-close. 128x128. Deliberately outline-coloured (#20334C) so it stays readable on cream tiles. Safe padding 24u. No text, no filter, no raster. -->
+  <g stroke="#20334C" stroke-width="15" stroke-linecap="round" fill="none">
+    <path d="M40 40 L88 88"/>
+    <path d="M88 40 L40 88"/>
+  </g>
+</svg>

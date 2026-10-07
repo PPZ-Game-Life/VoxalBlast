@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="128" viewBox="0 0 512 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / button-primary (no label). 512x128. 9-slice safe insets 56u. Text is real DOM, never baked here. -->
+  <rect x="12" y="12" width="488" height="100" rx="30" fill="#DDA965"/>
+  <rect x="12" y="12" width="488" height="92" rx="30" fill="#FFD56A"/>
+  <rect x="36" y="22" width="440" height="18" rx="9" fill="#FFE9A8" opacity="0.8"/>
+  <rect x="12" y="12" width="488" height="100" rx="30" stroke="#20334C" stroke-width="12"/>
+</svg>

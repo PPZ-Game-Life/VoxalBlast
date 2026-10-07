@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-play. 128x128. Outline #20334C. Safe padding 22u. No text, no filter, no raster. -->
+  <path d="M46 34 L100 64 L46 94 Z" fill="#FFF1CE" stroke="#20334C" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M56 48 L84 64 L56 80 Z" fill="#FFFFFFFF" opacity="0.55"/>
+</svg>

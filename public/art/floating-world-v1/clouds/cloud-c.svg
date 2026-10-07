@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="192" viewBox="0 0 512 192" fill="none">
+  <!-- VoxalBlast floating-world-v1 / cloud-c (tall puff cloud). 512x192 transparent. Two flat colours only. No outline.
+       Body bbox x64-448 / y28-166 (75% of width, safe margin left/right 64u, top 28u, bottom 26u). -->
+  <rect x="64" y="118" width="384" height="48" rx="22" fill="#FFF8E6"/>
+  <circle cx="140" cy="110" r="54" fill="#FFF8E6"/>
+  <circle cx="252" cy="96" r="68" fill="#FFF8E6"/>
+  <circle cx="364" cy="112" r="52" fill="#FFF8E6"/>
+  <rect x="80" y="142" width="352" height="20" rx="10" fill="#E7E7DD"/>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- VoxalBlast floating-world-v1 / icon-sound-on. 128x128. Outline #20334C. Safe padding 25u. No text, no filter, no raster. -->
+  <path d="M30 52 L48 52 L70 34 L70 94 L48 76 L30 76 Z" fill="#FFF1CE" stroke="#20334C" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="33" y="55" width="15" height="18" rx="5" fill="#FFD56A"/>
+  <path d="M53 55 L67 44 L67 51 L53 62 Z" fill="#FFFFFF" opacity="0.6"/>
+  <g fill="none" stroke="#4C86D8" stroke-width="7" stroke-linecap="round">
+    <path d="M82.86 48.68 A 20 20 0 0 1 82.86 79.32"/>
+    <path d="M93.14 36.43 A 36 36 0 0 1 93.14 91.57"/>
+  </g>
+</svg>

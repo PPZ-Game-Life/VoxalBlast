@@ -1,0 +1,239 @@
+{
+  "schema": "voxalblast-floating-world-art/1",
+  "status": "art assets only; production integration pending",
+  "basis": "VoxalBlast v0.12.0 / source review HEAD 5d307a8",
+  "runtimeBase": "/art/floating-world-v1/",
+  "totals": {
+    "files": 39,
+    "bytes": 830007
+  },
+  "geometry": {
+    "boardTriangles": 588,
+    "backgroundTriangles": 300
+  },
+  "files": [
+    {
+      "path": "brand/logo-1024.png",
+      "bytes": 305769,
+      "role": "brand"
+    },
+    {
+      "path": "brand/logo-1024.webp",
+      "bytes": 221816,
+      "role": "brand"
+    },
+    {
+      "path": "brand/logo-512.png",
+      "bytes": 97236,
+      "role": "brand"
+    },
+    {
+      "path": "clouds/cloud-a.png",
+      "bytes": 8471,
+      "role": "clouds"
+    },
+    {
+      "path": "clouds/cloud-a.svg",
+      "bytes": 694,
+      "role": "clouds",
+      "viewBox": "0 0 512 192"
+    },
+    {
+      "path": "clouds/cloud-b.png",
+      "bytes": 7913,
+      "role": "clouds"
+    },
+    {
+      "path": "clouds/cloud-b.svg",
+      "bytes": 684,
+      "role": "clouds",
+      "viewBox": "0 0 512 192"
+    },
+    {
+      "path": "clouds/cloud-c.png",
+      "bytes": 7929,
+      "role": "clouds"
+    },
+    {
+      "path": "clouds/cloud-c.svg",
+      "bytes": 631,
+      "role": "clouds",
+      "viewBox": "0 0 512 192"
+    },
+    {
+      "path": "models/block-unit.glb",
+      "bytes": 57796,
+      "role": "models"
+    },
+    {
+      "path": "models/floating-arch.glb",
+      "bytes": 31788,
+      "role": "models"
+    },
+    {
+      "path": "models/floating-ledge.glb",
+      "bytes": 31556,
+      "role": "models"
+    },
+    {
+      "path": "models/floating-stairs.glb",
+      "bytes": 31752,
+      "role": "models"
+    },
+    {
+      "path": "scene.recipe.json",
+      "bytes": 6214,
+      "role": "scene.recipe.json"
+    },
+    {
+      "path": "ui/button-primary.svg",
+      "bytes": 565,
+      "role": "ui",
+      "viewBox": "0 0 512 128"
+    },
+    {
+      "path": "ui/button-secondary.svg",
+      "bytes": 567,
+      "role": "ui",
+      "viewBox": "0 0 512 128"
+    },
+    {
+      "path": "ui/candidate-tray.svg",
+      "bytes": 973,
+      "role": "ui",
+      "viewBox": "0 0 720 144"
+    },
+    {
+      "path": "ui/icon-bomb.svg",
+      "bytes": 901,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-book.svg",
+      "bytes": 972,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-button.svg",
+      "bytes": 605,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-check.svg",
+      "bytes": 605,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-close.svg",
+      "bytes": 439,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-crown.svg",
+      "bytes": 875,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-hammer.svg",
+      "bytes": 702,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-haptics.svg",
+      "bytes": 802,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-help.svg",
+      "bytes": 622,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-home.svg",
+      "bytes": 769,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-play.svg",
+      "bytes": 416,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-plus.svg",
+      "bytes": 559,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-refresh.svg",
+      "bytes": 950,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-rocket.svg",
+      "bytes": 918,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-settings.svg",
+      "bytes": 1160,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-sound-off.svg",
+      "bytes": 658,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-sound-on.svg",
+      "bytes": 704,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-trophy.svg",
+      "bytes": 1118,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-turn.svg",
+      "bytes": 1415,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/icon-undo.svg",
+      "bytes": 1073,
+      "role": "ui",
+      "viewBox": "0 0 128 128"
+    },
+    {
+      "path": "ui/record-panel.svg",
+      "bytes": 708,
+      "role": "ui",
+      "viewBox": "0 0 480 240"
+    },
+    {
+      "path": "ui/score-panel.svg",
+      "bytes": 682,
+      "role": "ui",
+      "viewBox": "0 0 320 160"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240" fill="none">
+  <!-- VoxalBlast floating-world-v1 / record-panel (no label, no crown). 480x240.
+       9-slice safe insets 72u. Inner field x40-440 / y70-182 is the record value area. -->
+  <rect x="10" y="10" width="460" height="220" rx="38" fill="#DDA965"/>
+  <rect x="10" y="10" width="460" height="206" rx="38" fill="#FFF1CE"/>
+  <rect x="40" y="70" width="400" height="112" rx="26" fill="#FFF8E6" stroke="#DDA965" stroke-width="4"/>
+  <rect x="40" y="22" width="400" height="20" rx="10" fill="#FFFFFF" opacity="0.5"/>
+  <rect x="10" y="10" width="460" height="220" rx="38" stroke="#20334C" stroke-width="12"/>
+</svg>
