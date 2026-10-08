@@ -79,3 +79,22 @@
    could be confused with the illegal-drop grey (handoff §3: 语义分离). */
 #app .item-button.empty .item-icon { filter: grayscale(.85) brightness(1.06); }
 #app .item-button.disabled .item-icon { filter: grayscale(.9); }
+
+/* ---- The candidate tray (correction handoff §1.2 P0「托盘仍有明显橙金厚框」) ---------------
+ *
+ * The panel's BOX does not move: its width, height, bottom offset and z-index are layout, they
+ * are referenced by `playLayout.clearOfTray` and by the candidate containment gate, and nothing
+ * about a new board art requires changing them. Only the picture inside the box changes, so
+ * this stays a one-rule swap plus a re-alignment of the three slots onto the NEW board's own
+ * openings.
+ *
+ * The pack's tray is 720×144 with its three openings at x = 24…240 / 252…468 / 480…696,
+ * y = 24…110, 12 apart (handoff §2.3). Those numbers are the ALIGNMENT CONTRACT: the three
+ * candidate canvases are real WebGL previews, not a baked picture, so they have to be placed on
+ * the openings rather than the openings drawn around wherever the canvases happen to sit.
+ * Expressed as insets of the panel: left/right 24/720 = 3.333%, top 24/144 = 16.667%,
+ * bottom 34/144 = 23.611%, and the 12-unit gap is 12/672 = 1.786% of the slot band itself
+ * (the band is 672 wide, not 720 — the insets are already spent).
+ */
+#app .bottom-panel { background-image: url('/art/floating-world-v1/ui/candidate-tray.svg'); }
+#app .bottom-panel #piece-slots.piece-slots { inset: 16.667% 3.333% 23.611%; gap: 1.786%; }
