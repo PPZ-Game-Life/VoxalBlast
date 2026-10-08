@@ -38,7 +38,7 @@
    `--plaque-width * .105` wide at `height: 80%` of the chip, `contain` fits either aspect, and
    `floatingWorldUi.css` supplies the two images. */
 .score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background-position: center; background-size: contain; background-repeat: no-repeat; }
-.topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
+.topbar .score-chip-label, .topbar .best-chip-label { font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; }
 .topbar .icon-button, .item-button { background: none; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
@@ -297,7 +297,7 @@ html, body { overscroll-behavior: none; }
 .home-inner { width: min(400px, 100%); gap: clamp(9px, 2vh, 20px); }
 .home-brand { gap: 3px; }
 .home-logo { display: block; width: 88%; max-width: 340px; height: auto; margin: 2px auto 0; filter: drop-shadow(0 5px 9px #3c270a30); }
-.home-tagline { color: #6b4a1b; }
+.home-tagline { }
 
 /* Highest score: ONE decoration module, not a crown prop stacked on a plate prop. The concept
    covers the crown's base with the frame and lets the flower clusters stick out past the frame's
@@ -314,11 +314,11 @@ html, body { overscroll-behavior: none; }
    17% / 14% / 5% padding (→ 62.403% 18.865% 7.964% 15.123%). Keep them as percentages; a
    `padding` in percent on this node would resolve against the BOX width, i.e. against a different
    reference, and reintroduce the drift this replaced. */
-.home-record { display: block; position: relative; width: min(325px, 85vw); aspect-ratio: 481 / 415; margin-top: 1px; color: #8a5a19; font-size: .74rem; }
+.home-record { display: block; position: relative; width: min(325px, 85vw); aspect-ratio: 481 / 415; margin-top: 1px; font-size: .74rem; }
 .home-record-art { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .home-record-face { position: absolute; inset: 62.402% 18.865% 7.964% 15.123%; display: grid; justify-items: center; align-content: center; }
-.home-record-label { color: #8a5a19; font-weight: 900; letter-spacing: .03em; }
-.home-record strong { color: #7d4c0d; font-size: 1.95rem; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.home-record-label { font-weight: 900; letter-spacing: .03em; }
+.home-record strong { font-size: 1.95rem; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; }
 
 /* The cover's run action. One gold plate serves BOTH labels: the concept paints 继续游戏 and
    新游戏 in the same gold, so `.resume` no longer repaints the button — it is still toggled by
@@ -328,14 +328,14 @@ html, body { overscroll-behavior: none; }
   display: flex; align-items: center; justify-content: center; gap: 10px;
   min-height: 60px; padding: 0 30px;
   border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
-  color: #6b4106; font-size: 1.2rem; font-weight: 900; line-height: 1; 
+  font-size: 1.2rem; font-weight: 900; line-height: 1; 
   transition: transform .12s, filter .12s;
 }
-.home-primary.resume { color: #6b4106; background: none; border-color: transparent; box-shadow: none; }
+.home-primary.resume { background: none; border-color: transparent; box-shadow: none; }
 .home-primary:hover { filter: brightness(1.04); }
 .home-primary:active { transform: translateY(2px); box-shadow: none; filter: brightness(.97); }
 .home-primary-icon { width: 1.1em; height: 1.1em; object-fit: contain; }
-.home-resume-note { color: #6b4a1b; }
+.home-resume-note { }
 
 /* 新游戏 — the one full-width action that is NOT the primary plate. It used
    home-secondary.png (a 674×155 plate) while the `.home-secondary` CLASS below was a DIFFERENT
@@ -346,7 +346,7 @@ html, body { overscroll-behavior: none; }
   display: flex; align-items: center; justify-content: center; gap: 9px;
   padding: 0 26px;
   border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
-  color: #77470f; font-size: 1.02rem; font-weight: 900; line-height: 1; 
+  font-size: 1.02rem; font-weight: 900; line-height: 1; 
   transition: transform .12s, filter .12s;
 }
 .home-new:active { transform: translateY(2px); filter: brightness(.97); }
@@ -359,7 +359,7 @@ html, body { overscroll-behavior: none; }
   display: flex; align-items: center; justify-content: center; gap: 7px;
   padding: 0 10px;
   border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
-  color: #6f4512; font-size: .9rem; font-weight: 900; line-height: 1; 
+  font-size: .9rem; font-weight: 900; line-height: 1; 
   transition: transform .12s, filter .12s;
 }
 .home-secondary:active { transform: translateY(3px) !important; box-shadow: none; filter: brightness(.97); }
@@ -417,7 +417,7 @@ html, body { overscroll-behavior: none; }
   overflow-y: auto;
 }
 .settings-header { padding-bottom: 12px; }
-.settings-header h1 { color: #7d4c0d; font-size: 1.5rem; letter-spacing: 0; }
+.settings-header h1 { font-size: 1.5rem; letter-spacing: 0; }
 /* close-button.png already contains the X and its own round plate, so the original `×` glyph is
    hidden rather than stacked on top of it. `box-shadow: none` is load-bearing: the toy skin
    gives `.modal-close` a cream inset highlight AND two hard brown drop layers (`0 3px 0` /
@@ -446,7 +446,7 @@ html, body { overscroll-behavior: none; }
   padding: 0 12px;
   border-width: .55em; border-image-width: .95em;
   border-style: solid; border-color: transparent; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
-  color: #6f4512; text-align: left;
+  text-align: left;
   transition: transform .12s, filter .12s;
 }
 .setting-row:hover, .setting-action:hover { filter: brightness(1.02); transform: none; }
@@ -457,7 +457,7 @@ html, body { overscroll-behavior: none; }
    reset the switch's background-size to `auto` so a zoomed crop of the toggle art was drawn
    instead of the whole switch. Measured on both, fixed by out-specifying them, not by `!important`. */
 #settings-modal .setting-icon { width: 30px; height: 30px; border-radius: 0; background-color: transparent; background-repeat: no-repeat; background-position: center; background-size: contain; }
-.setting-row strong, .setting-action strong { color: #6f4512; font-size: .92rem; letter-spacing: 0; }
+.setting-row strong, .setting-action strong { font-size: .92rem; letter-spacing: 0; }
 .setting-row small { color: #9a7a4c; font-size: .68rem; font-weight: 800; }
 /* 回到主页 keeps the neutral cream row; only 重新开始 wears the red one. */
 .setting-action { grid-template-columns: 28px minmax(0, 1fr); }
@@ -467,8 +467,8 @@ html, body { overscroll-behavior: none; }
    as square red ears. Out-specify it with the id and clear the background — the border-image
    itself and its layout `border-width` must stay (a blanket `border: 0` would take the skin with
    it). The danger semantics and the accessible name are unchanged: this is paint only. */
-#restart-setting { background: none; border-color: transparent; box-shadow: none; color: #fff7ec; }
-#restart-setting strong { color: #fff7ec; }
+#restart-setting { background: none; border-color: transparent; box-shadow: none; }
+#restart-setting strong { }
 /* The row is inert on a device with no vibrator (settings.js disables it); the disabled look
    has to survive the new art, and the READER state is the disabled attribute, not the colour. */
 .setting-row:disabled { opacity: .55; filter: saturate(.5); }
