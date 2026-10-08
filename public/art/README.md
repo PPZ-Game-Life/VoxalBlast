@@ -1,8 +1,36 @@
 # Runtime art assets
 
-Current gameplay skin: [v0.8.27 reference garden assets](reference/README.md), including generated UI cutouts, two background compositions, and the transparent stone pedestal. The older assets below remain available for fallback/legacy surfaces.
+Current gameplay skin: `floating-world-v1/` — the 「浮空积木世界」 pack (**v0.13.0**), which owns the
+sky, the plaza, the scenery models, the clouds, the brand and every UI plate and glyph. Its
+`manifest.json` is the resource manifest and `scene.recipe.json` the world recipe.
 
-The home cover, the settings panel and the BEST / SCORE glyphs were re-skinned in v0.9.26 from the approved concept art. Those runtime files live in [ui-redesign/](ui-redesign/README.md), which also records what is a cut-out, what is a derived state, and what the handoff pack did **not** deliver — read it before describing that skin as "the original layered art".
+## What was deleted, and why (v0.13.0 §4.1 / §5.2)
+
+Three retired skins used to live here. Their pieces were still being **shipped** even though nothing
+referenced them: a built `dist` was **3544.6 KB of retired art out of 5934.8 KB — 59.7% of the deployed
+bytes** — and the page requested exactly one retired file. The handoff §4.1 asks for the old art to
+exit the picture, and §5.2 for the old declarations to stop competing, so the cutover was completed in
+two steps: the CSS references were deleted first (§5.2), then this global usage list was built and the
+files removed.
+
+| Deleted | What it was | Why it was safe |
+| --- | --- | --- |
+| `reference/` — 18 of 19 files (2557.6 KB) | v0.8.27 reference garden skin: generated UI cutouts, the score plaque, the tool PNGs, both valley compositions, `ui-atlas.webp` | zero references in `src/`, `tools/`, `index.html` |
+| `ui-redesign/` — all 26 files (986.9 KB) | v0.9.26 cover / settings skin: three nine-slice plates, the settings card and rows, the toggles, `close-button`, the six row glyphs, the HUD crown / trophy | same; `npm run probe:ui-paint` scans every visible element in four states for `/art/ui-redesign/` and reports 0 |
+| `pastoral-valley.webp` (316.4 KB) | the v0.7 valley painting, loaded by `rendering/pastoralBackdrop.js` | that module had zero imports and was deleted too |
+| `reference/README.md`, `reference/prompts.json`, `reference/slices.json`, `ui-redesign/README.md` | generation metadata for the above | dev documentation, but it was being deployed to the CDN |
+
+**Kept on purpose** (both are still referenced, so deleting them would be the bug, not the cleanup):
+
+- `reference/pedestal.webp` — `index.html`'s hidden `<img class="garden-pedestal">`. It is the only
+  retired asset the shipped page still requests, and it is kept because
+  `tools/material-grounding-probe.mjs`'s `g1b-art-*` routes read `pedestalArt` from it. See the
+  acceptance receipt §4.1 — removing it is a producer call, not a cleanup.
+- `block-pigment.webp` — still the painted surface on every cube (and, since v0.8.20, on CSS button
+  faces). Documented below and live.
+
+Everything deleted here is in git history; the receipts in `docs/Technical/` describe what each pack
+looked like.
 
 ## Block pigment surface — v0.8.18
 

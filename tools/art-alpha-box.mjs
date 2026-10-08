@@ -7,7 +7,7 @@
 // of every reference slice so the decision (crop the art vs offset the buttons) can be made on
 // numbers instead of on a screenshot.
 import { readFileSync } from 'node:fs'
-import { join, resolve, dirname, basename } from 'node:path'
+import { join, resolve, dirname, basename, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 
@@ -81,9 +81,14 @@ function alphaBox(path) {
 }
 
 const args = process.argv.slice(2)
-const names = args.length ? args : ['score-panel.png', 'sound.png', 'help.png', 'settings.png']
+// v0.13.0: the reference pack this defaulted to (score-panel / sound / help / settings .png) was
+// deleted with the retired skin — the live plaque is an SVG and `npm run shot` re-derives
+// `--plaque-board-top` from it on every run (screenshot.mjs). So the defaults below are files that
+// actually ship; pass any repo-relative image path to measure something else.
+const names = args.length ? args : ['public/art/floating-world-v1/brand/logo-1024.png', 'public/art/floating-world-v1/clouds/cloud-a.png']
 for (const name of names) {
-  const path = join(ROOT, 'public', 'art', 'reference', name)
+  // Repo-relative, and NOT pinned to one (now deleted) directory: an absolute path is used as-is.
+  const path = isAbsolute(name) ? name : join(ROOT, name)
   const b = alphaBox(path)
   console.log(`${basename(name).padEnd(16)} ${String(b.width).padStart(4)}x${String(b.height).padStart(4)}  `
     + `content x ${String(b.minX).padStart(4)}..${String(b.maxX).padStart(4)}  y ${String(b.minY).padStart(4)}..${String(b.maxY).padStart(4)}  `

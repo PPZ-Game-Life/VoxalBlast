@@ -60,7 +60,9 @@
    LEAVES rather than with the board the producer means by 「积分」.
    `--plaque-board-top` is where the board itself begins inside the slice, as a fraction of its
    height: measured from the art, not typed in by hand —
-     node tools/art-alpha-box.mjs score-panel.png
+     (v0.13.0: that PNG was deleted with the retired pack. The live value is `0.025`, set in
+      floatingWorldUi.css and asserted against the new `score-panel.svg` by `npm run shot` — the
+      derivation below is kept as the record of how the reference value was originally measured.)
        └ board top edge at y 39 of 295 = 13.22% of the slice height
    The plaque's on-screen height is `--plaque-width / 1.72` (its own `aspect-ratio`), so the
    offset scales with the plaque at every viewport instead of being a phone-only magic number.
