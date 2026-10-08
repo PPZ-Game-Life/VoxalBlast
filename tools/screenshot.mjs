@@ -49,6 +49,11 @@ const SHOTS = [
   { name: 'mobile-home', width: 390, height: 844, mode: 'home' },
   { name: 'desktop-home-return', width: 1440, height: 900, mode: 'home-return' },
   { name: 'desktop-board', width: 1440, height: 900, mode: 'board' },
+  // v0.13.0 R7: the handoff §13.1's viewport list is 1440×900 / 1280×720 / 390×844 / 320×740 /
+  // 844×390 / 2048×900. Five of the six were already here; 1280×720 was the one being graded by
+  // nothing, and it is the laptop size where the HUD's clamp(`--plaque-width`, 220–350px) and the
+  // 16:9 canvas both change shape.
+  { name: 'desktop720-board', width: 1280, height: 720, mode: 'board' },
   { name: 'mobile-board', width: 390, height: 844, mode: 'board' },
   { name: 'small-mobile-board', width: 320, height: 740, mode: 'board' },
   { name: 'landscape-board', width: 844, height: 390, mode: 'board' },
