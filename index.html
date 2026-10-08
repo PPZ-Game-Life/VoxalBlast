@@ -205,21 +205,24 @@
             </picture>
             <p class="home-tagline" data-i18n="home.tagline">Stack · Align · Blast all six faces</p>
           </div>
-          <!-- Highest score (handoff §3.3 / §4.4): crown, frame and flowers ship as ONE module —
-               `panels/home-record.png`, cut from the concept as a single transparent decoration
-               by `tools/ui-skin-home-record.py`. Two separate props cannot be re-joined: the
-               concept hides the crown's base behind the frame, so the crown slice ends in a flat
-               cut, and the flower clusters stick out past the frame's rounded silhouette, so a
-               regular rounded mask chops them. `#home-best` keeps formatting the live number. -->
+          <!-- Highest score (v0.13.0 R6, correction handoff §8): the crown is NO LONGER BAKED
+               into the plaque. The old skin shipped crown + frame + flowers as one PNG
+               (`home-record.png`) because the concept hid the crown's base behind the frame and
+               the flower clusters overflowed the frame's silhouette — two props `tools/ui-skin-
+               home-record.py` could not re-join once cut. The skin's `record-panel.svg` has no
+               decoration at all, so the crown is a separate `<img>` the stylesheet places, and
+               the number keeps its own live DOM (`#home-best`, handoff §11「皇冠不再烘焙，
+               纪录数字独立」). -->
           <div class="home-record">
-            <img class="home-record-art" src="./art/ui-redesign/panels/home-record.png" alt="" aria-hidden="true" draggable="false" />
+            <img class="home-record-crown" src="./art/floating-world-v1/ui/icon-crown.svg" alt="" aria-hidden="true" draggable="false" />
+            <img class="home-record-art" src="./art/floating-world-v1/ui/record-panel.svg" alt="" aria-hidden="true" draggable="false" />
             <div class="home-record-face">
               <span class="home-record-label" data-i18n="home.best">Best</span>
               <strong id="home-best">0</strong>
             </div>
           </div>
           <button id="home-primary" class="home-primary" type="button">
-            <img class="home-primary-icon" src="./art/ui-redesign/icons/play-triangle.png" alt="" aria-hidden="true" draggable="false" />
+            <img class="home-primary-icon" src="./art/floating-world-v1/ui/icon-play.svg" alt="" aria-hidden="true" draggable="false" />
             <span id="home-primary-label" data-i18n="home.play">New game</span>
           </button>
           <p id="home-resume-note" class="home-resume-note" aria-live="polite"></p>
@@ -228,10 +231,10 @@
                the cover), because the primary already reads New game then and two buttons
                saying the same thing is worse than one. v0.9.26 gives it the concept's cream
                secondary plate and the PLUS glyph — it starts a run, it does not replay one. -->
-          <button id="home-new" class="home-action home-new hidden" type="button" data-i18n-text="home.newGame"><img class="home-new-icon" src="./art/ui-redesign/icons/plus-gold.png" alt="" aria-hidden="true" draggable="false" />New game</button>
+          <button id="home-new" class="home-action home-new hidden" type="button" data-i18n-text="home.newGame"><img class="home-new-icon" src="./art/floating-world-v1/ui/icon-plus.svg" alt="" aria-hidden="true" draggable="false" />New game</button>
           <div class="home-secondary-row">
-            <button id="home-leaderboard" class="home-secondary" type="button" data-i18n-text="home.leaderboard"><img class="home-nav-icon" src="./art/ui-redesign/icons/nav-crown-small.png" alt="" aria-hidden="true" draggable="false" />Leaderboard</button>
-            <button id="home-settings" class="home-secondary" type="button" data-i18n-text="home.settings"><img class="home-nav-icon" src="./art/ui-redesign/icons/gear-purple.png" alt="" aria-hidden="true" draggable="false" />Settings</button>
+            <button id="home-leaderboard" class="home-secondary" type="button" data-i18n-text="home.leaderboard"><img class="home-nav-icon" src="./art/floating-world-v1/ui/icon-trophy.svg" alt="" aria-hidden="true" draggable="false" />Leaderboard</button>
+            <button id="home-settings" class="home-secondary" type="button" data-i18n-text="home.settings"><img class="home-nav-icon" src="./art/floating-world-v1/ui/icon-settings.svg" alt="" aria-hidden="true" draggable="false" />Settings</button>
           </div>
         </div>
       </div>

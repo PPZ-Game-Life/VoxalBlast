@@ -165,6 +165,119 @@ html:root { --plaque-board-top: 0.025; }
 #app .best-chip::before { background-image: url('/art/floating-world-v1/ui/icon-crown.svg'); }
 #app .score-chip::before { background-image: url('/art/floating-world-v1/ui/icon-trophy.svg'); }
 
+/* ---- The home cover's plates (handoff §8: 独立皇冠纪录牌 / 黄色主 CTA / 奶油次按钮) ----------
+ *
+ * The three button families were ALREADY 9-slice (`border-image-source` + `border-image-slice`
+ * on a PNG), so swapping the board is a source-and-slice change and the layout does not move:
+ * the pack's `button-primary.svg` / `button-secondary.svg` are both 512×128 with a stated 56-unit
+ * source inset. `border-width: 1em` is left alone — it is the DRAWN edge width, it is what the
+ * three min-heights were tuned against, and re-deriving it is a layout round, not an art swap.
+ *
+ * The text colour moves to the skin's ink. The old plates were gold-on-brown (`#6b4106` /
+ * `#77470f` / `#6f4512`) with a cream text-shadow; on the new cream boards that reads as mud, and
+ * handoff §3 says the numbers and labels stay dark navy on cream.
+ */
+#app .home-primary {
+  border-image-source: url('/art/floating-world-v1/ui/button-primary.svg');
+  border-image-slice: 56 56 56 56 fill;
+  color: #20334C;
+  text-shadow: none;
+}
+#app .home-new,
+#app .home-secondary {
+  border-image-source: url('/art/floating-world-v1/ui/button-secondary.svg');
+  border-image-slice: 56 56 56 56 fill;
+  color: #20334C;
+  text-shadow: none;
+}
+#app .home-primary.resume { color: #20334C; }
+
+/* ---- The brand lockup, and the tagline ribbon (concept: the tagline sits ON the wordmark) ----
+ *
+ * The pack's `logo-*.webp|png` is a BARE wordmark — 512×208, no ribbon, no tagline plate (checked
+ * against the file, not assumed from the concept). The concept's 转动 · 拼满 · 消除 lives in a cream
+ * ribbon pinned across the bottom of the lettering, so the ribbon is drawn here in the pack's own
+ * language: `#FFF1CE` field, `#20334C` keyline, `#DDA965` base bar for the 3D lip the other plates
+ * use. It is one plate on one text node — the copy stays in `data-i18n`, so this is a skin, not a
+ * baked image, and it cannot go stale against `src/i18n`.
+ *
+ * The ribbon is ABSOLUTE, which is the whole point: as a block it pushed the score module down by
+ * its own height and left the crown nowhere to stand (the concept's crown is a third of the panel
+ * tall and pokes well above the panel's top edge). Out of flow, `.home-brand` keeps the logo's
+ * height plus `padding-bottom`, and the ribbon rides up over the descenders.
+ */
+#app .home-brand { position: relative; padding-bottom: 20px; }
+#app .home-tagline {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  margin: 0;
+  padding: .32em 1.3em .36em;
+  border: 3px solid #20334C;
+  border-radius: 999px;
+  background: #FFF1CE;
+  box-shadow: 0 4px 0 #DDA965;
+  color: #20334C;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  line-height: 1.15;
+  text-shadow: none;
+}
+
+/* The record plaque. `record-panel.svg` is 480×240 — 2:1, against the retired slice's 481/415 —
+ * and it carries NO crown, so the crown is placed here. The face inset is the pack's own inner
+ * field (x40-440 / y70-182 of 480×240), not a re-guess of the old recess.
+ *
+ * The brand block keeps `margin-bottom` because the concept leaves open sky between the ribbon and
+ * the plaque, and the crown stands IN it — the tip clears the panel by ~1/3 of the panel height.
+ * Without the reserved gap the crown lands on the ribbon instead of the sky.
+ */
+#app .home-record {
+  aspect-ratio: 2;
+  color: #20334C;
+  margin-top: 8px;
+}
+#app .home-brand { margin-bottom: clamp(24px, 8vh, 76px); }
+#app .home-record-crown {
+  position: absolute;
+  left: 50%;
+  /* Both numbers come from `icon-crown.svg`'s own path data, not from eyeballing a render: the ink
+     (outline included) is x20.5-107.5 / y32.5-103 of the 128 box — 68.0% wide, 55.1% tall, its
+     base 19.5% above the box bottom. Solving for the concept's crown (ink 0.338 of the panel width,
+     0.552 of the panel height, base 0.24 of the panel height below the panel's top edge) gives a
+     box of 50% of the panel and `bottom: 56%`. A width-anchored box alone cannot do it: at 128u the
+     crown is TALLER than it is wide, and the pack's 2:1 panel is wider than the concept's, so the
+     two axes disagree. The img is DOM-before the panel art, so the panel paints over the crown's
+     base exactly as the concept hides it. */
+  bottom: 56%;
+  width: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#app .home-record-face { inset: 29.167% 8.333% 24.167% 8.333%; }
+#app .home-record-label { color: #20334C; text-shadow: none; }
+#app .home-record strong { color: #20334C; text-shadow: none; }
+
+/* The keyboard ring is the OLD palette's amber (`toy.css button:focus-visible`). Reskin it to the
+   pack's keyline so a focused cover button reads as the same object, and round it: the plates are
+   `border-image`, which ignores `border-radius`, so the radius shapes the ring and nothing else. */
+#app .home-primary:focus-visible,
+#app .home-new:focus-visible,
+#app .home-secondary:focus-visible {
+  outline: 3px solid #20334C;
+  outline-offset: 4px;
+  border-radius: 16px;
+}
+
+/* A phone on its side puts the brand in its own grid cell (reference.css' two-column cover), so
+   the reserved gap above the plaque is grid whitespace there and must not offset the brand. */
+@media (orientation: landscape) and (max-height: 600px) {
+  #app .home-brand { margin-bottom: 0; }
+}
+
 /* ---- The three top-bar function keys (handoff §5 「顶部功能键」) ---------------------------
  *
  * These were INVISIBLE, not merely old. The rule at the top of this file clears the background of
