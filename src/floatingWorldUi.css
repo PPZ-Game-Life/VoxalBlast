@@ -189,7 +189,16 @@ html:root { --plaque-board-top: 0.025; }
 #app .topbar .score-chip-label,
 #app .topbar .best-chip-label,
 #app .topbar .score-chip-value,
-#app .topbar .best-chip-value { color: #20334C; text-shadow: none; }
+#app .topbar .best-chip-value {
+  color: #20334C;
+  text-shadow: none;
+  /* The retired plaque drew its digits as a cream face inside a 1px #AC4B12 ring
+     (`-webkit-text-stroke` + `paint-order: stroke fill`). The skin moved the colour but never
+     cleared the ring, so the shipped HUD still wore it — measured live on the computed style, and
+     visible as soon as you look at the digits rather than at the whole plaque. Stated as 0 here so
+     the single display path stays true even if `reference.css` changes again. */
+  -webkit-text-stroke: 0;
+}
 
 /* The two row glyphs are separate icons with separate semantics (handoff §11: 保留两种语义，
    不混同) — BEST keeps the crown, SCORE the trophy, and neither is baked into the board. */
@@ -290,6 +299,11 @@ html:root { --plaque-board-top: 0.025; }
 }
 #app .home-record-face { inset: 29.167% 8.333% 24.167% 8.333%; }
 #app .home-record-label { color: #20334C; text-shadow: none; }
+/* Found by the cascade audit, not by looking at the screen: this is the one line of cover text the
+   skin never covered. It kept the retired palette's brown ink (`#6b4a1b`) and its cream emboss
+   (`0 1px 0 #fff9e9b8`), which is why deleting that declaration was the single non-inert removal of
+   the eleven. §5.1's ink for the cover is navy, like the labels right above this rule. */
+#app .home-resume-note { color: #20334C; text-shadow: none; }
 #app .home-record strong { color: #20334C; text-shadow: none; }
 
 /* The keyboard ring is the OLD palette's amber (`toy.css button:focus-visible`). Reskin it to the
