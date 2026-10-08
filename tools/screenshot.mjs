@@ -563,8 +563,26 @@ async function capture(browser, shot) {
       parsed.screenshot = { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
       const failures = []
       if (parsed.errors.length) failures.push('browser/runtime errors')
-      if (!parsed.backdrop) failures.push('backdrop SVG fallback or viewport coverage missing')
-      if (!parsed.backdropImage?.loaded) failures.push('background image missing or not loaded')
+      // v0.13.0 (correction handoff §13.2「更新而不是删除旧断言」): the two assertions that used
+      // to stand here — "a `.pastoral-backdrop` layer covers the viewport" and "its valley webp
+      // loaded" — described the PAINTED background the floating world retires. They are
+      // replaced, not deleted, by what the frame has to prove now: a real lit scene graph is up,
+      // it lives on the scenery layer ALONE (which is what keeps it out of the normal/depth
+      // prepass and out of picking), its sky is ready, its floor is below the board's worst
+      // pose, and it built the cloud count its quality tier asked for. Each of these is a fact a
+      // screenshot cannot show — a missing cloud layer and a cloud layer drawn behind an opaque
+      // sky are the same picture.
+      const world = parsed.rendering?.world
+      if (!world) failures.push('the floating world did not report (scenery). is it mounted?')
+      else {
+        if (!world.enabled) failures.push('the floating world is disabled')
+        if (world.layer !== 2 || world.layerMask !== 4) failures.push(`scenery must live on layer 2 alone (layer ${world.layer}, mask ${world.layerMask})`)
+        if (!world.sky?.ready) failures.push('the sky material/texture is not ready')
+        if (!(world.plaza?.floorY <= -4.5)) failures.push(`the plaza floor (${world.plaza?.floorY}) is above the board's worst pose — the board would cut through it`)
+        if (!(world.cells > 0)) failures.push('the floating blocks have no cells')
+        if (!(world.clouds > 0) || world.cloudTextures !== 3) failures.push(`clouds: ${world.clouds} sprites over ${world.cloudTextures} textures (the pack ships three)`)
+        if (world.tierSpec && world.tierSpec.clouds !== world.clouds) failures.push(`the ${world.tier} tier asks for ${world.tierSpec.clouds} clouds, ${world.clouds} were built`)
+      }
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')
       if (parsed.rendering?.meshes !== 98 || parsed.rendering?.uniqueCells !== 98) failures.push('board must contain exactly 98 unique meshes')
@@ -579,6 +597,25 @@ async function capture(browser, shot) {
       // readable. "Stronger" is the point: the old one only proved a quad was drawn.
       const ground = parsed.rendering?.grounding?.ground
       const grounding = parsed.rendering?.grounding
+      // v0.13.0 R3 (handoff §9.3). The main canvas became the WHOLE viewport and the board is
+      // put back into the play area by the render camera's embedded projection. Four things
+      // make that real, and none of them is visible in the picture: the canvas really is the
+      // viewport, the gameplay rect is a strict sub-rect of it (so the embed is exercised at
+      // all), the two projections agree to within a CSS pixel, and no fifth WebGL context
+      // appeared — the stage's whole justification is that scenery gets drawn by THIS renderer.
+      const projection = parsed.rendering?.projection
+      if (!projection) failures.push('the render-camera embedding was not reported')
+      else {
+        if (Math.round(projection.canvas.width) !== width || Math.round(projection.canvas.height) !== height) {
+          failures.push(`the main canvas is ${projection.canvas.width}x${projection.canvas.height}, not the ${width}x${height} viewport`)
+        }
+        if (!(projection.gameplayRect.width > 0 && projection.gameplayRect.height > 0)) failures.push('the gameplay rect has no area')
+        if (projection.gameplayRect.width >= projection.canvas.width || projection.gameplayRect.height >= projection.canvas.height) {
+          failures.push('the gameplay rect fills the canvas — the embedded projection was never exercised')
+        }
+        if (!(projection.worstPx <= 1)) failures.push(`render-camera embedding is ${projection.worstPx}px off the gameplay projection (budget 1 CSS px)`)
+      }
+      if (parsed.canvases !== 4) failures.push(`expected 4 WebGL canvases (main + three candidate slots), found ${parsed.canvases}`)
       if (grounding?.route !== 'none') failures.push(`the floating-world skin must ship without a pedestal or platform (route: ${grounding?.route})`)
       if (grounding?.pedestalArt && !grounding.pedestalArt.hidden) failures.push('the painted pedestal is still visible behind the board')
       if (grounding?.platform?.visible) failures.push('the G1 platform prototype is visible in the shipped route')
