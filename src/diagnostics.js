@@ -345,6 +345,14 @@ export function createDiagnostics({
         // recorded. Mounted here because this module whitelists the handles one by one — a
         // `dev.setAmbient` that is never forwarded is a handle that silently does nothing.
         setAmbient: (values) => dev.setAmbient(values),
+        // v0.13.0 R4 (handoff §6.3-A): the two switches the block-material round turns ONE AT A
+        // TIME to tell 「灰」 from 「厚黑缝」 — "the seams render darker than the hull colour the
+        // recipe specifies" is a measurement, and the experiment that explains it is dropping the
+        // occlusion term. `main.js` has owned both callbacks all along; they were simply never
+        // forwarded here, and this module whitelists handles one by one, so the page had no way to
+        // run that A/B at all.
+        ssao: (on) => dev.ssao(on),
+        occlusion: (value) => dev.occlusion(value),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
         records: () => recordStore.all(),
