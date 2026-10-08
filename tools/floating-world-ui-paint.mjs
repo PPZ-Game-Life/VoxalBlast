@@ -231,6 +231,59 @@ const scanLegacy = async (id, label) => {
 }
 await scanLegacy(500, 'board')
 
+// ---- A skin plate must state its own SCALE, not inherit it from somewhere else -----------------
+//
+// Why this check exists (2026-10-08, handoff §5.2): `#app .score-plaque` and `#app .bottom-panel`
+// declared only `background-image`. Their `background-position` / `-size` / `-repeat` were coming
+// from the RETIRED rule's `background: url(...) center / 100% 100% no-repeat` shorthand — a
+// shorthand whose `background-image` loses to the `#app` rule (higher specificity) but whose three
+// LONGHANDS were overridden by nothing at all. So the board art was quietly riding on a rule that
+// was scheduled for deletion, and deleting it flipped the plaque to `0% 0% / auto / repeat` — an
+// SVG drawn at intrinsic size and tiled. Not one of the 17 viewport screenshots changed enough to
+// be noticed; the cascade audit did. A plate that paints a picture must therefore declare the box it
+// is painted into, and this gate fails when it does not.
+const PLATE_SCALE = `(() => {
+  const plates = [
+    ['score plaque', '#app .score-plaque'],
+    ['candidate tray', '#app .bottom-panel'],
+    ['tool tile glyph', '#app .item-button .item-icon'],
+  ]
+  // JSON.stringify on purpose: a CDP returnByValue result that is ALREADY an array comes back as an
+  // array, which JSON.parse then coerces to "[object Object],…". Returning a string keeps every
+  // probe in this file on the same .result.value -> JSON.parse path. (No backticks in here: this
+  // expression is itself a template literal.)
+  return JSON.stringify(plates.map(([name, sel]) => {
+    const el = document.querySelector(sel)
+    if (!el) return { name, sel, missing: true }
+    const cs = getComputedStyle(el)
+    return {
+      name, sel,
+      image: (cs.backgroundImage || '').slice(0, 60),
+      size: cs.backgroundSize,
+      repeat: cs.backgroundRepeat,
+      position: cs.backgroundPosition,
+    }
+  }))
+})()`
+const plates = JSON.parse((await send(ws, 520, 'Runtime.evaluate', { expression: PLATE_SCALE, returnByValue: true })).result.value)
+const layers = (value) => String(value || '').split(',').map((s) => s.trim()).filter(Boolean)
+for (const p of plates) {
+  if (p.missing) { failures.push(`plate scale: ${p.name} (${p.sel}) is not in the DOM`); continue }
+  const paints = p.image && p.image !== 'none'
+  // Per LAYER, not per declaration: the tool tile paints a glyph over a board, so it legitimately
+  // carries two sizes and two repeats ('81.25% 81.25%, 100% 100%' / 'no-repeat, no-repeat'). An
+  // exact-string comparison against 'no-repeat' called that a failure.
+  const sizes = layers(p.size)
+  const repeats = layers(p.repeat)
+  const ok = !paints || (sizes.every((s) => s !== 'auto') && repeats.every((r) => r === 'no-repeat'))
+  console.log(`plate      ${p.name.padEnd(16)} size=${p.size} repeat=${p.repeat} ${ok ? 'ok' : 'FAIL'}`)
+  if (!ok) {
+    failures.push(`plate scale: ${p.name} paints ${p.image} but declares no box `
+      + `(background-size: ${p.size}, background-repeat: ${p.repeat}) — a plate must state its own scale `
+      + 'rather than inherit a deleted shorthand\'s longhands (handoff §5.2)')
+  }
+}
+
 await send(ws, 401, 'Runtime.evaluate', {
   expression: '(() => { document.querySelector("#settings-button").click(); document.querySelector("#home-setting").click(); return 1 })()',
   returnByValue: true,

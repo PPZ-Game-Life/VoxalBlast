@@ -1,9 +1,20 @@
-/* Reference art skin. Generated RGBA slices; labels/counts remain live DOM. */
+/* Reference skin: LAYOUT, typography and state for the HUD / cover / dialogs.
+ *
+ * v0.13.0 「浮空积木世界」 (handoff §5.2): this file no longer declares a single retired-skin
+ * ART URL. Every `url()` that used to live here — the reference pack's score-panel / sound /
+ * help / settings / four tool / tray PNGs, the ui-redesign pack's plates and row glyphs, and the
+ * valley backdrop — was a cascade LOSER (the floating-world skin out-specifies it with an `#app`
+ * prefix) and has been DELETED rather than left to be overridden: §5.2 forbids 「叠第三套补丁后
+ * 寄希望于『最后一条应该赢』」 and requires 「显式保留唯一显示路径」.
+ *
+ * What stays here is what the new skin does not restate: geometry, sizes, hit areas, focus,
+ * `border-width` / `border-image-width` (the new skin sets the image and its slice, so the WIDTH
+ * that sizes a nine-slice plate still comes from this file), and the muted-sound `filter`.
+ * The one display path for UI art is now `src/floatingWorldUi.css`; the two must not both paint. */
 :root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; --item-caption: 15px; }
-.pastoral-backdrop-painting { filter: blur(1.5px) saturate(.86); transform: scale(1.015); }
 .topbar { position: absolute; inset: 0 0 auto; width: 100%; max-width: none; height: 18vh; padding: 0; overflow: visible; pointer-events: none; }
 .topbar > button { pointer-events: auto; }
-.score-plaque { position: absolute; left: var(--hud-left); top: var(--hud-top); width: var(--plaque-width); aspect-ratio: 1.72; background: url('/art/reference/score-panel.png') center / 100% 100% no-repeat; }
+.score-plaque { position: absolute; left: var(--hud-left); top: var(--hud-top); width: var(--plaque-width); aspect-ratio: 1.72; }
 .topbar .score-chip, .topbar .best-chip { position: absolute; left: calc(var(--hud-left) + var(--plaque-width) * .16); width: calc(var(--plaque-width) * .66); min-width: 0; min-height: 0; height: calc(var(--plaque-width) * .16); padding: 0 0 0 calc(var(--plaque-width) * .12); margin: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); align-items: center; gap: 5px; }
 /* v0.9.22/v0.9.23 — each row is CENTRED on one of the plaque's two bands, and the bands are
    visible geometry rather than hand-typed offsets. Measured on the RENDERED plaque (a 3x
@@ -22,16 +33,14 @@
    (「SCORE 把左边那个 icon 去掉」), and the same day the producer reversed it
    (2026-09-29: 「还原成 Score 左边也有 icon 的版本」). v0.9.26 splits the shared selector:
    the redesign's final ruling is BEST = crown, SCORE = trophy (temp/ui-redesign-handoff-
-   20260929 §1, manifest `decisions.hudBest` / `decisions.hudScore`), so the glyphs differ now
-   and can no longer share one `background`. The shared rule keeps only the geometry: the box
-   is `--plaque-width * .105` wide at `height: 80%` of the chip, and `contain` fits either
-   aspect (crown 130×113, trophy 140×118) inside it. */
+   20260929 §1, manifest `decisions.hudBest` / `decisions.hudScore`). v0.13.0 moved both glyphs
+   into the floating-world pack, so this rule keeps ONLY the geometry: the box is
+   `--plaque-width * .105` wide at `height: 80%` of the chip, `contain` fits either aspect, and
+   `floatingWorldUi.css` supplies the two images. */
 .score-chip::before, .best-chip::before { content: ''; position: absolute; left: 0; width: calc(var(--plaque-width) * .105); height: 80%; background-position: center; background-size: contain; background-repeat: no-repeat; }
-.best-chip::before { background-image: url('/art/ui-redesign/icons/hud-crown-best.png'); }
-.score-chip::before { background-image: url('/art/ui-redesign/icons/hud-trophy-score.png'); }
 .topbar .score-chip-label, .topbar .best-chip-label { color: #98400c; font-size: calc(var(--plaque-width) * .052); white-space: nowrap; letter-spacing: -.025em; font-weight: 900; }
 .topbar .score-chip-value, .topbar .best-chip-value { display: block; min-width: 0; width: 100%; white-space: nowrap; line-height: 1.2; text-align: right; color: #fff9e9; font-size: calc(var(--plaque-width) * .102); font-weight: 900; -webkit-text-stroke: 1px #ac4b12; paint-order: stroke fill; text-shadow: 0 2px 2px #a95821; }
-.topbar .icon-button, .item-button { background: var(--button-art) center / contain no-repeat; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
+.topbar .icon-button, .item-button { background: none; border: 0; border-radius: 50%; box-shadow: none; padding: 0; width: var(--hud-button); height: var(--hud-button); transition: transform .15s, filter .15s; }
 .topbar .icon-button::before, .item-button::before { display: none; }
 /* The reference skin REPLACES the toy skin's drawings with its own PNG art (line 50 below puts
    that art on `.item-icon` itself). Every `<svg class="toy-icon">` the old skin injects has to be
@@ -58,15 +67,10 @@
    `npm run probe:shot` re-derives the ratio from the PNG at every run and fails if the
    stylesheet disagrees, so re-cutting the art cannot silently rot this number. */
 .topbar .icon-button { position: absolute; top: calc(var(--hud-top) + var(--plaque-width) / 1.72 * var(--plaque-board-top)); }
-#settings-button { --button-art: url('/art/reference/settings.png'); right: max(.2vw, env(safe-area-inset-right)); width: calc(var(--hud-button) * 1.20); }
-.topbar #controls-button { display: grid; --button-art: url('/art/reference/help.png'); right: calc(2.4vw + var(--hud-button) * 1.2); }
-#sound-button { --button-art: url('/art/reference/sound.png'); right: calc(3.1vw + var(--hud-button) * 2.2); width: calc(var(--hud-button) * 1.12); }
+#settings-button { right: max(.2vw, env(safe-area-inset-right)); width: calc(var(--hud-button) * 1.20); }
+.topbar #controls-button { display: grid; right: calc(2.4vw + var(--hud-button) * 1.2); }
+#sound-button { right: calc(3.1vw + var(--hud-button) * 2.2); width: calc(var(--hud-button) * 1.12); }
 #sound-button[aria-pressed='false'] { filter: grayscale(.8); }
-#sound-button[aria-pressed='false']::after { content: ''; position: absolute; left: 30%; right: 20%; top: 48%; height: 3px; background: #69558f; transform: rotate(-45deg); border: 1px solid #fff3dc; }
-.item-button[data-item='refresh'] { --button-art: url('/art/reference/refresh.png'); }
-.item-button[data-item='hammer'] { --button-art: url('/art/reference/hammer.png'); }
-.item-button[data-item='rocket'] { --button-art: url('/art/reference/rocket.png'); }
-.item-button[data-item='bomb'] { --button-art: url('/art/reference/bomb.png'); }
 /* v1 (07 §8.3) — the strip carries NAMES now. The button becomes a two-row column: the art
    square on top and an `--item-caption` caption under it. The art moves off the button's own
    background and onto `.item-icon`, because a square PNG stretched into a taller box would
@@ -75,13 +79,12 @@
    board band in the same change (`.board-section` below), so the caption can never eat into the
    cube. */
 .item-button { display: grid; grid-template-rows: var(--hud-button) var(--item-caption); background: none; width: var(--hud-button); height: calc(var(--hud-button) + var(--item-caption)); border-radius: 0; overflow: visible; }
-.item-button .item-icon { visibility: visible; width: var(--hud-button); height: var(--hud-button); background: var(--button-art) center / contain no-repeat; font-size: 0; color: transparent; }
+.item-button .item-icon { visibility: visible; width: var(--hud-button); height: var(--hud-button); background: none; font-size: 0; color: transparent; }
 .item-button .item-count { top: 0; right: -1px; min-width: 26px; height: 30px; padding: 2px 6px; display: grid; place-items: center; background: linear-gradient(#ff628b, #f21c57); border: 1px solid #ffabc1; border-radius: 50%; color: white; font-size: 19px; box-shadow: 0 2px 3px #98244e66; }
 /* Armed: the art wears a glow ring. The old rule re-declared the button's background, which is
    no longer where the art lives — `drop-shadow` on the icon does the same job and survives the
    layout change. */
 .item-button.active .item-icon { filter: drop-shadow(0 0 7px #ffc400); }
-.item-button.active::before { content: ''; position: absolute; inset: -3px -3px calc(var(--item-caption) - 3px); border: 3px solid #fff6ab; border-radius: 50%; pointer-events: none; }
 .item-button.empty .item-icon { filter: grayscale(.85) brightness(1.08); }
 .item-button.disabled .item-icon { filter: grayscale(.9); }
 .topbar .icon-button:hover, .item-button:not(.disabled):hover { transform: translateY(-2px) scale(1.04); }
@@ -111,7 +114,7 @@
    the route and re-asserts `display:none` on every route switch, and the two legacy grounding
    routes are the only thing that can turn it back on. */
 .garden-pedestal { position: absolute; display: none; max-width: none; height: auto; transform: translateX(-50%); pointer-events: none; user-select: none; z-index: 0; }
-.bottom-panel { position: absolute; z-index: 2; bottom: max(2%, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(840px, 52vw); height: 16%; max-height: 170px; padding: 5px 15px 9px; border: 0; border-radius: 0; box-shadow: none; background: url('/art/reference/tray.png') center / 100% 100% no-repeat; }
+.bottom-panel { position: absolute; z-index: 2; bottom: max(2%, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(840px, 52vw); height: 16%; max-height: 170px; padding: 5px 15px 9px; border: 0; border-radius: 0; box-shadow: none; }
 .bottom-panel #piece-slots.piece-slots { position: absolute; inset: 14% 5% 17%; height: auto; width: auto; max-width: none; gap: 3%; align-items: stretch; }
 .bottom-panel .piece-slot { display: flex; align-items: stretch; justify-content: center; min-height: 0; padding: 0; background: transparent; border: 0; box-shadow: none; border-radius: 16px; }
 .bottom-panel .piece-thumb { height: 100%; width: 100%; margin: 0; transform: none; border-radius: 0; background: none; filter: drop-shadow(0 3px 2px #82522244); }
@@ -217,9 +220,12 @@ html, body { overscroll-behavior: none; }
 
 /* ============================================================
    v0.9.26 — PASTORAL UI REDESIGN SKIN  (home cover · settings panel)
+   v0.13.0 — RE-SKINNED: this block is now LAYOUT + TYPE ONLY and owns no art.
 
-   Source: temp/ui-redesign-handoff-20260929 (guide JEFFY_INTEGRATION.md, art notes
-   public/art/ui-redesign/README.md). This block changes PRESENTATION ONLY: every id,
+   Source: temp/ui-redesign-handoff-20260929 (guide JEFFY_INTEGRATION.md). The ui-redesign PNGs
+   it was written for (home-primary/-secondary/-nav, settings-modal/-row/-danger, close-button,
+   toggle-on/-off, keyboard-hint and the six row glyphs) were DELETED in v0.13.0 §5.2; the skin
+   is `floatingWorldUi.css` now. What survives is box geometry, id/class hooks and semantics: every id,
    class and event the game already had is untouched, `src/ui/home.js` still owns the
    resume/new-game branch, and `src/ui/settings.js` still drives `.enabled` /
    `aria-pressed` — there is no second image-state variable anywhere.
@@ -253,6 +259,12 @@ html, body { overscroll-behavior: none; }
    Everything not covered by a slice is stretched: the plates' fills are flat cream or a
    smooth vertical gold gradient, so the stretch is invisible, and nothing with a flower or
    a leaf (home-record.png, close-button.png, the toggles) is ever nine-sliced.
+
+   v0.13.0: every plate named above is gone (deleted with the retired art), so the SLICE values
+   are no longer declared here — they come from the pack in `floatingWorldUi.css`. The em-based
+   `border-width` / `border-image-width` geometry below is deliberately KEPT: the new skin
+   re-declares only `border-image-source` + `-slice`, so these are still what size the new
+   nine-slice plates. That is why this reasoning is retained rather than deleted with the PNGs.
    ============================================================ */
 
 /* The `::before` wood-plank face toy.css paints behind buttons is for the OLD skin: the new
@@ -275,11 +287,11 @@ html, body { overscroll-behavior: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 /* ---------------------------------------------------------------- home cover */
-/* The valley behind the cover is the same clean painting the rest of the game uses
-   (public/art/reference/valley-portrait.webp | valley-landscape.webp, loaded by
-   rendering/pastoralBackdrop.js). The concept's own background is NOT shipped: it has the
-   score, the buttons and the text painted into it. Only the wash on top is lightened here,
-   because the redesign wants the meadow to read rather than be veiled blue. */
+/* The wash the cover lays over the world. It used to veil the valley painting
+   (`rendering/pastoralBackdrop.js`, deleted in v0.13.0 §4.1) so the meadow read through it;
+   the layer behind is the live floating-world scene (sky + plaza + scenery) now, so the wash is
+   kept only as the contrast the cover's type was measured against — and deliberately NOT
+   re-tuned, because the C1/C3 acceptance shots were taken through exactly this value. */
 .home-screen { background: linear-gradient(180deg, #cdeafb47 0%, #eaf6e84a 50%, #fbf3e2a8 100%); }
 .home-inner { width: min(400px, 100%); gap: clamp(9px, 2vh, 20px); }
 .home-brand { gap: 3px; }
@@ -314,10 +326,7 @@ html, body { overscroll-behavior: none; }
   width: 100%;
   display: flex; align-items: center; justify-content: center; gap: 10px;
   min-height: 60px; padding: 0 30px;
-  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
-  border-image-source: url('/art/ui-redesign/panels/home-primary.png');
-  border-image-slice: 65 65 65 65 fill;
-  background: none; border-radius: 0; box-shadow: none;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
   color: #6b4106; font-size: 1.2rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #ffeeb6;
   transition: transform .12s, filter .12s;
 }
@@ -327,17 +336,15 @@ html, body { overscroll-behavior: none; }
 .home-primary-icon { width: 1.1em; height: 1.1em; object-fit: contain; }
 .home-resume-note { color: #6b4a1b; text-shadow: 0 1px 0 #fff9e9b8; }
 
-/* 新游戏 — the one full-width action that is NOT the primary plate. It uses
-   home-secondary.png (a 674×155 plate); the `.home-secondary` CLASS below is a different
-   control (排行榜 / 设置, home-nav.png), so the two must never be mapped by name. */
+/* 新游戏 — the one full-width action that is NOT the primary plate. It used
+   home-secondary.png (a 674×155 plate) while the `.home-secondary` CLASS below was a DIFFERENT
+   control (排行榜 / 设置, home-nav.png), so the two must never be mapped by name. Both plates are
+   gone in v0.13.0 and both classes now paint `button-secondary.svg` — the naming trap stands. */
 .home-new {
   width: 100%; min-height: 52px;
   display: flex; align-items: center; justify-content: center; gap: 9px;
   padding: 0 26px;
-  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
-  border-image-source: url('/art/ui-redesign/panels/home-secondary.png');
-  border-image-slice: 51 51 51 51 fill;
-  background: none; border-radius: 0; box-shadow: none;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
   color: #77470f; font-size: 1.02rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #fff6e2;
   transition: transform .12s, filter .12s;
 }
@@ -350,10 +357,7 @@ html, body { overscroll-behavior: none; }
   flex: 1; min-width: 0; min-height: 54px;
   display: flex; align-items: center; justify-content: center; gap: 7px;
   padding: 0 10px;
-  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;
-  border-image-source: url('/art/ui-redesign/panels/home-nav.png');
-  border-image-slice: 51 51 51 51 fill;
-  background: none; border-radius: 0; box-shadow: none;
+  border-style: solid; border-color: transparent; border-width: 1em; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
   color: #6f4512; font-size: .9rem; font-weight: 900; line-height: 1; text-shadow: 0 1px 0 #fff6e2;
   transition: transform .12s, filter .12s;
 }
@@ -405,10 +409,7 @@ html, body { overscroll-behavior: none; }
      in thickness and reads as a double line. Splitting them gives both — the band lands at
      26 × 24.8/56 = 11.5px and the corner at 24.8px, which is the art's own ratio at this size. */
   border-width: 1.2em; border-image-width: 1.35em;
-  border-style: solid; border-color: transparent; border-image-repeat: stretch;
-  border-image-source: url('/art/ui-redesign/panels/settings-modal.png');
-  border-image-slice: 56 56 56 56 fill;
-  padding: 12px 14px 14px;
+  border-style: solid; border-color: transparent; border-image-repeat: stretch;  padding: 12px 14px 14px;
   background: none; border-radius: 0;
   box-shadow: 0 18px 46px #3b2a0a45;
   max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
@@ -424,9 +425,7 @@ html, body { overscroll-behavior: none; }
    aria-label still names the button. */
 #settings-close {
   width: 44px; height: 44px; padding: 0;
-  border: 0; border-radius: 0; box-shadow: none;
-  background: url('/art/ui-redesign/panels/close-button.png') center / contain no-repeat;
-  color: transparent; font-size: 0; line-height: 0;
+  border: 0; border-radius: 0; box-shadow: none;  color: transparent; font-size: 0; line-height: 0;
   filter: drop-shadow(0 2px 3px #4a321033);
 }
 #settings-close:hover { filter: brightness(1.06) drop-shadow(0 2px 3px #4a321033); }
@@ -445,10 +444,7 @@ html, body { overscroll-behavior: none; }
   display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px;
   padding: 0 12px;
   border-width: .55em; border-image-width: .95em;
-  border-style: solid; border-color: transparent; border-image-repeat: stretch;
-  border-image-source: url('/art/ui-redesign/panels/settings-row.png');
-  border-image-slice: 38 38 38 38 fill;
-  background: none; border-radius: 0; box-shadow: none;
+  border-style: solid; border-color: transparent; border-image-repeat: stretch;  background: none; border-radius: 0; box-shadow: none;
   color: #6f4512; text-align: left;
   transition: transform .12s, filter .12s;
 }
@@ -460,12 +456,6 @@ html, body { overscroll-behavior: none; }
    reset the switch's background-size to `auto` so a zoomed crop of the toggle art was drawn
    instead of the whole switch. Measured on both, fixed by out-specifying them, not by `!important`. */
 #settings-modal .setting-icon { width: 30px; height: 30px; border-radius: 0; background-color: transparent; background-repeat: no-repeat; background-position: center; background-size: contain; }
-#sound-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-speaker.png'); }
-#haptics-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-vibration.png'); }
-#drag-turn-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-turn.png'); }
-#controls-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-book.png'); }
-#home-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-home.png'); }
-#restart-setting .setting-icon { background-image: url('/art/ui-redesign/icons/settings-restart.png'); }
 .setting-row strong, .setting-action strong { color: #6f4512; font-size: .92rem; letter-spacing: 0; text-shadow: 0 1px 0 #fff6e2; }
 .setting-row small { color: #9a7a4c; font-size: .68rem; font-weight: 800; }
 /* 回到主页 keeps the neutral cream row; only 重新开始 wears the red one. */
@@ -476,7 +466,7 @@ html, body { overscroll-behavior: none; }
    as square red ears. Out-specify it with the id and clear the background — the border-image
    itself and its layout `border-width` must stay (a blanket `border: 0` would take the skin with
    it). The danger semantics and the accessible name are unchanged: this is paint only. */
-#restart-setting { background: none; border-color: transparent; box-shadow: none; border-image-source: url('/art/ui-redesign/panels/settings-danger.png'); color: #fff7ec; }
+#restart-setting { background: none; border-color: transparent; box-shadow: none; color: #fff7ec; }
 #restart-setting strong { color: #fff7ec; text-shadow: 0 1px 1px #8f2f12; }
 /* The row is inert on a device with no vibrator (settings.js disables it); the disabled look
    has to survive the new art, and the READER state is the disabled attribute, not the colour. */
@@ -488,22 +478,19 @@ html, body { overscroll-behavior: none; }
 #settings-modal .setting-switch {
   position: relative; flex: 0 0 auto;
   width: 58px; height: 34px;
-  border: 0; border-radius: 0;
-  background: url('/art/ui-redesign/panels/toggle-off.png') center / contain no-repeat;
-  transition: none;
+  border: 0; border-radius: 0;  transition: none;
 }
 #settings-modal .setting-switch i { display: none; }
-#settings-modal .setting-row.enabled .setting-switch { background-image: url('/art/ui-redesign/panels/toggle-on.png'); }
-
-/* The keyboard legend and the language name share one small cream pill. It is a FULL pill
-   (radius = half its height), which a nine-slice cannot reproduce — the caps would flatten —
-   so this is the one plate that is scaled to the box instead of sliced. */
+/* The keyboard legend and the language name share one small pill. It was a baked PNG
+   (keyboard-pill) scaled to the box rather than nine-sliced, because a FULL pill (radius = half
+   its height) has caps a nine-slice flattens. v0.13.0 draws the pill in CSS
+   (`#app .setting-hint`); the geometry below is what its glyphs are laid out on. */
 .setting-hint {
   flex: 0 0 auto;
   display: grid; place-items: center;
   min-height: 30px; padding: 0 10px;
   border: 0; border-radius: 0;
-  background: url('/art/ui-redesign/panels/keyboard-hint.png') center / 100% 100% no-repeat;
+ 
   color: #8a6a3c; font-size: .7rem; font-weight: 900; letter-spacing: .06em;
 }
 @media (max-height: 700px) {

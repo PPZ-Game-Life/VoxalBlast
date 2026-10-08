@@ -149,13 +149,6 @@ button:focus-visible { outline: 3px solid #3463a4; outline-offset: 4px; }
 html, body { background: #bfe3fa; }
 body { background: linear-gradient(180deg, #8fd0f2 0%, #c3e7fb 52%, #d8f0dc 100%); }
 
-/* The landscape. A DOM layer rather than a skybox: it costs a few kB of SVG
-   (rendering/pastoralBackdrop.js) and stays sharp at any device pixel ratio.
-   `z-index: -1` puts it above the page background and below every game layer,
-   which is exactly where a backdrop belongs. */
-.pastoral-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.pastoral-backdrop svg { display: block; width: 100%; height: 100%; }
-
 /* --- Boot curtain (v0.11.2) ---------------------------------------------
    The first thing painted and the last thing to leave. Its first-paint FLOOR (fixed, opaque,
    z-index 30, centred) is inlined in index.html because this stylesheet arrives after the HTML;

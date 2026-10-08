@@ -5,8 +5,12 @@
 > **这不是「整套设计完成」的验收。** 按 §C4，只有 C1–C4 全过才可以写「浮空积木世界设计实装完成」；
 > 现在过的只有 C1 和 C3，C2/C4 各有明确未项（见 §2、§5），所以标题写的是**阶段**回执。
 >
-> **构建身份**：`HEAD = a0721cb`，`package.json version = 0.13.1`，**工作树干净**（仅另一个会话的
-> `package.json` 改动与两个未跟踪的新文件）。本会话最后一次全量门禁就跑在这个状态上：
+> **构建身份**：`package.json version = 0.13.1`，本轮回执覆盖 `095344e` **及其后的本轮改动**。
+> 刻意不写死提交号 —— 上一版写死的 `HEAD = a0721cb` 在下一个提交之后就变成了错的。要知道具体提交，
+> 用提交信息里的 `§5.2` 反查。本轮自己改的路径：`src/reference.css`、`src/toy.css`、`src/floatingWorldUi.css`、`tools/floating-world-ui-paint.mjs`、`docs/Technical/FLOATING_WORLD_ACCEPTANCE_RECEIPT.md`、`src/rendering/pastoralBackdrop.js (deleted)`。
+> **取数时工作树不干净**：并行会话同时在改
+> `src/rendering/floatingWorldScene.js`（1 行），
+> 该文件**未纳入本轮回执**，但它是"17 张截图为什么全都不同"的原因（§12.2）。本会话最后一次全量门禁：
 > `npm run shot` **16/16 OK、0 FAIL**（含 R3 投影嵌入断言 + R4 实景断言 + 本轮新增的
 > 「整层装饰被剔光」断言），`npm test` 11 套全绿，`npm run build` ✓ 2.00s。
 >
@@ -128,11 +132,11 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
 
 | 项 | 事实 | 判定 |
 | --- | --- | --- |
-| 旧田园背景模块 | `src/rendering/pastoralBackdrop.js` 全仓**没有任何 import**（`main.js` 只剩一行说明它已移除的注释） | **死代码**，可见性无风险 |
-| 旧田园 CSS | `toy.css:156-157` 的 `.pastoral-backdrop` 规则仍在；`reference.css:3` 的 `.pastoral-backdrop-painting` 仍在 | 死规则（层永远不会被创建） |
-| 旧 UI 美术引用 | **`reference.css` 里仍有 10 处 `/art/reference/*.png`**（score-panel / sound / help / settings / 四工具 / tray / pedestal） | **未清除，只是被覆盖** |
-| 新 UI 美术引用 | `floatingWorldUi.css` 里 25 处 `/art/floating-world-v1/…`，靠 `#app` 前缀的**特异性**压过旧声明 | 见下 |
-| 旧底座 `<img>` | `index.html:100` 的 `<img class="garden-pedestal" src="./art/reference/pedestal.webp">` **仍在标记里**，靠 `gameScene` 在运行时置 `display:none` 隐藏（`pedestalArt.hidden`） | 隐藏而非移除 |
+| 旧田园背景模块 | `src/rendering/pastoralBackdrop.js` 全仓**没有任何 import**（`main.js` 只剩一行说明它已移除的注释） | **已删（本轮）** —— 死代码，零引用 |
+| 旧田园 CSS | `toy.css` 的 `.pastoral-backdrop` 两条规则 + `reference.css:3` 的 `.pastoral-backdrop-painting` | **已删（本轮）** —— 层永远不会被创建 |
+| 旧 UI 美术引用 | `reference.css` 里 **27 处**旧皮肤美术 URL 声明：**9 处 `/art/reference/*.png`**（score-panel / sound / help / settings / 四工具 / tray）**+ 18 处 `/art/ui-redesign/*`**（home-primary/-secondary/-nav 三张九宫格板、settings-modal / -row / -danger、close-button、toggle-on/-off、keyboard-hint、六枚行图标、crown/trophy 两枚 HUD 图标） | **已全部删除（本轮）** —— 见 §12。**注意：本文早前那句「仍有 10 处」是漏计**：它只数了 `/art/reference/`（而且那 10 是连同 `index.html` 里那 1 处 `pedestal.webp` 一起算的，CSS 里其实只有 9），把 `/art/ui-redesign/` 那 **18 处**整族漏掉了 |
+| 新 UI 美术引用 | `floatingWorldUi.css` 里 25 处 `/art/floating-world-v1/…`。此前靠 `#app` 前缀的**特异性**压过旧声明 | `#app` 前缀保留（现在是冗余护栏 + 「哪些规则属于本皮肤」的标记），但**旧声明已经不存在**，所以「谁赢」不再是一个问题 |
+| 旧底座 `<img>` | `index.html:100` 的 `<img class="garden-pedestal" src="./art/reference/pedestal.webp">` **仍在标记里** | **刻意保留**，不是漏项：`tools/material-grounding-probe.mjs` 的 `g1b-art-*` 两条研究路由靠它取 `pedestalArt` 读数，删掉标记会连续两次破坏那个探针。它的显示路径是**显式的**（`display:none` 初始态 + `gameScene` 每次路由切换重申 + `screenshot.mjs:684` 断言 `pedestalArt.hidden`），不是「靠继承猜」。代价是同一条断言只看**隐藏**、不看**请求**——`pedestal.webp` 仍会被浏览器取一次 |
 
 **这不是一个"看着没问题"的结论。§5.2 的原话是**「不要再叠第三套补丁后寄希望于『最后一条应该赢』…
 必须清掉旧样式的具体覆盖…**显式保留唯一显示路径**」。现状恰好是它点名的那个反模式：
@@ -144,10 +148,10 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
   或新规则挪进低优先级文件）都会让旧金边/花叶重新出现，而**画面门禁要等到有人拍图才发现**；
 - `pedestal.webp` 同理：它还在 DOM 里，靠运行时样式隐藏。
 
-**建议**（UI 一侧落地，本轮不改）：把 `reference.css` 里被覆盖的那 10 处旧声明**删掉**而不是留着被压过，
-并删掉 `.pastoral-backdrop*` 的死规则与 `pastoralBackdrop.js`；`<img class="garden-pedestal">`
-从标记里移除、同时保留 `pedestalArt.hidden` 的读数口径（或改成断言"标记里不存在"）。
-这样 §5.2 的「唯一显示路径」才成立。
+**这一条已经做了（本轮，§12）**：`reference.css` / `toy.css` 里被覆盖的旧声明**全部删掉**（不是留着被压过），
+`.pastoral-backdrop*` 死规则与 `pastoralBackdrop.js` 一并删除，`<img class="garden-pedestal">` 按上面的理由保留。
+删除的**安全性不是靠截图证明的**（那天并行会话正在改世界渲染，17 张图没有一张能归因），而是靠一次
+级联审计：把两份退役样式表**原样注回活页面**，342 个元素 × 42 个属性**零处变化** —— 见 §12。
 - **顶栏三键曾经完全不可见**（`backgroundImage: none`），根因是 `floatingWorldUi.css` 顶部把两族按钮
   一起清空底板却只为工具瓦片补回；已修并加了 `npm run probe:ui-paint` 门禁（并行会话）。
 - **Vite 的 `public/` 内 JSON import 警告**仍在（R3 文档 §4.2），未处理。
@@ -164,8 +168,13 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
 4. **§C2**：青/蓝/紫/品红/青绿五色已读（§6）；**接缝的下一步（背壳色与相对光比，§6.3-D）未做**；
    彩漆饱和度抬升的去留**待制作人裁决**。
 5. ~~**§C3 的「恢复不跳动」**未验~~ **已验（本会话，`npm run evidence:motion`）**：松手后第一帧与保持值差 **0.000px**、逐帧最大步长 **0.080px**（上限 0.5px）、3.2s 内位移 0.512px；同一条链路上还补了「冻结是保持而不是归零」的正面证据（保持值离开中立位 **1.197px** = 振幅的 90%，且与按下前最后一帧只差 0.061px）。取数与两个测量陷阱见 [C3 动态证据](FLOATING_WORLD_C3_ANIMATION_EVIDENCE.md)。
-6. **主页无存档态**截图未单独拍。
+6. ~~**主页无存档态**截图未单独拍~~ **已拍**：`artifacts/fw/home-norun-390.png`（390×844，无续玩时主 CTA 变黄色
+   **New game**、Continue 与进度行整行消失）。§1 那张表早就写了两种状态都已拍，本节这行忘了同步 —— 本轮更正。
 7. **`#scene-wrap` 的 `overflow` 规范依赖**（R3 §4.3）仍未复核。
+8. ~~`reference.css` / `toy.css` 里旧皮肤美术声明仍靠特异性被压过~~ **已清（本轮，§12）**：27 处美术 URL 声明、
+   2 条死规则、1 个零引用模块全部删除，并用级联审计证明删除无害（342 元素 × 42 属性 0 差异）。
+   仍未做的只有两件：被覆盖的**非 URL** 声明（`text-shadow` 等 12 处）未删未量化，以及 `<img class="garden-pedestal">`
+   按 §4.1 的理由刻意保留。
 
 ---
 
@@ -345,3 +354,97 @@ AO 已被排除（§3 第 5 条）。下一步要动的是「光比还是背壳�
 只提交本轮自己改的路径要用
 `git commit -F <msg> -- <路径…>`（pathspec 形式隐含 `--only`，绕开索引），
 而不是 `git add <路径> && git commit`。
+
+---
+
+## 12. §5.2 的「唯一显示路径」：删掉旧声明，并用**级联审计**证明删除无害（本轮）
+
+§5.2 的原话是「必须清掉旧样式的具体覆盖…**显式保留唯一显示路径**；不要依赖可见性继承猜测」，
+并且点名禁止「叠第三套补丁后寄希望于『最后一条应该赢』」。本轮就是执行这一条。
+
+### 12.1 删掉的是"第二块底板 / 第二套 glyph"的机制，不是像素
+
+| 文件 | 删除前旧皮肤美术声明 | 删除后 |
+| --- | --- | --- |
+| `src/reference.css` | **27** 处（`/art/reference/` 9 + `/art/ui-redesign/` 18） | **0** 处 |
+| `src/toy.css` | **0** 处（`/art/reference/` 0 + `/art/ui-redesign/` 0） | **0** 处 |
+
+合计 **27 处**退役皮肤的美术 URL 声明，另加：旧的静音斜杠叠画 `#sound-button[aria-pressed='false']::after`、
+旧的激活金环 `.item-button.active::before`、死规则 `.pastoral-backdrop-painting` / `.pastoral-backdrop`（两条）、
+以及 **零引用模块 `src/rendering/pastoralBackdrop.js`（已删文件）**。
+
+**保留了什么，为什么**：`border-width` / `border-image-width` / `border-image-repeat` 留着 —— 新皮肤只重声明
+`border-image-source` + `-slice`，**给九宫格定尺的宽度仍然来自这里**，删了就是一次布局改动；
+`#sound-button[aria-pressed='false'] { filter: grayscale(.8) }` 留着 —— 新皮肤换了 glyph 却没重声明 filter，
+它是静音态**唯一**的视觉线索。这两条都写进了文件里的注释。
+
+**没有做的**：本轮只删 **URL 类**声明（那才是"第二块底板/第二套 glyph"的机制）。被覆盖的
+`text-shadow` / 颜色类声明仍在 `reference.css` 里（现 12 处，改动前 12 处），
+**未删、本轮也未量化它们的重影风险** —— 不写成"旧样式已清干净"。
+
+### 12.2 为什么这次的证据不能是截图
+
+本轮开工时 `git status` 干净，中途**并行会话把 `src/rendering/floatingWorldScene.js` 改脏了**（1 行）。
+结果：删除前后各跑一次全量门禁，**17 张图逐张不同**。天空对照区（1440×900 的 x400–700 / y10–100）在两轮之间
+**61.7% 像素变化、maxDelta 88** —— 那就是并行会话的世界改动，跟 CSS 无关。所以"截图没变"这条路在本轮
+**根本不成立**，需要换一种能归因的测法。
+
+### 12.3 级联审计：把退役样式表原样注回去，看计算样式动不动
+
+方法：在一次活页面会话里，把 `HEAD` 版的两份退役样式表（toy → reference，**顺序按 `main.js` 的 import 顺序**，
+即 `floatingWorldUi.css` 之后）拼成一个 `<style>` 追加到 `<head>` 末尾 —— 那正是当年模块图注入它们的位置 ——
+然后**逐元素逐属性**比较计算样式。
+
+```text
+元素数 342（注入前后一致）      比较属性 42 个（background-* / border-image-* / 盒模型 / 字体 / 变换…）
+回放样式表解析出 270 条规则            计算样式差异：0
+```
+
+**0 处差异** ⇒ 这些声明全是纯级联输家，删掉它们**不可能改变任何一个被绘制的像素**。
+
+审计本身先翻过两次车，一并记下（否则下一次还会踩）：
+1. 一开始把整份 reference.css 排在 toy.css **前面**，两个旧文件之间等特异性的规则因此翻转，凭空造出 222 处差异；
+   按 `main.js` 的真实 import 顺序（toy → reference）重排后降到 5 处。
+2. 把 `<style>` 节点**先插进 DOM 再取快照**（内容是空的，取完快照再填）—— 直接插入会让每个元素的序号
+   位移，342 行全部伪报"元素消失"。
+
+### 12.4 它抓到的那 5 处差异是一个**真 bug**，不是噪声
+
+5 处差异全在 `#app .score-plaque` 与 `#app .bottom-panel` 的
+`background-position` / `background-size` / `background-repeat`：这两条规则**只声明了 `background-image`**，
+另外三个 longhand 一直是**从那条即将被删的 `background:` 简写里继承来的**。
+简写的 `background-image` 因特异性输给 `#app` 规则，**但它同时设置的三个 longhand 没有任何规则覆盖**，
+于是它们一直悄悄生效。删掉简写之后，它们退回初值 —— 记分牌变成 `0% 0% / auto / repeat`，
+**SVG 按固有尺寸平铺**。17 张视口截图没有一张能看出来，级联审计一眼看见。
+
+修法就是 §5.2 要的写法：两条规则**各自把四个 longhand 说全**（`floatingWorldUi.css`）。
+
+**修前 / 修后的画面证据**（1440×900 的 `desktop-board`，同一区域取样，step 2）：
+
+| 区域 | r22→r23（删声明） | r23→r24（修 longhand） | **r22→r24（净效果）** | 噪声底 |
+| --- | --- | --- | --- | --- |
+| 记分牌**内部** | 12.4% / maxDelta 223 | 12.4% / maxDelta 223 | **0.00% / maxDelta 0** | 0.00% |
+| 候选托盘 | 5.0% / maxDelta 205 | 5.0% / maxDelta 205 | **0.00% / maxDelta 0** | 0.00% |
+| 记分牌（含圆角外的天） | 35.3% / maxDelta 223 | 36.6% / maxDelta 223 | 17.0% / maxDelta 88 | 0.00% |
+| 天空对照（无 UI） | 22.5% / maxDelta 53 | 61.7% / maxDelta 113 | 61.7% / maxDelta 88 | 0.00% |
+
+噪声底 = `artifacts/visual` 与 `artifacts/visual-r22`（同一构建的两次独立门禁）在同一区域的差：**0**，
+所以门禁在这些区域是确定性的，"残余差异是抖动"这条解释不成立 —— 残余只能来自天空（对照区 61.7% 已经说明）。
+**记分牌内部与候选托盘都回到逐位相同**，即：删声明的净效果，在 UI 上是零。
+
+### 12.5 补了门禁，并证明它会红
+
+`tools/floating-world-ui-paint.mjs` 新增「一块板必须自己声明它被画进哪个盒子」：对
+`score-plaque` / `bottom-panel` / 工具瓦片 glyph 检查 `background-size` 不能是 `auto`、
+`background-repeat` 不能是 `repeat`（**逐层**比较，因为工具瓦片是 glyph 叠板两层背景 —— 第一版按整串比较，
+把它自己误报了一次）。
+
+负控制（把 longhand 拆回 bug 状态再跑）：**门禁退出码 1**，报
+`plate scale: score plaque paints … but declares no box (background-size: auto, background-repeat: repeat)`；
+恢复后退出码 0、三块板全 `ok`。**门禁不是"永远绿"的摆设。**
+
+### 12.6 本轮之后，「旧皮肤可见引用」还剩什么
+
+- **可见引用：0**（`probe:ui-paint` 在 对局 / 主页 / 设置面板 / 榜单面板 四个状态各 0 命中；源码级 URL 也归 0）。
+- 唯一保留的旧美术是 `index.html` 里那个**被隐藏的** `<img class="garden-pedestal">`（见 §4.1 的理由），
+  以及本节 12.1 末尾那批**非 URL** 的、仍被覆盖的声明。

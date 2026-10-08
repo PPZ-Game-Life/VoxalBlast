@@ -2,21 +2,36 @@
  *
  * WHY THIS IS A SEPARATE FILE, AND WHY ITS SELECTORS START WITH `#app`:
  *
- * The old skin's UI art is not markup — it is `background-image` on `reference.css` rules
+ * The old skin's UI art is not markup — it was `background-image` on `reference.css` rules
  * (`.item-button[data-item='refresh'] { --button-art: url('/art/reference/refresh.png') }` and
- * friends), which is exactly why the handoff's replacement table is a CSS table. Swapping it
- * means overriding those rules.
+ * friends), which is exactly why the handoff's replacement table is a CSS table.
  *
- * Two facts decide how:
- *   1. `reference.css` is loaded by the module graph (`import './reference.css'`), so it lands
- *      in <head> AFTER this file's <link>. Source order cannot win here.
- *   2. Cascade layers would not help either: the old rules are UNLAYERED, and unlayered rules
- *      beat every layer.
+ * Two facts decided how the swap was done:
+ *   1. `reference.css` is loaded by the module graph (`import './reference.css'`), so it landed in
+ *      <head> AFTER this file's <link>. Source order could not win here.
+ *   2. Cascade layers would not have helped either: the old rules were UNLAYERED, and unlayered
+ *      rules beat every layer. So this file won on SPECIFICITY, one `#app` prefix added to the
+ *      exact selectors being replaced — not a scattering of `!important` to fight later.
  *
- * So this file wins on SPECIFICITY instead: `#app .item-button .item-icon` (1,2,0) against
- * `.item-button .item-icon` (0,2,0). It is a deliberate, single-technique override — one `#app`
- * prefix added to the exact selectors being replaced — not a scattering of `!important` that
- * the next person has to fight.
+ * v0.13.0 §5.2 — THE OVERRIDE IS GONE NOW, AND THAT IS THE POINT. §5.2 forbids 「再叠第三套补丁后
+ * 寄希望于『最后一条应该赢』」 and requires 「显式保留唯一显示路径」, so the retired declarations this
+ * file used to out-specify were DELETED from `reference.css` / `toy.css` rather than left there to
+ * lose. The `#app` prefix is kept as a belt-and-braces guard and as the marker of which rules are
+ * the skin; the single display path is this file alone — nothing else declares UI art.
+ *
+ * Two readings worth remembering while editing here:
+ *   * Replaying BOTH retired stylesheets into the live page changes the computed style of 0 of 342
+ *     elements, so the deletion is provably inert — that cascade audit (2026-10-08) is the evidence,
+ *     not the screenshots: a parallel session had the world renderer dirty that day, so every
+ *     screenshot differed for reasons that had nothing to do with CSS.
+ *   * The same audit caught a REAL bug, and it is exactly the failure mode §5.2 is about:
+ *     `#app .score-plaque` and `#app .bottom-panel` declared only `background-image`, and were
+ *     inheriting `background-position` / `-size` / `-repeat` from a deleted `background:` SHORTHAND.
+ *     A shorthand that sets `background-image` loses to these rules, but the three longhands it also
+ *     sets were overridden by nothing — so they won silently, and deleting the shorthand flipped the
+ *     plaque to `0% 0% / auto / repeat` (an SVG at intrinsic size, tiled). Both rules now state all
+ *     four longhands, and `tools/floating-world-ui-paint.mjs` fails a plate that paints a picture
+ *     without declaring the box it is painted into.
  *
  * The second reason this file exists at all: the skin has to be reviewable as ONE artefact.
  * "Which UI is on screen" should be answerable by reading one stylesheet rather than by
@@ -96,7 +111,14 @@
  * bottom 34/144 = 23.611%, and the 12-unit gap is 12/672 = 1.786% of the slot band itself
  * (the band is 672 wide, not 720 — the insets are already spent).
  */
-#app .bottom-panel { background-image: url('/art/floating-world-v1/ui/candidate-tray.svg'); }
+#app .bottom-panel {
+  /* Same trap as `.score-plaque`: the retired `reference.css` rule supplied `center / 100% 100% /
+     no-repeat` through a `background` shorthand. State all three here. */
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-image: url('/art/floating-world-v1/ui/candidate-tray.svg');
+}
 #app .bottom-panel #piece-slots.piece-slots { inset: 16.667% 3.333% 23.611%; gap: 1.786%; }
 
 /* ---- The score plaque (correction handoff §1.2 P0「BEST/SCORE 牌有花朵、树叶、金棕厚边」) ----
@@ -142,6 +164,15 @@ html:root { --plaque-board-top: 0.025; }
 
 #app .score-plaque {
   aspect-ratio: 2;
+  /* The three longhands are STATED, not inherited. `background-image` alone used to ride on the
+     retired rule's `background: … center / 100% 100% no-repeat` shorthand — and a shorthand that
+     sets `background-image` is a cascade loser against `#app .score-plaque`, while the three
+     longhands it also set are NOT overridden by anything here, so they won silently. Deleting the
+     retired rule (handoff §5.2) turned them into `0% 0% / auto / repeat`: the SVG drew at intrinsic
+     size and tiled. `tools/floating-world-ui-paint.mjs` now fails on that shape of bug. */
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   background-image: url('/art/floating-world-v1/ui/score-panel.svg');
 }
 
