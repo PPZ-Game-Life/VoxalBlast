@@ -14,6 +14,15 @@
     <style>
       #boot-screen { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: #c3e7fb; }
       #boot-screen.done { opacity: 0; pointer-events: none; }
+      /* v0.13.0 R6: the brand lockup became a <picture> so the browser fetches ONE logo file
+         (handoff §2.1: WebP first, PNG fallback) instead of the three the pack ships. The
+         wrapper must not become a box of its own, or every existing `.home-logo` / `.boot-logo`
+         rule — width, max-width, centring, drop shadow, and the two media-query overrides —
+         would start applying to an empty wrapper while the <img> inside lost all of them.
+         `display: contents` makes the wrapper transparent to layout, so the swappable <source>
+         costs the stylesheet nothing. Inlined for the same reason the boot floor is: the markup
+         exists before the module graph, and an unstyled wrapper would paint a full-width logo. */
+      .home-brand picture, .boot-card picture { display: contents; }
     </style>
   </head>
   <!-- Localization (docs/Technical/LOCALIZATION.md): the text baked into this file is the
@@ -34,7 +43,10 @@
          the page wants their board back. See src/main.js's boot tail. -->
     <div id="boot-screen" class="boot-screen" role="status" aria-live="polite" aria-label="Loading" data-i18n-aria-label="a11y.loading">
       <div class="boot-card">
-        <img class="boot-logo" src="./art/ui-redesign/icons/logo-voxalblast.png" alt="" aria-hidden="true" draggable="false" />
+        <picture>
+          <source srcset="./art/floating-world-v1/brand/logo-1024.webp" type="image/webp" />
+          <img class="boot-logo" src="./art/floating-world-v1/brand/logo-512.png" alt="" aria-hidden="true" draggable="false" />
+        </picture>
         <p id="boot-note" class="boot-note" data-i18n="boot.loading">Loading…</p>
         <span class="boot-blocks" aria-hidden="true"><i></i><i></i><i></i></span>
       </div>
@@ -181,7 +193,10 @@
                  visually hidden heading the dialog is labelled by (`aria-labelledby`), so the
                  cover keeps a real accessible name instead of being named by an <img>. -->
             <h1 id="home-title" class="sr-only">VoxalBlast</h1>
-            <img class="home-logo" src="./art/ui-redesign/icons/logo-voxalblast.png" alt="" aria-hidden="true" draggable="false" />
+            <picture>
+              <source srcset="./art/floating-world-v1/brand/logo-1024.webp" type="image/webp" />
+              <img class="home-logo" src="./art/floating-world-v1/brand/logo-512.png" alt="" aria-hidden="true" draggable="false" />
+            </picture>
             <p class="home-tagline" data-i18n="home.tagline">Stack · Align · Blast all six faces</p>
           </div>
           <!-- Highest score (handoff §3.3 / §4.4): crown, frame and flowers ship as ONE module —

@@ -112,14 +112,29 @@ let referencedBytes = 0
 let referencedClouds = 0
 let counted = 0
 let referencedLogo = null
+// A `<picture>` NAMES both members of its pair but the browser FETCHES one. Counting both would
+// report a first screen the game never has — and, worse, would make the right implementation
+// look like the wrong one. So the logo pair is counted as its LARGER member: still the worst
+// case for the budget, without double-charging a fallback that is only fetched when WebP is
+// unsupported.
+const logoCandidates = []
 for (const [url, from] of references) {
   const file = join(ROOT, 'public', url.replace(RUNTIME_PREFIX, `${join('art', 'floating-world-v1')}/`))
   if (!existsSync(file)) { fail(`${url} is referenced by ${from.join(', ')} but does not exist`); continue }
   if (EXCHANGE_ONLY.test(url)) continue
-  referencedBytes += statSync(file).size
+  const bytes = statSync(file).size
+  if (/\/brand\/logo-/.test(url)) { logoCandidates.push({ url, bytes }); referencedLogo = url; continue }
+  referencedBytes += bytes
   counted += 1
   if (/\/clouds\/cloud-[abc]\.png$/.test(url)) referencedClouds += 1
-  if (/\/brand\/logo-/.test(url)) referencedLogo = url
+}
+if (logoCandidates.length) {
+  const largest = logoCandidates.reduce((a, b) => (b.bytes > a.bytes ? b : a))
+  referencedBytes += largest.bytes
+  counted += 1
+  if (logoCandidates.length > 1) {
+    console.log(`logo        ${logoCandidates.length} file(s) named (${logoCandidates.map((c) => c.url.split('/').pop()).join(', ')}); counting ${largest.url.split('/').pop()} as the fetched one`)
+  }
 }
 
 // ---- 3. the first-screen budget (§10) ------------------------------------------
