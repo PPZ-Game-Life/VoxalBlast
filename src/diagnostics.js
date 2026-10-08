@@ -335,6 +335,10 @@ export function createDiagnostics({
         tuneMaterials: (values) => blocks.tuneMaterials(values),
         tuneGem: (values) => blocks.tuneGem(values),
         tuneShadows: (values) => scene3d.tuneShadows(values),
+        // v0.13.0 R5 (handoff §8.7): pin the board's idle float while a capture is taken, so a
+        // screenshot is a still of a DETERMINISTIC pose rather than of whatever phase the float
+        // happened to be in. Moves no rule and stores nothing.
+        setBoardFloat: (values) => dev.setBoardFloat(values),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
         records: () => recordStore.all(),

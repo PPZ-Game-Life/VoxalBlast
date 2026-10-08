@@ -870,6 +870,14 @@ export function createGameInput({
     return Boolean(drag)
   }
 
+  // v0.13.0 R5: a pointer is down on the board and the VIEW gesture owns it (the face-turn drag,
+  // started on pointerdown — before any threshold has been crossed, which is exactly the window
+  // `hasDrag()` misses). The board's idle float freezes on this: the float must not be moving the
+  // cube underneath a finger that is deciding whether this press is a tap, a turn or a pickup.
+  function hasViewGesture() {
+    return Boolean(viewDrag)
+  }
+
   // The read-only projection the headless checks read (`__voxalblast.preview()` / `.ghost()`).
   // It hands back copies of the two points, so no probe can mutate the live gesture. `ref` is the
   // continuous origin the movement accumulates into and `face` the latched target face (v0.8.27):
@@ -1677,6 +1685,7 @@ export function createGameInput({
     getSelectedPiece,
     clearSelection,
     hasDrag,
+    hasViewGesture,
     dragReport,
     // The armed tool (07 §8). The mode, its report, the two gesture entries and the two explicit
     // buttons of the tap path.

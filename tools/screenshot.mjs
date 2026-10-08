@@ -267,6 +267,14 @@ async function capture(browser, shot) {
         if (wave && !wave.active) break
         await sleep(150)
       }
+      // v0.13.0 R5 (handoff §8.7): pin the board's idle float at zero before anything is graded.
+      // The float is a live animation now, so without this the same build photographs at a
+      // different board height every run and the framing band/ratio read-outs stop being
+      // comparable between runs — which is the whole point of a fixed capture seed.
+      await send(ws, nextId++, 'Runtime.evaluate', {
+        expression: 'globalThis.__voxalblastDev?.setBoardFloat?.({ frozen: true, time: 0 }) ?? "no-dev-handle"',
+        returnByValue: true,
+      })
       if (mode === 'home' || mode === 'home-return') {
         await send(ws, nextId++, 'Runtime.evaluate', {
           expression: '(() => { document.querySelector("#settings-button").click(); document.querySelector("#home-setting").click(); return "home"; })()',

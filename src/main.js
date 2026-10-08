@@ -1709,6 +1709,71 @@ platform.initialize().catch(() => showToast(t('toast.offline')))
 // was staring at while it was empty.
 bootUi.release()
 
+// ---- The board's idle float (original handoff §8, correction handoff §7.2) ------------------
+//
+// The board drifts ±0.02 cell — 0.02 world units at pitch 1 — on a 5.5s cycle while nothing is
+// happening, and is FROZEN AT ITS CURRENT OFFSET the moment anything is: a pointer going down
+// (the face-turn gesture included, which starts before any threshold is crossed), a piece drag,
+// an armed tool, the opening wave, a face-turn snap, every pause state (cover, settings, result
+// card, hidden page), and reduced-motion.
+//
+// Two rules are what make this read as the board breathing rather than as the board jittering
+// under the player's finger, and both are easy to get wrong by writing the obvious thing:
+//
+//   * FREEZE HOLDS THE VALUE, IT DOES NOT RESET IT. Zeroing on pointerdown would move the board
+//     by up to ~2px at exactly the moment the player is deciding where to drop — the same
+//     class of bug the turn-band lift was clamped for.
+//   * RESUME BLENDS FROM WHERE IT STOPPED over 0.25s while the phase keeps running underneath,
+//     so there is no restart-from-zero-phase jump either. `ambientTime` advances ONLY while the
+//     board is free; that is what makes the held value and the resumed sine agree.
+//
+// The offset is RECOMPUTED from the fixed base every frame and written to `cubeGroup.position.y`.
+// It is never accumulated (`position.y += sin(...)`) — that drifts, which is the one failure
+// mode a float has that a still screenshot can never show.
+const BOARD_FLOAT = Object.freeze({ amplitude: style.idleFloatAmplitude, period: 5.5, resume: 0.25 })
+let ambientTime = 0
+let floatHeldY = null
+let floatBlend = 0
+// DEV-only pin, per handoff §8.7: "截图/探针提供新增的 ambientTime 固定值、bob=0、seed=74123 控制".
+// Without it the board is at a different height in every capture, and two screenshots of the same
+// build stop being comparable — the same reason the block grain is deterministic.
+let floatOverride = null
+const reduceMotionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+
+function boardFloatFrozen() {
+  if (reduceMotionQuery?.matches) return true
+  if (isPaused) return true
+  if (introPlaying()) return true
+  if (input.hasDrag() || input.hasViewGesture() || input.hasItemActive()) return true
+  // The snap is read live: mid-turn the cube is converging on a face and must not also be
+  // sliding vertically underneath the convergence.
+  if (cubeSnapAnim?.active) return true
+  return false
+}
+
+function boardFloatOffset(dt) {
+  const live = BOARD_FLOAT.amplitude * Math.sin(2 * Math.PI * ambientTime / BOARD_FLOAT.period)
+  if (floatOverride) {
+    // A pinned float is a still pose, not a paused one: `{ frozen: true, time: 0 }` is exactly
+    // zero, which is what the screenshot driver asks for.
+    if (!Number.isFinite(floatOverride.time)) return 0
+    return BOARD_FLOAT.amplitude * Math.sin(2 * Math.PI * floatOverride.time / BOARD_FLOAT.period)
+  }
+  if (boardFloatFrozen()) {
+    if (floatHeldY === null) floatHeldY = live
+    floatBlend = 0
+    return floatHeldY
+  }
+  ambientTime += dt
+  const target = BOARD_FLOAT.amplitude * Math.sin(2 * Math.PI * ambientTime / BOARD_FLOAT.period)
+  if (floatHeldY === null) return target
+  floatBlend = Math.min(1, floatBlend + dt / BOARD_FLOAT.resume)
+  const eased = floatBlend * floatBlend * (3 - 2 * floatBlend)
+  const offset = floatHeldY + (target - floatHeldY) * eased
+  if (floatBlend >= 1) { floatHeldY = null; floatBlend = 0 }
+  return offset
+}
+
 const clock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
@@ -1746,6 +1811,15 @@ function animate() {
     effects.update(raw)
     updateCubeSnap(delta)
   }
+  // v0.13.0 R5 (handoff §8.3, the frame order): decide and WRITE the float after the orientation
+  // snap and before anything that reads the cube's world matrix — the ghost, the landing marker,
+  // the item scope, the particle birth points and the pointer plane all take their anchors from
+  // `cubeGroup.matrixWorld`, so a write after them would leave them solving against last frame's
+  // pose. `updateMatrixWorld(true)` is forced rather than left to `renderer.render()`, which runs
+  // after `updateRenderCamera()` and would therefore hand the render camera a stale matrix — the
+  // exact one-frame lag the R4 side fixed inside `updateRenderCamera()`.
+  cubeGroup.position.y = boardFloatOffset(raw)
+  cubeGroup.updateMatrixWorld(true)
   // Bare tiles wear the lighter timber on the face the player is working on
   // (05 §2). 98 material assignments is cheap, but the cached front face means it
   // only happens on the frames where the cube actually finished turning. While a wave
@@ -1784,6 +1858,15 @@ const devHandles = import.meta.env.DEV
   ? {
     endGame: () => endGame(),
     openLeaderboard: () => openLeaderboard(),
+    // v0.13.0 R5 (handoff §8.7): pin the board's idle float. `{ frozen: true, time: 0 }` is a
+    // still board at exactly zero — what the screenshot driver asks for so two captures of the
+    // same build remain comparable. `null` hands the float back to the live clock.
+    setBoardFloat: (values) => {
+      floatOverride = values && values.frozen
+        ? { frozen: true, time: Number.isFinite(values.time) ? values.time : 0 }
+        : null
+      return floatOverride
+    },
     // v0.8.21: replay the opening wave on demand, so the probe can drive it without depending
     // on where a click landed. It calls armIntro() itself — the same function every real entry
     // point calls.
