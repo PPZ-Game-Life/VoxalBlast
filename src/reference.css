@@ -95,13 +95,16 @@
 .action-bars { top: calc(max(10px, env(safe-area-inset-top)) + var(--hud-button) + var(--item-caption) + 6px); }
 .board-section { position: absolute; top: 12%; bottom: 20%; left: 10%; width: 80%; }
 .scene-wrap { position: absolute; inset: 0 0 12%; height: auto; min-height: 0; z-index: 1; }
-/* v0.13.0 R3 (handoff §9.2): the main canvas is the whole viewport now, drawn BEHIND the UI and
-   never hit-tested — `#scene-wrap` keeps its own box and stays the only thing that is. The
+/* v0.13.0 R3/R5 (handoff §9.2/§9.4): the main canvas is the whole viewport, drawn BEHIND the UI
+   and never hit-tested — `#scene-wrap` keeps its own box and stays the only thing that is. The
    picture is put back into the play area by `renderCamera`'s embedded projection, not by the
    canvas' size, which is what leaves room for scenery outside the play area without a second
    WebGL context. `pointer-events:none` is load-bearing: a full-viewport canvas that accepted
-   pointer events would swallow every UI tap. */
-.scene-wrap canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 0; }
+   pointer events would swallow every UI tap.
+   It is addressed by its own id, NOT as a `.scene-wrap` descendant: R5 moved it onto `#app` so
+   that the home cover's `visibility: hidden` (which the gate checks as input isolation) stops
+   hiding the world along with the board. */
+#world-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 0; }
 .board-section::before, .board-section::after { display: none; }
 /* v0.13.0 「浮空积木世界」: 主棋盘没有承托底座 — the painted pedestal is retired. This rule is
    only the INITIAL state (so no pedestal can flash in before the scene boots); gameScene owns

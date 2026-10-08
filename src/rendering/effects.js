@@ -940,8 +940,18 @@ export function createEffects({
     return total
   }
 
-  function report() {
-    // `liveParticles` is the system's OWN particle count: the budget says how many were ASKED
+  // v0.13.0 R5 (handoff §9.4): `setGameplayVisualsVisible(!home)` needs a handle for the EFFECTS,
+// not only for the cube. A clear burst that was mid-flight when the cover opened belongs to the
+// frame the board was in, so it goes away with the board — and when the cover closes the systems
+// are still there, still running, which is what "隐藏游戏 FX 不等于清空游戏状态" asks for.
+function setVisible(on) {
+  const visible = Boolean(on)
+  fxGroup.visible = visible
+  particleRenderer.visible = visible
+  return { fxGroup: fxGroup.visible, particleRenderer: particleRenderer.visible }
+}
+
+function report() {    // `liveParticles` is the system's OWN particle count: the budget says how many were ASKED
     // for, and this says how many exist. A budget that never becomes particles (a burst that does
     // not fire, a system disposed early) is invisible in every other read-out.
     let liveParticles = 0
@@ -981,6 +991,11 @@ export function createEffects({
     timestep,
     updateShake,
     report,
+    // v0.13.0 R5 (handoff §9.4): the home cover hides the BOARD's own objects, not the world —
+    // the scene still renders behind it. "Hide the cube" is not the same sentence as "hide the
+    // clear particles that were mid-flight when the cover opened", so both top-level scene
+    // objects take one switch and no caller has to remember where each kind of effect lives.
+    setVisible,
     // game events
     emitItemBurst,
     spawnClearEffects,

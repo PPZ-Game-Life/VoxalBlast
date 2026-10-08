@@ -1791,46 +1791,60 @@ function animate() {
   // deliberately above the home branch below — 「主页继续环境而不继续玩法逻辑」. It moves clouds
   // and building bob only; no gameplay state and no board pose is touched here.
   floatingWorld.update(raw)
-  // The home cover hides the canvas: nothing behind it is on screen, and the board
-  // under it must not drift (the pose snap is part of the paused branch anyway).
-  if (homeUi.isOpen()) return
-  // The opening wave runs on its own clock. It is deliberately NOT inside the
-  // `!isPaused` branch below: it is the thing that raised isPaused (that is the input
-  // lock), so gating it there would deadlock it on its own first frame. It also gets
-  // the UNCLAMPED delta: the 0.05s clamp exists so a stalled frame cannot teleport a
-  // snap or a particle system, but applying it to the wave would stretch a 1.05s
-  // introduction into five seconds of half-built cube on a device that cannot hold
-  // 60fps. If the frames are that slow, the wave should simply be over.
-  updateIntro(measure)
-  // Deliberately outside the `!isPaused` branch: the strip has to be able to go grey ON the
-  // pause (the wave arming) as well as come back after it.
-  syncItemStrip()
-  if (!isPaused) {
-    // The RAW delta: the paper celebration runs on the wall clock, and only the cube's own snap
-    // reads the dipped `delta` above.
-    effects.update(raw)
-    updateCubeSnap(delta)
+  // v0.13.0 R5 (handoff §9.4): the cover PAUSES the game, it does not stop the frame.
+  //
+  // `if (homeUi.isOpen()) return` used to leave the world unrendered behind the cover, so the
+  // home screen could only ever be a flat panel — and §8 asks for 「延续对局的积木世界」 on it.
+  // The frame now always runs; what the cover changes is WHAT IS UPDATED and WHAT IS DRAWN.
+  // Gameplay updates are skipped, the ambient clock above is deliberately NOT (it is outside this
+  // branch), and the scene keeps rendering.
+  const onCover = homeUi.isOpen()
+  if (!onCover) {
+    // The opening wave runs on its own clock. It is deliberately NOT inside the
+    // `!isPaused` branch below: it is the thing that raised isPaused (that is the input
+    // lock), so gating it there would deadlock it on its own first frame. It also gets
+    // the UNCLAMPED delta: the 0.05s clamp exists so a stalled frame cannot teleport a
+    // snap or a particle system, but applying it to the wave would stretch a 1.05s
+    // introduction into five seconds of half-built cube on a device that cannot hold
+    // 60fps. If the frames are that slow, the wave should simply be over.
+    updateIntro(measure)
+    // Deliberately outside the `!isPaused` branch: the strip has to be able to go grey ON the
+    // pause (the wave arming) as well as come back after it.
+    syncItemStrip()
+    if (!isPaused) {
+      // The RAW delta: the paper celebration runs on the wall clock, and only the cube's own snap
+      // reads the dipped `delta` above.
+      effects.update(raw)
+      updateCubeSnap(delta)
+    }
+    // v0.13.0 R5 (handoff §8.3, the frame order): decide and WRITE the float after the orientation
+    // snap and before anything that reads the cube's world matrix — the ghost, the landing marker,
+    // the item scope, the particle birth points and the pointer plane all take their anchors from
+    // `cubeGroup.matrixWorld`, so a write after them would leave them solving against last frame's
+    // pose. `updateMatrixWorld(true)` is forced rather than left to `renderer.render()`, which runs
+    // after `updateRenderCamera()` and would therefore hand the render camera a stale matrix — the
+    // exact one-frame lag the R4 side fixed inside `updateRenderCamera()`.
+    // On the cover this is not called at all, so the board keeps the offset it had — the same
+    // "freeze at the current value" rule the interaction freezes use.
+    cubeGroup.position.y = boardFloatOffset(raw)
+    cubeGroup.updateMatrixWorld(true)
+    // Bare tiles wear the lighter timber on the face the player is working on
+    // (05 §2). 98 material assignments is cheap, but the cached front face means it
+    // only happens on the frames where the cube actually finished turning. While a wave
+    // is playing the blocks wear their own wave material instead and must not be
+    // repainted under it.
+    if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
+    updatePiecePreviews()
+    // 07 §8.5.4: the quiet pulse on the cells that will actually disappear. It rides the same
+    // frame loop as everything else (the plan's "只有一个时钟" rule) and is a no-op with no scope
+    // on screen, so an ordinary frame pays nothing for it.
+    if (input.hasItemActive()) pulseItemScope(clock.elapsedTime)
   }
-  // v0.13.0 R5 (handoff §8.3, the frame order): decide and WRITE the float after the orientation
-  // snap and before anything that reads the cube's world matrix — the ghost, the landing marker,
-  // the item scope, the particle birth points and the pointer plane all take their anchors from
-  // `cubeGroup.matrixWorld`, so a write after them would leave them solving against last frame's
-  // pose. `updateMatrixWorld(true)` is forced rather than left to `renderer.render()`, which runs
-  // after `updateRenderCamera()` and would therefore hand the render camera a stale matrix — the
-  // exact one-frame lag the R4 side fixed inside `updateRenderCamera()`.
-  cubeGroup.position.y = boardFloatOffset(raw)
-  cubeGroup.updateMatrixWorld(true)
-  // Bare tiles wear the lighter timber on the face the player is working on
-  // (05 §2). 98 material assignments is cheap, but the cached front face means it
-  // only happens on the frames where the cube actually finished turning. While a wave
-  // is playing the blocks wear their own wave material instead and must not be
-  // repainted under it.
-  if (!introPlaying() && findFrontFace() !== boardView.getTileFrontFace()) applyTileMaterials()
-  updatePiecePreviews()
-  // 07 §8.5.4: the quiet pulse on the cells that will actually disappear. It rides the same
-  // frame loop as everything else (the plan's "只有一个时钟" rule) and is a no-op with no scope
-  // on screen, so an ordinary frame pays nothing for it.
-  if (input.hasItemActive()) pulseItemScope(clock.elapsedTime)
+  // Hide the BOARD, not the world — §9.4: 「隐藏游戏 FX 不等于清空游戏状态」. Nothing is torn
+  // down and no system is reset: the board simply stops being drawn, and the effects stop being
+  // drawn while their systems keep their particles for the frame the board comes back on.
+  cubeGroup.visible = !onCover
+  effects.setVisible(!onCover)
   // The camera's resting position, restored every frame by its owner (gameScene owns the orbit
   // distance, the zoom and the direction); effects returns only the shake offset added on top.
   camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())
@@ -1867,6 +1881,13 @@ const devHandles = import.meta.env.DEV
         : null
       return floatOverride
     },
+    // v0.13.0 R4 (KNOWN_GAPS §3 / handoff §8.7 / §C0.4): the SAME pin for the scenery half of
+    // the world. The board's float and the ambient displacement are two clocks, so pinning only
+    // one left the other running and two captures of the same build still differed pixel for
+    // pixel. The semantics are deliberately identical to `setBoardFloat` above — `{ frozen: true,
+    // time: 0 }` is the neutral still pose, `null` hands it back to the live clock — so a driver
+    // pins both with one shape and cannot pin them to different poses by accident.
+    setAmbient: (values) => floatingWorld.setAmbient(values),
     // v0.8.21: replay the opening wave on demand, so the probe can drive it without depending
     // on where a click landed. It calls armIntro() itself — the same function every real entry
     // point calls.

@@ -144,13 +144,13 @@ try {
       bootOpacity: style ? Number(style.opacity) : null,
       home: home ? (home.classList.contains('hidden') ? 'hidden' : 'visible') : 'absent',
       homeOpen: app ? app.classList.contains('home-open') : null,
-      canvas: (() => { const c = document.querySelector('canvas'); return c ? c.width + 'x' + c.height : null })(),
+      canvas: (() => { const c = document.querySelector('#world-canvas'); return c ? c.width + 'x' + c.height : null })(),
       intro: (globalThis.__voxalblast && globalThis.__voxalblast.intro) ? globalThis.__voxalblast.intro().active : null,
       slots: document.querySelectorAll('#piece-slots .piece-slot').length,
       paintedPx: (() => {
         // How much of the VIEWPORT is covered by the canvas the player can see. 0 means the stage
         // is not on screen at all; the boot overlay is measured separately, by bootOpacity.
-        const c = document.querySelector('canvas')
+        const c = document.querySelector('#world-canvas')
         if (!c) return 0
         const box = c.getBoundingClientRect()
         return Math.round(box.width * box.height)

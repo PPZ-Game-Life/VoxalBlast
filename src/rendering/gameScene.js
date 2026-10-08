@@ -309,7 +309,17 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
   // numbers (measured: 1 call / 1 triangle, which is the composer's final quad). main's frame
   // loop zeroes them at the frame boundary instead.
   renderer.info.autoReset = false
-  sceneWrap.appendChild(renderer.domElement)
+  // v0.13.0 R5 (handoff §9.4): the canvas is mounted on `#app`, NOT inside `#scene-wrap`.
+  //
+  // The home cover hides the game by putting `visibility: hidden` on `.topbar` and
+  // `.game-layout` — that is exactly the input isolation the gate checks, and `visibility`
+  // INHERITS. While the canvas lived inside `.game-layout` it was hidden together with the board,
+  // so the world could not be drawn behind the cover no matter what the frame loop did. Moving
+  // the canvas out of that subtree is what makes 「主页继续环境而不继续玩法逻辑」 possible at all;
+  // the board is hidden by its OWN switch (`cubeGroup.visible`), not by the ancestor.
+  renderer.domElement.id = 'world-canvas'
+  const canvasHost = document.getElementById('app') ?? sceneWrap.parentElement ?? document.body
+  canvasHost.appendChild(renderer.domElement)
 
   // ---- The gameplay rect, the full-viewport canvas and the render camera (handoff §9.2) ----
   //

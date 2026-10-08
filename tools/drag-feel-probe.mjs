@@ -1065,7 +1065,11 @@ async function caseScreenEdges(client, input) {
       && hint.card.x > 20 && hint.card.x < VIEWPORT.width - 20
       && hint.card.y > 20 && hint.card.y < VIEWPORT.height - 20,
       `card ${JSON.stringify(hint.card)} centre ${JSON.stringify(armed.ghost.centre)}`)
-    const canvas = await client.readJson(`(() => { const r = document.querySelector('#scene-wrap canvas').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom } })()`)
+    // v0.13.0 R5: the main canvas has its own id and lives on `#app`, not inside `#scene-wrap`
+    // (the home cover's `visibility: hidden` is on `.game-layout`, and the world has to keep
+    // rendering behind the cover). A `.scene-wrap canvas` lookup now returns null and aborts the
+    // probe mid-suite — which is how this line was found.
+    const canvas = await client.readJson(`(() => { const r = document.querySelector('#world-canvas').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom } })()`)
     check(`J ${edge}: carried shape stays inside the rendered canvas`, armed.ghost.cells.every(p =>
       p.x - armed.ghost.cellPx / 2 >= canvas.left && p.x + armed.ghost.cellPx / 2 <= canvas.right
       && p.y - armed.ghost.cellPx / 2 >= canvas.top && p.y + armed.ghost.cellPx / 2 <= canvas.bottom))

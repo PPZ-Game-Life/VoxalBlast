@@ -268,7 +268,7 @@ const metricPaths = [
 const LISTENER_TARGETS = [
   ['window', 'globalThis'],
   ['document', 'document'],
-  ['canvas', "document.querySelector('#scene-wrap canvas')"],
+  ['canvas', "document.querySelector('#world-canvas')"],
   ['settingsButton', "document.querySelector('#settings-button')"],
   ['playAgain', "document.querySelector('#reset-modal')"],
   ['soundSwitch', "document.querySelector('#sound-setting')"],
