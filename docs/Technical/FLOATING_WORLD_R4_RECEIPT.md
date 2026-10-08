@@ -192,10 +192,41 @@ unlit，都不受影响，所以不会出现 §6.3-D 担心的「UI/云/空格�
 2. **贴图是 512×192（2.67:1），却按正方形缩放**，云被纵向拉伸 2.67 倍。`world.clouds.aspect`
    进配方，第一帧就是对的形状。
 
-### 8.4 C2 尚未做到
+### 8.4 缺陷已定位（未修，交 UI 所有者落地）
+
+**右上功能键（声音 / 帮助 / 设置）在 390×844 与 1280×720 下都不可见。** 根因已取到，不是
+「未判明」：
+
+`src/floatingWorldUi.css:42-43` 的新皮肤覆盖把**两族**按钮都清空了底板：
+
+```css
+#app .item-button,
+#app .topbar .icon-button { border-radius: 0; background: none; }
+```
+
+随后只为 `.item-button .item-icon`（第 45-48 行）补回了 `icon-button.svg` + 工具 glyph，
+**顶栏 `.topbar .icon-button` 没有对应的补回规则**。同一文件里也没有 `icon-sound-on/off /
+icon-help / icon-settings` 的引用。
+
+浏览器实测（390×844，`getComputedStyle`）：
+
+```text
+#sound-button     rect 231,6 47×40   display grid  visibility visible  backgroundImage: none
+#controls-button  rect 283,6 40×40   display grid  visibility visible  backgroundImage: none
+#settings-button  rect 328,6 50×40   display grid  visibility visible  backgroundImage: none
+```
+
+即：**DOM 在、命中区在、什么都没画**。`reference.css:34` 的 `background: var(--button-art)`
+被上面的 `background: none` 覆盖，而 `reference.css:43` 又把按钮内的 `.toy-icon` 设为
+`visibility: hidden`，所以既不画底板也不画字形。
+
+修法（§5「顶部功能键」要求的正是这个）：按 `.item-button .item-icon` 的同一手法，为
+`#app .topbar .icon-button` 补一层 `icon-button.svg` 底板 + 对应 `icon-sound-on/off`、
+`icon-help`、`icon-settings` 的 glyph 变量（声音键还要按静音状态切 on/off）。
+文件属于正在并行推进的 UI 一侧，本轮不越界改动。
+
+### 8.5 C2 尚未做到
 
 - **彩块（paint）未校准**：默认开局盘面是空的，本轮只测了空格。§6.2 第 2 条「蓝与紫可辨、
   青色不脏、正面不能大片近黑」需要一盘带彩块的画面才能量。
 - **接缝/轮廓**（§6.2 第 3 条）本轮只做了目视：深蓝缝清楚、未出现浓黑橡胶隔条，但**没有 A/B**。
-- **1280×720 下右上功能键（声音/帮助/设置）不可见**，390×844 下正常。未判明是布局媒体查询、
-  DOM 状态还是并行写入者正在改的 `index.html`/CSS——**未修，如实上报**。
