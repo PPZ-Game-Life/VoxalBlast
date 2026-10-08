@@ -34,7 +34,8 @@
     "demo:rewards": "node tools/reward-demo.mjs",
     "probe:boot": "node tools/boot-frames.mjs",
     "fixtures:grounding": "node tools/material-grounding-fixtures.mjs",
-    "probe:grounding": "node tools/material-grounding-probe.mjs"
+    "probe:grounding": "node tools/material-grounding-probe.mjs",
+    "art:preflight": "node tools/floating-world-assets.mjs"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",
