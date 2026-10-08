@@ -1,5 +1,14 @@
 # 当前待办与验证边界
 
+> **待制作人裁决（两条，都是并行会话提出、无人拍板就停在那里的）**
+>
+> 1. **§7.3 的档位配比偏离。** R4 回执 §4.2 记录了一条有理由的偏离：项目的 `lowPower` 选择器是**按宽度**判的（≤700px），**所有手机宽度都落进 low**，如果照配方 `quality.low` 的 1 组/1 散块/3 云去裁，就会把 C1 必须验收的那个视口本身裁空。所以实景层的装饰数量按美术稿**固定在 3 组 / 3 散块 / 6 云**，降级只作用在 dpr / 阴影 / SSAO。**这不是我（R6 侧）判它通过**：`npm run shot` 的门禁已从「等于该档位配方数量」改成「等于美术固定配比 3/3/6」，也就是说它钉住的是模块现在**实际承诺**的配比；§7.3 的档位要求本身仍未满足，**要么制作人认可这条偏离并写进规范，要么指定人把档位真正接上去**。
+> 2. **投影机制的所有权交接。** R4 回执 §4.1：§6.4 允许的「艺术软投影」是**第三种**机制，而 R3 的门禁要求「blob 与 projected 恰有其一可见」。低档下 blob 是 ShadowMaterial、没有阴影贴图时根本不落笔，所以画面上只有艺术软投影；**高档下真实接收面会与它同时存在**。两者之间需要一次所有权交接（涉及 R3 的门禁与 `boardShadows`），**尚未做、未验证**。
+>
+> 另有一条不算阻塞、但决定要不要做的：**低档装饰不减**意味着手机上的地景密度与桌面相同（见手机截图两侧积木的占比），这是 1 号决定的直接后果。
+
+> **工作树状态（2026-10-08 11:20）**：R3 与 R4 的改动已按 R4 回执 §5 的**方案 C** 由先提交者一次落盘（`49d3f0e`，message 里分段署名），工作树**干净**。R4 侧若要继续改 `main.js` / `gameScene.js` / `diagnostics.js`，按方案 C 在自己的增量上 rebase 即可。已知未处理项：`import` 自 `public/` 的 Vite 警告（R3 文档 §4.2）、`#scene-wrap` 的 `overflow` 规范依赖（§4.3）、无物理手机/微信内嵌实测。
+
 > **v0.13.0 / 2026-10-07 — 「浮空积木世界」皮肤 R1（材质·光照·配色）+ R2（去底座·悬浮投影）+ R3（整屏主 renderer＋投影嵌入）。** 按 [交接单](FLOATING_WORLD_ART_HANDOFF.md) 的 R0–R7 施工顺序，本轮做完 **R0、R1、R2、R3**。
 >
 > **R3（本轮唯一动架构的一步）**：主 renderer 的画布改成**整个视口**、`position:fixed`、`pointer-events:none`，画在 UI 之后；`#scene-wrap` 保留原盒子，成为**唯一被命中测试**的区域，所有棋盘手势/取景/投影测量都仍按它的坐标说话。两者靠新增的 **`renderCamera`** 缝合：它整份 copy 标准相机（`camera`）的世界矩阵，再把标准投影**嵌入**整屏（`M = [sx 0 0 tx; 0 sy 0 ty; 0 0 1 0; 0 0 0 1]`，`P_render = M × P_canonical`），copy 后显式 `layers.set(0); enable(1); enable(2)`，并且**此后任何地方都不得再调 `updateProjectionMatrix()`**——那会把嵌入覆盖成一张普通的整屏投影。FOV/cameraDirection/翻面距离一个没动；`composer.setMainCamera(renderCamera)` 统一四路相机；NormalPass 的层排除逻辑改操作 `renderCamera` 并同时排除 layer 2（R4 的远景）；composer 的 RT 全部整屏，`resize()` 里先更新嵌入再 `composer.setSize`（否则 SSAO 缓存上一版 `cameraNearFar/projection`）。`getAppliedCanvasSize()` 仍返回 **gameplay 尺寸**。
