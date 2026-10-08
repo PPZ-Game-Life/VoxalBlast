@@ -1358,7 +1358,8 @@ async function caseClearForecast(client, input) {
   await input.pressAndHold(before.slots[0], center, 1)
   const held = await readState(client, input)
   check('H legal forecast paints the whole completed row in the dragged colour', held.preview.valid
-    && held.clearPreview.length === 5 && held.clearPreview.every(tile => tile.color === held.preview.pieceColor), JSON.stringify(held.clearPreview))
+    && held.clearPreview.length === 5 && held.clearPreview.every(tile => tile.color === held.preview.pieceColor),
+  JSON.stringify({ clear: held.clearPreview, preview: held.preview, centre: center, cells: held.board.cells }))
   check('H forecasting changes no board data', JSON.stringify(held.board) === JSON.stringify(before.board))
   await feedbackShot(client, 'clear-forecast')
   const step = held.ghost.stepScreen.v
