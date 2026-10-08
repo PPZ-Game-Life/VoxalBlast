@@ -152,3 +152,21 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
 **建议**（不代改）：主盘轮廓进禁区时用**主盘自身的包围盒**、不要加扩张 padding；或让被剔的装饰
 先尝试**外移**再判剔除；同时给 `culled` 加一条上界断言（不得把某个 band 整层剔光）。
 本会话在飞文件上不越界改动，只留读数与复现入口。
+
+### 9.1 归属更正：`af63acb` 里混进了并行会话的 11 个文件
+
+**事实**：本会话提交 §9 这段观察时，索引里已经有**另一个会话 `git add` 过的 11 个文件**
+（`docs/Planning/05`、`KNOWN_GAPS.md`、`package.json` / `package-lock.json`、
+`scene.recipe.json`、`main.js`、`boardView.js`、`config.js`、`floatingWorldScene.js`、
+`gameScene.js`、`tools/screenshot.mjs`）。`git commit` 提交的是**整个索引**，所以
+`af63acb` 的 message 只写了我的文档，实际却把对方那批一起落盘了。
+
+**处理**：**不改写已推送的历史**（`git reset` + force-push 会让对方的本地 main 变成非快进，
+代价远大于收益）。内容一个字节没动，全部增量都在历史里、可 `git show af63acb` 逐文件核对；
+错的只是**这次提交的署名与切分**。本行即更正记录。
+
+**教训（写给下一个接手的人）**：仓库里同时有第二个写入者时，
+`git commit` 之前必须假定**索引里随时可能有别人 stage 好的东西**。
+只提交本轮自己改的路径要用
+`git commit -F <msg> -- <路径…>`（pathspec 形式隐含 `--only`，绕开索引），
+而不是 `git add <路径> && git commit`。
