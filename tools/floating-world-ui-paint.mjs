@@ -126,6 +126,42 @@ const HOME_PROBE = `(() => {
   })
 })()`
 
+// Zero visible references to the retired skins (correction handoff §9.1 「可见背景已不是 valley
+// 画作/旧SVG」「不存在旧金边混搭」; §9.3 「旧 backdrop DOM/图片加载断言要同批改掉」).
+//
+// WHY A SECOND CHECK RATHER THAN TRUSTING THE RESKIN: the driver's `legacyArtHidden` only asks that
+// the injected `svg.toy-icon` does not paint on top of a host that still carries reference art. It
+// never asks whether old art is visible SOMEWHERE ELSE, so a panel this skin forgot to cover stays
+// green — which is exactly what the settings/leaderboard/game-over cards were until this round.
+//
+// Two paint paths are scanned because the pack's UI uses both: `background-image` (boards, glyphs,
+// plates) and `<img src>` (the cover's icons). Visibility uses the same test as the paint check, so
+// an element that is merely hidden (the home cover hides the whole game layout) is not a hit.
+const LEGACY_SCAN = `(() => {
+  const LEGACY = ['/art/ui-redesign/', '/art/reference/', '/art/pastoral']
+  const visible = (el) => {
+    const s = getComputedStyle(el)
+    const b = el.getBoundingClientRect()
+    return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0.05 && b.width > 1 && b.height > 1
+  }
+  const describe = (el) => el.id
+    ? '#' + el.id
+    : el.tagName.toLowerCase() + (typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).join('.') : '')
+  const hits = []
+  for (const el of document.querySelectorAll('#app, #app *')) {
+    const bg = getComputedStyle(el).backgroundImage
+    if (!bg || bg === 'none') continue
+    const path = LEGACY.find((p) => bg.includes(p))
+    if (path && visible(el)) hits.push({ el: describe(el), how: 'background-image', path, value: bg.slice(0, 140) })
+  }
+  for (const img of document.querySelectorAll('img')) {
+    const src = img.getAttribute('src') || ''
+    const path = LEGACY.find((p) => src.includes(p))
+    if (path && visible(img)) hits.push({ el: describe(img), how: 'img src', path, value: src })
+  }
+  return JSON.stringify(hits)
+})()`
+
 const profile = mkdtempSync(join(tmpdir(), 'voxalblast-shot-'))
 const child = spawn(EDGE, [
   '--headless=new', '--disable-gpu', '--disable-breakpad', '--hide-scrollbars',
@@ -185,6 +221,16 @@ const live = JSON.parse((await send(ws, 400, 'Runtime.evaluate', { expression: P
 check('live run', live.live)
 console.log(`live run   ${live.live.length} control(s); ${live.live.filter((r) => r.visible).length} visible`)
 
+// The retired skins, scanned in each state that paints a different surface: the board (HUD, tools,
+// tray, top bar), the cover, and the two dialogs whose cards this skin had not covered until now.
+const legacy = []
+const scanLegacy = async (id, label) => {
+  const hits = JSON.parse((await send(ws, id, 'Runtime.evaluate', { expression: LEGACY_SCAN, returnByValue: true })).result.value)
+  console.log(`legacy     ${label.padEnd(18)} ${hits.length} visible reference(s)`)
+  for (const hit of hits) legacy.push({ state: label, ...hit })
+}
+await scanLegacy(500, 'board')
+
 await send(ws, 401, 'Runtime.evaluate', {
   expression: '(() => { document.querySelector("#settings-button").click(); document.querySelector("#home-setting").click(); return 1 })()',
   returnByValue: true,
@@ -193,9 +239,27 @@ await sleep(900)
 const home = JSON.parse((await send(ws, 402, 'Runtime.evaluate', { expression: HOME_PROBE, returnByValue: true })).result.value)
 check('home cover', home.home)
 console.log(`home cover ${home.home.length} control(s); ${home.home.filter((r) => r.visible).length} visible`)
+await scanLegacy(501, 'home cover')
+// The two dialog cards, each open in turn on the cover. `#home-leaderboard` and `#home-settings`
+// are the cover's own entry points, so this drives the same path the player does.
+await send(ws, 502, 'Runtime.evaluate', {
+  expression: '(() => { document.querySelector("#home-settings").click(); return 1 })()',
+  returnByValue: true,
+})
+await sleep(500)
+await scanLegacy(503, 'settings panel')
+await send(ws, 504, 'Runtime.evaluate', {
+  expression: '(() => { document.querySelector("#settings-close").click(); document.querySelector("#home-leaderboard").click(); return 1 })()',
+  returnByValue: true,
+})
+await sleep(500)
+await scanLegacy(505, 'leaderboard panel')
 
 for (const row of [...live.live, ...home.home]) {
   if (row.visible && row.paints) console.log(`  ok   ${row.id} ${row.width}x${row.height}`)
+}
+if (legacy.length) {
+  for (const hit of legacy) failures.push(`${hit.state}: ${hit.el} still paints the retired skin via ${hit.how} (${hit.path}) — ${hit.value}`)
 }
 if (SELFTEST) {
   console.log(`self-test: expected the blanked tool tiles to be reported (${failures.length} failure(s))`)
