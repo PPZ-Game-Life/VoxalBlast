@@ -530,6 +530,37 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     return { left: minX, top: minY, right: maxX, bottom: maxY }
   }
 
+  // The camera's own screen-right axis, in world space. Dodging a decoration sideways is a shift
+  // along THIS, not along world X: the camera is yawed 26° off the world axes, so a world-X shift
+  // would move a decoration partly toward the viewer and change its size as it went.
+  const _rightAxis = new THREE.Vector3()
+
+  // How many CSS pixels one world unit buys along screen x, AT THIS OBJECT. Measured rather than
+  // derived: the embedded projection does not keep horizontal and vertical scale equal (sx ≠ sy),
+  // and the answer changes with depth, so `tan(fov/2)` arithmetic would be wrong here.
+  function screenPixelsPerWorldX(object, camera, rect) {
+    const before = screenBoxOf(object, camera, rect).left
+    object.position.add(_rightAxis)
+    const after = screenBoxOf(object, camera, rect).left
+    object.position.sub(_rightAxis)
+    return after - before
+  }
+
+  let dodged = 0
+  let blockedBy = []
+  let keepOutDebug = null
+  let appliedBoardBox = null
+
+  // Has the board's silhouette moved enough that the keep-out answer changed? 2 CSS px is well
+  // under anything a person could see and well over the idle float's per-frame step.
+  function boardBoxMoved() {
+    const box = getBoardScreenBox?.()
+    if (!box || ![box.minX, box.minY, box.maxX, box.maxY].every(Number.isFinite)) return false
+    if (!appliedBoardBox) return true
+    return Math.abs(box.minX - appliedBoardBox.minX) > 2 || Math.abs(box.maxX - appliedBoardBox.maxX) > 2
+      || Math.abs(box.minY - appliedBoardBox.minY) > 2 || Math.abs(box.maxY - appliedBoardBox.maxY) > 2
+  }
+
   function applyKeepOut() {
     const camera = getCamera()
     const rect = getCanvasRect?.()
@@ -548,18 +579,112 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
         role: 'board',
       })
     }
-    // Frame cropping is still allowed; overlap with a protected rect is not. The tray is not one
-    // of those rects (it is an opaque DOM panel over the canvas), so the near masses can keep their
-    // lower-corner crop. The board IS protected, therefore every decorative family participates —
-    // including foreground and loose blocks. Exempting the near layer was the reason a cream mass
-    // could sit on top of the live cells on a narrow phone.
+    if (!rects.length) { culled = 0; dodged = 0; return }
+    // Remember WHICH board box this pass was solved against. The board's projected silhouette is
+    // not a constant: it is different during the opening wave, it breathes with the idle float and
+    // it changes shape as the cube turns. Solving keep-out only when the LAYOUT moves therefore
+    // caches whichever box happened to be true at boot — measured, that was a box 130px wider than
+    // the board, wide enough to span the whole frame, which made every decoration un-dodgeable and
+    // deleted the entire side layer while every gate stayed green.
+    const boardNow = getBoardScreenBox?.()
+    appliedBoardBox = boardNow && [boardNow.minX, boardNow.minY, boardNow.maxX, boardNow.maxY].every(Number.isFinite)
+      ? { minX: boardNow.minX, minY: boardNow.minY, maxX: boardNow.maxX, maxY: boardNow.maxY }
+      : null
+
+    _rightAxis.setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+    const intersects = (box, keep) => box.left < keep.right && box.right > keep.left && box.top < keep.bottom && box.bottom > keep.top
+    const areaOf = (b) => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top)
+    const overlapArea = (b, k) => Math.max(0, Math.min(b.right, k.right) - Math.max(b.left, k.left))
+      * Math.max(0, Math.min(b.bottom, k.bottom) - Math.max(b.top, k.top))
+    // A rect that spans (nearly) the whole frame — the top bar and the tool row both do — cannot be
+    // cleared by moving sideways at all. Treating it like a dodgeable rect is what sent every
+    // decoration to exactly 10px outside the frame: a 5px vertical sliver of overlap with a
+    // full-width band demanded a horizontal shift of the decoration's whole width, three times
+    // over, until it left the picture. Measured, that produced `box.right = -10` on every
+    // left-hand piece with only 'board' left in its blocking list.
+    const spanning = (keep) => keep.left <= rect.left + 1 && keep.right >= rect.right - 1
+    // How much of a decoration a full-width band may cover before it is worth removing. A sliver
+    // is behind an opaque DOM panel and costs nothing to keep; a real collision is not.
+    const SPANNING_COVER_LIMIT = 0.35
+    // Dodge a hair PAST the edge rather than exactly to it. Landing on the boundary leaves a
+    // sub-0.01px overlap (the loop stops once a step is smaller than its own epsilon), and an
+    // exact-overlap test reads that as "still blocked" — which culled six decorations that were
+    // already flush against the board with zero visible pixels inside it.
+    const DODGE_MARGIN_PX = 1
+    const centreX = rect.left + rect.width * 0.5
+    // 搂4.2 orders this as 「避让、剔除」 — dodge first, remove only what cannot dodge. Culling on
+    // first overlap (which is what this did) deleted the whole mid/near layer on a 390-wide phone:
+    // the board alone spans ~250 of 390 CSS px, so with the 24px padding every decorative family
+    // overlapped it and nine of ten pieces vanished — while the gate stayed green, because it
+    // asserts the AUTHORED counts (3/3/6) and never looks at `culled`.
+    const all = [
+      ...clusters.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
+      ...walls.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
+      ...foreground.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
+      ...looseBlocks.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
+    ]
+
     let hidden = 0
-    for (const cluster of [...clusters, ...walls, ...foreground, ...looseBlocks]) {
-      const box = screenBoxOf(cluster.mesh, camera, rect)
-      cluster.mesh.visible = !rects.some((keep) => box.left < keep.right && box.right > keep.left && box.top < keep.bottom && box.bottom > keep.top)
-      if (!cluster.mesh.visible) hidden += 1
+    let moved = 0
+    const blocked = []
+    for (const { cluster, base } of all) {
+      // Every dodge starts from the AUTHORED position, never from the previous frame's, so a
+      // layout re-solve cannot ratchet a decoration progressively across the screen.
+      cluster.mesh.position.copy(base)
+      let box = screenBoxOf(cluster.mesh, camera, rect)
+      // Dodge sideways only for rects a sideways move can actually clear.
+      const narrowHits = () => rects.filter((keep) => !spanning(keep) && intersects(box, keep))
+      for (let attempt = 0; attempt < 3 && narrowHits().length > 0; attempt += 1) {
+        let clearLeft = Infinity
+        let clearRight = Infinity
+        for (const keep of narrowHits()) {
+          clearLeft = Math.min(clearLeft, box.right - keep.left + DODGE_MARGIN_PX)
+          clearRight = Math.min(clearRight, keep.right - box.left + DODGE_MARGIN_PX)
+        }
+        if (!Number.isFinite(clearLeft) || !Number.isFinite(clearRight)) break
+        // Push it AWAY from the frame's centre, so a left-hand decoration stays on the left.
+        const outward = (box.left + box.right) * 0.5 < centreX ? -clearLeft : clearRight
+        const perUnit = screenPixelsPerWorldX(cluster.mesh, camera, rect)
+        if (!Number.isFinite(perUnit) || Math.abs(perUnit) < 1e-6) break
+        cluster.mesh.position.addScaledVector(_rightAxis, outward / perUnit)
+        const next = screenBoxOf(cluster.mesh, camera, rect)
+        if (Math.abs(next.left - box.left) < 0.01 && Math.abs(next.right - box.right) < 0.01) break
+        box = next
+        moved += 1
+      }
+      // Remove it only if a narrow rect still blocks it (nowhere to stand), a full-width band
+      // covers too much of it, or it has been pushed clean out of the picture.
+      const covered = rects.reduce((worst, keep) => (spanning(keep) ? Math.max(worst, overlapArea(box, keep)) : worst), 0)
+      const area = areaOf(box)
+      const offFrame = box.right <= rect.left || box.left >= rect.right
+      cluster.mesh.visible = !offFrame && narrowHits().length === 0 && (area <= 0 || covered / area <= SPANNING_COVER_LIMIT)
+      if (!cluster.mesh.visible) {
+        hidden += 1
+        // WHICH rect is still in the way, how much of the piece it covers, and where the piece
+        // ended up. `culled` alone cannot tell 「被全宽禁带挤出行外」 apart from 「侧边真的没地方站」,
+        // and that difference decides whether the fix is the anchors, the padding or the list.
+        blocked.push({
+          id: cluster.mesh.name.replace('floating-world-', ''),
+          offFrame,
+          coverage: area > 0 ? Number((covered / area).toFixed(3)) : 0,
+          box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
+          by: rects
+            .filter((keep) => intersects(box, keep))
+            .map((keep) => keep.role ?? (spanning(keep) ? 'hud-spanning' : 'hud')),
+        })
+      }
     }
     culled = hidden
+    dodged = moved
+    blockedBy = blocked
+    keepOutDebug = {
+      canvas: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.right), Math.round(rect.bottom)],
+      rects: rects.map((keep) => ({
+        role: keep.role ?? 'hud',
+        box: [Math.round(keep.left), Math.round(keep.top), Math.round(keep.right), Math.round(keep.bottom)],
+        spanning: spanning(keep),
+      })),
+    }
   }
 
   // ---- Layout solve -------------------------------------------------------------
@@ -712,6 +837,12 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // anchored to the frame instead of to whatever pose the camera happened to be in at boot.
     const distance = frameDistance()
     if (!appliedLayout || Math.abs(distance - appliedLayout.distance) > distance * 0.01) layout()
+    // Keep-out is a function of the BOARD's silhouette, not of the camera or the layout, and that
+    // silhouette changes for reasons the layout never sees: the opening wave builds the cube up,
+    // the idle float breathes it, a turn reshapes it. Re-solving only on layout cached a boot-time
+    // box and left the whole side layer culled. Cheap enough to re-ask every frame: the pass is a
+    // dozen box projections and it only runs when the answer actually moved.
+    else if (boardBoxMoved()) applyKeepOut()
     // A pinned time answers for the clock entirely; `frozen` only decides whether the live clock
     // keeps running underneath. `prefers-reduced-motion` freezes the displacement too (§7.2) — the
     // world holds a readable static pose rather than accumulating time nobody sees.
@@ -783,6 +914,11 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       clouds: cloudSpecs.length,
       cloudTextures: cloudTextures.filter(Boolean).length,
       culled,
+      // 搂4.2 的「避让」那一步的结果。`culled` 单独一个数说不出「是躲开了还是没地方站」——
+      // 上一轮整层被剔光时，两个数里只有这一个会变。
+      dodged,
+      blockedBy,
+      keepOutDebug,
       layout: appliedLayout,
       reducedMotion: reducedMotion.matches,
       // §8.7 / C0.4: whether the world is on the live clock, pinned, or frozen — the fact a
