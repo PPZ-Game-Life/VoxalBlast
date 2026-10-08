@@ -50,10 +50,11 @@ export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
   // It is therefore deliberately darker than the blocks — the groove IS this colour.
-  // v0.13.0: `hullColor` is the recipe's `hull` (#243A4A). The skin has no wood grain
+  // v0.13.1: the seam backing uses the same recipe `ink` (#20334C) as the cell contour.
+  // The prior `hull` grey made the gaps read like rubber strips. The skin has no wood grain
   // anywhere, so the shell's grain map is gone with the block maps (§4.2: switch the
   // affected albedo/normal/roughness channels off, do not just re-tint them).
-  hullColor: floatingWorldPalette.hull,
+  hullColor: floatingWorldPalette.ink,
   hullOpacity: 1,
   hullRoughness: floatingWorldMaterials.background.roughness,
   hullClearcoat: floatingWorldMaterials.background.clearcoat,
@@ -74,6 +75,12 @@ export const BOARD_STYLE = Object.freeze({
   // means one idle material and one active material for the whole board, tray and ghost.
   blockToneSteps: Object.freeze([1]),
   blockGrainRepeat: 1,
+  // v0.13.1: one instanced, back-face ink silhouette sits behind all 98 gameplay blocks.
+  // The reference uses a deliberate deep-blue contour around every cell; relying on the recessed
+  // hull alone made the live board read as 25 soft cushions with shadowy cracks. The outline does
+  // not move, lift or resize any gameplay cell — it is a single non-pickable presentation mesh.
+  boardInkColor: floatingWorldPalette.ink,
+  boardInkScale: 1.055,
   // Empty cell / bare block. Recipe `materials.empty`.
   woodRoughness: floatingWorldMaterials.empty.roughness,
   woodClearcoat: floatingWorldMaterials.empty.clearcoat,
@@ -153,32 +160,21 @@ export const BOARD_STYLE = Object.freeze({
   // applies the final pixel inset for the current viewport.
   safeFactorDesktop: 1.18,
   safeFactorMobile: 1.24,
-  // v0.9.1 (producer 2026-09-24): the cube is drawn 10% smaller in portrait — "竖屏现在六面体太大了，缩小 10%".
-  // Applied to the SOLVED camera distance (distance / factor = smaller cube); portrait only.
-  // Landscape and the desktop framing gate (88–92% in probe:framing) are deliberately untouched.
-  // Orientation is the WINDOW's, not the canvas box: after the tool row above and the candidate
-  // tray below are reserved, the central canvas on a 390×844 phone is 390×495 — wider than tall,
-  // so a canvas test would never fire. Same query the backdrop uses for its portrait art.
-  portraitCubeScale: 0.86,
+  // v0.13.1 reference restoration: the approved gameplay panel gives the cube roughly 70% of
+  // the phone width. The old 0.86 portrait shrink left it at ~63% and created a huge empty band
+  // between the board and tray, so portrait now uses the same solved scale as landscape. This is
+  // presentation only; the camera direction, face shares and gesture ruler remain derived from
+  // the live projected silhouette.
+  portraitCubeScale: 1,
   // Vertical re-centring in world units (cube drawn on a large central canvas).
   targetYDesktop: 0,
   targetYMobile: 0,
-  // v0.9.14 (producer, 2026-09-28): 「感觉下方拖拽翻面的区域太小，经常和 Cancel 区域重合了，
-  // 要不把备选区和 cancel 区域下挪一点，把方块上移一点。」
-  //
-  // The bottom turn dwell (v0.9.11/13) needs room BETWEEN the cube's bottom edge and the tray,
-  // and the tray sits directly under the cube. Moving the tray down is CSS (reference.css);
-  // moving the CUBE up cannot be, because the cube is centred in its canvas — growing
-  // `.board-section` downward moves it DOWN instead and cancels the tray's gain exactly
-  // (measured on 390×844: the band was 145px before a naive CSS-only attempt, 146px after).
-  //
-  // This is the lift, in CLIENT PIXELS, applied by gameScene's `liftCubeForTurnBand()`: pixels
-  // because a pixel of lift is exactly a pixel of extra turn band, which is the thing being
-  // bought. Portrait only, like `portraitCubeScale`. It is CLAMPED to the room actually
-  // available above the cube (minus a clearance), so the framing guard never has to pull the
-  // camera back to fit — a fixed world-unit offset did exactly that on a 360×640 phone and
-  // shrank the cube by 24%, which is not a trade this game makes.
-  cubeLiftPx: 96,
+  // v0.13.1: retain a real bottom turn band without pulling the subject into the tool row. The
+  // former 96px lift plus the portrait shrink put the cube far above the reference composition;
+  // at the restored scale a 36px lift leaves roughly the same usable centre travel for a 3-row
+  // touch piece while returning the board to the visual centre. The runtime clamp still protects
+  // short screens and the screenshot gate still grades the actual remaining turn band.
+  cubeLiftPx: 36,
   cubeLiftClearancePx: 14,
 })
 

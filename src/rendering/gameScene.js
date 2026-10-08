@@ -485,12 +485,12 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
   // Slack around the board's own footprint when the receiving quad is sized for the union of
   // "where the board is" and "where its shadow lands". World units.
   const GROUND_SHADOW_MARGIN = 1.2
-  // handoff §10: the top tier pays for a real 1024 PCFSoft map; the tiers below it keep ALL of
-  // the board's real normal lighting and swap the map for a procedural soft ellipse. The
-  // project's existing quality selector is binary (`lowPower` from width/hardwareConcurrency),
-  // so "not low power" IS the high tier here — the three-way split the handoff tabulates is
-  // R7 work, and inventing a second selector now is exactly what §10 forbids.
-  const realBoardShadow = !quality.lowPower
+  // v0.13.1: the floating-world art ellipse is the ONE shipped board shadow on every tier. The
+  // previous high route also enabled a directional PCF receiver, producing a giant diagonal
+  // polygon across the plaza while the art ellipse was still present; low enabled a second blob.
+  // Both legacy quads remain available to the G1 diagnostic routes, but the shipped route owns
+  // neither. Normal lighting is unchanged and all tiers now share the approved composition cue.
+  const realBoardShadow = false
 
   function ensurePlatform() {
     if (platform) return platform
@@ -621,11 +621,11 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
       fitLegacySupportQuads(lastStage)
       return
     }
-    // The shipped route: fixed world plane, projection placed where the light puts it, and
-    // exactly one of the two shadow mechanisms on. High gets the real map; the tiers that
-    // cannot afford it get the software blob. Both at once double up into a black hole
-    // (handoff §5.2), which is why this is an either/or.
-    boardShadows.setEnabled({ blob: !realBoardShadow, projected: realBoardShadow })
+    // The shipped route: both legacy quads are disabled. floatingWorldScene owns the single
+    // art-directed ellipse, anchored from the live board silhouette onto the fixed plaza plane.
+    // Keeping either quad here would double the shadow; keeping the PCF receiver was also the
+    // source of the large diagonal desktop polygon rejected in the reference comparison.
+    boardShadows.setEnabled({ blob: false, projected: false })
     fitGroundProjection()
   }
 
@@ -731,9 +731,9 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
       } : null,
       artQuads: quads,
       ground: quads,
-      // Exactly one shadow mechanism is on in the shipped route; the report says which, so a
-      // check cannot pass by finding "a shadow" that the other tier drew.
-      shadowMechanism: groundingRoute !== 'none' ? 'support' : (realBoardShadow ? 'real-map' : 'soft-blob'),
+      // The shipped route's shadow is owned by floatingWorldScene; these two legacy mechanisms
+      // must both be off. Diagnostic support routes still report their own mechanism.
+      shadowMechanism: groundingRoute !== 'none' ? 'support' : 'art-ellipse',
       // The occlusion blend's live value (VFX_CONFIG.occlusion.intensity unless a diagnostic
       // override is in force), so a measurement of "SSAO did nothing" can say at what strength.
       occlusionIntensity: occlusionIntensity(),
@@ -792,8 +792,12 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
     // A container that is momentarily 0 (display:none, a detaching layout) must not push a
     // degenerate projection into the camera; the next observation fixes it.
     if (width < 1 || height < 1) return
-    const viewportWidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0, 1)
-    const viewportHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0, 1)
+    // The visual viewport is the frame and pointer coordinate space on mobile. Chromium can expose
+    // a 393px layout viewport beside a 390px visual viewport; using the former drifts the embedded
+    // projection by ~5px even though the fixed canvas box is exactly 390px. Prefer visualViewport,
+    // then inner size, with document metrics only as the non-supporting-browser fallback.
+    const viewportWidth = Math.max(Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth), 1)
+    const viewportHeight = Math.max(Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight), 1)
     const viewportChanged = viewportWidth !== appliedViewportSize.width || viewportHeight !== appliedViewportSize.height
     if (width === appliedCanvasSize.width && height === appliedCanvasSize.height && !viewportChanged) return
     appliedCanvasSize = { width, height }
@@ -822,6 +826,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
   let resizeObserver = null
   function observeResize() {
     window.addEventListener('resize', resize)
+    window.visualViewport?.addEventListener('resize', resize)
     if (typeof ResizeObserver === 'function') {
       resizeObserver = new ResizeObserver(resize)
       resizeObserver.observe(sceneWrap)
@@ -829,6 +834,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
   }
   function stopObservingResize() {
     window.removeEventListener('resize', resize)
+    window.visualViewport?.removeEventListener('resize', resize)
     resizeObserver?.disconnect()
     resizeObserver = null
   }

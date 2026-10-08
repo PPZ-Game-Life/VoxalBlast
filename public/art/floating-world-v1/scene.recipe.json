@@ -1,6 +1,6 @@
 {
   "schema": "voxalblast-floating-world-art/1",
-  "status": "handoff-not-integrated",
+  "status": "integrated-v0.13.1-fidelity-pass",
   "units": "One logical board lattice pitch is 1. GLB assets use Y-up, metres interpreted as one pitch, pivot as declared below.",
   "seed": 74123,
   "palette": {
@@ -20,8 +20,8 @@
     "background": { "size": 0.96, "radius": 0.075, "segments": 2, "pitch": 1 }
   },
   "materials": {
-    "empty": { "roughness": 0.72, "metalness": 0, "clearcoat": 0.05, "clearcoatRoughness": 0.55, "envMapIntensity": 0.25, "specularIntensity": 0.45, "ior": 1.4 },
-    "paint": { "roughness": 0.58, "metalness": 0, "clearcoat": 0.12, "clearcoatRoughness": 0.5, "envMapIntensity": 0.35, "specularIntensity": 0.5, "ior": 1.4 },
+    "empty": { "roughness": 0.78, "metalness": 0, "clearcoat": 0.03, "clearcoatRoughness": 0.62, "envMapIntensity": 0.22, "specularIntensity": 0.38, "ior": 1.4 },
+    "paint": { "roughness": 0.62, "metalness": 0, "clearcoat": 0.09, "clearcoatRoughness": 0.56, "envMapIntensity": 0.32, "specularIntensity": 0.46, "ior": 1.4 },
     "background": { "roughness": 0.86, "metalness": 0, "clearcoat": 0, "envMapIntensity": 0.18 },
     "shared": { "opacity": 1, "transparent": false, "transmission": 0, "scatter": 0, "internalReflection": 0, "coreAbsorption": 0, "woodGrainEnabled": false }
   },
@@ -82,13 +82,13 @@
     "note": "R4 实景层参数（docs/Technical/FLOATING_WORLD_VISUAL_CORRECTION_HANDOFF.md §4）。sky/plaza 是世界单位；walls/foreground 的 anchor 与 screenHeightFraction 沿用 layout.anchorConvention（整幅 viewport 的 NDC）。",
     "sky": { "radius": 300, "horizon": -0.35, "zenith": 0.5 },
     "plaza": {
-      "halfWidth": 60, "horizonNdc": 0.22, "zFar": -12, "zNear": 70, "cornerRadius": 10, "thickness": 1.2,
+      "halfWidth": 60, "horizonNdc": 0.10, "zFar": -12, "zNear": 70, "cornerRadius": 10, "thickness": 1.2,
       "tile": 2.2, "lineWidth": 0.035,
-      "top": "#FFF1CE", "side": "#E7D6AE", "line": "#EBDAB4", "shadowColor": "#20334C"
+      "top": "#EED9AC", "side": "#D9C18F", "line": "#D5BD8C", "shadowColor": "#20334C"
     },
     "boardShadow": {
       "note": "主盘的艺术化软椭圆投影（纠偏交接 §6.4）。尺寸按主盘自己的屏幕宽高比例给，锚点由 renderCamera 射线与地面求交得出，只在布局变化时重算。",
-      "widthFactor": 0.78, "heightFactor": 0.11, "offsetFactor": 0.15, "opacity": 0.2, "lift": 0.02
+      "widthFactor": 0.90, "heightFactor": 0.18, "offsetFactor": 0.10, "opacity": 0.20, "lift": 0.02
     },
     "bands": { "near": 0.92, "mid": 1.02, "far": 1.26, "clouds": 2.4 },
     "clouds": { "opacity": 0.92, "aspect": 2.667, "shapes": ["cloud-a.png", "cloud-b.png", "cloud-c.png"] },
@@ -102,7 +102,7 @@
     ]
   },
   "quality": {
-    "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": true, "shadowMapSize": 1024, "ssao": true },
+    "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": false, "shadowMapSize": 0, "ssao": true },
     "medium": { "clusters": 2, "looseBlocks": 2, "clouds": 4, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false },
     "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false }
   }

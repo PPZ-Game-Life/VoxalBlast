@@ -320,8 +320,9 @@ const {
 // built before the board's lattice constants and group exist — doing it here threw
 // `ReferenceError: Cannot access 'half' before initialization` on the very first layout.
 //
-// §4.3's keep-out bands are read LIVE from the DOM on every layout pass: the HUD and the tool
-// row are what a decoration must never sit behind, and they move with the viewport.
+// §4.3's UI keep-out bands are read LIVE from the DOM on every layout pass. The scenery module
+// combines them with the board's projected silhouette and the recipe's breathing room, so a
+// decoration may frame the play area but can never occupy its pixels.
 //
 // The TRAY is deliberately absent. §4.2 wants larger masses cropped by the frame at both bottom
 // edges, and the tray is an opaque DOM panel drawn over the canvas — a block behind it cannot

@@ -16,10 +16,11 @@
 // why it kept winning — nothing in the render had to change for it to stay on screen.
 //
 // Layer discipline (the R3 contract): every object here lives on layer 2 and ONLY layer 2.
-// gameScene's render camera enables 0/1/2 and its normal prepass disables 1 and 2, so no scenery
-// can become an occluder for the board's contact shading, and no scenery is ever pickable —
-// §4.2's 「背景物体不拾取、不挂 cubeGroup、不随玩家翻盘」 is enforced by the layer mask rather
-// than by remembering to skip it at each call site.
+// gameScene's render camera enables 0/1/2 while its normal prepass keeps only 0, so scenery never
+// enters the board's contact shading and is never pickable. Layers filter visibility; they DO NOT
+// override depth ordering in the beauty pass. The projected board keep-out below is therefore the
+// mechanism that prevents a nearer decorative mesh from covering live cells. §4.2's「背景物体不
+// 拾取、不挂 cubeGroup、不随玩家翻盘」 remains enforced by the layer mask.
 //
 // The recipe is the art-facing knob file (floatingWorld.js is its only reader). Composition
 // numbers — plaza bounds, per-band depths, anchors — live in `scene.recipe.json`'s `world`
@@ -292,6 +293,9 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       toneMapped: true,
     }),
   )
+  // YXZ keeps the -90° floor tilt while allowing a later world-Y bearing. With the default XYZ
+  // order, changing rotation.y tilts the quad's long axis out of the floor instead of yawing it.
+  boardShadow.rotation.order = 'YXZ'
   boardShadow.rotation.x = -Math.PI / 2
   boardShadow.layers.set(SCENERY_LAYER)
   boardShadow.name = 'floating-world-board-shadow'
@@ -326,6 +330,10 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     if (!(t > 0) || !Number.isFinite(t)) { boardShadow.visible = false; return }
     const worldPerPx = visibleHeightAt(camera, t) / rect.height
     boardShadow.position.set(camera.position.x + _shadowDir.x * t, y, camera.position.z + _shadowDir.z * t)
+    // The plane lies on the plaza, but its long axis must follow the camera's screen-right vector.
+    // Leaving it on world X made the ellipse project as a long diagonal smear on desktop because
+    // the camera itself is yawed 26°. The plaza uses the same bearing for its horizon.
+    boardShadow.rotation.y = plaza.rotation.y
     boardShadow.scale.set(boardWidth * shadowSpec.widthFactor * worldPerPx, boardHeight * shadowSpec.heightFactor * worldPerPx, 1)
     boardShadow.visible = true
   }
@@ -500,9 +508,9 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
 
   // ---- Keep-out (§4.2/§4.3) ------------------------------------------------------
   //
-  // A decoration the HUD, the tray or the board's own outline has to be read through is worse
-  // than a missing decoration. The rects come from main, which owns the DOM; this module only
-  // knows how to stop drawing into them.
+  // A decoration the HUD or the board's own outline has to be read through is worse than a
+  // missing decoration. The rects come from main, which owns both the DOM and the projected board
+  // silhouette; this module only knows how to stop drawing into them.
   let culled = 0
 
   function screenBoxOf(object, camera, rect) {
@@ -527,12 +535,26 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     const rect = getCanvasRect?.()
     if (!camera || !rect || rect.width < 1 || rect.height < 1) return
     const rects = (getKeepOutRects?.() ?? []).filter((r) => r && r.width > 0 && r.height > 0)
-    // The NEAR layer is exempt on purpose. §4.2 asks for「两侧被画框裁切的较大积木」, so those
-    // masses are SUPPOSED to leave the frame, and the tray is an opaque DOM panel drawn over the
-    // canvas — a block behind it cannot obscure a candidate. Culling by the tray's box would
-    // delete exactly the layer that gives the lower half its weight (measured: it did, 3 of 7).
+    const board = getBoardScreenBox?.()
+    if (board && [board.minX, board.minY, board.maxX, board.maxY].every(Number.isFinite)) {
+      const padding = Math.max(0, Number(recipe.layout.keepOutPaddingCssPx) || 0)
+      rects.push({
+        left: board.minX - padding,
+        top: board.minY - padding,
+        right: board.maxX + padding,
+        bottom: board.maxY + padding,
+        width: board.maxX - board.minX + padding * 2,
+        height: board.maxY - board.minY + padding * 2,
+        role: 'board',
+      })
+    }
+    // Frame cropping is still allowed; overlap with a protected rect is not. The tray is not one
+    // of those rects (it is an opaque DOM panel over the canvas), so the near masses can keep their
+    // lower-corner crop. The board IS protected, therefore every decorative family participates —
+    // including foreground and loose blocks. Exempting the near layer was the reason a cream mass
+    // could sit on top of the live cells on a narrow phone.
     let hidden = 0
-    for (const cluster of [...clusters, ...walls]) {
+    for (const cluster of [...clusters, ...walls, ...foreground, ...looseBlocks]) {
       const box = screenBoxOf(cluster.mesh, camera, rect)
       cluster.mesh.visible = !rects.some((keep) => box.left < keep.right && box.right > keep.left && box.top < keep.bottom && box.bottom > keep.top)
       if (!cluster.mesh.visible) hidden += 1

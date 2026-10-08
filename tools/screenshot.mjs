@@ -664,9 +664,15 @@ async function capture(browser, shot) {
       if (grounding?.pedestalArt && !grounding.pedestalArt.hidden) failures.push('the painted pedestal is still visible behind the board')
       if (grounding?.platform?.visible) failures.push('the G1 platform prototype is visible in the shipped route')
       if (!(grounding?.groundClearance > 0)) failures.push(`the ground plane is not below every pose of the board (clearance ${grounding?.groundClearance})`)
-      if (!(ground?.blobVisible || ground?.projectedVisible)) failures.push('neither ground-shadow mechanism is drawn')
-      if (ground?.blobVisible && ground?.projectedVisible) failures.push('both ground-shadow mechanisms are drawn at once (they double up into a black hole)')
-      if (!(ground?.blobOpacity > 0 || ground?.projectedOpacity > 0)) failures.push('the board has no ground shadow at all')
+      // v0.13.1: ownership is explicit now. The layer-2 art ellipse is the only shipped shadow;
+      // the two legacy layer-1 quads remain diagnostic routes and must BOTH be off in production.
+      // This is stricter than the old "exactly one legacy quad" check: it proves the approved
+      // mechanism exists, is mapped and has area, while also preventing either double-shadow path.
+      const artShadow = world?.boardShadow
+      if (grounding?.shadowMechanism !== 'art-ellipse') failures.push(`unexpected shipped shadow owner: ${grounding?.shadowMechanism}`)
+      if (ground?.blobVisible || ground?.projectedVisible) failures.push('a legacy ground-shadow quad is still drawn under the art ellipse')
+      if (!artShadow?.visible || !artShadow?.mapReady || !artShadow?.parented) failures.push('the floating-world art shadow is not fully mounted and visible')
+      if (!(artShadow?.opacity > 0 && artShadow?.width > 0 && artShadow?.height > 0)) failures.push('the floating-world art shadow has no visible area')
       if (parsed.rendering?.lowPower && parsed.rendering?.contactShadows?.ssaoEnabled) failures.push('low-power path must use surface AO instead of full scene SSAO')
       const onHome = mode === 'home' || mode === 'home-return'
       // The badge is inside the hidden topbar while the home cover is up, so on those

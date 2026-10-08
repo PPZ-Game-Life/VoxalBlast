@@ -49,7 +49,7 @@
 import * as THREE from 'three'
 import { FACES, SH, faceLattice } from '../game/board.js'
 import { normalizeCells } from '../game/shapes.js'
-import { INTRO_STYLE, ROTATE_STYLE as rotateStyle } from './config.js'
+import { BOARD_STYLE as style, INTRO_STYLE, ROTATE_STYLE as rotateStyle } from './config.js'
 
 export function createBoardView({
   metrics,
@@ -626,6 +626,16 @@ export function createBoardView({
   // no block can ever look taller, thicker or larger than any other. Placing a piece
   // paints one of them; it does not add, grow, lift or move anything.
   const gridGroup = new THREE.Group()
+  // v0.13.1: the reference's navy cell contour is one instanced back-face silhouette, not 98
+  // extra draw calls and not a change to gameplay geometry. It is created lazily in attachTiles()
+  // because getBlocks() is deliberately unresolved while this factory itself is constructed.
+  // A slightly enlarged rounded block draws only around the real block's silhouette; depth testing
+  // keeps its centre behind the real material, while neighbouring instances join into crisp seams.
+  const BOARD_CELL_COUNT = SH ** 3 - Math.max(0, SH - 2) ** 3
+  const inkMatrix = new THREE.Matrix4()
+  const inkQuaternion = new THREE.Quaternion()
+  const inkScale = new THREE.Vector3(style.boardInkScale, style.boardInkScale, style.boardInkScale)
+  let boardInk = null
   // The wood and paint material family — one material per (state x tone step), plus a cache
   // of paint per colour — and the deterministic per-cell tone hash both live in
   // rendering/blockResources.js, reached through `blocks` above.
@@ -648,8 +658,15 @@ export function createBoardView({
           // A block is a cube centred in its cell: no orientation needed, and its
           // outer face lands flush with the big cube's surface.
           mesh.position.copy(cellLocal(face, u, v))
-          mesh.castShadow = true
+          // The approved look uses one designed soft ellipse on the plaza. Per-cell shadow maps
+          // produced a huge directional polygon on desktop and muddy cushion-like seams; the
+          // bevel still receives the shared real lights, while the board's space cue is owned by
+          // floatingWorldScene's art shadow.
+          mesh.castShadow = false
           mesh.receiveShadow = true
+          const outlineIndex = cells.size
+          inkMatrix.compose(mesh.position, inkQuaternion, inkScale)
+          boardInk.setMatrixAt(outlineIndex, inkMatrix)
           mesh.userData.cell = cell
           mesh.userData.faces = [face]
           mesh.userData.tone = tone
@@ -659,6 +676,7 @@ export function createBoardView({
       }
       gridGroup.add(group)
     })
+    boardInk.instanceMatrix.needsUpdate = true
   }
 
   // ============================================================
@@ -710,6 +728,18 @@ export function createBoardView({
   // Attach the lattice to the cube and build it. Kept as one call so main keeps the timing
   // it always had -- nothing between the old add and the old build touched the group.
   function attachTiles() {
+    boardInk = new THREE.InstancedMesh(
+      getBlocks().blockGeometry,
+      new THREE.MeshBasicMaterial({ color: style.boardInkColor, side: THREE.BackSide, toneMapped: false }),
+      BOARD_CELL_COUNT,
+    )
+    boardInk.name = 'board-cell-ink'
+    boardInk.castShadow = false
+    boardInk.receiveShadow = false
+    boardInk.raycast = () => {}
+    boardInk.frustumCulled = false
+    boardInk.renderOrder = -1
+    getCubeGroup().add(boardInk)
     getCubeGroup().add(gridGroup)
     buildFaceTiles()
   }
@@ -914,6 +944,9 @@ export function createBoardView({
   function armIntro() {
     settleIntro()
     if (!INTRO_STYLE.enabled) return false
+    // The ink is the finished board's contour. Keeping it visible while cells are still flying
+    // in would reveal all 98 destinations before the construction wave reaches them.
+    boardInk.visible = false
     // The colours and the front face's lighter timber are settled BEFORE they are
     // copied: the wave clones what the board is honestly wearing, including a resumed
     // run's painted cells.
@@ -992,7 +1025,7 @@ export function createBoardView({
         // does would cut a hole in the hull behind it. Same for its shadow — a shadow
         // of a block that does not exist yet is a bug you can see.
         entry.material.depthWrite = opacity > 0.99
-        entry.tile.castShadow = opacity > 0.99
+        entry.tile.castShadow = false
         entry.tile.scale.setScalar(S.build.scaleFrom + (S.build.scaleOvershoot - S.build.scaleFrom) * rise - (S.build.scaleOvershoot - 1) * fall)
         entry.tile.position.copy(entry.home).addScaledVector(entry.inward, S.build.inset * (1 - rise))
 
@@ -1027,10 +1060,11 @@ export function createBoardView({
     if (!intro) return
     const entries = intro.entries
     intro = null // cleared first: the repaint below must not see a live wave
+    boardInk.visible = true
     entries.forEach((entry) => {
       entry.tile.position.copy(entry.home)
       entry.tile.scale.setScalar(1)
-      entry.tile.castShadow = true
+      entry.tile.castShadow = false
       entry.tile.material = entry.base
       entry.material.opacity = 1
       entry.material.depthWrite = true
@@ -1060,7 +1094,7 @@ export function createBoardView({
       // `introMaterials` WeakMap, never in `userData` — see introMaterialFor).
       if (tile.material === introMaterials.get(tile)) integrity.materialOff += 1
       if (tile.material.opacity !== 1) integrity.opacityOff += 1
-      if (!tile.castShadow) integrity.shadowOff += 1
+      if (tile.castShadow) integrity.shadowOff += 1
       integrity.maxScaleErr = Math.max(integrity.maxScaleErr, scaleErr)
       integrity.maxPositionErr = Math.max(integrity.maxPositionErr, positionErr)
     })
