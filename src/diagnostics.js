@@ -339,6 +339,12 @@ export function createDiagnostics({
         // screenshot is a still of a DETERMINISTIC pose rather than of whatever phase the float
         // happened to be in. Moves no rule and stores nothing.
         setBoardFloat: (values) => dev.setBoardFloat(values),
+        // v0.13.0 R4 (KNOWN_GAPS §3 / handoff §C0.4): the SAME pin for the scenery's ambient
+        // clock. The board's float and the world's clouds/bob are two independent clocks; pinning
+        // one and not the other leaves the picture non-reproducible, which is what the gap
+        // recorded. Mounted here because this module whitelists the handles one by one — a
+        // `dev.setAmbient` that is never forwarded is a handle that silently does nothing.
+        setAmbient: (values) => dev.setAmbient(values),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
         records: () => recordStore.all(),

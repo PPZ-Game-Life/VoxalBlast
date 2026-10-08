@@ -276,8 +276,15 @@ async function capture(browser, shot) {
       // The float is a live animation now, so without this the same build photographs at a
       // different board height every run and the framing band/ratio read-outs stop being
       // comparable between runs — which is the whole point of a fixed capture seed.
+      //
+      // v0.13.0 R4 (KNOWN_GAPS §3 / §C0.4): and the SCENERY's ambient clock, which is a second,
+      // independent one. Pinning only the board left the clouds and the buildings running, so
+      // two captures of the same build still differed pixel for pixel. Both pins now go through
+      // the same call shape, and the gate below reads them back rather than trusting them.
       await send(ws, nextId++, 'Runtime.evaluate', {
-        expression: 'globalThis.__voxalblastDev?.setBoardFloat?.({ frozen: true, time: 0 }) ?? "no-dev-handle"',
+        expression: '(() => { const d = globalThis.__voxalblastDev; if (!d) return "no-dev-handle";'
+          + ' return { board: d.setBoardFloat?.({ frozen: true, time: 0 }) ?? null,'
+          + ' ambient: d.setAmbient?.({ frozen: true, time: 0 }) ?? null }; })()',
         returnByValue: true,
       })
       if (mode === 'home' || mode === 'home-return') {
@@ -611,6 +618,13 @@ async function capture(browser, shot) {
         // recorded as an OPEN PRODUCER DECISION in docs/Technical/KNOWN_GAPS.md, not resolved.
         if (world.clusters !== 3 || world.looseBlocks !== 3 || world.clouds !== 6) {
           failures.push(`scenery composition is ${world.clusters}/${world.looseBlocks}/${world.clouds}, the art-fixed contract is 3/3/6 (see KNOWN_GAPS: the §7.3 tier deviation is an open decision)`)
+        }
+        // v0.13.0 R4 (KNOWN_GAPS §3 / handoff §C0.4): the world has to BE still for the picture to
+        // be comparable. This is read back from the module rather than trusted from the pin call
+        // above — a pin that silently stopped working would otherwise be invisible until someone
+        // diffed two captures by hand, which is exactly how it went unnoticed the first time.
+        if (!world.ambient?.pinned) {
+          failures.push('the scenery ambient clock was not pinned — two captures of this build are not pixel-comparable (§C0.4)')
         }
       }
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')

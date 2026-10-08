@@ -164,3 +164,42 @@ html:root { --plaque-board-top: 0.025; }
    不混同) — BEST keeps the crown, SCORE the trophy, and neither is baked into the board. */
 #app .best-chip::before { background-image: url('/art/floating-world-v1/ui/icon-crown.svg'); }
 #app .score-chip::before { background-image: url('/art/floating-world-v1/ui/icon-trophy.svg'); }
+
+/* ---- The three top-bar function keys (handoff §5 「顶部功能键」) ---------------------------
+ *
+ * These were INVISIBLE, not merely old. The rule at the top of this file clears the background of
+ * BOTH button families together —
+ *
+ *     #app .item-button, #app .topbar .icon-button { border-radius: 0; background: none; }
+ *
+ * — and only the tool tiles were given the pack's board back (`.item-button .item-icon` above).
+ * The top bar never got its half, so the keys kept their DOM, their hit boxes and their 40×40
+ * measured rect while painting nothing at all: `backgroundImage: none`, and `reference.css`
+ * hides the buttons' own `.toy-icon`, so neither layer drew. Measured before the fix, at 390×844:
+ * `#sound-button 231,6 47×40`, `#controls-button 283,6 40×40`, `#settings-button 328,6 50×40`,
+ * all three `backgroundImage: none`.
+ *
+ * Same two-layer recipe as the tool tiles, with one difference that is not cosmetic: these boxes
+ * are NOT square (`#settings-button` is 1.20× wide, `#sound-button` 1.12×), so a percentage size
+ * would squash the board. `contain` fits the board inside the shorter side instead, and the glyph
+ * is sized off the box's HEIGHT so the glyph-to-board ratio stays the pack's 81.25% on every one
+ * of the three.
+ *
+ * The sound key carries its state as a GLYPH, not as an overlay: the pack ships both
+ * `icon-sound-on` and `icon-sound-off`, so the old skin's rotated slash (`::after`, §5's
+ * 「静音旧斜杠叠画」) is dropped rather than repainted. The `grayscale` from `reference.css` is
+ * deliberately left in place — it is an existing affordance, not part of what §5 retires.
+ */
+#app .topbar .icon-button {
+  background-image:
+    var(--fw-hud-glyph),
+    url('/art/floating-world-v1/ui/icon-button.svg');
+  background-position: center calc(50% - 2px), center;
+  background-size: auto 81.25%, contain;
+  background-repeat: no-repeat;
+}
+#app #sound-button { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-sound-on.svg'); }
+#app #controls-button { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-help.svg'); }
+#app #settings-button { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-settings.svg'); }
+#app #sound-button[aria-pressed='false'] { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-sound-off.svg'); }
+#app #sound-button[aria-pressed='false']::after { content: none; }
