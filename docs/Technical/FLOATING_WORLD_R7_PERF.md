@@ -79,6 +79,30 @@ draw calls 与 §1 对局状态的读数直接比。18 个组合里 12 个 `dsf 
 并把「项目二值档 → 配方三档」的映射收进 `floatingWorld.js::floatingWorldTierFor`，让渲染器的上限与实景层
 的装饰预算不可能落在不同档上。**截图门禁不受影响**：DPR=1 时 `min(1, cap)` 两种写法都是 1，`npm run shot` 17/17 仍全过。
 
+### 3.1 v0.13.1 全量回归（R7 收口的那一轮）
+
+改的是 renderer 的 pixel ratio（`gameScene.js`）与一处跨模块 import，所以按 §9.2 把交互面重跑了一遍。
+DPR=1 下 `min(1, 1.75)` 与 `min(1, 2)` 都是 1，这也是为什么截图门禁本来就看不见这次改动：
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test` | 全绿（i18n 175/175、rules 554/554、session 205/205、deal 四件套、leaderboard 28/28） |
+| `npm run build` | 通过（1.9s） |
+| `npm run shot` | **17/17 OK**（含 1440×900 / 1280×720 / 390×844 / 320×740 / 844×390 / 2048×900） |
+| `npm run probe:buffer` | **18/18 组合**（本页 §3 的表） |
+| `npm run probe:drag` | **117 ok / 0 failed / 0 skipped** |
+| `npm run probe:interaction` | 52 ok / 0 failed |
+| `npm run probe:ui` | 105 ok / 0 failed |
+| `npm run probe:churn` | 44 ok / 0 failed / **1 skipped**（既有的「换批未重发」D 案，非本轮引入） |
+| `npm run probe:item` | 全过（07 §8） |
+| `npm run probe:dialog` | 15 passed / 0 failed |
+| `npm run probe:scroll` | 30 passed / 0 failed |
+| `npm run probe:boot` | 6 ok / 0 failed（幕布 682ms） |
+| `npm run probe:swipe` | 三个手势方向全过 |
+| `npm run probe:framing` | 通过（**首跑崩过一次**：并发编辑令 dev server 重载页面、句柄短暂消失；复跑即过，不是产品问题——同一个现象已由 `evidence:motion` 的 `requireHandle` 显式报出来） |
+| `npm run probe:ui-paint` | 可见控件全部真的画东西 |
+| `npm run evidence:motion` | 运动/冻结/恢复/reduced-motion 全过（见 [C3 动态证据](FLOATING_WORLD_C3_ANIMATION_EVIDENCE.md)） |
+
 **同一轮测出来的一个待裁决风险（不是缺陷，是口径问题）**：档位选择器是
 `(max-width: 700px) || hardwareConcurrency <= 4`（`config.js::getRenderQuality`），所以**横屏手机**（844×390）
 两项都不满足时落进 **high**：238 draw calls / 269k 三角形、SSAO 开、cap 1.75、buffer 1477×682 ≈ 100 万像素——
