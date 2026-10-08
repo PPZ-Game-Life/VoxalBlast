@@ -40,8 +40,9 @@
 | --- | --- |
 | [06 宣传制作说明](Planning/06-平台宣传素材与视频规范.md) | 当前游戏画面的制作口径；不代表素材已交付 |
 | [上线物料包](Planning/上线物料包.md) | 待定名、待制作、待提审草案；平台要求保留查询日期，上传前重核 |
-| [浮空积木世界：v0.13.0 视觉纠偏交接](Technical/FLOATING_WORLD_VISUAL_CORRECTION_HANDOFF.md) | **当前纠偏执行入口，待实施验收**：针对用户反馈的新旧皮肤混搭；核对 R0–R2 / R3 WIP，先交完整新背景＋新 UI＋棋盘的静态画面，再校准光影与动画；含投影出屏裁决和最终回执门禁 |
-| [浮空积木世界：原始美术资源与技术底稿](Technical/FLOATING_WORLD_ART_HANDOFF.md) | 资源已交付、分阶段实施中；保留模型/材质/渲染与替换细节。**当前视觉优先级和完成门槛以上方纠偏单为准**，不把资源检查台或阶段提交视为最终美术验收 |
+| [浮空积木世界：v0.13.1 游戏区品质收口](Technical/FLOATING_WORLD_GAMEPLAY_POLISH_HANDOFF.md) | **当前修改入口，待实施验收**：补齐18色映射、主盘/候选同源细轮廓、分级禁区与有效中景、按屏宽缩云、高低档光影；同步主页比例与设置页，含新数值和逐轮验收 |
+| [浮空积木世界：v0.13.0 视觉纠偏交接](Technical/FLOATING_WORLD_VISUAL_CORRECTION_HANDOFF.md) | 前轮新旧皮肤混搭的纠偏依据；保留整套画面/投影/交互边界。主题已进入品质收口，**本轮顺序、色表补项和禁区修订以上方v0.13.1文档为准**，不重复从R0返工 |
+| [浮空积木世界：原始美术资源与技术底稿](Technical/FLOATING_WORLD_ART_HANDOFF.md) | 资源已交付、分阶段实施中；保留模型/材质/渲染与替换细节。**当前视觉优先级和完成门槛以最新品质收口单为准**，不把资源检查台或阶段提交视为最终美术验收 |
 | [R3 接入契约与回执（整屏主画布＋投影嵌入）](Technical/FLOATING_WORLD_R3_INTEGRATION.md) | R3 的工程契约与实测回执：**两套盒子永不混用**、layer mask 每帧重申、不得再调 `updateProjectionMatrix`、NormalPass 排除 layer 2、`setSize` 顺序、零尺寸保护；R4/R5 继续在画布/相机上加东西前先读这一页。**代码已实装并跑通门禁，但截至写作时仍留在工作树未提交**（同一棵树上有第二个写入者在做 R4），归属裁决请求见该文 §5 |
 | [R4 回执：实景层与 C2/C3](Technical/FLOATING_WORLD_R4_RECEIPT.md) | R4（天空/广场/积木远景＋主盘软投影）的实装口径、三个**只有看画面才能发现**的 bug 的根因（`ExtrudeGeometry` 顶面、`renderCamera` 矩阵滞后一帧、共享 scratch 被覆盖）、C2 彩漆逐色读数与 V4 的 A/B、C3 运动/静止/拖拽冻结的取数方法，以及并行写入的归属请求 |
 | [C3 动态证据（云/建筑运动·拖拽冻结·恢复不跳动·reduced-motion）](Technical/FLOATING_WORLD_C3_ANIMATION_EVIDENCE.md) | §7.2 要的两件可复算证据：受控成对帧的取法、四阶段的**正向证据＋反向对照**、两个测量陷阱（`framing.solid` 的角是背景；要按在极值上才分得出「保持」与「归零」），以及 `npm run evidence:motion` 的复跑方式。**「不是视频、无头只有 ~7.6fps、无真机」写在 §4** |
