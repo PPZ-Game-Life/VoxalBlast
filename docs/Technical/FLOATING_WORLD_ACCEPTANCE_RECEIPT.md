@@ -97,7 +97,34 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
   §4.1 要求先断引用、做完全局使用清单再删，这一步未做。
 - **旧 UI 引用**：记分牌、顶栏三键、四工具、候选托盘、主页 Logo、**主页纪录牌与主/次按钮**
   已全部切本包（最后一处 `14bedd2`，本会话在 1440×900 与 390×844 复拍确认）。对局与主页的
-  UI 换图这条**清零**。
+  UI 换图这条**画面清零**。
+
+### 4.1 源码级清零诊断（本轮补，结论与截图不同）
+
+上面那条是用**画面**判的。§9.4 要的是**诊断**，所以本轮按源码查了一遍——**画面清了，源码没清**：
+
+| 项 | 事实 | 判定 |
+| --- | --- | --- |
+| 旧田园背景模块 | `src/rendering/pastoralBackdrop.js` 全仓**没有任何 import**（`main.js` 只剩一行说明它已移除的注释） | **死代码**，可见性无风险 |
+| 旧田园 CSS | `toy.css:156-157` 的 `.pastoral-backdrop` 规则仍在；`reference.css:3` 的 `.pastoral-backdrop-painting` 仍在 | 死规则（层永远不会被创建） |
+| 旧 UI 美术引用 | **`reference.css` 里仍有 10 处 `/art/reference/*.png`**（score-panel / sound / help / settings / 四工具 / tray / pedestal） | **未清除，只是被覆盖** |
+| 新 UI 美术引用 | `floatingWorldUi.css` 里 25 处 `/art/floating-world-v1/…`，靠 `#app` 前缀的**特异性**压过旧声明 | 见下 |
+| 旧底座 `<img>` | `index.html:100` 的 `<img class="garden-pedestal" src="./art/reference/pedestal.webp">` **仍在标记里**，靠 `gameScene` 在运行时置 `display:none` 隐藏（`pedestalArt.hidden`） | 隐藏而非移除 |
+
+**这不是一个"看着没问题"的结论。§5.2 的原话是**「不要再叠第三套补丁后寄希望于『最后一条应该赢』…
+必须清掉旧样式的具体覆盖…**显式保留唯一显示路径**」。现状恰好是它点名的那个反模式：
+新皮不是**替换**旧皮，而是**叠在**旧皮上，谁赢取决于特异性。
+
+具体后果：
+- 旧 PNG 目前不会被请求（`background-image` 被整体覆盖），所以**门禁的「无失败网络加载」查不出来**；
+- 但也**没有任何东西保证它继续成立**——旧声明还在，任何一次特异性变化（例如把 `#app` 去掉、
+  或新规则挪进低优先级文件）都会让旧金边/花叶重新出现，而**画面门禁要等到有人拍图才发现**；
+- `pedestal.webp` 同理：它还在 DOM 里，靠运行时样式隐藏。
+
+**建议**（UI 一侧落地，本轮不改）：把 `reference.css` 里被覆盖的那 10 处旧声明**删掉**而不是留着被压过，
+并删掉 `.pastoral-backdrop*` 的死规则与 `pastoralBackdrop.js`；`<img class="garden-pedestal">`
+从标记里移除、同时保留 `pedestalArt.hidden` 的读数口径（或改成断言"标记里不存在"）。
+这样 §5.2 的「唯一显示路径」才成立。
 - **顶栏三键曾经完全不可见**（`backgroundImage: none`），根因是 `floatingWorldUi.css` 顶部把两族按钮
   一起清空底板却只为工具瓦片补回；已修并加了 `npm run probe:ui-paint` 门禁（并行会话）。
 - **Vite 的 `public/` 内 JSON import 警告**仍在（R3 文档 §4.2），未处理。
