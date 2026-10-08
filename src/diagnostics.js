@@ -27,8 +27,8 @@ import { referencePaintColor } from './rendering/referencePalette.js'
 
 export function createDiagnostics({
   version,
-  canvas,
   scene3d,
+  floatingWorld,
   boardView,
   blocks,
   pieceView,
@@ -43,9 +43,19 @@ export function createDiagnostics({
   settingsUi,
   dev,
 }) {
-  // The canvas box is the renderer's own element, read live: a cached rect would freeze the
-  // framing numbers to the window size they were first measured at.
-  const canvasRect = () => canvas.getBoundingClientRect()
+  // The board's box, and the ONLY box this module measures against.
+  //
+  // v0.13.0 R3 (handoff §9.3) made the main canvas the whole viewport, so "the rect the
+  // renderer draws into" stopped being "the rect the board lives in". Everything here — the
+  // face-centre the drag probes aim at, the per-cell screen step the ghost is placed with,
+  // `facesReport`'s box — is board geometry measured through the CANONICAL camera, and the
+  // canonical camera is solved against the gameplay rect. Reading the canvas element instead
+  // silently moved the reported board centre by tens of pixels while the picture stayed
+  // perfect, which is exactly how a probe goes red with no visual symptom at all.
+  //
+  // Nothing is cached: a cached rect would freeze the numbers to the window size they were
+  // first measured at.
+  const boardRect = () => scene3d.getGameplayRect()
 
   const readOnly = Object.freeze({
     version,
@@ -64,6 +74,15 @@ export function createDiagnostics({
         environment: scene.environment,
         hdr: scene.hdr,
         contactShadows: scene.contactShadows,
+        // v0.13.0 R3: the canvas/gameplay split and the error between the two projections.
+        // The ≤1 CSS px equality it reports is the gate this stage is graded on, and it cannot
+        // be read off a screenshot — a board drawn a few pixels off its own hit box still looks
+        // like a board.
+        projection: scene.projection,
+        // v0.13.0 R4 (§9.3): what the background ACTUALLY is now. The old skin's only tell was
+        // "the valley webp finished loading", which stays true whether or not any of it is on
+        // screen — these say a sky, a plaza, N lit clusters and N cloud textures are up.
+        world: floatingWorld.report(),
         toneMapping: scene.toneMapping,
         programs: scene.programs,
         lowPower: scene.lowPower,
@@ -86,7 +105,7 @@ export function createDiagnostics({
     // the main face's own lattice axes are from screen right/down. Areas are exact projected
     // polygons, not a cosα·cosβ approximation. BoardView measures it; the rect is the
     // renderer's, which boardView deliberately does not own.
-    faces: () => boardView.facesReport(canvasRect()),
+    faces: () => boardView.facesReport(boardRect()),
     // v0.8.6 rotation read-out: the world-space increment between two rendered poses,
     // expressed in the camera's own frame. `screenDeg` is where the rotation axis points on
     // screen, measured from screen-right and folded to (-90°, 90°]: 0° means the axis lies
@@ -124,7 +143,7 @@ export function createDiagnostics({
       const face = boardView.findFrontFace()
       const candidatePieces = session.getPieces()
       const piece = candidatePieces.find((candidate) => !candidate.used) || candidatePieces[0]
-      const rect = canvasRect()
+      const rect = boardRect()
       const faceCenter = boardView.cellWorld(face, 2, 2).project(scene3d.camera)
       const stepScreen = (probeCells) => {
         const [from, to] = boardView.faceOrientedCells(face, probeCells)

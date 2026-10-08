@@ -585,7 +585,20 @@ async function capture(browser, shot) {
         if (!(world.plaza?.floorY <= -4.5)) failures.push(`the plaza floor (${world.plaza?.floorY}) is above the board's worst pose — the board would cut through it`)
         if (!(world.cells > 0)) failures.push('the floating blocks have no cells')
         if (!(world.clouds > 0) || world.cloudTextures !== 3) failures.push(`clouds: ${world.clouds} sprites over ${world.cloudTextures} textures (the pack ships three)`)
-        if (world.tierSpec && world.tierSpec.clouds !== world.clouds) failures.push(`the ${world.tier} tier asks for ${world.tierSpec.clouds} clouds, ${world.clouds} were built`)
+        // The scenery's composition is ART-FIXED at 3 groups / 3 loose blocks / 6 clouds on
+        // every tier, and that is a DELIBERATE deviation from §7.3's per-tier counts — the R4
+        // side's own receipt §4.2 records the reason: the project's `lowPower` selector is
+        // width-based, EVERY phone width lands in `low`, and applying the recipe's low tier
+        // (1/1/3) would strip the very viewport C1 is graded at. Downgrades still act on DPR,
+        // shadows and SSAO.
+        //
+        // So the exact numbers are asserted here rather than the tier comparison they replaced:
+        // this gate now pins the composition the module PROMISES. If the tiers are ever wired
+        // up, this line has to change with them — which is the point. The deviation itself is
+        // recorded as an OPEN PRODUCER DECISION in docs/Technical/KNOWN_GAPS.md, not resolved.
+        if (world.clusters !== 3 || world.looseBlocks !== 3 || world.clouds !== 6) {
+          failures.push(`scenery composition is ${world.clusters}/${world.looseBlocks}/${world.clouds}, the art-fixed contract is 3/3/6 (see KNOWN_GAPS: the §7.3 tier deviation is an open decision)`)
+        }
       }
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')

@@ -33,7 +33,7 @@ import { createGameSession } from './game/gameSession.js'
 import { createPieceView } from './rendering/pieceView.js'
 import { createEffects } from './rendering/effects.js'
 import { createGameAudio } from './audio/gameAudio.js'
-import { installPastoralBackdrop } from './rendering/pastoralBackdrop.js'
+import { createFloatingWorld } from './rendering/floatingWorldScene.js'
 import { installToyIcons } from './ui/icons.js'
 import { collectDom } from './ui/dom.js'
 import { ITEM_COPY } from './ui/itemCopy.js'
@@ -258,7 +258,18 @@ const quality = getRenderQuality()
 // Wood grain is a canvas texture, and the signboards are DOM: paint them before
 // the first frame so nothing pops in a frame late.
 installWoodSkin()
-installPastoralBackdrop(appEl)
+// v0.13.0 R4 (handoff §4.1): `installPastoralBackdrop(appEl)` used to sit here. It is GONE.
+// The 「浮空积木世界」 background is a real lit scene graph now (rendering/floatingWorldScene.js),
+// and leaving the DOM layer installed would keep the valley painting — plus every tree, corgi
+// and cottage in it — visible behind the new world. The old module and its art are deliberately
+// NOT deleted in the same round: other screens still reference them, and §4.1 asks for the new
+// skin's references to be cut before anything is removed globally.
+
+// The floating world is solved against the FULL frame, so it has to be laid out after
+// gameScene's resize has put the embedded render projection in place. gameScene calls back
+// through this holder; a plain `window.resize` listener would run at an unknown point relative
+// to its own ResizeObserver and read a stale camera.
+let onSceneResize = null
 
 // The main scene — scene graph root, camera, renderer, the post chain, the framing solver
 // and the resize path — now lives in rendering/gameScene.js (refactor P2b). Its objects are
@@ -274,6 +285,7 @@ const scene3d = createGameScene({
   quality,
   getCubeGroup: () => cubeGroup,
   metrics: () => ({ half, cs, blockHalf: BLOCK_HALF }),
+  onResize: () => onSceneResize?.(),
 })
 const {
   scene,
@@ -297,6 +309,38 @@ const {
   getCameraDir,
   getAppliedCanvasSize,
 } = scene3d
+
+// ---- The 「浮空积木世界」 (v0.13.0 R4) ------------------------------------------------
+//
+// §4.2's three layers, built from the delivered recipe. It owns NO gameplay state, is never
+// ray-cast against, and lives entirely on the scenery layer.
+//
+// It is CONSTRUCTED further down, after `boardView`, and that placement is not cosmetic: the
+// board's art shadow is anchored from the board's own screen silhouette, so the module cannot be
+// built before the board's lattice constants and group exist — doing it here threw
+// `ReferenceError: Cannot access 'half' before initialization` on the very first layout.
+//
+// §4.3's keep-out bands are read LIVE from the DOM on every layout pass: the HUD and the tool
+// row are what a decoration must never sit behind, and they move with the viewport.
+//
+// The TRAY is deliberately absent. §4.2 wants larger masses cropped by the frame at both bottom
+// edges, and the tray is an opaque DOM panel drawn over the canvas — a block behind it cannot
+// obscure a candidate. Keeping the tray in this list deleted exactly that layer when it was
+// measured (3 of the 7 decorations), which is the opposite of what the correction asks for.
+const KEEP_OUT_SELECTORS = Object.freeze(['.score-plaque', '.topbar', '.action-bars'])
+function floatingWorldKeepOut() {
+  const rects = []
+  if (typeof document === 'undefined') return rects
+  for (const selector of KEEP_OUT_SELECTORS) {
+    for (const element of document.querySelectorAll(selector)) {
+      const rect = element.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        rects.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height })
+      }
+    }
+  }
+  return rects
+}
 
 // ============================================================
 // Cube-face geometry
@@ -373,6 +417,23 @@ const {
   faceOrientedCells,
 } = boardView
 
+// The 「浮空积木世界」 is built HERE, not next to the scene it decorates, for one concrete
+// reason: its board shadow is anchored from the board's own screen silhouette, so the module
+// cannot be constructed before the lattice constants and the cube group exist — built earlier it
+// threw `ReferenceError: Cannot access 'half' before initialization` on its first layout pass.
+const floatingWorld = createFloatingWorld({
+  scene,
+  quality,
+  // The camera the frame is ACTUALLY drawn through: the render camera, not the canonical one.
+  getCamera: () => scene3d.renderCamera,
+  getCanvasRect: () => scene3d.getCanvasRect(),
+  getKeepOutRects: floatingWorldKeepOut,
+  // §6.4's art shadow is anchored from where the BOARD lands on screen — the board's own
+  // silhouette, measured by its owner, not a second guess at the lattice arithmetic here.
+  getBoardScreenBox: () => cubeScreenBounds(),
+})
+onSceneResize = () => floatingWorld.resize()
+
 // The input layer -- the pointer coordinates, the gestures and the interaction gates -- lives in
 // input/gameInput.js (refactor P7a). It owns no game state: every gate below is a read-only query
 // and every effect is a named callback, so nothing in the module can reach the board, the score or
@@ -383,7 +444,12 @@ const {
 // boardView's onRotationReset callback above reaches it. Everything it is handed is either a
 // read-only query, a piece of geometry it must not own, or a named callback -- never a module.
 const input = createGameInput({
-  canvas: renderer.domElement,
+  // v0.13.0 R3 (handoff §9.3): the EVENT SOURCE is the gameplay surface, not the canvas. The
+  // main canvas is the whole viewport now and `pointer-events:none`, so binding to it would
+  // either catch nothing or catch everything; `#scene-wrap` is the box the board is measured
+  // in and the only box a board gesture may start in. Every `canvas.getBoundingClientRect()`
+  // inside gameInput therefore answers "where is the play area", which is what it always meant.
+  canvas: sceneWrap,
   isPaused: () => isPaused,
   isEnded: () => session.isEnded(),
   isHomeOpen: () => homeUi.isOpen(),
@@ -529,9 +595,10 @@ const pieceView = createPieceView({
   // BLOCK_HALF + style.previewLift — the metrics stay this file's; the view is handed the lift
   // for both the landing marker and the item overlay (P4b/P4c).
   previewLift: PREVIEW_LIFT,
-  // The renderer's CSS box: the ghost measures itself against the canvas the renderer actually
-  // draws into, and that canvas belongs to gameScene (P2b).
-  getCanvasRect: () => renderer.domElement.getBoundingClientRect(),
+  // The gameplay box, not the canvas: v0.13.0 R3 made the canvas the whole viewport, so the
+  // ghost and the tray must measure the box the board is actually framed and hit-tested in
+  // (gameScene owns that definition; the candidate previews read their own canvases instead).
+  getCanvasRect: () => scene3d.getGameplayRect(),
   // A new deal replaces the piece objects and every click reassigns the selection, so both are
   // read through getters rather than captured.
   getCells: currentCells,
@@ -1655,6 +1722,10 @@ function animate() {
   // The L5 dip scales the CUBE's animation clock (handoff §7.3): the celebration is scheduled on
   // the wall clock, so a 1.4s decoration tail can never be stretched to 2.3s by the 0.6× dip.
   const delta = effects.timestep(raw)
+  // v0.13.0 R4 (handoff §7.2): the environment runs on the SAME clock as everything else and is
+  // deliberately above the home branch below — 「主页继续环境而不继续玩法逻辑」. It moves clouds
+  // and building bob only; no gameplay state and no board pose is touched here.
+  floatingWorld.update(raw)
   // The home cover hides the canvas: nothing behind it is on screen, and the board
   // under it must not drift (the pose snap is part of the paused branch anyway).
   if (homeUi.isOpen()) return
@@ -1691,6 +1762,12 @@ function animate() {
   camera.position.copy(getCameraDir()).multiplyScalar(getOrbitDistance() * getCameraZoom())
   camera.position.add(effects.updateShake(delta))
   camera.lookAt(cameraTarget)
+  // v0.13.0 R3 (handoff §9.4): the render camera is derived from the canonical one EVERY frame,
+  // after the canonical camera has been placed — the gestures, the zoom wheel and the turn-band
+  // lift all move it, and the embedding is a function of its final matrix. This is the last
+  // thing that happens before the frame is drawn, and nothing may call
+  // `updateProjectionMatrix()` on the render camera after it.
+  scene3d.updateRenderCamera()
   composer.render(delta)
 }
 // Diagnostics (refactor P9): the `__voxalblast` read-only hook and the DEV-only write
@@ -1851,8 +1928,11 @@ const devHandles = import.meta.env.DEV
 
 createDiagnostics({
   version: packageInfo.version,
-  canvas: renderer.domElement,
+  // v0.13.0 R3: no `canvas` here any more. The board's box is the gameplay rect, and
+  // `scene3d` is the module that defines it — passing the renderer's element as well is how
+  // the two got confused in the first place (see diagnostics.js's `boardRect`).
   scene3d,
+  floatingWorld,
   boardView,
   blocks,
   pieceView,

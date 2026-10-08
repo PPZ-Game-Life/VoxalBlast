@@ -37,7 +37,7 @@ import { createBoardShadows } from './boardShadows.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
 // resolved at exactly the point in main's evaluation it always was.
-export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
+export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onResize }) {
   const scene = new THREE.Scene()
   scene.background = null
   // The opaque wooden shell supplies depth; the landscape behind the canvas is DOM, not a
@@ -175,7 +175,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // the measured centre 10px, so it does not need the phone's headroom.
   function liftCubeForTurnBand() {
     if (style.cubeLiftPx <= 0) return
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     const bounds = cubeScreenBounds()
     const roomAbove = bounds.minY - rect.top - style.cubeLiftClearancePx
     const lift = Math.max(0, Math.min(style.cubeLiftPx, roomAbove))
@@ -215,7 +215,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     fitCameraToPlaySpace()
     for (let i = 0; i < 6; i += 1) {
       const bounds = cubeScreenBounds()
-      const rect = renderer.domElement.getBoundingClientRect()
+      const rect = getGameplayRect()
       const overflow = Math.max(
         rect.left + inset - bounds.minX,
         bounds.maxX - (rect.right - inset),
@@ -234,7 +234,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // silhouette's horizontal offset and shift the look-at point by the equivalent world
   // distance, then re-measure.
   function centreCubeHorizontally() {
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     const centreX = rect.left + rect.width * 0.5
     const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
     for (let i = 0; i < 3; i += 1) {
@@ -253,7 +253,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   function projectCubeBounds(extent) {
     camera.updateMatrixWorld()
     const cubeGroup = getCubeGroup()
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     let minX = Infinity
     let maxX = -Infinity
     let minY = Infinity
@@ -311,8 +311,84 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   renderer.info.autoReset = false
   sceneWrap.appendChild(renderer.domElement)
 
+  // ---- The gameplay rect, the full-viewport canvas and the render camera (handoff §9.2) ----
+  //
+  // R3 splits one box into two, which is the whole point of the stage:
+  //
+  //   * the CANVAS is now the whole viewport, fixed behind the UI and `pointer-events:none`.
+  //     That is what makes room for scenery that lives OUTSIDE the play area (R4/R5) without
+  //     opening a fifth WebGL context — and it is why the canvas can no longer be the thing
+  //     that is measured.
+  //   * `#scene-wrap` keeps its box and stays the only thing that is HIT-TESTED. The camera
+  //     that framing, projection measurement, gestures and picking all speak through is
+  //     `camera` — the canonical one — and it is still solved against the wrap, unchanged:
+  //     FOV 6/7, `cameraDirection`, `safeFactor*` and the flip distances are NOT touched.
+  //
+  // The two are reconciled by `renderCamera`: it copies the canonical camera wholesale and
+  // then REPLACES its projection matrix with the canonical one embedded into the full frame.
+  // Nothing may call `updateProjectionMatrix()` on it afterwards — that would overwrite the
+  // embedding with a plain full-screen projection, which is the exact failure this round is
+  // written to avoid.
+  //
+  // The embed is in CSS-pixel ratios, never device pixels: DPR belongs to the renderer's
+  // drawing buffer and to the composer's render targets, not to a projection matrix.
+  const canvasCss = { width: 1, height: 1 }
+  const embedMatrix = new THREE.Matrix4()
+  const renderCamera = new THREE.PerspectiveCamera(style.cameraFov, 1, 1, 500)
+
+  // The ONE definition of "where the board lives on screen". Every measurement that used to
+  // read `getGameplayRect()` reads this instead — the canvas is the
+  // whole viewport now, so the old reading would silently answer a different question.
+  function getGameplayRect() {
+    const rect = sceneWrap.getBoundingClientRect()
+    return {
+      left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      right: rect.right, bottom: rect.bottom,
+    }
+  }
+
+  // Called once per frame, after the canonical camera has been placed and before anything is
+  // drawn. It is cheap (two matrix multiplies) and it has to be re-run because the canonical
+  // camera moves on nearly every frame — a gesture, the zoom wheel, the turn-band lift.
+  function updateRenderCamera() {
+    renderCamera.copy(camera)
+    // `copy()` brings the canonical layer mask with it. The render pass needs 0 (the board and
+    // the board's own effects), 1 (the shadow-only receivers, kept out of the normal prepass)
+    // and 2 (scenery, the floating world). NormalPass narrows this mask for its own draw and
+    // puts it back; a mask that is never re-asserted here would be permanently narrowed by
+    // whichever pass ran last.
+    renderCamera.layers.set(0)
+    renderCamera.layers.enable(1)
+    renderCamera.layers.enable(2)
+    // v0.13.0 R4: the canonical camera's OWN world matrix is refreshed here, not assumed.
+    // `camera.position` / `camera.lookAt()` only touch `position` and `quaternion`; `matrixWorld`
+    // is recomputed inside `renderer.render()`, which runs AFTER this — so copying it without
+    // this line hands the render camera the PREVIOUS frame's pose, one frame behind whatever the
+    // canonical camera was just moved to. Nothing visible depended on it until R4 measured a
+    // ground ray through the render camera and got a point behind the eye.
+    camera.updateMatrixWorld()
+    renderCamera.matrixWorld.copy(camera.matrixWorld)
+    renderCamera.matrixWorldInverse.copy(camera.matrixWorldInverse)
+    const gameplay = getGameplayRect()
+    const sx = gameplay.width / Math.max(canvasCss.width, 1)
+    const sy = gameplay.height / Math.max(canvasCss.height, 1)
+    const tx = 2 * (gameplay.left + gameplay.width / 2) / Math.max(canvasCss.width, 1) - 1
+    const ty = 1 - 2 * (gameplay.top + gameplay.height / 2) / Math.max(canvasCss.height, 1)
+    // Row-major, as Matrix4.set reads it: scale the canonical projection down to the gameplay
+    // rect's share of the frame, then shift its centre to where that rect is.
+    embedMatrix.set(
+      sx, 0, 0, tx,
+      0, sy, 0, ty,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    )
+    renderCamera.projectionMatrix.multiplyMatrices(embedMatrix, camera.projectionMatrix)
+    renderCamera.projectionMatrixInverse.copy(renderCamera.projectionMatrix).invert()
+    return renderCamera
+  }
+
   const composer = new EffectComposer(renderer, { multisampling: quality.multisampling, frameBufferType: THREE.HalfFloatType })
-  const renderPass = new RenderPass(scene, camera)
+  const renderPass = new RenderPass(scene, renderCamera)
   const bloomEffect = new BloomEffect({
     intensity: quality.bloomIntensity,
     luminanceThreshold: VFX_CONFIG.bloom.luminanceThreshold,
@@ -323,7 +399,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   })
   const smaaEffect = new SMAAEffect({ preset: quality.lowPower ? SMAAPreset.LOW : SMAAPreset.HIGH })
   const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })
-  const effectPass = new EffectPass(camera, bloomEffect, toneMappingEffect, smaaEffect)
+  const effectPass = new EffectPass(renderCamera, bloomEffect, toneMappingEffect, smaaEffect)
   // SMAA carries EffectAttribute.DEPTH, so this pass would otherwise ask the composer for a
   // depth texture it never reads. Cancel that request before addPass() sees it — the reason,
   // and the removal condition, are in threeCompat.js.
@@ -331,27 +407,39 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   composer.addPass(renderPass)
   // Contact shadows follow the geometry as the player rotates. A dedicated normal target
   // owns real depth, avoiding the composer's aliased depth-texture blit.
-  const normalPass = new NormalPass(scene, camera)
-  // Shadow-only receivers must not occlude the board in the normal/depth pass.
+  const normalPass = new NormalPass(scene, renderCamera)
+  // The prepass draws WITHOUT the two layers the beauty pass keeps:
+  //   layer 1 — shadow-only receivers (a ground plane must not occlude the board in the
+  //             normal/depth buffer, which is what this exclusion has always been for);
+  //   layer 2 — scenery (R4). Scenery is behind the board and must not be able to write into
+  //             the buffer SSAO reads, or the whole far field becomes an occluder.
+  // The mask is saved and restored around the draw, and `updateRenderCamera()` re-asserts the
+  // full mask every frame — a narrowed mask that outlives one pass would blank the beauty pass.
   const renderNormals = normalPass.render.bind(normalPass)
   normalPass.render = (...args) => {
-    const mask = camera.layers.mask
-    camera.layers.disable(1)
-    try { renderNormals(...args) } finally { camera.layers.mask = mask }
+    const mask = renderCamera.layers.mask
+    renderCamera.layers.disable(1)
+    renderCamera.layers.disable(2)
+    try { renderNormals(...args) } finally { renderCamera.layers.mask = mask }
   }
   const contactDepth = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType)
   normalPass.renderTarget.depthTexture = contactDepth
-  const occlusionEffect = new SSAOEffect(camera, normalPass.texture, {
+  const occlusionEffect = new SSAOEffect(renderCamera, normalPass.texture, {
     ...VFX_CONFIG.occlusion,
     color: new THREE.Color(VFX_CONFIG.occlusion.color),
     samples: quality.lowPower ? 11 : VFX_CONFIG.occlusion.samples,
     resolutionScale: quality.lowPower ? 0.5 : VFX_CONFIG.occlusion.resolutionScale,
   })
-  const occlusionPass = new EffectPass(camera, occlusionEffect)
+  const occlusionPass = new EffectPass(renderCamera, occlusionEffect)
   occlusionPass.setDepthTexture(contactDepth)
   composer.addPass(normalPass)
   composer.addPass(occlusionPass)
   composer.addPass(effectPass)
+  // One call instead of four camera reassignments: every pass that needs a main camera (and
+  // every effect inside the two EffectPasses, SSAO's own projection uniform included) takes
+  // `renderCamera`. Doing it by hand is how one of them keeps the canonical camera and grades
+  // the frame with a projection nothing else used.
+  composer.setMainCamera(renderCamera)
   // The TIER decides the shipped default; the G1 diagnostic can flip the two scene passes
   // afterwards so one machine can be graded with and without them (§9.2 「强制高/低档对照」).
   let useSSAO = !quality.lowPower || SHADOW_STYLE.lowPowerSSAO
@@ -430,7 +518,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
 
   function fitPlatform(stage) {
     if (!platform || !stage) return
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
     const diameterPx = Math.min(stage.stageWidth * GROUNDING_STYLE.platformWidthFactor, stage.canvasWidth * 1.05)
     const radius = Math.max(0.4, (diameterPx * worldPerPx) / 2)
@@ -491,7 +579,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // comparison can still be replayed; nothing in the shipped route calls this.
   function fitLegacySupportQuads(stage) {
     if (!boardShadows || !stage || groundingRoute === 'none') return
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
     const extent = cubeSolidExtent() - style.previewLift
     boardShadows.fit({
@@ -543,27 +631,31 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // Is the ground projection even on screen? The board floats high in a tall canvas, so the
   // quad can be entirely below the canvas bottom — which is a fact the producer has to be told,
   // not a fact to be discovered from a screenshot that simply has no shadow in it.
+  //
+  // v0.13.0 R3: this is the ONE measurement that must NOT use the gameplay rect. The ground
+  // quad is scenery-level geometry drawn by `renderCamera` onto the FULL canvas, so the honest
+  // question "is it in frame?" is asked of the render camera against the whole viewport.
   const groundProbe = new THREE.Vector3()
   function groundOnScreenShare() {
     const quads = boardShadows?.report()
     if (!quads) return null
-    const rect = renderer.domElement.getBoundingClientRect()
-    if (rect.width < 1 || rect.height < 1) return null
-    camera.updateMatrixWorld(true)
+    const canvas = renderer.domElement.getBoundingClientRect()
+    if (canvas.width < 1 || canvas.height < 1) return null
+    updateRenderCamera()
     const halfSize = quads.receiverSize / 2
     let inside = 0
     const ys = []
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]) {
-      groundProbe.set(quads.shadowX + dx * halfSize, quads.floorY, quads.shadowZ + dz * halfSize).project(camera)
-      const px = rect.left + (groundProbe.x + 1) * rect.width / 2
-      const py = rect.top + (1 - groundProbe.y) * rect.height / 2
+      groundProbe.set(quads.shadowX + dx * halfSize, quads.floorY, quads.shadowZ + dz * halfSize).project(renderCamera)
+      const px = canvas.left + (groundProbe.x + 1) * canvas.width / 2
+      const py = canvas.top + (1 - groundProbe.y) * canvas.height / 2
       ys.push(py)
-      if (px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom) inside += 1
+      if (px >= canvas.left && px <= canvas.right && py >= canvas.top && py <= canvas.bottom) inside += 1
     }
     return {
       samplesInside: inside, samples: 5,
-      centreY: ys[4], canvasTop: rect.top, canvasBottom: rect.bottom,
-      belowCanvasPx: ys[4] - rect.bottom,
+      centreY: ys[4], canvasTop: canvas.top, canvasBottom: canvas.bottom,
+      belowCanvasPx: ys[4] - canvas.bottom,
       fullyInside: inside === 5,
     }
   }
@@ -673,23 +765,46 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   }
 
   // ---- Resize -------------------------------------------------------------------
-  // The canvas is sized from the wrap's client box. `setSize` runs with updateStyle=false,
-  // so re-running it cannot feed back into the observer.
+  // TWO boxes, measured separately, and they are not interchangeable:
+  //
+  //   * the DRAWING surface is the whole viewport, because that is what the render camera
+  //     embeds the gameplay projection into;
+  //   * the FRAMING box is still `#scene-wrap`, because that is the box the player plays in
+  //     and the box every measurement in this file (and in gameInput) is expressed against.
+  //
+  // `setSize` runs with `updateStyle=false` so re-running it cannot feed back into the
+  // observer — the canvas' CSS size comes from the stylesheet, not from the drawing buffer.
   let appliedCanvasSize = { width: 0, height: 0 }
+  let appliedViewportSize = { width: 0, height: 0 }
   function resize() {
     const width = sceneWrap.clientWidth
     const height = sceneWrap.clientHeight
     // A container that is momentarily 0 (display:none, a detaching layout) must not push a
     // degenerate projection into the camera; the next observation fixes it.
     if (width < 1 || height < 1) return
-    if (width === appliedCanvasSize.width && height === appliedCanvasSize.height) return
+    const viewportWidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0, 1)
+    const viewportHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0, 1)
+    const viewportChanged = viewportWidth !== appliedViewportSize.width || viewportHeight !== appliedViewportSize.height
+    if (width === appliedCanvasSize.width && height === appliedCanvasSize.height && !viewportChanged) return
     appliedCanvasSize = { width, height }
+    appliedViewportSize = { width: viewportWidth, height: viewportHeight }
+    canvasCss.width = viewportWidth
+    canvasCss.height = viewportHeight
     ensureBoardShadows()
-    renderer.setSize(width, height, false)
+    renderer.setSize(viewportWidth, viewportHeight, false)
     refreshCameraProjection()
     fitCameraToPlaySpace()
-    // SSAO copies the projection on resize, so the new aspect/FOV must be ready.
-    composer.setSize(width, height)
+    // The embed, the SSAO projection uniform and the render targets all key off the new pair.
+    // Order matters: the composer's `setSize` calls `renderer.setSize()`, so the drawing buffer
+    // must already be at its final size when it runs, and the embedded projection must be in
+    // place BEFORE it, or SSAO caches a cameraNearFar/projection from the previous layout.
+    updateRenderCamera()
+    composer.setSize(viewportWidth, viewportHeight)
+    // v0.13.0 R4: anything anchored to the FULL frame — the floating world's decorations — can
+    // only be solved once the embedded projection is in place and the new gameplay rect is
+    // known. Called last, so the callback reads a settled camera; a `window.resize` listener
+    // would race this module's own ResizeObserver instead of following it.
+    onResize?.()
   }
 
   // The observer reference is kept so a dispose can disconnect it; `window.resize` is the
@@ -722,7 +837,12 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
         independentDepth: normalPass.renderTarget.depthTexture === contactDepth && composer.stableDepthTexture === null,
         width: contactDepth.image.width,
         height: contactDepth.image.height,
-        projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(camera.projectionMatrix),
+        // v0.13.0 R3: the SSAO material's own copy of the projection is compared against the
+        // RENDER camera now. Comparing it against the canonical one would fail on every frame
+        // by design — they differ by the embedding — so the old assertion would have had to be
+        // deleted rather than kept, and "the pass is using the matrix the frame was drawn with"
+        // is exactly the fact this stage can break silently.
+        projectionMatches: occlusionEffect.ssaoMaterial.uniforms.projectionMatrix.value.equals(renderCamera.projectionMatrix),
         // G1a found the occlusion changing zero pixels of the frame even when cranked. A zero has
         // two very different causes — the pass never ran, or its inputs never arrived — and these
         // four fields are what tell them apart without a debugger attached.
@@ -750,6 +870,8 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
       },
       lowPower: quality.lowPower,
       grounding: groundingReport(),
+      // v0.13.0 R3: the canvas/gameplay split, and the error between the two projections.
+      projection: embeddingErrorPx(),
     }
   }
 
@@ -758,13 +880,49 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // projection conversion the camera lift and the platform fit already use (never a hand-rolled
   // tan(fov/2)) — one definition of "how big is a pixel here", read by one more caller.
   function worldPerPixel() {
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     return (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance)
       / Math.max(rect.height, 1)
   }
 
+  // v0.13.0 R3 gate (handoff §9.3): "the same cell centre measured through the canonical
+  // camera against the gameplay rect, and through the render camera against the full canvas,
+  // must land on the SAME CSS pixel." That equality IS the embedding, and it is the one thing
+  // this stage can break without breaking anything visible — a board drawn a few pixels off
+  // its own hit box still looks like a board and still passes every screenshot.
+  //
+  // The two projections are used the way their owners use them: canonical ↔ gameplay rect
+  // (gestures, picking, framing), render ↔ full canvas (what is drawn). 27 samples: the cube's
+  // bounding-box corners, edge midpoints and centre.
+  const embedCanonicalPx = new THREE.Vector3()
+  const embedRenderedPx = new THREE.Vector3()
+  function embeddingErrorPx() {
+    const canvas = renderer.domElement.getBoundingClientRect()
+    if (!(canvas.width > 1) || !(canvas.height > 1)) return null
+    updateRenderCamera()
+    const gameplay = getGameplayRect()
+    const { half } = metrics()
+    let worst = 0
+    for (const x of [-half, 0, half]) for (const y of [-half, 0, half]) for (const z of [-half, 0, half]) {
+      embedCanonicalPx.set(x, y, z).project(camera)
+      const cx = gameplay.left + (embedCanonicalPx.x + 1) * 0.5 * gameplay.width
+      const cy = gameplay.top + (1 - embedCanonicalPx.y) * 0.5 * gameplay.height
+      embedRenderedPx.set(x, y, z).project(renderCamera)
+      const rx = canvas.left + (embedRenderedPx.x + 1) * 0.5 * canvas.width
+      const ry = canvas.top + (1 - embedRenderedPx.y) * 0.5 * canvas.height
+      worst = Math.max(worst, Math.hypot(cx - rx, cy - ry))
+    }
+    return {
+      worstPx: worst,
+      samples: 27,
+      gameplayRect: { left: gameplay.left, top: gameplay.top, width: gameplay.width, height: gameplay.height },
+      canvas: { left: canvas.left, top: canvas.top, width: canvas.width, height: canvas.height },
+      canvasCss: { width: canvasCss.width, height: canvasCss.height },
+    }
+  }
+
   function framingReport() {
-    const rect = renderer.domElement.getBoundingClientRect()
+    const rect = getGameplayRect()
     const solid = cubeScreenBounds()
     const fitBox = projectCubeBounds(cubeExtent())
     return {
@@ -786,6 +944,17 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   return {
     scene,
     camera,
+    // v0.13.0 R3: what the frame is ACTUALLY drawn through, and where the board is inside it.
+    renderCamera,
+    updateRenderCamera,
+    getGameplayRect,
+    // v0.13.0 R4: the OTHER box — what the renderer actually draws into. Scenery is anchored to
+    // the full frame, so the floating world measures against this one while the board keeps
+    // measuring against the gameplay rect above. Two boxes, two names, no call site guessing.
+    getCanvasRect: () => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom }
+    },
     cameraTarget,
     quality,
     renderer,
