@@ -24,14 +24,15 @@
 | src/game/dealWorker.js | `runDeal()` 的消息壳（v0.9.31）：`{id, request}` → `{id, ok, result\|error}`。**批次发不出来不算 worker 失败**（那是 `ok:true` + `result.ok:false`，因为"盘面没地方放"是关于局面的事实）；`self` 有守卫，Node 下可直接 import 测试 |
 | src/game/rng.js | 分离的确定性随机流（`deal`/`search`/`director`），状态可序列化进存档（v0.9.0） |
 | src/game/tiers.js | 待标定的阶位阈值和映射 |
-| src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数 |
-| src/rendering/blockResources.js | 共享几何与材质缓存的唯一属主（`blockGeometry` / `edgeGeometry` / `paintMaterial` / `toneIndexFor` 与 `sharedGeometries` 释放清单） |
+| src/rendering/config.js | 棋盘、手势、幽灵、质量与反馈参数。**v0.13.0 起 `BOARD_STYLE` / `LIGHTING_STYLE` 的材质与光照数值不再写死在这里，而是读 `floatingWorld.js`**（下面一行），本文件只剩「有哪些旋钮、各是什么意思」 |
+| src/rendering/floatingWorld.js | **「浮空积木世界」皮肤的唯一参数源（v0.13.0）**：把 `public/art/floating-world-v1/scene.recipe.json` 导入并转成 `config.js` 说得出口的形状（调色板、`paintMapping`、材质表、光照四灯、浮动运动、三档质量）。**刻意导入而不是抄写**，美术改配方即生效，不存在第二份会悄悄跑偏的副本。`with { type: 'json' }` 是必需的：Vite 不需要它，但 `node tools/*.mjs` 会经 `gemMaterial.js → config.js` 把这份 JSON 交给 Node 的 ESM loader，缺属性直接 `ERR_IMPORT_ATTRIBUTE_MISSING` |
+| src/rendering/blockResources.js | 共享几何与材质缓存的唯一属主（`blockGeometry` / `edgeGeometry` / `paintMaterial` / `toneIndexFor` 与 `sharedGeometries` 释放清单）。**v0.13.0 起两族材质都不带表面贴图**（`blockSurfaceMaps()` 已无人调用，`report().textureChannels` 为空数组），`blockToneSteps` 收成 `[1]`：一块空板只需 idle/active 两个材质实例 |
 | src/rendering/gameScene.js | 主场景：scene/camera/renderer/composer 与整条后处理链、取景解算、resize 与 ResizeObserver，以及 `cameraZoom` / `orbitDistance` / `appliedCanvasSize` |
 | src/rendering/boardView.js | 立方体坐标系（`cubeVector` / `cellWorld`）、姿态模型（`cubeBase` / `cubeQuat` / 方位 / 吸附）、98 格与材质、开场两阶段波次。**每格的波次材质存在模块内 `WeakMap`（`introMaterials`），绝不进 `userData`**：`Object3D.copy()` 会对 `userData` 做 `JSON.parse(JSON.stringify(...))`，把 THREE 对象放进去等于让每一次 `.clone()` 去序列化整套贴图——v0.9.25 主页卡顿的病根，见 [04 v0.9.25](../Planning/04-MVP验收清单.md) |
 | src/rendering/pieceView.js | 三个候选预览（各自 renderer/scene/camera）、落点标记、拖拽幽灵（挂相机）、道具覆盖层 |
 | src/rendering/effects.js | 粒子/线束/星星、`cameraShake`、慢放 dip 与音调/触感输出；相机静止位置归 gameScene，这里只出偏移 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光与程序化线性 HDR 环境纹理 |
-| src/rendering/woodTexture.js | AI 中性笔触底图生成原木 / 彩漆三组表面变体，独立色彩/高度/粗糙度；异步加载、程序兜底；UI 独立 CSS 木纹 |
+| src/rendering/woodTexture.js | AI 中性笔触底图生成原木 / 彩漆三组表面变体，独立色彩/高度/粗糙度；异步加载、程序兜底；UI 独立 CSS 木纹。**v0.13.0：方块已不用这组贴图**（皮肤无木纹），本模块只剩 `installWoodSkin()` 的 DOM 木纹与 `blockSurfaceArtStatus()` 这个诊断读数——`report().surfaceArt` 与 `SHOT_SURFACE` 门禁仍读它，所以色素 WebP 的加载/兜底路径保持不变 |
 | src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
 | public/art/ | 背景与方块色素 WebP，以及来源、提示词、尺寸说明 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射；实际由 `src/input/gameInput.js` 驱动 |

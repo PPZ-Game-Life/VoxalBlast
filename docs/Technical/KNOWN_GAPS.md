@@ -1,5 +1,11 @@
 # 当前待办与验证边界
 
+> **v0.13.0 / 2026-10-07 — 「浮空积木世界」皮肤 R1（材质·光照·配色）。** 按 [交接单](FLOATING_WORLD_ART_HANDOFF.md) 的 R0–R7 施工顺序，本轮只做完 **R0（基线冻结）与 R1（共享方块材质与光照样板）**：`BOARD_STYLE` / `LIGHTING_STYLE` 的材质与光照数值改由 [`scene.recipe.json`](../../public/art/floating-world-v1/scene.recipe.json) 经 `src/rendering/floatingWorld.js` 驱动；方块两族材质**停用全部表面贴图**（木纹/粗糙度/法线/AO），空格 `#F4E4C0`／活动面 `#FFF1CC`、缝底背壳 `#243A4A`；`referencePalette.js` 的 14 个显示色改按配方 `paintMapping` 生成，**存档里的旧 RGB 身份一个没动**。
+>
+> **同轮修掉一个先于本轮就存在的缺陷**：开机后四个道具按钮**一直显示为灰置**，尽管每一颗都有余量、而且点击其实可用。`npm run shot` 的硬门禁 `item buttons are left disabled although they have charges` 在本轮开始前就是**红的**（基线 `b7b7be4`）。实测把原因定死：`canUseItemsNow()` 当时为真（候选块能选中，`#status` 从 `Pick a shape` 变 `Drag to a face`），只是**`renderItemBar()` 在开场波次结束那一次没有被重画**——条带只在「知道这件事」的事件点被重画，而 `isPaused` 之外还有 `isDealing` / `drag` / `isSettingsOpen` / `itemBusyUntil` 四个理由可以让它变灰。修法是每帧重读一次门禁、**只在答案变化时重画**（`main.js` 的 `syncItemStrip()`）。打开再关闭设置面板即可把条带刷成可用，是这条结论的直接反证。
+>
+> **尚未落地、必须写清的边界**：①R2（去底座／悬浮投影）、R3（整屏主画布＋投影嵌入）、R4/R5（背景浮空积木、云 Sprite、浮动动画）、R6（Logo 与 UI 换图）、R7（多档性能与全量回归）**都还没做**；画面里的田园背景、木质底座、木纹 UI 仍然是**实际存在的东西**，本轮的验收截图只证明 R1 落地，**不证明皮肤已换完**。②配方里的 `materials` / `lighting` 数值是美术给的首轮起始值，**不是实机收敛结论**（交接单 §4.2 原话）；本轮只在无头浏览器上核过，**没有物理手机、微信/QQ 内嵌或平台沙箱实测**。③`blockSurfaceMaps()` 已无人调用但**刻意保留**（回退路线要用），因此 `block-pigment.webp` 仍在加载、`report().surfaceArt` 仍照旧报 `ready`/`fallback`。④本轮**没有**跑 `probe:framing` / `probe:swipe` / `probe:drag` / `probe:grounding` 等专项探针——R1 是纯表现层，`npm test`（11 套全绿）、`npm run build` 与 `npm run shot`（14 张全绿）是本轮的全部证据。
+
 > **v0.12.0 / 2026-10-02 — 全局榜单 tab（示例数据）。** 制作人口径「用假数据做成最终形式，加一个全球榜单的 tab，接入平台后替换为真数据」。排行榜面板拆成「全球榜 / 我的纪录」两个 tab，全球榜 20 行自绘、前三名金属色、贴底的「我的排名」行；名次算法是纯函数（插入后统一排序、并列不给先、脏分数归零），有 28 项 Node 测试。**榜上成绩是虚构的**，面板用「示例数据」chip 与说明如实标注；真数据的唯一替换点是 `platform/leaderboardFeed.js` 的 `global()` 第一分支。完整口径、验收证据与边界见 [全局榜交接单](LEADERBOARD_GLOBAL_BOARD_HANDOFF.md)。
 >
 > **本轮新增的诚实边界**：①榜单不是在线排行榜，也不是发奖依据（本机分数可改，无服务端校验）；②玩家的名次是本地算术，不是平台给的；③没有账号/昵称/头像、没有周榜总榜切换；④平台读取接口 `fetchLeaderboard` 是**约定形状、未实现未验收**（CrazyGames 客户端本来就无读取 API）；⑤只做过无头浏览器截图（桌面 1440×900 + 竖屏 390×844），**没有**物理手机、微信/QQ 内嵌或平台沙箱实测。

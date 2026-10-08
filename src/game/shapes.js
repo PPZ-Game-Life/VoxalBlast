@@ -165,12 +165,13 @@ export const SHAPES = [
   // ⚠️ The scan has to be run in RENDERED space, and these three are a case where that matters:
   // `src/rendering/referencePalette.js` maps the 14 pre-v0.9.0 logic colours to a LACQUER skin
   // and passes anything else through unchanged, so `Line 4` and these three are seen by the
-  // player as the hex values written here, while `Dot` is seen as #ff1644 and `Block 9` as
-  // #9500f5. The timber the paint must clear is `BOARD_STYLE.blockColor` (#f3c99a, the EMPTY
-  // block — a placed and an empty block are the same cube in a different material, so "is this
-  // cell filled?" is carried by colour alone) across its `blockToneSteps` 0.97-1.03, i.e. hue
-  // ~31-32° at L* 82.5-84.6. All three clear it: `Cross 5` and `U 5` by HUE (300° and 130° are
-  // 90°+ away), `T 5` by LIGHTNESS (L* 48.2, ΔL* 34+ from every wood tone).
+  // player as the hex values written here, while `Dot` and `Block 9` are seen as whatever
+  // `paintMapping` says (v0.13.0 「浮空积木世界」: #E65B86 and #AE70D8). The bare block the paint
+  // must clear is `BOARD_STYLE.blockColor` (#F4E4C0, the EMPTY block — a placed and an empty
+  // block are the same cube in a different material, so "is this cell filled?" is carried by
+  // colour alone). v0.13.0 collapsed `blockToneSteps` to `[1]`, so the bare tone is now ONE
+  // value instead of the 0.97-1.03 band these three were originally cleared against; the hue
+  // and lightness separations below are unchanged and still hold against #F4E4C0.
   //
   // Nearest paint already in the pool, measured in that same rendered space:
   //   Cross 5 vs Z 22.8   U 5 vs S 29.2   T 5 vs Dot 23.2

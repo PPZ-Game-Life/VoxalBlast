@@ -1,5 +1,12 @@
-// Garden reference skin: cream timber, saturated lacquer and generated UI art.
+// 浮空积木世界: cream blocks, saturated lacquer and generated UI art.
 // Stored game colours are mapped separately by referencePalette.js.
+//
+// v0.13.0 (docs/Technical/FLOATING_WORLD_ART_HANDOFF.md §4.2/§5.1): the board's material
+// response and the light rig are no longer typed in here — they are read from the art
+// recipe, which is the file Luna edits. What is left below is the SHAPE of the skin
+// (which knob exists, what it means); the VALUES come from floatingWorld.js.
+import { floatingWorldGeometry, floatingWorldLighting, floatingWorldMaterials, floatingWorldPalette } from './floatingWorld.js'
+
 export const RENDER_PALETTE = Object.freeze({
   background: 0xdcefff,
   navy: 0x4a3218, // bark ink: every label on a wooden sign is this brown, not blue
@@ -20,7 +27,8 @@ export const RENDER_PALETTE = Object.freeze({
   line: Object.freeze({ x: 0xffd24a, y: 0x8ede5c, z: 0x7fd4f5 }),
 })
 
-// v0.7: a WOODEN TOY built out of BLOCKS.
+// A TOY built out of BLOCKS (v0.13.0 「浮空积木世界」: cream blocks on a blue-grey shell,
+// no surface maps on either family — the timber skin this section was written for is gone).
 //
 // The board is not a shell with patterns painted on it — it is 98 unique CUBES
 // whose six faces are flat, sitting in the 5×5×5 shell lattice with a small gap
@@ -42,66 +50,58 @@ export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
   // It is therefore deliberately darker than the blocks — the groove IS this colour.
-  hullColor: 0xad754c,
+  // v0.13.0: `hullColor` is the recipe's `hull` (#243A4A). The skin has no wood grain
+  // anywhere, so the shell's grain map is gone with the block maps (§4.2: switch the
+  // affected albedo/normal/roughness channels off, do not just re-tint them).
+  hullColor: floatingWorldPalette.hull,
   hullOpacity: 1,
-  hullRoughness: 0.7,
-  hullClearcoat: 0.1,
+  hullRoughness: floatingWorldMaterials.background.roughness,
+  hullClearcoat: floatingWorldMaterials.background.clearcoat,
   hullGrainRepeat: 2.2,
   hullInset: 0.68, // total width reduction; backing is recessed ~0.3 behind the blocks
   hullRadius: 0.08,
   // ONE block, shared by the board, the candidate slots and the drag ghost: a piece
   // in the hand and a piece on the board are the same object (05「同源」).
-  blockSize: 0.95, // 0.05-unit gap at the unchanged unit lattice pitch
-  blockRadius: 0.13,
-  blockSegments: 3, // 588 triangles, shared by board / tray / ghost
-  blockColor: 0xf3c99a,
-  blockActiveColor: 0xf8d2a8,
-  // A cube whose 98 blocks are all one flat colour looks like ONE moulded crate;
-  // the reference is visibly assembled from separate pieces of timber. Each block
-  // takes one of these tone multipliers, picked deterministically from its lattice
-  // cell (#N neighbours get #N±6%, never a colour that could be mistaken for paint).
-  blockToneSteps: Object.freeze([0.97, 0.985, 1, 1.01, 1.02, 1.03]),
+  blockSize: floatingWorldGeometry.board.size,
+  blockRadius: floatingWorldGeometry.board.radius,
+  blockSegments: floatingWorldGeometry.board.segments, // 588 triangles, shared by board / tray / ghost
+  blockColor: floatingWorldPalette.empty,
+  blockActiveColor: floatingWorldPalette.emptyActive,
+  // v0.13.0: the per-block tone steps are deleted, not retuned. They existed so 98 timber
+  // blocks would read as assembled boards rather than one moulded crate; the approved
+  // reference is a single cream surface whose form comes from the seams and the bevel, so
+  // six tone variants are six materials buying a texture the art does not have. One step
+  // means one idle material and one active material for the whole board, tray and ghost.
+  blockToneSteps: Object.freeze([1]),
   blockGrainRepeat: 1,
-  woodRoughness: 0.48,
-  woodClearcoat: 0.45,
-  woodClearcoatRoughness: 0.18,
-  woodNormalScale: 1,
-  woodEnvMapIntensity: 0.65,
-  woodCrownHeight: 0.012,
-  paintNormalScale: 1,
-  // v0.9.32 R1 round 2 (BLOCK_REFERENCE_REWORK_R0.md §9bis.4): 0.032 → 0.012.
-  // The crown is an optical dome written into the cached normal map — geometry and pick
-  // volume do not change. At 0.032 it distorted the reflections INSIDE a face hard enough
-  // to split each face into a bright band and a darker band, which is the "两个内外层"
-  // read the handoff §3 P1 objects to; the reference's faces are near-flat under one broad
-  // gloss. Range to explore 0.008-0.016 — not all the way to 0, which would flatten the
-  // face into unlit colour paper. Rebuilt on load: the cache must not be reused from an
-  // older constant, or the edit will look like it did nothing.
-  paintCrownHeight: 0.012,
-  environmentIntensity: 0.55,
-  // Polished agate-like colour on the board and in the hand, so a piece never
-  // changes material as it moves from the tray, through the drag, onto the board.
-  //
-  // v0.9.32 R1 round 3 (BLOCK_REFERENCE_REWORK_R0.md §9bis.4): 0.12 -> 0.22, and the
-  // clearcoat split widened. Round 2 flattened the FACE, but a face that is dead flat
-  // still split into a bright left band and a darker right band while the surface was
-  // this mirror-like: at roughness 0.12 with clearcoat 1 / 0.045 the environment's
-  // reflection card and small glint land almost un-blurred, so one hard highlight owns
-  // part of every face. The reference lights a face with ONE broad soft gloss.
-  // "Polished agate" is the wrong words for an opaque toy, which is what this looks like.
-  //
-  // Note the effective roughness is this factor times the roughnessMap (the paint map
-  // sits near 244/255), so the UI number is not the final roughness — do not read 0.22
-  // as "matte". Metalness stays 0 and the toy environment binding must stay explicit
-  // (Three r172 can override envMapIntensity when envMap is null).
-  paintRoughness: 0.22,
-  paintClearcoat: 0.85,
-  paintClearcoatRoughness: 0.12,
-  paintIor: 1.46,
-  paintMetalness: 0,
-  paintEnvMapIntensity: 0.85,
-  paintSpecularIntensity: 1,
-  surfaceAOIntensity: 0.35,
+  // Empty cell / bare block. Recipe `materials.empty`.
+  woodRoughness: floatingWorldMaterials.empty.roughness,
+  woodClearcoat: floatingWorldMaterials.empty.clearcoat,
+  woodClearcoatRoughness: floatingWorldMaterials.empty.clearcoatRoughness,
+  woodNormalScale: 0,
+  woodEnvMapIntensity: floatingWorldMaterials.empty.envMapIntensity,
+  woodSpecularIntensity: floatingWorldMaterials.empty.specularIntensity,
+  woodIor: floatingWorldMaterials.empty.ior,
+  woodCrownHeight: 0,
+  // Placed paint. Recipe `materials.paint`.
+  paintNormalScale: 0,
+  paintCrownHeight: 0,
+  environmentIntensity: floatingWorldLighting.environment.intensity,
+  // v0.13.0: the face is one broad soft gloss lit by the real key light (§4.2 「有光影不等于
+  // 镜面」). rough/clearcoat come from the recipe; `specularIntensity` and `ior` come with it
+  // because a specular-tinted dielectric is what keeps the frontal colour saturated.
+  paintRoughness: floatingWorldMaterials.paint.roughness,
+  paintClearcoat: floatingWorldMaterials.paint.clearcoat,
+  paintClearcoatRoughness: floatingWorldMaterials.paint.clearcoatRoughness,
+  paintIor: floatingWorldMaterials.paint.ior,
+  paintMetalness: floatingWorldMaterials.paint.metalness,
+  paintEnvMapIntensity: floatingWorldMaterials.paint.envMapIntensity,
+  paintSpecularIntensity: floatingWorldMaterials.paint.specularIntensity,
+  surfaceAOIntensity: 0,
+  // v0.13.0: the old crown/roughness notes below described a cached normal map and a
+  // roughness texture that the floating-world skin does not build (§4.2). They are kept
+  // only for the rollback story — with `paintNormalScale`/`woodNormalScale` at 0 and no
+  // surface maps on either family, `paintCrownHeight`/`woodCrownHeight` reach no shader.
   voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
@@ -195,25 +195,34 @@ export const BOARD_STYLE = Object.freeze({
 const CAMERA_BEARING_YAW = Math.atan2(BOARD_STYLE.cameraDirection[0], BOARD_STYLE.cameraDirection[2])
 
 // The same sun / sky / reflection rig is used by the board, tray and home toy.
+//
+// v0.13.0 (handoff §5.1): every value here is the art recipe's `lighting` block. `toyLights.js`
+// is deliberately the ONE entry point for both the main scene and the candidate slots — the
+// handoff forbids the two from tuning themselves separately — so retuning the rig means editing
+// `scene.recipe.json`, never a second copy beside it.
 export const LIGHTING_STYLE = Object.freeze({
-  sky: 0xffffff,
-  ground: 0xefd3b7,
-  hemisphereIntensity: 0.85,
-  keyColor: 0xfff5e6,
-  keyIntensity: 2.25,
-  keyPosition: Object.freeze([-3.5, 7, 9]),
-  fillColor: 0xc9e3ff,
-  fillIntensity: 0.65,
-  fillPosition: Object.freeze([5, 2, -4]),
-  rimColor: 0xffe6c4,
-  rimIntensity: 0.6,
-  rimPosition: Object.freeze([-4, 4, -5]),
-  shadowExtent: 4.8,
-  shadowBias: -0.00015,
-  shadowNormalBias: 0.012,
+  sky: floatingWorldLighting.hemisphere.sky,
+  ground: floatingWorldLighting.hemisphere.ground,
+  hemisphereIntensity: floatingWorldLighting.hemisphere.intensity,
+  keyColor: floatingWorldLighting.key.color,
+  keyIntensity: floatingWorldLighting.key.intensity,
+  keyPosition: Object.freeze([...floatingWorldLighting.key.position]),
+  fillColor: floatingWorldLighting.fill.color,
+  fillIntensity: floatingWorldLighting.fill.intensity,
+  fillPosition: Object.freeze([...floatingWorldLighting.fill.position]),
+  rimColor: floatingWorldLighting.rim.color,
+  rimIntensity: floatingWorldLighting.rim.intensity,
+  rimPosition: Object.freeze([...floatingWorldLighting.rim.position]),
+  shadowExtent: floatingWorldLighting.shadow.extent,
+  shadowBias: floatingWorldLighting.shadow.bias,
+  shadowNormalBias: floatingWorldLighting.shadow.normalBias,
   environmentWidth: 256,
   environmentHeight: 128,
-  reflectionKeyIntensity: 8,
+  // §5.1: the procedural environment's four lobes. The intensity numbers are the recipe's; the
+  // widths/foci are the shape of the reflections and stay here (the recipe names the four
+  // intensities and not the lobes' geometry). `reflectionGlintIntensity` goes to 0 — the old
+  // sharp glint is exactly the hard highlight the handoff says must not come back.
+  reflectionKeyIntensity: floatingWorldLighting.environment.reflectionKeyIntensity,
   reflectionKeyWidth: 0.48,
   reflectionKeyHeight: 0.24,
   // Fixed WORLD-space reflection cards. The tall card reaches below the horizon
@@ -221,11 +230,11 @@ export const LIGHTING_STYLE = Object.freeze({
   reflectionCardPosition: Object.freeze([0.75, 0.12, 1]),
   reflectionCardWidth: 0.18,
   reflectionCardHeight: 0.85,
-  reflectionCardIntensity: 2.6,
+  reflectionCardIntensity: floatingWorldLighting.environment.reflectionCardIntensity,
   reflectionGlintPosition: Object.freeze([-0.2, 0.65, 1]),
-  reflectionGlintIntensity: 16,
+  reflectionGlintIntensity: floatingWorldLighting.environment.reflectionGlintIntensity,
   reflectionGlintFocus: 700,
-  reflectionRimIntensity: 4,
+  reflectionRimIntensity: floatingWorldLighting.environment.reflectionRimIntensity,
   reflectionRimFocus: 32,
 })
 

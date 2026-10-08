@@ -20,9 +20,13 @@
 //     cells of the same colour are the same material instance.
 //
 // `createBlockResources({ metrics })` is a factory rather than module-level singletons for
-// one concrete reason: `blockSurfaceMaps()` builds CanvasTextures, so constructing these
-// touches the document. Doing it at ESM evaluation time would make the module's import
-// order load-bearing; doing it inside main's explicit setup keeps the timing visible.
+// one concrete reason: it builds GPU resources and reads `metrics()`, which is only settled
+// once the scene exists. Doing it at ESM evaluation time would make the module's import order
+// load-bearing; doing it inside main's explicit setup keeps the timing visible.
+//
+// v0.13.0 「浮空积木世界」: neither family wears a surface map any more (handoff §4.2), so
+// the factory no longer touches the document at all. The reason above is kept because the
+// ordering constraint it describes still governs every consumer of this module.
 //
 // Since refactor P9 it also creates the cube's opaque timber BODY (the shell behind the 98
 // blocks), because that is a geometry + material pair and main must create neither (plan §8).
@@ -30,7 +34,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { BOARD_STYLE as style, GEM_STYLE } from './config.js'
-import { blockSurfaceMaps, woodGrainTextureRepeating } from './woodTexture.js'
 import { referencePaintColor } from './referencePalette.js'
 import { toyEnvironment } from './toyLights.js'
 import { GemMaterial, clampGemSettings } from './gemMaterial.js'
@@ -46,19 +49,25 @@ export function createBlockResources({ metrics }) {
     style.blockSize, style.blockSize, style.blockSize, style.blockSegments, style.blockRadius,
   )
 
-  // Opaque timber body. The shell is only a BACKING: it occludes the far faces and fills the
-  // narrow notches between blocks (which is why it is darker than they are). It is inset
-  // behind them so that the blocks — not the shell — make up the surface of the big cube.
+  // Opaque shell behind the blocks. The shell is only a BACKING: it occludes the far faces and
+  // fills the narrow notches between blocks (which is why it is darker than they are). It is
+  // inset behind them so that the blocks — not the shell — make up the surface of the big cube.
   // It is NOT one of the shared block geometries: it is one mesh for the whole cube, and main
   // adds it to the cube group (the child order there is load-bearing).
+  //
+  // v0.13.0 (handoff §4.1/§4.2): the shell keeps its role and loses its timber. The grain map
+  // is gone with the block maps, so the notches are now flat `hull` (#243A4A) rather than a
+  // dark brown groove — the handoff's 缝隙/背壳 colour. What used to make a block readable was
+  // the seam; it still is.
   const cubeSide = metrics().cubeSide
   const cubeBodyMaterial = new THREE.MeshPhysicalMaterial({
     color: style.hullColor,
-    map: woodGrainTextureRepeating(style.hullGrainRepeat),
     roughness: style.hullRoughness,
     clearcoat: style.hullClearcoat,
     clearcoatRoughness: 0.42,
     metalness: 0,
+    envMapIntensity: style.woodEnvMapIntensity,
+    envMap: toyEnvironment(),
     transparent: false,
     opacity: style.hullOpacity,
     depthWrite: true,
@@ -71,17 +80,18 @@ export function createBlockResources({ metrics }) {
   cubeBody.castShadow = false
   cubeBody.receiveShadow = true
 
-  // One material per (state × tone step): the idle timber and the lighter timber of the
-  // face under the camera. A small cache shares the three surface variants.
-  function blockWoodMaterial(baseColor, step, variant) {
-    const surface = blockSurfaceMaps(false, variant)
+  // One material per (state × tone step): the idle bare block and the lighter one on the face
+  // under the camera.
+  //
+  // v0.13.0 (handoff §4.2): NO surface maps on either family. The timber skin bought its read
+  // from a colour/roughness/normal/AO canvas set, and the handoff is explicit that turning the
+  // colour to cream while the maps keep multiplying the roughness does not remove the wood —
+  // so the maps are switched off together and the response is the recipe's flat table. What is
+  // left is real shading: one broad soft gloss from the key light across the bevel, and a
+  // face that visibly changes tone when the cube is really turned.
+  function blockWoodMaterial(baseColor, step) {
     return new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(baseColor).multiplyScalar(step),
-      ...surface,
-      normalScale: new THREE.Vector2(style.woodNormalScale, style.woodNormalScale),
-      clearcoatNormalMap: surface.normalMap,
-      clearcoatNormalScale: new THREE.Vector2(style.woodNormalScale, style.woodNormalScale),
-      aoMapIntensity: style.surfaceAOIntensity,
       envMapIntensity: style.woodEnvMapIntensity,
       // r172 overrides material.envMapIntensity with scene.environmentIntensity
       // when envMap is null. Bind the shared source so per-family tuning works.
@@ -89,29 +99,24 @@ export function createBlockResources({ metrics }) {
       roughness: style.woodRoughness,
       clearcoat: style.woodClearcoat,
       clearcoatRoughness: style.woodClearcoatRoughness,
+      specularIntensity: style.woodSpecularIntensity,
+      ior: style.woodIor,
       metalness: 0,
     })
   }
   const BLOCK_TONES = style.blockToneSteps.length
-  const blockWoodMaterials = style.blockToneSteps.map((step, variant) => ({
-    idle: blockWoodMaterial(style.blockColor, step, variant),
-    active: blockWoodMaterial(style.blockActiveColor, step, variant),
+  const blockWoodMaterials = style.blockToneSteps.map(step => ({
+    idle: blockWoodMaterial(style.blockColor, step),
+    active: blockWoodMaterial(style.blockActiveColor, step),
   }))
 
-  // Glossy glass surface with a thickness-aware, jelly-like scattering lobe.
-  // Opaque depth avoids a transmission render target and sorting artifacts.
-  // This is a separate surface family from bare maple. A piece
-  // keeps this exact material from the tray, through the drag, onto the board.
+  // Opaque saturated lacquer. Metalness stays 0: this is a painted dielectric lit by the same
+  // rig as the shell, not a metal and not a gem. A piece keeps this exact material from the tray,
+  // through the drag, onto the board.
   function makeMaterial(color, opacity = 1, variant = 0) {
-    const surface = blockSurfaceMaps(true, variant)
     const material = new GemMaterial({
       color: new THREE.Color(referencePaintColor(color)),
-      ...surface,
-      normalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
-      clearcoatNormalMap: surface.normalMap,
-      clearcoatNormalScale: new THREE.Vector2(style.paintNormalScale, style.paintNormalScale),
       ior: style.paintIor,
-      aoMapIntensity: style.surfaceAOIntensity,
       roughness: style.paintRoughness,
       clearcoat: style.paintClearcoat,
       clearcoatRoughness: style.paintClearcoatRoughness,
@@ -172,12 +177,15 @@ export function createBlockResources({ metrics }) {
     return {
       trianglesPerBlock: blockGeometry.attributes.position.count / 3,
       size: style.blockSize, radius: style.blockRadius,
-      wood: { roughness: blockWoodMaterials[0].idle.roughness, envMapIntensity: blockWoodMaterials[0].idle.envMapIntensity },
+      wood: { roughness: style.woodRoughness, envMapIntensity: style.woodEnvMapIntensity, specularIntensity: style.woodSpecularIntensity, ior: style.woodIor },
       paint: { ...paintTuning },
       polish: { clearcoat: style.paintClearcoat, clearcoatRoughness: style.paintClearcoatRoughness, ior: style.paintIor, crownHeight: style.paintCrownHeight },
       gem: { model: 'local-thickness-scattering', settings: { ...gemTuning }, materials: livePaintMaterials.size,
         singlePass: [...livePaintMaterials].every(material => material.transmission === 0) },
-      textureChannels: ['baseColor', 'roughness', 'normal', 'ao'],
+      // v0.13.0: the empty cell and the paint are UNTEXTURED (§4.2 — a flat uniform roughness
+      // for the first A/B, so a retuned roughness number is the roughness the shader sees).
+      // The list stays so a check can prove no albedo/normal/roughness/AO map came back.
+      textureChannels: [],
       environmentBound: [...livePaintMaterials, ...blockWoodMaterials.flatMap(pair => Object.values(pair))]
         .every(material => material.envMap === toyEnvironment()),
     }

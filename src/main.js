@@ -740,6 +740,25 @@ function syncPause() {
   return isPaused
 }
 
+// The strip's readiness is `input.canUseItemsNow()` — and that is NOT `!isPaused`. It also
+// closes on a drag, on the deal worker still thinking, on an open settings panel and on the
+// short hold after a committed use, none of which move `isPaused`. `renderItemBar()` was
+// repainted only from the event sites that happen to know about one of them, so any transition
+// nobody called it from left the four buttons grey on a live run.
+//
+// v0.13.0: this is the frame loop's own answer to that. The gate is re-read once per frame
+// (four booleans and a clock compare) and the strip is repainted only when the ANSWER changes,
+// so the paint can no longer outlive its reason no matter which path armed or cleared it. The
+// opening wave is the case that made it visible: `renderItemBar()` runs BEFORE `syncPause()`
+// in the resume path, and a wave that ends without a pause transition repaints nothing.
+let itemStripReady = null
+function syncItemStrip() {
+  const ready = input.canUseItemsNow()
+  if (ready === itemStripReady) return
+  itemStripReady = ready
+  renderItemBar()
+}
+
 // The seven scenes the bus understands (handoff §6.3). Ordered by authority: a hidden page
 // outranks everything, the cover cancels a run's tail, the finished run may still play its
 // record sound, and the two panels stop in-run sound without silencing an explicit test tone.
@@ -1647,6 +1666,9 @@ function animate() {
   // introduction into five seconds of half-built cube on a device that cannot hold
   // 60fps. If the frames are that slow, the wave should simply be over.
   updateIntro(measure)
+  // Deliberately outside the `!isPaused` branch: the strip has to be able to go grey ON the
+  // pause (the wave arming) as well as come back after it.
+  syncItemStrip()
   if (!isPaused) {
     // The RAW delta: the paper celebration runs on the wall clock, and only the cube's own snap
     // reads the dipped `delta` above.
