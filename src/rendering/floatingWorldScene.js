@@ -593,8 +593,23 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       sprite.position.copy(_point)
       const size = heightFraction * visibleHeightAt(camera, cloudDistance)
       sprite.scale.set(size * cloudAspect, size, 1)
-      const worldPerPx = size / Math.max(1, getCanvasRect?.()?.height ?? 1)
-      sprite.userData.band = { distance: cloudDistance, size, worldPerPx, halfSpan: (size * cloudAspect) / 2 }
+      // The band records everything the drift needs to be computed ABSOLUTELY from a time
+      // value rather than accumulated frame by frame (see `applyAmbient`): where this cloud
+      // starts, how wide the frame is in world units at its own depth, and how far it has to
+      // travel before it is fully past either edge.
+      ndcPoint(camera, _point, -1, ndcY, cloudDistance)
+      const leftX = _point.x
+      ndcPoint(camera, _point, 1, ndcY, cloudDistance)
+      const rightX = _point.x
+      sprite.userData.band = {
+        distance: cloudDistance,
+        size,
+        baseX: sprite.position.x,
+        halfSpan: (size * cloudAspect) / 2,
+        leftX,
+        rightX,
+        speed: recipe.motion.clouds.speedScreenWidthsPerSecond[(seed[3] ?? 0) % recipe.motion.clouds.speedScreenWidthsPerSecond.length],
+      }
     }
     appliedLayout = {
       distance: frameDistance(),
@@ -610,11 +625,63 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   }
 
   // ---- Motion (§7.2) -------------------------------------------------------------
-
-  let time = 0
+  //
+  // ONE ambient clock for the whole world, and it is a CLOCK VALUE, not an accumulator of
+  // per-frame deltas. That distinction is load-bearing twice over:
+  //
+  //   * §C0.4 asks for a STILL mode so two captures of the same build can be compared pixel for
+  //     pixel. With the pose computed from an absolute time, `setAmbient({ frozen: true, time: 0 })`
+  //     reproduces one exact pose — the same contract `__voxalblastDev.setBoardFloat` gives the
+  //     board, which is what makes the two halves of the world pinnable together.
+  //   * `position.x += …` drifts: it accumulates float error and, worse, can only ever be frozen
+  //     by simply not running. Computing the pose from `t` means a frozen world and a running one
+  //     go through the exact same code path.
+  let ambientTime = 0
+  let ambientOverride = null
   const reducedMotion = typeof matchMedia === 'function'
     ? matchMedia('(prefers-reduced-motion: reduce)')
     : { matches: false }
+
+  // §8.7 / C0.4. `null` clears the pin and hands the world back to the live clock. A pin is a
+  // still POSE, not a paused animation: it keeps rendering the same frame, which is what a
+  // before/after pair needs. `{ frozen: true, time: 0 }` is the neutral pose, matching the board's
+  // own convention.
+  function setAmbient(options) {
+    if (!options) { ambientOverride = null; return }
+    ambientOverride = { frozen: options.frozen === true, time: Number(options.time) }
+  }
+
+  function applyAmbient(t) {
+    const rect = getCanvasRect?.()
+    if (!rect || rect.width < 1) return
+    for (const { sprite } of cloudSpecs) {
+      const band = sprite.userData.band
+      if (!band) continue
+      // "Screen widths per second" is a SCREEN-space rate. Multiplying it by the frame's world
+      // width AT THE CLOUD'S OWN DEPTH is what makes a near cloud and a far one move at the same
+      // apparent speed instead of racing — and it needs the horizontal world-per-pixel, which the
+      // embedded projection does not have to keep equal to the vertical one.
+      const drift = t * band.speed * (band.rightX - band.leftX)
+      // Wrap across the frame plus one sprite, so the sprite is fully off one edge before it
+      // arrives at the other. §7.2 forbids an in-frame jump; a modulo over the whole loop makes
+      // the wrap a function of `t` like everything else, so a pinned pose and a live one agree.
+      const from = band.leftX - band.halfSpan
+      const span = (band.rightX - band.leftX) + band.halfSpan * 2
+      const wrapped = ((band.baseX + drift - from) % span + span) % span
+      sprite.position.x = from + wrapped
+    }
+    // Building bob: the recipe's amplitude is in the building's OWN cells, so it is scaled by
+    // the cluster's own scale rather than by a shared world number.
+    const bob = (list, amplitude, period, phaseStep) => {
+      list.forEach((cluster, index) => {
+        const phase = cluster.spec.phaseRadians ?? index * phaseStep
+        const lift = Math.sin((t / period) * Math.PI * 2 + phase) * amplitude * cluster.mesh.scale.y
+        cluster.mesh.position.y = cluster.mesh.userData.baseY + lift
+      })
+    }
+    bob(clusters, recipe.motion.cluster.amplitudeCell, recipe.motion.cluster.periodSeconds, recipe.motion.cluster.phaseStepRadians)
+    bob(looseBlocks, recipe.motion.looseBlock.amplitudeCell, recipe.motion.looseBlock.periodSeconds, recipe.motion.looseBlock.phaseStepRadians)
+  }
 
   function update(delta) {
     // The layout is a function of the camera's DISTANCE, and that number is only settled once the
@@ -623,33 +690,13 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // anchored to the frame instead of to whatever pose the camera happened to be in at boot.
     const distance = frameDistance()
     if (!appliedLayout || Math.abs(distance - appliedLayout.distance) > distance * 0.01) layout()
-    if (reducedMotion.matches) return
-    time += Math.min(delta, recipe.motion.maxDeltaSeconds)
-    const rect = getCanvasRect?.()
-    // Clouds drift at a fraction of a screen width per second, which is a SCREEN-space rate:
-    // converting it with the cloud's own world-per-pixel keeps the near and far ones apparently
-    // the same speed instead of racing.
-    for (const { sprite, seed } of cloudSpecs) {
-      const band = sprite.userData.band
-      if (!band || !rect) continue
-      const speed = recipe.motion.clouds.speedScreenWidthsPerSecond[(seed[3] ?? 0) % recipe.motion.clouds.speedScreenWidthsPerSecond.length]
-      sprite.position.x += speed * rect.width * band.worldPerPx * delta
-      // Wrap once the sprite is fully outside the frame: §7.2 forbids an in-frame jump, so it is
-      // reset past the far edge rather than snapped back to a fixed seed.
-      const halfSpan = rect.width * band.worldPerPx * 0.5 + band.halfSpan
-      if (sprite.position.x > halfSpan) sprite.position.x -= halfSpan * 2
-    }
-    // Building bob: the recipe's amplitude is in the building's OWN cells, so it is scaled by
-    // the cluster's own scale rather than by a shared world number.
-    const bob = (list, amplitude, period, phaseStep) => {
-      list.forEach((cluster, index) => {
-        const phase = cluster.spec.phaseRadians ?? index * phaseStep
-        const lift = Math.sin((time / period) * Math.PI * 2 + phase) * amplitude * cluster.mesh.scale.y
-        cluster.mesh.position.y = cluster.mesh.userData.baseY + lift
-      })
-    }
-    bob(clusters, recipe.motion.cluster.amplitudeCell, recipe.motion.cluster.periodSeconds, recipe.motion.cluster.phaseStepRadians)
-    bob(looseBlocks, recipe.motion.looseBlock.amplitudeCell, recipe.motion.looseBlock.periodSeconds, recipe.motion.looseBlock.phaseStepRadians)
+    // A pinned time answers for the clock entirely; `frozen` only decides whether the live clock
+    // keeps running underneath. `prefers-reduced-motion` freezes the displacement too (§7.2) — the
+    // world holds a readable static pose rather than accumulating time nobody sees.
+    const pinned = ambientOverride && Number.isFinite(ambientOverride.time) ? ambientOverride.time : null
+    const frozen = reducedMotion.matches || ambientOverride?.frozen === true || pinned !== null
+    if (!frozen) ambientTime += Math.min(delta, recipe.motion.maxDeltaSeconds)
+    applyAmbient(pinned ?? ambientTime)
   }
 
   // ---- Report --------------------------------------------------------------------
@@ -716,6 +763,14 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       culled,
       layout: appliedLayout,
       reducedMotion: reducedMotion.matches,
+      // §8.7 / C0.4: whether the world is on the live clock, pinned, or frozen — the fact a
+      // before/after pair is only comparable when it is true. `time` is the value the pose was
+      // actually built from, so a pinned capture can prove WHICH pose it is.
+      ambient: {
+        frozen: reducedMotion.matches || ambientOverride?.frozen === true || ambientOverride !== null,
+        pinned: ambientOverride !== null,
+        time: ambientOverride && Number.isFinite(ambientOverride.time) ? ambientOverride.time : ambientTime,
+      },
     }
   }
 
@@ -731,5 +786,5 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   // first layout attempt. The plaza's placeholder geometry is built above; `update()` re-solves
   // everything on the first frame, and `resize()` re-solves it again whenever the layout moves.
 
-  return { group, sky, plaza, resize: layout, update, setEnabled, report }
+  return { group, sky, plaza, resize: layout, update, setEnabled, setAmbient, report }
 }

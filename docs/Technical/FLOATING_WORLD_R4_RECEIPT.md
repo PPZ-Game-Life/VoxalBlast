@@ -316,3 +316,41 @@ R3 的投影嵌入断言与新的 R4 实景断言（layer 2 独占、sky 就绪�
 本包 crown/trophy——R6 主页部分尚未完成。
 
 三处都在并行推进的 UI 一侧，本轮只定位、不改。
+
+---
+
+## 12. 接手 KNOWN_GAPS §3：实景侧的 `setAmbient`（§8.7 / §C0.4）
+
+R6 侧把「静止模式只落了一半」作为待接手项挂在 `KNOWN_GAPS` 上，并指出实景侧跑在实时时钟上、
+需要 `floatingWorldScene.js` 提供 `setAmbient({ time, frozen })`。本轮补上。
+
+### 12.1 顺手把动画改成绝对时钟
+
+原实现是**逐帧累加**（`sprite.position.x += speed * … * delta`）。累加有两个毛病，静止模式正好把它们
+一起逼出来：它会累积浮点误差，而且**只能靠「不跑」来冻结**——一旦冻结，位置就依赖「冻在哪一帧」。
+改成从 `t` 直接求位姿之后，冻结态与实时态走的是**同一条代码路径**，`{ frozen: true, time: 0 }`
+是可复现的一个确定位姿，而不是「上次停下来时碰巧的样子」。
+
+云的漂移同时修了一处口径错误：速度是「屏宽/秒」，换算必须用**水平**方向的世界每像素。
+嵌入投影的 `sx = gw/W` 与 `sy = gh/H` 并不相等，所以水平与垂直的世界每像素不同；原来的
+`size / canvasHeight` 是垂直量。现在由 `layout()` 记下该云深度上画框左右边的世界 x，
+乘出真实的世界位移；循环用取模，因此也同样是 `t` 的函数。
+
+### 12.2 验证：同一构建两次截图像素相同
+
+| 检查 | 结果 |
+| --- | --- |
+| `world.ambient` | `{ frozen: true, pinned: true, time: 0 }` |
+| 同一会话内相隔 8s 的两帧 | **SHA256 完全相同**（`dadfa81b…`） |
+| **两遍全量门禁**（17 张 × 2 次独立启动）跨会话逐个 SHA256 | **16 / 17 完全相同**；唯一不同的 `desktop-leaderboard-local` 只有 **10 个像素**、最大差值 **3/255**（标题行文字抗锯齿），实景区域 0.00% 变化 |
+| 两遍门禁的 FAIL 数 | run1 **0**，run2 **0** |
+| `npm test` / `npm run build` | 11 套全绿 / ✓ built in 2.65s |
+
+`npm run shot` 的门禁也加了反向断言：`world.ambient.pinned` 为假就报
+「两次截图不可比（§C0.4）」——**读回来**而不是相信前面的 pin 调用，因为「pin 悄悄失效」正是当初
+没被发现的原因。
+
+接线不只是模块：`diagnostics.js` 是**逐个白名单挂载** dev handles 的，
+`setAmbient` 必须在 `main.js` 的 `devHandles` **和** `diagnostics.js` 的挂载表里各写一行。
+只写前者时句柄存在但 `__voxalblastDev.setAmbient` 是 `undefined`，pin 静默不生效——
+本轮实际踩到过一次，是量到 `ambient.pinned === false` 才发现。
