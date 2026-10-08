@@ -2,7 +2,7 @@
 
 六面贴块消除小游戏，使用 Vite + 原生 JavaScript + Three.js。
 
-> 当前实现基线：**v0.13.0**（`package.json`）。本轮是**「浮空积木世界」皮肤接入的第一步（R1：材质·光照·配色）**：棋盘方块与背壳改由 `public/art/floating-world-v1/scene.recipe.json` 驱动——奶油空格 + 深蓝缝底、**两族表面贴图（木纹/粗糙度/法线/AO）全部停用**、按配方重定光照与 14 个存档色身份到显示色的映射。方向、资源清单与后续阶段（R2 去底座／悬浮投影、R3 整屏主画布、R4/R5 背景积木与云、R6 UI 换图、R7 多档性能）见 [浮空积木世界交接单](docs/Technical/FLOATING_WORLD_ART_HANDOFF.md)，规范口径见 [05 §0b](docs/Planning/05-美术方向与视觉规范.md)。同轮修掉一个**先于本轮存在**的缺陷：开机后四个道具按钮一直显示为灰置（见 [KNOWN_GAPS](docs/Technical/KNOWN_GAPS.md)）。上一轮是 v0.12.0 排行榜「全球榜」tab（示例数据），更早 v0.11.x 开机遮罩、v0.9.18 本地化（`src/i18n/locales/*`，守卫 `npm run test:i18n`）。不代表远端部署版本。
+> 当前实现基线：**v0.13.0**（`package.json`）。本轮是**「浮空积木世界」皮肤接入的前两步（R1 材质·光照·配色、R2 去底座·悬浮投影）**：棋盘方块与背壳改由 `public/art/floating-world-v1/scene.recipe.json` 驱动——奶油空格 + 深蓝缝底、**两族表面贴图（木纹/粗糙度/法线/AO）全部停用**、按配方重定光照与 14 个存档色身份到显示色的映射；**主棋盘不再有承托底座**，地面是世界固定平面 `floorY=−4.8`，接收阴影的 quad 由主光方向推算落点（高档真实 1024 PCFSoft 图、低档程序化软椭圆，二者互斥）。方向、资源清单与后续阶段（R3 整屏主画布、R4/R5 背景积木与云、R6 UI 换图、R7 多档性能）见 [浮空积木世界交接单](docs/Technical/FLOATING_WORLD_ART_HANDOFF.md)，规范口径见 [05 §0b](docs/Planning/05-美术方向与视觉规范.md)，**未落地项与需裁决项**见 [KNOWN_GAPS](docs/Technical/KNOWN_GAPS.md)。同轮修掉一个**先于本轮存在**的缺陷：开机后四个道具按钮一直显示为灰置。上一轮是 v0.12.0 排行榜「全球榜」tab（示例数据），更早 v0.11.x 开机遮罩、v0.9.18 本地化（`src/i18n/locales/*`，守卫 `npm run test:i18n`）。不代表远端部署版本。
 
 ## 当前游戏
 

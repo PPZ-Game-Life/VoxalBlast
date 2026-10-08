@@ -623,12 +623,32 @@ try {
       })
       previous = current
     }
+    const lastSample = samples_[samples_.length - 1]
     await client.send('Input.dispatchMouseEvent', {
       type: 'mouseReleased',
-      x: gesture.from.x + gesture.step(samples_[samples_.length - 1]).x,
-      y: gesture.from.y + gesture.step(samples_[samples_.length - 1]).y,
+      x: gesture.from.x + gesture.step(lastSample).x,
+      y: gesture.from.y + gesture.step(lastSample).y,
       button: 'left', buttons: 0, clickCount: 1,
     })
+    // v0.13.0 R2 gate (handoff §5.2 / §12 R2「所有中间翻转姿态检查」): the board now FLOATS over
+    // a fixed world plane, so every attitude a gesture reaches has to clear it — including the
+    // ~45° midpoint of the snap, which no still frame and no per-sample reading ever shows.
+    // The sweep runs over the whole settle animation and reads the cube's REAL transform every
+    // frame; the bounding sphere `floorY` was chosen with is a design argument, not evidence.
+    const groundSweep = JSON.parse(await client.evaluate(`(async () => {
+      let min = Infinity
+      const deadline = performance.now() + ${SETTLE_MS + 140}
+      while (performance.now() < deadline) {
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+        const grounding = globalThis.__voxalblast.rendering().grounding
+        if (Number.isFinite(grounding.liveLowestCornerY)) min = Math.min(min, grounding.liveLowestCornerY)
+      }
+      const grounding = globalThis.__voxalblast.rendering().grounding
+      return JSON.stringify({
+        minLiveLowestCornerY: min, groundY: grounding.groundY, route: grounding.route,
+        supportTopY: grounding.supportTopY,
+      })
+    })()`, { awaitPromise: true }))
     await sleep(SETTLE_MS)
     await client.frames()
 
@@ -652,10 +672,25 @@ try {
       pxToStep: Number((ROTATE_STYLE.stepThreshold / Math.PI * span).toFixed(1)),
       axisOffsetDeg: axisOffsetDeg === null ? null : Number(axisOffsetDeg.toFixed(2)),
       axisDriftDeg: Number(axisDriftDeg.toFixed(2)),
+      groundSweep,
       trace,
     })
   }
   report.trajectory = trajectories
+
+  // ---- the floating board never reaches its own ground --------------------------------
+  // One assertion over every gesture's settle sweep. It is deliberately separate from the
+  // per-gesture rows: "did the axis stay clean" and "did the board pass through the floor
+  // while it turned" are different questions, and the second one is the R2 gate.
+  const sweeps = trajectories.filter((entry) => entry.groundSweep && Number.isFinite(entry.groundSweep.minLiveLowestCornerY))
+  if (!sweeps.length) failures.push('ground: no attitude sweep was measured')
+  else {
+    const floor = sweeps[0].groundSweep.groundY
+    const worst = Math.min(...sweeps.map((entry) => entry.groundSweep.minLiveLowestCornerY))
+    report.groundClearance = { floorY: floor, lowestCornerY: Number(worst.toFixed(4)), clearance: Number((worst - floor).toFixed(4)), gestures: sweeps.length }
+    if (sweeps.some((entry) => entry.groundSweep.route !== 'none')) failures.push('ground: the shipped route is not the support-free one')
+    if (!(worst > floor)) failures.push(`ground: a turning board reached y=${worst.toFixed(3)}, at or below the ground plane ${floor}`)
+  }
 
   // ------------------------------------------------------------- 3. the bearing
   // v0.8.24 replaced the asymmetric fence with three rules, and each is asserted here

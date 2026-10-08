@@ -96,7 +96,11 @@
 .board-section { position: absolute; top: 12%; bottom: 20%; left: 10%; width: 80%; }
 .scene-wrap { position: absolute; inset: 0 0 12%; height: auto; min-height: 0; z-index: 1; }
 .board-section::before, .board-section::after { display: none; }
-.garden-pedestal { position: absolute; display: block; max-width: none; height: auto; transform: translateX(-50%); pointer-events: none; user-select: none; z-index: 0; }
+/* v0.13.0 「浮空积木世界」: 主棋盘没有承托底座 — the painted pedestal is retired. This rule is
+   only the INITIAL state (so no pedestal can flash in before the scene boots); gameScene owns
+   the route and re-asserts `display:none` on every route switch, and the two legacy grounding
+   routes are the only thing that can turn it back on. */
+.garden-pedestal { position: absolute; display: none; max-width: none; height: auto; transform: translateX(-50%); pointer-events: none; user-select: none; z-index: 0; }
 .bottom-panel { position: absolute; z-index: 2; bottom: max(2%, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(840px, 52vw); height: 16%; max-height: 170px; padding: 5px 15px 9px; border: 0; border-radius: 0; box-shadow: none; background: url('/art/reference/tray.png') center / 100% 100% no-repeat; }
 .bottom-panel #piece-slots.piece-slots { position: absolute; inset: 14% 5% 17%; height: auto; width: auto; max-width: none; gap: 3%; align-items: stretch; }
 .bottom-panel .piece-slot { display: flex; align-items: stretch; justify-content: center; min-height: 0; padding: 0; background: transparent; border: 0; box-shadow: none; border-radius: 16px; }

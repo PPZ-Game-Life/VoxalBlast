@@ -32,7 +32,7 @@ import {
   ToneMappingMode,
 } from 'postprocessing'
 import { skipComposerDepthBlit } from './threeCompat.js'
-import { BOARD_STYLE as style, GROUNDING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, GROUNDING_STYLE, LIGHTING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
 import { createBoardShadows } from './boardShadows.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
@@ -74,7 +74,11 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // Anchor scenery to the resting cube footprint, not its rotating/scaling intro
   // mesh. It follows resize and wheel zoom without wobbling during a face turn.
   function fitPedestal() {
-    if (!pedestal) return
+    // v0.13.0: the shipped route has no support, so there is nothing to fit and no projection
+    // to measure. Gating here (rather than leaving the fit running against a hidden element)
+    // is what the handoff §5.2 means by "在新皮肤显式停用" — a hidden element that is still
+    // being measured is a route that only LOOKS retired.
+    if (!pedestal || groundingRoute === 'none') return
     const width = sceneWrap.clientWidth, height = sceneWrap.clientHeight
     const key = [width, height, sceneWrap.offsetLeft, sceneWrap.offsetTop,
       camera.position.x, camera.position.y, camera.position.z,
@@ -356,7 +360,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   let boardShadows = null
   function ensureBoardShadows() {
     if (boardShadows) return
-    boardShadows = createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift })
+    boardShadows = createBoardShadows(scene, { extent: cubeSolidExtent() - style.previewLift, floorY: SHADOW_STYLE.floorY })
     applyGroundingRoute()
   }
 
@@ -374,11 +378,21 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
   // Nothing here moves the cube, the camera or the framing: the slab is fitted from the
   // silhouette the art fit already produced. This is a DIAGNOSTIC and a candidate, not the
   // §8.2 delivery: no bevel profile, no texture, no foliage.
-  let groundingRoute = GROUNDING_STYLE.platformEnabled ? 'platform' : 'art'
+  let groundingRoute = GROUNDING_STYLE.shippedRoute === 'platform' ? 'platform'
+    : GROUNDING_STYLE.shippedRoute === 'art' ? 'art' : 'none'
   let contactDecalEnabled = true
   let projectedShadowEnabled = true
   let platform = null
   const platformMetrics = {}
+  // Slack around the board's own footprint when the receiving quad is sized for the union of
+  // "where the board is" and "where its shadow lands". World units.
+  const GROUND_SHADOW_MARGIN = 1.2
+  // handoff §10: the top tier pays for a real 1024 PCFSoft map; the tiers below it keep ALL of
+  // the board's real normal lighting and swap the map for a procedural soft ellipse. The
+  // project's existing quality selector is binary (`lowPower` from width/hardwareConcurrency),
+  // so "not low power" IS the high tier here — the three-way split the handoff tabulates is
+  // R7 work, and inventing a second selector now is exactly what §10 forbids.
+  const realBoardShadow = !quality.lowPower
 
   function ensurePlatform() {
     if (platform) return platform
@@ -429,19 +443,154 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     Object.assign(platformMetrics, { radius, topY, diameterPx, centrePx: stage.centreX, worldPerPx })
   }
 
+  // ---- The floating board's ground (v0.13.0, handoff §5.2) ------------------------------
+  //
+  // The shipped route has NO support: the board is separated from a FIXED world plane. Two
+  // things have to be true for that to read as "floating" instead of as a bug:
+  //
+  //   * the plane is low enough that no pose of the cube can reach it. `SHADOW_STYLE.floorY`
+  //     is that bound (config.js derives it from the cube's own bounding sphere); typing the
+  //     resting face's −2.475 would put the ground through the cube on every 45° mid-snap.
+  //   * the projection lands ON the plane, which means the receiving quad is where the key
+  //     light THROWS the board, not centred under it. The light is far from vertical, so by
+  //     the time it reaches this plane the shadow is several world units sideways of the
+  //     thing casting it; a quad centred under the board would catch the board and miss its
+  //     whole shadow. Both the offset and the quad's size come from the light, never typed.
+  //
+  // Neither value reads the cube's transform, and neither is recomputed per frame: the ground
+  // does not move when the board bobs (that is the point).
+  function groundShadowFootprint() {
+    const floorY = SHADOW_STYLE.floorY
+    const light = new THREE.Vector3(...LIGHTING_STYLE.keyPosition).normalize()
+    const travel = -floorY / Math.max(light.y, 0.001)
+    const shadowX = -light.x * travel
+    const shadowZ = -light.z * travel
+    const body = cubeSolidExtent()
+    const reach = Math.hypot(shadowX, shadowZ)
+    return {
+      floorY, travel, body, reach,
+      shadowCentreX: shadowX * 0.5,
+      shadowCentreZ: shadowZ * 0.5,
+      shadowSize: reach + body * 2 + GROUND_SHADOW_MARGIN,
+      boardSize: body * 2 + GROUND_SHADOW_MARGIN,
+    }
+  }
+
+  function fitGroundProjection() {
+    if (!boardShadows) return
+    const footprint = groundShadowFootprint()
+    boardShadows.fit({
+      boardX: 0, boardZ: 0, boardSize: footprint.boardSize,
+      shadowX: footprint.shadowCentreX, shadowZ: footprint.shadowCentreZ, shadowSize: footprint.shadowSize,
+      y: footprint.floorY,
+    })
+  }
+
+  // The two pre-v0.13 routes laid the quads over a support at the support's own plane. Kept
+  // verbatim (same sizes, same −extent−floorOffset height, same horizontal fit) so the G1
+  // comparison can still be replayed; nothing in the shipped route calls this.
+  function fitLegacySupportQuads(stage) {
+    if (!boardShadows || !stage || groundingRoute === 'none') return
+    const rect = renderer.domElement.getBoundingClientRect()
+    const worldPerPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * orbitDistance) / Math.max(rect.height, 1)
+    const extent = cubeSolidExtent() - style.previewLift
+    boardShadows.fit({
+      boardX: (stage.centreX - stage.canvasWidth / 2) * worldPerPx, boardZ: 0, boardSize: SHADOW_STYLE.contactSize,
+      shadowX: (stage.centreX - stage.canvasWidth / 2) * worldPerPx, shadowZ: 0, shadowSize: SHADOW_STYLE.legacyReceiverSize,
+      y: -extent - SHADOW_STYLE.floorOffset,
+    })
+  }
+
   function applyGroundingRoute() {
     const onPlatform = groundingRoute === 'platform'
+    const onArt = groundingRoute === 'art'
     if (onPlatform) { ensurePlatform(); fitPlatform(lastStage) }
     if (platform) platform.visible = onPlatform
-    if (pedestal) pedestal.style.visibility = onPlatform ? 'hidden' : ''
+    if (pedestal) {
+      // v0.13.0: the shipped route has no support at all, so the DOM art is hidden by RULE and
+      // not by whatever a previous route switch happened to leave in its inline style.
+      pedestal.style.display = onArt ? '' : 'none'
+      pedestal.style.visibility = onPlatform ? 'hidden' : ''
+    }
     if (!boardShadows) return
-    const floorY = onPlatform ? (platformMetrics.topY ?? 0) + 0.006 : boardShadows.report().basePlaneY
-    boardShadows.setEnabled({ contact: contactDecalEnabled, projected: projectedShadowEnabled && !onPlatform })
-    boardShadows.setPlaneY(floorY)
+    if (onPlatform) {
+      boardShadows.setEnabled({ blob: contactDecalEnabled, projected: false })
+      boardShadows.setPlaneY((platformMetrics.topY ?? 0) + 0.006)
+      return
+    }
+    if (onArt) {
+      boardShadows.setEnabled({ blob: contactDecalEnabled, projected: projectedShadowEnabled })
+      fitLegacySupportQuads(lastStage)
+      return
+    }
+    // The shipped route: fixed world plane, projection placed where the light puts it, and
+    // exactly one of the two shadow mechanisms on. High gets the real map; the tiers that
+    // cannot afford it get the software blob. Both at once double up into a black hole
+    // (handoff §5.2), which is why this is an either/or.
+    boardShadows.setEnabled({ blob: !realBoardShadow, projected: realBoardShadow })
+    fitGroundProjection()
+  }
+
+  // The lowest Y ANY pose of the board can reach: the body's bounding sphere (a corner of the
+  // cube is sqrt(3) times the half-extent from the centre) plus the idle float's own amplitude.
+  // Deliberately computed here from the geometry rather than read back from SHADOW_STYLE.floorY,
+  // so "is the ground below every pose?" is a real comparison and not a tautology.
+  function cubeWorstY() {
+    const { half, cs, blockHalf } = metrics()
+    return -Math.sqrt(3) * (half - cs / 2 + blockHalf) - style.idleFloatAmplitude
+  }
+
+  // Is the ground projection even on screen? The board floats high in a tall canvas, so the
+  // quad can be entirely below the canvas bottom — which is a fact the producer has to be told,
+  // not a fact to be discovered from a screenshot that simply has no shadow in it.
+  const groundProbe = new THREE.Vector3()
+  function groundOnScreenShare() {
+    const quads = boardShadows?.report()
+    if (!quads) return null
+    const rect = renderer.domElement.getBoundingClientRect()
+    if (rect.width < 1 || rect.height < 1) return null
+    camera.updateMatrixWorld(true)
+    const halfSize = quads.receiverSize / 2
+    let inside = 0
+    const ys = []
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]) {
+      groundProbe.set(quads.shadowX + dx * halfSize, quads.floorY, quads.shadowZ + dz * halfSize).project(camera)
+      const px = rect.left + (groundProbe.x + 1) * rect.width / 2
+      const py = rect.top + (1 - groundProbe.y) * rect.height / 2
+      ys.push(py)
+      if (px >= rect.left && px <= rect.right && py >= rect.top && py <= rect.bottom) inside += 1
+    }
+    return {
+      samplesInside: inside, samples: 5,
+      centreY: ys[4], canvasTop: rect.top, canvasBottom: rect.bottom,
+      belowCanvasPx: ys[4] - rect.bottom,
+      fullyInside: inside === 5,
+    }
+  }
+
+  // The lowest point of the board AS IT IS RIGHT NOW, measured from the live cube transform
+  // rather than from the bounding sphere. `cubeWorstY` is the number `floorY` was CHOSEN with;
+  // this is the number the current frame actually shows, so a probe sweeping 0°/45°/90° can
+  // say "no attitude reaches the ground" from measurements instead of trusting the bound.
+  const cornerProbe = new THREE.Vector3()
+  function liveLowestCornerY() {
+    const group = getCubeGroup?.()
+    if (!group) return null
+    const { half, cs, blockHalf } = metrics()
+    const edge = half - cs / 2 + blockHalf
+    group.updateMatrixWorld(true)
+    let lowest = Infinity
+    for (const x of [-edge, edge]) for (const y of [-edge, edge]) for (const z of [-edge, edge]) {
+      cornerProbe.set(x, y, z).applyMatrix4(group.matrixWorld)
+      lowest = Math.min(lowest, cornerProbe.y)
+    }
+    return lowest
   }
 
   function groundingReport() {
     const art = pedestal ? pedestal.getBoundingClientRect() : null
+    const footprint = groundingRoute === 'none' ? groundShadowFootprint() : null
+    const quads = boardShadows?.report() ?? null
     return {
       route: groundingRoute,
       ssaoEnabled: useSSAO,
@@ -453,8 +602,24 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
       // an interpenetration check can decide "does the turning cube go through the support"
       // from these two numbers instead of from a screenshot nobody can measure.
       cubeBottomY: cubeBottomY(),
-      supportTopY: groundingRoute === 'platform' ? (platformMetrics.topY ?? null) : boardShadows?.report().floorY ?? null,
-      pedestalArt: art ? { hidden: pedestal.style.visibility === 'hidden', widthPx: art.width, topPx: art.top, leftPx: art.left, heightPx: art.height } : null,
+      supportTopY: groundingRoute === 'platform' ? (platformMetrics.topY ?? null) : quads?.floorY ?? null,
+      // ---- v0.13.0: what the SHIPPED route has to be able to prove ----------------------
+      // There is no support, so the three numbers that matter are the ground's own height,
+      // the lowest point ANY pose of the cube can reach, and whether the plane is therefore
+      // unreachable. `cubeWorstY` is the bounding-sphere bound config.js derives floorY from
+      // (plus the idle bob), reported back so a check compares two independently-computed
+      // numbers rather than agreeing with the constant it is testing.
+      groundY: quads?.groundY ?? null,
+      groundClearance: quads && Number.isFinite(quads.groundY)
+        ? cubeWorstY() - quads.floorY : null,
+      cubeWorstY: cubeWorstY(),
+      liveLowestCornerY: liveLowestCornerY(),
+      shadowFootprint: footprint,
+      // Where the ground quad ended up ON SCREEN, as a share of the canvas. The board floats
+      // high in a tall canvas, so the honest question "is the ground projection even in
+      // frame?" is answered here instead of by eye.
+      groundOnScreen: groundOnScreenShare(),
+      pedestalArt: art ? { hidden: pedestal.style.visibility === 'hidden' || pedestal.style.display === 'none', display: pedestal.style.display, widthPx: art.width, topPx: art.top, leftPx: art.left, heightPx: art.height } : null,
       platform: platform ? {
         visible: platform.visible,
         receiveShadow: platform.receiveShadow,
@@ -462,7 +627,11 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
         layerMask: platform.layers.mask,
         ...platformMetrics,
       } : null,
-      artQuads: boardShadows?.report() ?? null,
+      artQuads: quads,
+      ground: quads,
+      // Exactly one shadow mechanism is on in the shipped route; the report says which, so a
+      // check cannot pass by finding "a shadow" that the other tier drew.
+      shadowMechanism: groundingRoute !== 'none' ? 'support' : (realBoardShadow ? 'real-map' : 'soft-blob'),
       // The occlusion blend's live value (VFX_CONFIG.occlusion.intensity unless a diagnostic
       // override is in force), so a measurement of "SSAO did nothing" can say at what strength.
       occlusionIntensity: occlusionIntensity(),
@@ -475,7 +644,7 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics }) {
     return groundingReport()
   }
   function setGroundingRoute(route) {
-    groundingRoute = route === 'platform' ? 'platform' : 'art'
+    groundingRoute = route === 'platform' ? 'platform' : route === 'art' ? 'art' : 'none'
     applyGroundingRoute()
     return groundingReport()
   }

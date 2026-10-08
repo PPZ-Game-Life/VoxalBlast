@@ -33,7 +33,8 @@
 | src/rendering/effects.js | 粒子/线束/星星、`cameraShake`、慢放 dip 与音调/触感输出；相机静止位置归 gameScene，这里只出偏移 |
 | src/rendering/toyLights.js | 主场景、候选与主页共用灯光与程序化线性 HDR 环境纹理 |
 | src/rendering/woodTexture.js | AI 中性笔触底图生成原木 / 彩漆三组表面变体，独立色彩/高度/粗糙度；异步加载、程序兜底；UI 独立 CSS 木纹。**v0.13.0：方块已不用这组贴图**（皮肤无木纹），本模块只剩 `installWoodSkin()` 的 DOM 木纹与 `blockSurfaceArtStatus()` 这个诊断读数——`report().surfaceArt` 与 `SHOT_SURFACE` 门禁仍读它，所以色素 WebP 的加载/兜底路径保持不变 |
-| src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层 |
+| src/rendering/boardShadows.js | **地面投影（v0.13.0 重写）**：主棋盘没有底座，两块 quad 都固定在世界平面 `SHADOW_STYLE.floorY` 上，**不跟随 cubeGroup 的浮动**。`fit()` 由 gameScene 主光方向推来的落点/尺寸驱动；`setPlaneY()` 只服务两条历史 grounding 路由。高档画真实阴影图、低档画程序化软椭圆，**恰好开一个**。棋盘 98 格的格块材质与材质缓存由 blockResources 拥有，本模块不碰 |
+| src/rendering/pastoralBackdrop.js | 加载随项目发布的田园 WebP；加载前/失败时保留程序 SVG，位于游戏画布之后的装饰层。**v0.13.0 起是待替换项**：交接单 §11 要求换成渐变天空 + 主 Scene 里的浮空积木/地面/云（R4/R5），在此之前它仍是实际画面 |
 | public/art/ | 背景与方块色素 WebP，以及来源、提示词、尺寸说明 |
 | src/rendering/swipe.js / keyboard.js | 手势定轴（竖滑的侧带划分与自转的带符号）与键盘映射；实际由 `src/input/gameInput.js` 驱动 |
 | src/input/gameInput.js | 全部指针与键盘输入：视角旋转手势、落子拖拽（v0.9.3 起含"这个面完全放不下这块时，同一手势改判为转立方体"的 spin）、道具瞄准、取消区与 click 抑制；只有只读查询与命名回调，不写游戏状态 |

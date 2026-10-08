@@ -573,7 +573,19 @@ async function capture(browser, shot) {
       if (!(materials?.wood.roughness > materials?.paint.roughness)) failures.push('bare wood must stay rougher than toy plastic')
       if (!materials?.environmentBound) failures.push('per-material reflection tuning is bypassed by scene environment')
       if (!(parsed.rendering?.trianglesPerBlock <= 1000)) failures.push('shared block exceeds H5 geometry budget')
-      if (!(parsed.rendering?.contactShadows?.pedestal?.contactOpacity > 0)) failures.push('pedestal contact shadow missing')
+      // v0.13.0 (handoff §5.2/§13.2): the board FLOATS. The old gate here asserted a painted
+      // pedestal's contact decal had opacity > 0, which is exactly the thing this direction
+      // deletes — so it is replaced, not deleted, by the facts that make a support-free board
+      // readable. "Stronger" is the point: the old one only proved a quad was drawn.
+      const ground = parsed.rendering?.grounding?.ground
+      const grounding = parsed.rendering?.grounding
+      if (grounding?.route !== 'none') failures.push(`the floating-world skin must ship without a pedestal or platform (route: ${grounding?.route})`)
+      if (grounding?.pedestalArt && !grounding.pedestalArt.hidden) failures.push('the painted pedestal is still visible behind the board')
+      if (grounding?.platform?.visible) failures.push('the G1 platform prototype is visible in the shipped route')
+      if (!(grounding?.groundClearance > 0)) failures.push(`the ground plane is not below every pose of the board (clearance ${grounding?.groundClearance})`)
+      if (!(ground?.blobVisible || ground?.projectedVisible)) failures.push('neither ground-shadow mechanism is drawn')
+      if (ground?.blobVisible && ground?.projectedVisible) failures.push('both ground-shadow mechanisms are drawn at once (they double up into a black hole)')
+      if (!(ground?.blobOpacity > 0 || ground?.projectedOpacity > 0)) failures.push('the board has no ground shadow at all')
       if (parsed.rendering?.lowPower && parsed.rendering?.contactShadows?.ssaoEnabled) failures.push('low-power path must use surface AO instead of full scene SSAO')
       const onHome = mode === 'home' || mode === 'home-return'
       // The badge is inside the hidden topbar while the home cover is up, so on those

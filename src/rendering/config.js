@@ -5,7 +5,7 @@
 // response and the light rig are no longer typed in here — they are read from the art
 // recipe, which is the file Luna edits. What is left below is the SHAPE of the skin
 // (which knob exists, what it means); the VALUES come from floatingWorld.js.
-import { floatingWorldGeometry, floatingWorldLighting, floatingWorldMaterials, floatingWorldPalette } from './floatingWorld.js'
+import { floatingWorldGeometry, floatingWorldLighting, floatingWorldMaterials, floatingWorldMotion, floatingWorldPalette, floatingWorldShadow } from './floatingWorld.js'
 
 export const RENDER_PALETTE = Object.freeze({
   background: 0xdcefff,
@@ -98,6 +98,11 @@ export const BOARD_STYLE = Object.freeze({
   paintEnvMapIntensity: floatingWorldMaterials.paint.envMapIntensity,
   paintSpecularIntensity: floatingWorldMaterials.paint.specularIntensity,
   surfaceAOIntensity: 0,
+  // How far the board itself drifts up and down while idle (handoff §8: .02 of a cell, pitch=1,
+  // so .02 world units). R2 does not move the board yet; the number is here because the GROUND
+  // has to be placed below the board's WORST pose, and the worst pose includes this. R5 is what
+  // makes it visible.
+  idleFloatAmplitude: floatingWorldMotion.board.amplitudeCell,
   // v0.13.0: the old crown/roughness notes below described a cached normal map and a
   // roughness texture that the floating-world skin does not build (§4.2). They are kept
   // only for the rollback story — with `paintNormalScale`/`woodNormalScale` at 0 and no
@@ -270,14 +275,40 @@ export const GEM_STYLE = Object.freeze({
 export const SHADOW_STYLE = Object.freeze({
   mapSize: 1024,
   lowPowerMapSize: 512,
-  // The pedestal is DOM art: a transparent receiver overlays only its shadow.
-  projectedOpacity: 0.18,
+  // ---- v0.13.0 「浮空积木世界」 (handoff §5.2) --------------------------------------------
+  //
+  // The board FLOATS: there is no pedestal and no platform, and the ground it is separated
+  // from is a fixed world plane, not a quad dragged along under the cube. `floorY` is that
+  // plane, and it is a SAFETY BOUND rather than a taste number:
+  //
+  //   any pose of the cube fits inside a sphere of radius sqrt(3) × 2.475 ≈ 4.287
+  //   (2.475 = half - cell/2 + blockHalf, the outermost block faces), plus the 0.02-cell
+  //   idle bob and a 0.25 margin → −(4.287 + 0.02 + 0.25) = −4.557.
+  //
+  // The recipe takes −4.8 instead of squeezing to −4.557, because the plane is only invisible
+  // until the cube turns 45° mid-snap and a midpoint of a turning edge must not dip through
+  // it. Typing −2.475 (the resting face) would put the ground through the cube on every turn.
+  floorY: floatingWorldShadow.floorY,
+  // High tier: one 1024 PCFSoft map devoted to the board, with the receiver darkening the
+  // ground where it lands. Medium/Low: a procedural soft ellipse, and NO hard dark ring
+  // hugging the cube's underside — the "浓黑 AO 圈" the handoff rules out by name.
+  projectedOpacity: floatingWorldShadow.receiverOpacity,
+  blobOpacity: floatingWorldShadow.blobOpacity,
+  // Both quads are FIXED in world space (handoff §5.2: 地面不随 cubeGroup bob 上下移动) and
+  // sized from the key light, so these are only the fallback rectangle and the blob's own
+  // diameter; gameScene fits the live numbers.
+  receiverSize: 13,
+  blobSize: 7.4,
+  textureSize: 128,
+  lowPowerSSAO: false, // baked surface AO + the blob replace two scene passes
+  // ---- legacy grounding routes (diagnostic only since v0.13.0) ---------------------------
+  // `art` = the painted `pedestal.webp` + its contact decal, `platform` = the G1 slab. The
+  // SHIPPED route is `none`; the two older ones survive so `npm run probe:grounding` can
+  // still replay the comparison it was written for. They are no longer a shipped look.
   contactOpacity: 0.24,
   contactSize: 6.0,
-  receiverSize: 6.3,
+  legacyReceiverSize: 6.3,
   floorOffset: 0.025,
-  textureSize: 128,
-  lowPowerSSAO: false, // baked surface AO + contact decal replace two scene passes
 })
 
 // G1 diagnostic prototype (docs/Technical/MATERIAL_GROUNDING_REWORK_HANDOFF.md §5 G1b).
@@ -298,8 +329,13 @@ export const SHADOW_STYLE = Object.freeze({
 // prototype is fitted from that same projected silhouette), and the top surface sits on the
 // resting cube's own bottom edge so nothing about the camera or the board has to move.
 export const GROUNDING_STYLE = Object.freeze({
-  // The shipped build keeps the painted pedestal until G1 rules; flipping this only changes
-  // which support a page boots with (the probe sets it at runtime, per capture).
+  // v0.13.0: the SHIPPED route is `none` — no DOM pedestal, no slab, just the fixed ground
+  // plane and its projection (handoff §5.2 「主棋盘没有承托底座」). The `art` / `platform`
+  // routes below are now DIAGNOSTIC ONLY: `npm run probe:grounding` replays the G1 comparison
+  // by selecting them at runtime, and nothing a player sees boots into either one. The
+  // "改善与底座接触" question G1 was asked is closed by the direction change, not answered.
+  shippedRoute: 'none',
+  // The prototype only. `platformEnabled` is read by the probe, not by the shipping route.
   platformEnabled: false,
   // Multiplier on the projected pedestal width the art fit already produces. 1 = the
   // prototype is exactly as wide on screen as `pedestal.webp` is drawn.
