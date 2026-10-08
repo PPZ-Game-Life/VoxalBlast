@@ -274,7 +274,21 @@ R3 的投影嵌入断言与新的 R4 实景断言（layer 2 独占、sky 就绪�
 
 产物：`artifacts/fw/c3-motion-1280.png` / `c3-motion-1280-t+8s.png`。
 
-**尚未交**：拖拽/暂停期间冻结、恢复不跳动的片段（§7.2 第二条）；`prefers-reduced-motion` 下的静止。
+### 10.1 `prefers-reduced-motion` 静止（同一手法，同视口，同 8s 间隔）
+
+用 CDP `Emulation.setEmulatedMedia` 把 `prefers-reduced-motion` 置为 `reduce` 后重拍同一组对照：
+
+| 区域 | 变化像素占比 | 最大差值 |
+| --- | --- | --- |
+| 全画面 | **0.00 %** | **0** |
+| 天空带（云） | 0.00 % | 0 |
+| 左侧带（建筑群） | 0.00 % | 0 |
+| 主盘中心 | 0.00 % | 0 |
+
+`world.reducedMotion === true`，maxDelta 为 0 而不是"很小"——环境位移与主盘浮动的冻结都真的生效，
+不是靠差分阈值掩盖。产物：`artifacts/fw/c3-reduced-1280.png` / `-t+8s.png`。
+
+**尚未交**：拖拽/暂停期间冻结、恢复不跳动的片段（§7.2 第二条）。
 
 ---
 
