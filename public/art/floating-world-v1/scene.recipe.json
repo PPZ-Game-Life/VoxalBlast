@@ -26,10 +26,10 @@
     "shared": { "opacity": 1, "transparent": false, "transmission": 0, "scatter": 0, "internalReflection": 0, "coreAbsorption": 0, "woodGrainEnabled": false }
   },
   "lighting": {
-    "key": { "color": "#FFF1DC", "intensity": 1.8, "position": [-3.5, 7, 9] },
-    "hemisphere": { "sky": "#DCF1FF", "ground": "#E6D3AB", "intensity": 1.0 },
-    "fill": { "color": "#D8EDFF", "intensity": 0.4, "position": [5, 2, -4] },
-    "rim": { "color": "#FFF2D9", "intensity": 0.2, "position": [-4, 4, -5] },
+    "key": { "color": "#FFF4E4", "intensity": 2.7, "position": [-3.5, 7, 9] },
+    "hemisphere": { "sky": "#DCF1FF", "ground": "#EADCC0", "intensity": 1.5 },
+    "fill": { "color": "#D8EDFF", "intensity": 0.57, "position": [5, 2, -4] },
+    "rim": { "color": "#FFF2D9", "intensity": 0.28, "position": [-4, 4, -5] },
     "environment": { "intensity": 0.3, "reflectionGlintIntensity": 0, "reflectionCardIntensity": 0.6, "reflectionKeyIntensity": 1.5, "reflectionRimIntensity": 0.5 },
     "exposure": 1.0,
     "shadow": { "mapSize": 1024, "extent": 4.8, "bias": -0.00015, "normalBias": 0.012, "floorY": -4.8, "receiverOpacity": 0.18, "blobOpacity": 0.14 }
@@ -91,7 +91,7 @@
       "widthFactor": 0.78, "heightFactor": 0.11, "offsetFactor": 0.15, "opacity": 0.2, "lift": 0.02
     },
     "bands": { "near": 0.92, "mid": 1.02, "far": 1.26, "clouds": 2.4 },
-    "clouds": { "opacity": 0.92, "shapes": ["cloud-a.png", "cloud-b.png", "cloud-c.png"] },
+    "clouds": { "opacity": 0.92, "aspect": 2.667, "shapes": ["cloud-a.png", "cloud-b.png", "cloud-c.png"] },
     "walls": [
       { "id": "wall-left", "anchor": [-1.08, 0.04], "screenHeightFraction": 0.17, "yawDegrees": 10, "distanceFactor": 1.26, "sizeCells": [4, 3, 2], "color": "blue", "topColor": "cream" },
       { "id": "wall-right", "anchor": [1.1, -0.04], "screenHeightFraction": 0.15, "yawDegrees": -14, "distanceFactor": 1.26, "sizeCells": [4, 3, 2], "color": "cream", "topColor": "sage" }

@@ -405,7 +405,11 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       transparent: true,
       depthWrite: false,
-      opacity: world.clouds.opacity,
+      // Starts invisible and is faded in by its own texture's arrival. A SpriteMaterial with a
+      // null map renders as a SOLID WHITE QUAD, so a cloud whose texture has not arrived — or
+      // whose file 404s — would sit in the sky as a hard-edged white rectangle. That is exactly
+      // what six seeds fed by three shapes produced: only the first three were ever given a map.
+      opacity: 0,
     }))
     sprite.layers.set(SCENERY_LAYER)
     sprite.name = `floating-world-cloud-${index}`
@@ -414,21 +418,24 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     return { sprite, seed }
   })
   const loader = new THREE.TextureLoader()
-  world.clouds.shapes.forEach((name, index) => {
-    const target = cloudSpecs[index % cloudSpecs.length]
+  world.clouds.shapes.forEach((name, shapeIndex) => {
+    // Every seed gets a shape, by round-robin rather than by index: six seeds and three shapes
+    // means each shape is used twice, and an `index % seeds` mapping would hand the first three
+    // seeds the three shapes and leave the rest blank.
+    const targets = cloudSpecs.filter((_, index) => index % world.clouds.shapes.length === shapeIndex)
     loader.load(
       `${import.meta.env.BASE_URL}art/floating-world-v1/clouds/${name}`,
       (texture) => {
         prepareTexture(texture, 2)
-        cloudTextures[index] = texture
-        // A cloud sprite takes the shape of the seed in the same slot, so all three delivered
-        // shapes are used and a missing texture leaves one invisible cloud rather than shifting
-        // every other cloud to the wrong place.
-        target.sprite.material.map = texture
-        target.sprite.material.needsUpdate = true
+        cloudTextures[shapeIndex] = texture
+        for (const { sprite } of targets) {
+          sprite.material.map = texture
+          sprite.material.opacity = world.clouds.opacity
+          sprite.material.needsUpdate = true
+        }
       },
       undefined,
-      () => { cloudTextures[index] = null },
+      () => { cloudTextures[shapeIndex] = null },
     )
   })
 
@@ -575,13 +582,19 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // Clouds are placed on their own band; the layout pass only fixes where each one STARTS, and
     // the drift in `update()` moves it from there.
     const cloudDistance = frameDistance() * world.bands.clouds
+    // The delivered cloud PNGs are 512×192 — 2.67:1, not square. A sprite scaled by one number
+    // stretches them vertically into tall white slabs with hard-looking edges, which is what a
+    // "cloud" stops being the moment it is 2.67× too tall. The aspect is declared in the recipe
+    // so the shape is right on the first frame, before any texture has finished loading.
+    const cloudAspect = world.clouds.aspect
     for (const { sprite, seed } of cloudSpecs) {
       const [ndcX, ndcY, heightFraction] = seed
       ndcPoint(camera, _point, ndcX, ndcY, cloudDistance)
       sprite.position.copy(_point)
       const size = heightFraction * visibleHeightAt(camera, cloudDistance)
-      sprite.scale.set(size, size, 1)
-      sprite.userData.band = { distance: cloudDistance, size, worldPerPx: size / Math.max(1, getCanvasRect?.()?.height ?? 1) }
+      sprite.scale.set(size * cloudAspect, size, 1)
+      const worldPerPx = size / Math.max(1, getCanvasRect?.()?.height ?? 1)
+      sprite.userData.band = { distance: cloudDistance, size, worldPerPx, halfSpan: (size * cloudAspect) / 2 }
     }
     appliedLayout = {
       distance: frameDistance(),
@@ -623,7 +636,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       sprite.position.x += speed * rect.width * band.worldPerPx * delta
       // Wrap once the sprite is fully outside the frame: §7.2 forbids an in-frame jump, so it is
       // reset past the far edge rather than snapped back to a fixed seed.
-      const halfSpan = rect.width * band.worldPerPx * 0.5 + band.size * 0.5
+      const halfSpan = rect.width * band.worldPerPx * 0.5 + band.halfSpan
       if (sprite.position.x > halfSpan) sprite.position.x -= halfSpan * 2
     }
     // Building bob: the recipe's amplitude is in the building's OWN cells, so it is scaled by
