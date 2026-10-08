@@ -551,6 +551,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
 
   let dodged = 0
   let blockedBy = []
+  let decorations = []
   let keepOutDebug = null
   let appliedBoardBox = null
 
@@ -630,6 +631,12 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     let hidden = 0
     let moved = 0
     const blocked = []
+    // What each decoration ended up as: visible or not, where its box is, and how far the dodge
+    // moved it. `culled` says how many are gone; this says WHICH, WHERE, and whether the ones that
+    // survived are actually inside the picture. Added because 「近层到底在不在屏上」 could not be
+    // answered by counting pixels — the plaza's cream and the sky's blue sit in the same buckets
+    // as the near layer's own colours.
+    const decor = []
     for (const { cluster, base } of all) {
       // Every dodge starts from the AUTHORED position, never from the previous frame's, so a
       // layout re-solve cannot ratchet a decoration progressively across the screen.
@@ -661,6 +668,15 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       const covered = rects.reduce((worst, keep) => (spanning(keep) ? Math.max(worst, overlapArea(box, keep)) : worst), 0)
       const area = areaOf(box)
       const offFrame = box.right <= rect.left || box.left >= rect.right
+      decor.push({
+        id: cluster.mesh.name.replace('floating-world-', ''),
+        visible: !offFrame && narrowHits().length === 0 && (area <= 0 || covered / area <= SPANNING_COVER_LIMIT),
+        // How many CSS px of it are inside the frame — a piece "visible" but 3px wide on the very
+        // edge is still not a near layer.
+        insidePx: Math.max(0, Math.min(box.right, rect.right) - Math.max(box.left, rect.left)),
+        box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
+        movedPx: Math.round(box.left - authoredLeft),
+      })
       cluster.mesh.visible = !offFrame && narrowHits().length === 0 && (area <= 0 || covered / area <= SPANNING_COVER_LIMIT)
       if (!cluster.mesh.visible) {
         hidden += 1
@@ -685,6 +701,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     culled = hidden
     dodged = moved
     blockedBy = blocked
+    decorations = decor
     keepOutDebug = {
       canvas: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.right), Math.round(rect.bottom)],
       rects: rects.map((keep) => ({
@@ -926,6 +943,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       // 上一轮整层被剔光时，两个数里只有这一个会变。
       dodged,
       blockedBy,
+      decor: decorations,
       keepOutDebug,
       layout: appliedLayout,
       reducedMotion: reducedMotion.matches,
