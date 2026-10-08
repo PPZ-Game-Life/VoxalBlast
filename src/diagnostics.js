@@ -351,8 +351,13 @@ export function createDiagnostics({
         // occlusion term. `main.js` has owned both callbacks all along; they were simply never
         // forwarded here, and this module whitelists handles one by one, so the page had no way to
         // run that A/B at all.
-        ssao: (on) => dev.ssao(on),
-        occlusion: (value) => dev.occlusion(value),
+        //
+        // They live under `dev.grounding`, NOT at the top of the bag — the first version of this
+        // forwarding called `dev.ssao` and threw, which is the same trap twice: the whitelist is
+        // by hand, so a forward is only correct if its PATH is copied from the owner, not guessed
+        // from the name.
+        ssao: (on) => dev.grounding.ssao(on),
+        occlusion: (value) => dev.grounding.occlusion(value),
         endGame: () => dev.endGame(),
         openLeaderboard: () => dev.openLeaderboard(),
         records: () => recordStore.all(),
