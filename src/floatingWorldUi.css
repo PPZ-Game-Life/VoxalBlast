@@ -316,3 +316,94 @@ html:root { --plaque-board-top: 0.025; }
 #app #settings-button { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-settings.svg'); }
 #app #sound-button[aria-pressed='false'] { --fw-hud-glyph: url('/art/floating-world-v1/ui/icon-sound-off.svg'); }
 #app #sound-button[aria-pressed='false']::after { content: none; }
+
+/* ---- Settings / help panel: the old gold-edged plates become cream + navy --------------------
+ *
+ * `reference.css` paints this panel with FOUR `ui-redesign` PNGs — `settings-modal.png` (the card,
+ * a 776×1148 nine-slice), `settings-row.png` (every row), `close-button.png` and the two toggle
+ * states — plus one icon PNG per row. The handoff's §11 replacement table retires all of them: the
+ * panel becomes 「奶油 + 深蓝 CSS panel」, and the six row glyphs become this pack's SVG
+ * (`sound-on/off`, `haptics`, `turn`, `book`, `home`, `refresh`). Layout, ids, hit areas and the
+ * accessible names are untouched — this is paint.
+ *
+ * The card KEEPS its old border width on purpose. That `1.2em` border is layout, not paint: the
+ * content box is inset by it, so shrinking it to the 3px keyline would widen every row by ~30px and
+ * re-flow the panel. Instead the border goes transparent and the frame is drawn inside it with an
+ * inset ring — which is also how the pack builds `record-panel.svg`: cream field, navy keyline, and
+ * the `#DDA965` band along the bottom edge.
+ */
+#app .settings-card {
+  background: #FFF1CE;
+  border-color: transparent;
+  border-image: none;
+  border-radius: 26px;
+  /* Order matters: the gold band first and the keyline over it, so the outline stays unbroken. */
+  box-shadow: inset 0 -9px 0 #DDA965, inset 0 0 0 3px #20334C, 0 18px 46px #20334C33;
+  color: #20334C;
+}
+#app .settings-header h1 { color: #20334C; text-shadow: none; }
+
+#app .setting-row, #app .setting-action {
+  background: #FFF8E6;
+  border: 2px solid #20334C;
+  border-image: none;
+  border-radius: 15px;
+  box-shadow: none;
+  color: #20334C;
+}
+#app .setting-row strong, #app .setting-action strong { color: #20334C; text-shadow: none; }
+#app .setting-row small { color: #20334C; opacity: .62; }
+
+/* Restart keeps its danger meaning without inventing a second frame: the pack ships no red plate,
+   so it wears the same cream row with the accent carried by the type. */
+#app #restart-setting { background: #FFE4C6; }
+#app #restart-setting strong { color: #B23A22; text-shadow: none; }
+
+/* The six row glyphs. `sound` is the only one that changes with state, and it reads the row's
+   `enabled` class — the same class the switch is painted from, so glyph and switch cannot disagree
+   about whether sound is on. */
+#app #sound-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-sound-on.svg'); }
+#app #sound-setting:not(.enabled) .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-sound-off.svg'); }
+#app #haptics-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-haptics.svg'); }
+#app #drag-turn-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-turn.svg'); }
+#app #controls-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-book.svg'); }
+#app #home-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-home.svg'); }
+#app #restart-setting .setting-icon { background-image: url('/art/floating-world-v1/ui/icon-refresh.svg'); }
+
+/* The toggle is CSS from here on (handoff §11 「toggle-on/off 旧图 → CSS 圆角轨道/拇指」). The `<i>`
+   thumb is already in the markup — it was hidden only because the PNG carried its own knob. */
+#app #settings-modal .setting-switch {
+  background: #E4E9EE;
+  background-image: none;
+  border: 3px solid #20334C;
+  border-radius: 999px;
+}
+#app #settings-modal .setting-switch i {
+  display: block;
+  position: absolute;
+  top: 50%; left: 2px;
+  width: 22px; height: 22px;
+  border: 2px solid #20334C;
+  border-radius: 50%;
+  background: #FFF8E6;
+  transform: translateY(-50%);
+}
+#app #settings-modal .setting-row.enabled .setting-switch { background: #FFD56A; }
+#app #settings-modal .setting-row.enabled .setting-switch i { left: auto; right: 2px; }
+
+/* The language name and the keyboard legend share one small pill. */
+#app .setting-hint {
+  background: #FFF8E6;
+  border: 2px solid #20334C;
+  border-radius: 999px;
+  color: #20334C;
+}
+
+/* Every dialog's close button: the pack's round board plus its navy X, on the 44×44 box the old
+   rule already sized (`close-button.png` carried both the plate and the X). */
+#app #settings-close, #app #leaderboard-close, #app #controls-close {
+  background:
+    url('/art/floating-world-v1/ui/icon-close.svg') center / 74% 74% no-repeat,
+    url('/art/floating-world-v1/ui/icon-button.svg') center / contain no-repeat;
+  filter: drop-shadow(0 2px 3px #20334C33);
+}
