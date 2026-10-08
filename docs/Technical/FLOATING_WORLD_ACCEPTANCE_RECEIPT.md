@@ -170,7 +170,16 @@ Luna/制作人视觉验收：待确认 / 通过 / 退回及原因
 5. ~~**§C3 的「恢复不跳动」**未验~~ **已验（本会话，`npm run evidence:motion`）**：松手后第一帧与保持值差 **0.000px**、逐帧最大步长 **0.080px**（上限 0.5px）、3.2s 内位移 0.512px；同一条链路上还补了「冻结是保持而不是归零」的正面证据（保持值离开中立位 **1.197px** = 振幅的 90%，且与按下前最后一帧只差 0.061px）。取数与两个测量陷阱见 [C3 动态证据](FLOATING_WORLD_C3_ANIMATION_EVIDENCE.md)。
 6. ~~**主页无存档态**截图未单独拍~~ **已拍**：`artifacts/fw/home-norun-390.png`（390×844，无续玩时主 CTA 变黄色
    **New game**、Continue 与进度行整行消失）。§1 那张表早就写了两种状态都已拍，本节这行忘了同步 —— 本轮更正。
-7. **`#scene-wrap` 的 `overflow` 规范依赖**（R3 §4.3）仍未复核。
+7. ~~**`#scene-wrap` 的 `overflow` 规范依赖**（R3 §4.3）仍未复核~~ **已复核（本轮）**，结论是**这条已经不成立**：
+   R5 把 `#world-canvas` 移到了 `#app` 上，实跑 DOM 链是 `canvas#world-canvas → div#app → body → html`，
+   **`#scene-wrap` 根本不在画布的祖先链里**，所以 R3 §4.3 那句"仍带 `overflow:hidden`"对画布已无意义。
+   真正的依赖转移到了 **`#app`（`overflow: hidden`）**：`position: fixed` 的元素只在**祖先建立了包含块**时
+   才会被该祖先的 `overflow` 裁剪，而逐祖先查 `transform / filter / backdrop-filter / perspective /
+   will-change / contain / content-visibility`，**四个祖先全部为空**（`anyAncestorCreatesContainingBlock: false`），
+   包含块就是视口，因此 `#app` 的 `overflow:hidden` **裁剪不到画布**。画布实测就是整视口
+   （756×488 的 756×488），比 `#scene-wrap` 的盒子往下多出 157px。
+   **残留**：这是规范级论证 + 本机引擎实测；微信/QQ 内嵌壳若在外层套一个带 `transform` 的容器，
+   结论就会翻转，而那属于 §5 第 2 条的"未测环境"，仍在未项里。
 8. ~~`reference.css` / `toy.css` 里旧皮肤美术声明仍靠特异性被压过~~ **已清（本轮，§12）**：27 处美术 URL 声明、
    2 条死规则、1 个零引用模块全部删除，并用级联审计证明删除无害（342 元素 × 42 属性 0 差异）。
    仍未做的只有两件：被覆盖的**非 URL** 声明（`text-shadow` 等 12 处）未删未量化，以及 `<img class="garden-pedestal">`
