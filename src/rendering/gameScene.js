@@ -34,6 +34,7 @@ import {
 import { skipComposerDepthBlit } from './threeCompat.js'
 import { BOARD_STYLE as style, GROUNDING_STYLE, LIGHTING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
 import { createBoardShadows } from './boardShadows.js'
+import { floatingWorldTierFor } from './floatingWorld.js'
 
 // `quality` arrives from the caller rather than being read here, so the tier is still
 // resolved at exactly the point in main's evaluation it always was.
@@ -296,7 +297,16 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
 
   // ---- Renderer / post ----------------------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatioMax))
+  // v0.13.1 R7 (handoff §7.3 / correction §7.3): the drawing buffer is capped by the STRICTER of
+  // the project's own policy (`quality.pixelRatioMax`, 2 / 1.35) and the art pack's per-tier
+  // budget (`recipe.quality.*.dprCap`, 1.75 / 1.5 / 1). Before this, the recipe's `dprCap` was
+  // read into `rendering().world.tierSpec` and never enforced — the report named a cap the
+  // renderer did not honour, which is exactly the "handle that silently does nothing" failure.
+  // Both specs are stated twice (art handoff §7.3 and correction §7.3), so the art budget wins
+  // wherever it is lower. The tier is resolved ONCE per load (main passes `quality` in), so there
+  // is no rotation path that could leave a stale cap behind — `resize()` only re-sizes.
+  const dprCap = Math.min(quality.pixelRatioMax, floatingWorldTierFor(quality).dprCap)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   // Composer renders linear HDR offscreen; tone-map exactly once in the final pass.
   renderer.toneMapping = THREE.NoToneMapping

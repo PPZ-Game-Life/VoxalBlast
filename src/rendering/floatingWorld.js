@@ -55,3 +55,14 @@ export const floatingWorldLighting = Object.freeze({
 export const floatingWorldShadow = recipe.lighting.shadow
 export const floatingWorldMotion = recipe.motion
 export const floatingWorldQuality = recipe.quality
+
+// v0.13.1 R7: the ONE place the project's two-tier quality (`getRenderQuality().lowPower`) is
+// mapped onto the recipe's three named tiers, so the renderer's DPR cap and the scenery's
+// decoration budget can never disagree about which tier is running. The recipe names three
+// (`high`/`medium`/`low`) and the project ships two; picking the nearest is deliberate, and
+// `medium` is unreachable on purpose until §7.3's three-tier split is either applied or waived
+// (KNOWN_GAPS §1). Returns a frozen recipe object, not a copy: callers must not mutate it.
+export function floatingWorldTierFor(quality) {
+  return quality?.lowPower ? recipe.quality.low : recipe.quality.high
+}
+
