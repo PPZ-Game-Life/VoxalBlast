@@ -6,6 +6,12 @@
     <meta name="theme-color" content="#69a5ff" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%23e2af78'/%3E%3Cpath d='M4 16h24M16 4v24' stroke='%23765033' stroke-width='2'/%3E%3C/svg%3E" />
     <title>VoxalBlast</title>
+    <!-- v0.13.0 R6: the 「浮空积木世界」 UI skin. Linked from here rather than imported by a
+         module, and its selectors carry an `#app` prefix, because the old skin's UI art is
+         `background-image` in `reference.css` — which the module graph injects into <head>
+         AFTER this link, so source order cannot win and cascade layers cannot either
+         (unlayered rules beat every layer). See the file header for the full reasoning. -->
+    <link rel="stylesheet" href="/src/floatingWorldUi.css" />
     <!-- Boot curtain's FIRST-PAINT FLOOR (v0.11.2). Two rules, inlined on purpose: the module
          graph and the skin stylesheet both arrive after the HTML, and an unstyled #boot-screen
          would paint as a bare "Loading…" line at the top of the page — the exact 穿帮 this

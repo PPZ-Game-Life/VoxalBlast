@@ -1,0 +1,81 @@
+/* 「浮空积木世界」UI 皮肤（v0.13.0, R6）。
+ *
+ * WHY THIS IS A SEPARATE FILE, AND WHY ITS SELECTORS START WITH `#app`:
+ *
+ * The old skin's UI art is not markup — it is `background-image` on `reference.css` rules
+ * (`.item-button[data-item='refresh'] { --button-art: url('/art/reference/refresh.png') }` and
+ * friends), which is exactly why the handoff's replacement table is a CSS table. Swapping it
+ * means overriding those rules.
+ *
+ * Two facts decide how:
+ *   1. `reference.css` is loaded by the module graph (`import './reference.css'`), so it lands
+ *      in <head> AFTER this file's <link>. Source order cannot win here.
+ *   2. Cascade layers would not help either: the old rules are UNLAYERED, and unlayered rules
+ *      beat every layer.
+ *
+ * So this file wins on SPECIFICITY instead: `#app .item-button .item-icon` (1,2,0) against
+ * `.item-button .item-icon` (0,2,0). It is a deliberate, single-technique override — one `#app`
+ * prefix added to the exact selectors being replaced — not a scattering of `!important` that
+ * the next person has to fight.
+ *
+ * The second reason this file exists at all: the skin has to be reviewable as ONE artefact.
+ * "Which UI is on screen" should be answerable by reading one stylesheet rather than by
+ * diffing a 500-line file that also owns layout, the board band and three media queries.
+ */
+
+/* ---- The four tool tiles (handoff §2.2/§2.3, replacement table §11) ---------------------
+ *
+ * The pack draws a button as TWO files: `icon-button.svg` (the cream rounded-square board, the
+ * same for every tool) and `icon-<tool>.svg` (the glyph, transparent, only the drawing). That
+ * split is what makes one board serve seven buttons and what lets the glyph keep its own
+ * margin — `icon-bomb`'s sparks deliberately run close to the edge, so the glyph may NOT be
+ * auto-cropped.
+ *
+ * Two background layers, board last so it paints under the glyph: CSS paints the FIRST layer on
+ * top. Both are `contain`-free percentage sizes because the board must fill the tile exactly
+ * while the glyph sits inside it.
+ *
+ * The old skin's circle goes away with `border-radius: 0` — the board SVG carries the rounded
+ * silhouette now, and a circle drawn around a rounded-square board is the "换 glyph 留旧底"
+ * failure the handoff names.
+ */
+#app .item-button,
+#app .topbar .icon-button { border-radius: 0; background: none; }
+
+#app .item-button .item-icon {
+  background-image:
+    var(--fw-tool-glyph),
+    url('/art/floating-world-v1/ui/icon-button.svg');
+  /* (12,6) of 128 with a 104 icon: the pack puts the tile's visual centre at (64,58), six
+     units above the geometric centre, so the glyph rides a little high on the board. */
+  background-position: center calc(50% - 2px), center;
+  background-size: 81.25% 81.25%, 100% 100%;
+  background-repeat: no-repeat;
+  width: var(--hud-button);
+  height: var(--hud-button);
+}
+
+/* The glyphs. `refresh` is the batch reroll — NOT the single-arc undo (handoff §2.2). */
+#app .item-button[data-item='refresh'] { --fw-tool-glyph: url('/art/floating-world-v1/ui/icon-refresh.svg'); }
+#app .item-button[data-item='hammer'] { --fw-tool-glyph: url('/art/floating-world-v1/ui/icon-hammer.svg'); }
+#app .item-button[data-item='rocket'] { --fw-tool-glyph: url('/art/floating-world-v1/ui/icon-rocket.svg'); }
+#app .item-button[data-item='bomb'] { --fw-tool-glyph: url('/art/floating-world-v1/ui/icon-bomb.svg'); }
+
+/* The armed state has to stay readable against a cream board: the old skin drew a gold halo
+   around a dark circular PNG. On the new board the halo is dropped (it reads as a second
+   outline) and the ACTIVE cue is a warm ring OUTSIDE the tile plus the existing `.active`
+   class, which the accessibility tree already carries. */
+#app .item-button.active .item-icon { filter: none; }
+#app .item-button.active::before {
+  content: '';
+  position: absolute;
+  inset: -3px -3px calc(var(--item-caption) - 3px);
+  border: 3px solid #ffd56a;
+  border-radius: 22%;
+  pointer-events: none;
+}
+
+/* Greyed / exhausted keep their semantics and only lose saturation — never a recolour that
+   could be confused with the illegal-drop grey (handoff §3: 语义分离). */
+#app .item-button.empty .item-icon { filter: grayscale(.85) brightness(1.06); }
+#app .item-button.disabled .item-icon { filter: grayscale(.9); }
