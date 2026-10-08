@@ -407,3 +407,90 @@ html:root { --plaque-board-top: 0.025; }
     url('/art/floating-world-v1/ui/icon-button.svg') center / contain no-repeat;
   filter: drop-shadow(0 2px 3px #20334C33);
 }
+
+/* ---- Guest / Game-over / Leaderboard cards: same cream + navy frame ---------------------------
+ *
+ * These three share `.modal-content`, which `toy.css` paints as a WOODEN board — a cream-to-sand
+ * gradient over a generated wood-grain texture, a white inner border, an 8px brown foot and a hard
+ * brown drop shadow. That is the skin the handoff's §11 retires ("旧金边底板 → 奶油 + 深蓝 CSS
+ * panel"), and it is the only place the wood grain was still visible after the HUD and the settings
+ * panel were reskinned. The frame here is constructed exactly like the settings card's: cream field,
+ * 3px navy keyline, `#DDA965` band along the bottom inside it.
+ *
+ * The leaderboard's own rows are NOT re-hued: `styles.css` already paints them in a navy family
+ * (`#203c7b` / `#55719b`) with gold/silver/bronze gradients for the top three, which reads as
+ * medals on cream. Only the family's two navies are pulled onto the pack's `ink` so the panel and
+ * the HUD are literally the same colour, and the "sample data" chip stops being orange.
+ */
+#app .modal-content {
+  background: #FFF1CE;
+  background-image: none;
+  border: 3px solid #20334C;
+  border-bottom-width: 3px;
+  border-radius: 26px;
+  box-shadow: inset 0 -9px 0 #DDA965, 0 18px 46px #20334C33;
+  color: #20334C;
+}
+#app .modal-content h1 { color: #20334C; }
+#app .modal-content .eyebrow, #app .modal-content .final-best { color: #20334C; opacity: .6; }
+
+#app .lb-tabs { background: #F0E3C6; }
+#app .lb-tab { color: #20334C; opacity: .6; }
+#app .lb-tab[aria-selected='true'] { color: #20334C; background: #FFF8E6; box-shadow: inset 0 0 0 2px #20334C; opacity: 1; }
+#app .lb-row, #app .lb-list li { color: #20334C; }
+#app .lb-row:nth-child(odd), #app .lb-list li:nth-child(odd) { background: rgba(32, 51, 76, .05); }
+/* The medal tints have to be re-stated here, not left to `styles.css`: that file keys them off
+   `.lb-row.top-N`, and the odd-row rule above carries an `#app` id, so it would otherwise win for
+   ranks 1 and 3 and paint the podium flat. Written once, in the pack's own palette. */
+#app .lb-row.top-1 { background: linear-gradient(90deg, #F1D17A8C, #F1D17A00); }
+#app .lb-row.top-2 { background: linear-gradient(90deg, #E7D6AECC, #E7D6AE00); }
+#app .lb-row.top-3 { background: linear-gradient(90deg, #E8A87C6E, #E8A87C00); }
+#app .lb-rank { color: #20334C; opacity: .55; }
+#app .lb-row.top .lb-rank { color: #20334C; opacity: 1; }
+#app .lb-name, #app .lb-score, #app .lb-list strong, #app .lb-tier-copy strong { color: #20334C; }
+#app .lb-season-name, #app .lb-section h2, #app .lb-bar-row,
+#app .lb-tier-copy small, #app .lb-list span small { color: #20334C; opacity: .62; }
+#app .lb-note, #app .lb-empty { color: #20334C; opacity: .55; }
+#app .lb-sample-chip { color: #20334C; background: #F1D17A; }
+#app .lb-tier { background: #FBF0CF; }
+#app .lb-tier.uncalibrated { background: rgba(32, 51, 76, .07); }
+/* The sticky "your rank" footer. Ranked keeps its gold gradient (it reads as a highlight on cream);
+   unranked was a blue-grey `#e9eff8` that belonged to no palette on screen any more. Its outline is
+   an inset ring rather than a border so the sticky row's height cannot change. */
+#app .lb-me { color: #20334C; }
+#app .lb-me.unranked { background: #FFF8E6; box-shadow: inset 0 0 0 2px #20334C, 0 -8px 14px #FFF1CEeb; }
+#app .lb-me-label { color: #20334C; opacity: .62; }
+#app .lb-me-rank, #app .lb-me-score { color: #20334C; }
+
+/* Game over. The two actions are the cover's pair in CSS form: gold primary, cream secondary, both
+   with the pack's keyline and gold lip — `button-primary.svg` is a 512×128 nine-slice whose 56u cap
+   cannot be drawn on a 44px-tall button without mangling the corner, so the small buttons state the
+   same construction rather than slicing a plate built for a 60px-tall one. */
+#app .game-over-best { color: #20334C; }
+#app .game-over-best.new-best { color: #C8912A; }
+#app .game-over-best.close { color: #B23A22; }
+/* The big run score reads `var(--navy)` — the v0.3 palette's blue, the last colour on this card that
+   was not the pack's ink. Same reason as `.lb-me` above: it is one token away from the HUD's navy
+   and it showed (measured: 0000 rendered `#203c7b` against a `#20334C` title). */
+#app .final-score { color: #20334C; }
+#app .final-score small { color: #20334C; opacity: .62; }
+#app .game-over-stats, #app .game-over-faces small { color: #20334C; opacity: .68; }
+#app .game-over-stats strong { color: #20334C; opacity: 1; }
+#app .game-over-empty { color: #20334C; opacity: .55; }
+#app .honor-badge { color: #20334C; background: rgba(32, 51, 76, .1); border-color: rgba(32, 51, 76, .1); }
+#app .restart-button {
+  background: #FFC94A;
+  border: 3px solid #20334C;
+  border-radius: 16px;
+  color: #20334C;
+  box-shadow: 0 4px 0 #DDA965;
+}
+#app .restart-button:hover, #app .restart-button:focus-visible { background: #FFD56A; }
+#app .ghost-button {
+  background: #FFF8E6;
+  border: 3px solid #20334C;
+  border-radius: 16px;
+  color: #20334C;
+  box-shadow: 0 4px 0 #DDA965;
+}
+#app .ghost-button:hover:not(.disabled) { background: #FFFDF6; }
