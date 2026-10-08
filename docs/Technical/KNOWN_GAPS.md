@@ -9,7 +9,11 @@
 >
 > 另有一条不算阻塞、但决定要不要做的：**低档装饰不减**意味着手机上的地景密度与桌面相同（见手机截图两侧积木的占比），这是 1 号决定的直接后果。
 
-> **主页仍未换皮肤（纠偏交接 §8 明确要求单独复核，本轮拍了图：不合格）。** 对局侧已经整套换完，但 `v0.13.0-desktop-home.png` 显示主页**只有 Logo 是新的**：皇冠 + 花叶 + 金棕厚边的纪录牌、金框主/次按钮全在，背景是一层纯色渐变，**看不到延续对局的积木世界**。§8 的要求是「新透明 Logo、**延续对局的积木世界**、独立皇冠纪录牌、黄色主 CTA、奶油次按钮、清楚的继续/新游戏/排行榜/设置层级」。成因有两处，两处都还没动：①`main.js` 帧循环在 `homeUi.isOpen()` 时**直接 return**，实景层状态在推进但一帧都不画——原交接 §9.4 已经给出了正确的帧序（`setGameplayVisualsVisible(!home)` + `updateAmbient(...)` + 照常 `render`，并注明 `effects.js` 的 fxGroup/particleRenderer 需要新增 `setVisible` 句柄）；②主页封面自己是**不透明**的渐变背景，即使画了也看不见。**没有物理手机读数。**
+> **主页：世界已接上，换图未做完（纠偏交接 §8）。** 记录已更新——本节原先写的两个成因**都已解决**（`e6cea34`）：帧循环不再在 `homeUi.isOpen()` 时 return（改成 §9.4 的「跳过玩法更新、照常渲染」，并新增 `effects.setVisible`），而真正让「画了也看不见」的原因**不是封面不透明**（封面本来就是带 alpha 的渐变），是**画布在 `.game-layout` 里**——主页靠给它加 `visibility: hidden` 做输入隔离，而 `visibility` 会继承，画布于是和棋盘一起被藏掉。画布现在挂在 `#app` 上、有自己的 id `#world-canvas`，棋盘改由自己的开关隐藏。**结果**：主页封面背后已经是同一片积木世界（蓝天/云/广场/两侧浮空积木），棋盘本身已隐藏。
+>
+> **仍未换的**：纪录牌与主/次按钮仍是旧金冠 + 花叶 + 金边（`home-record.png` / `play-triangle.png` / `plus-gold.png` / `nav-crown-small.png`）。几何契约已量好，避免下一轮重推：
+> - `ui/record-panel.svg`：480×240（**2:1**），外层 12 单位描边居中画在 `y=10` 的矩形上，美术首行是 **y=4**；**内场 x40-440 / y70-182**；**皇冠不在牌子里**，要单独放 `ui/icon-crown.svg`。当前 `.home-record` 是 `aspect-ratio: 481/415`（≈1.16），改成 2:1 会让牌子**矮约 118px**，因此必须与 logo / tagline / 三个按钮 / 次级行**一起重排**——至少两轮看图迭代。
+> - 按钮：主 CTA `ui/button-primary.svg`（512×128，**9-slice 源 inset 56**）、次按钮 `ui/button-secondary.svg`（同尺寸）、图标 `ui/icon-play.svg` / `icon-plus.svg` / `icon-trophy.svg` / `icon-settings.svg`。现有 `.home-primary-icon` 是 `1.1em` 的 PNG。
 >
 > **工作树状态（2026-10-08 11:20）**：R3 与 R4 的改动已按 R4 回执 §5 的**方案 C** 由先提交者一次落盘（`49d3f0e`，message 里分段署名），工作树**干净**。R4 侧若要继续改 `main.js` / `gameScene.js` / `diagnostics.js`，按方案 C 在自己的增量上 rebase 即可。已知未处理项：`import` 自 `public/` 的 Vite 警告（R3 文档 §4.2）、`#scene-wrap` 的 `overflow` 规范依赖（§4.3）、无物理手机/微信内嵌实测。
 
