@@ -230,3 +230,75 @@ icon-help / icon-settings` 的引用。
 - **彩块（paint）未校准**：默认开局盘面是空的，本轮只测了空格。§6.2 第 2 条「蓝与紫可辨、
   青色不脏、正面不能大片近黑」需要一盘带彩块的画面才能量。
 - **接缝/轮廓**（§6.2 第 3 条）本轮只做了目视：深蓝缝清楚、未出现浓黑橡胶隔条，但**没有 A/B**。
+
+---
+
+## 9. C4 多视口门禁（本轮实跑）
+
+`node tools/screenshot.mjs http://127.0.0.1:5173 artifacts/visual-r4-c4`：
+
+```text
+OK desktop-home / mobile-home / desktop-home-return
+OK desktop-board 1440×900   mobile-board 390×844   small-mobile-board 320×740
+OK landscape-board 844×390  widescreen-board 2048×900
+OK mobile-gameover / desktop-gameover
+OK desktop-settings / mobile-settings
+OK desktop-leaderboard / mobile-leaderboard / desktop-leaderboard-local / mobile-leaderboard-local
+16/16 OK，0 FAIL
+```
+
+五个规定视口（390×844 / 320×740 / 844×390 / 1440×900 / 2048×900）全覆盖，§9.2 要求的
+1280×720 短桌面由本会话单独补拍（`artifacts/fw/c2-cloudfix2-1280.png`）。这批同时跑过
+R3 的投影嵌入断言与新的 R4 实景断言（layer 2 独占、sky 就绪、plaza floorY、3/3/6 构图、
+云贴图 3/3、无第 5 个 WebGL 上下文）。
+
+**地平线的视口无关性**（§4.3「不是照抄像素稿」的可复算证据）：`requestedNdc 0.22` 在
+`390×844` 与 `1280×720` 两个朝向不同的视口上都解出 `edgeFromTop = 0.3900`——地平线不是被
+钉在世界坐标上，所以它不会随画幅漂移。
+
+---
+
+## 10. C3 环境动画证据：同一次会话内的 t0 / t+8s 对照
+
+两次独立启动浏览器会各自重开页面时钟，云的位置与经过时间无关地一致，**证明不了任何运动**。
+所以对照必须在同一个页面会话内拍。`1280×720`，两帧相隔 8000ms，逐像素差（阈值 8/255）：
+
+| 区域 | 变化像素占比 | 最大差值 | 说明 |
+| --- | --- | --- | --- |
+| 天空带（云） | **4.97 %** | 162 | §7.2「云真的移动」 |
+| 左侧带（建筑群） | **3.39 %** | 154 | §7.2「建筑轻浮动」 |
+| 主盘中心 | 2.25 % | 116 | 主盘 bob（R5 侧实装） |
+| 广场下半（**对照**） | **0.00 %** | 1 | §7.2「地面不随主盘浮动」——控制组，应静止 |
+
+控制组是这张表的关键：它证明差分测的是运动，不是抗锯齿或噪声。
+
+产物：`artifacts/fw/c3-motion-1280.png` / `c3-motion-1280-t+8s.png`。
+
+**尚未交**：拖拽/暂停期间冻结、恢复不跳动的片段（§7.2 第二条）；`prefers-reduced-motion` 下的静止。
+
+---
+
+## 11. C3 主页：世界没有延续，根因已定位到两行
+
+§8 要求「主页必须有：…**延续对局的积木世界**」「主页沿用同一个世界，不另开一套渲染器」。
+实测**未达成**：`desktop-home` / `mobile-home` 背景是一层纯 CSS 渐变，看不到广场、积木或天空球。
+两个独立的水龙头，都要拧：
+
+1. **画布被 `visibility: hidden` 掉了** — `src/toy.css:336`
+   ```css
+   .home-open > .topbar, .home-open > .game-layout { visibility: hidden; pointer-events: none; }
+   ```
+   `.scene-wrap` 在 `.game-layout` 里，画布虽然是 `position: fixed`，但 `position` 不隔离
+   `visibility` 继承——所以整个 3D 画面在主页上根本不可见。看到的那层浅蓝是
+   `.home-screen` 自己的半透明渐变（`reference.css:280`）盖在**空白底**上。
+2. **主页上不渲染任何一帧** — `src/main.js:1796`
+   ```js
+   floatingWorld.update(raw)        // 环境时间在走
+   if (homeUi.isOpen()) return      // ← 在 updateRenderCamera()/composer.render() 之前返回
+   ```
+   环境时间照常累加、却一帧都不画；从主页回到对局时云会按累积时间一次跳到位。
+
+另：主页的**纪录牌仍是旧金冠＋花叶**（`desktop-home` 可见），§5 要求换 `record-panel` +
+本包 crown/trophy——R6 主页部分尚未完成。
+
+三处都在并行推进的 UI 一侧，本轮只定位、不改。
