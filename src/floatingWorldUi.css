@@ -98,3 +98,69 @@
  */
 #app .bottom-panel { background-image: url('/art/floating-world-v1/ui/candidate-tray.svg'); }
 #app .bottom-panel #piece-slots.piece-slots { inset: 16.667% 3.333% 23.611%; gap: 1.786%; }
+
+/* ---- The score plaque (correction handoff §1.2 P0「BEST/SCORE 牌有花朵、树叶、金棕厚边」) ----
+ *
+ * Three numbers have to move together here, and moving only one of them is how this panel ends
+ * up subtly wrong rather than obviously broken:
+ *
+ *  1. `aspect-ratio` 1.72 → 2. The old slice was 1.72:1 and the new board is 320×160 = 2:1.
+ *     `background-size: 100% 100%` means any mismatch STRETCHES the art, and a stretched rounded
+ *     rect shows it immediately as elliptical corners.
+ *  2. `--plaque-board-top` .1322 → .025. The old value was "where the wooden board begins
+ *     inside the slice, after the leaf decoration along the top edge" — measured off the PNG
+ *     with `tools/art-alpha-box.mjs`. The new board has no leaves, and its outer 12-unit stroke
+ *     is centred on a rect whose top edge is y=10, so the art's first (mostly solid) row is
+ *     y=4 of 160. The top bar's icon row is placed from this number, so it is the difference
+ *     between the buttons aligning with the board and floating above it.
+ *  3. The two rows. The old plaque had two visible BANDS and the chips were centred on them. The
+ *     new board has ONE inner field (x28-292 / y34-114), so the rows are re-derived inside it:
+ *     two 40-unit rows put their centres at y=54 and y=94 of 160, i.e. .3375 and .5875 of the
+ *     slice height — and `top` is expressed in `--plaque-width` units, which at this aspect is
+ *     half the height.
+ *
+ * The label/value colours go to the skin's ink. The old pair was `#98400c` brown over a cream
+ * band and `#fff9e9` white over a brown one, both carrying a dark outline; on the new cream field
+ * white text is unreadable and the outline is what the handoff means by 白描边 to clear.
+ */
+#app { --plaque-board-top: 0.025; }
+
+/* The top bar's icon row is placed from that variable by a rule in `reference.css`, and that
+ * rule divides the plaque's WIDTH by its own old aspect: `plaque-width / 1.72 * board-top`.
+ * The 1.72 is the retired slice's shape, so with the new 2:1 board the row would sit ~0.7px low.
+ * Re-deriving it here is the honest half of the same change — and it is also what keeps
+ * `npm run shot`'s "settings button's top edge vs the score board's top edge" budget meaningful
+ * instead of accidentally satisfied.
+ *
+ * The variable itself is overridden on `html:root` and not on `#app`: two reasons, and the
+ * second is the one that bites. Custom properties inherit, so `#app` would work for RENDERING —
+ * but the probe reads the value off `document.documentElement`, where only a `:root`-level rule
+ * counts, and reference.css's `:root` lands after this file. `html:root` (0,1,1) out-specifies
+ * `:root` (0,1,0) without an `!important`. */
+html:root { --plaque-board-top: 0.025; }
+#app .topbar .icon-button { top: calc(var(--hud-top) + var(--plaque-width) / 2 * var(--plaque-board-top)); }
+
+#app .score-plaque {
+  aspect-ratio: 2;
+  background-image: url('/art/floating-world-v1/ui/score-panel.svg');
+}
+
+#app .topbar .score-chip,
+#app .topbar .best-chip {
+  left: calc(var(--hud-left) + var(--plaque-width) * .0875);
+  width: calc(var(--plaque-width) * .825);
+  height: calc(var(--plaque-width) * .125);
+  padding-left: calc(var(--plaque-width) * .105);
+}
+#app .topbar .best-chip { top: calc(var(--hud-top) + var(--plaque-width) * .10625); }
+#app .topbar .score-chip { top: calc(var(--hud-top) + var(--plaque-width) * .23125); }
+
+#app .topbar .score-chip-label,
+#app .topbar .best-chip-label,
+#app .topbar .score-chip-value,
+#app .topbar .best-chip-value { color: #20334C; text-shadow: none; }
+
+/* The two row glyphs are separate icons with separate semantics (handoff §11: 保留两种语义，
+   不混同) — BEST keeps the crown, SCORE the trophy, and neither is baked into the board. */
+#app .best-chip::before { background-image: url('/art/floating-world-v1/ui/icon-crown.svg'); }
+#app .score-chip::before { background-image: url('/art/floating-world-v1/ui/icon-trophy.svg'); }

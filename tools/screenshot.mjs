@@ -342,7 +342,11 @@ async function capture(browser, shot) {
         expression: `(async () => {
           try {
             const img = new Image()
-            img.src = './art/reference/score-panel.png'
+            // v0.13.0 R6: the plaque asset is the floating-world SVG now. The measurement is
+            // asset-agnostic on purpose — it rasterises whatever the skin actually paints and
+            // finds the first row that is mostly solid — so it follows the art instead of being
+            // re-typed beside it. (An SVG with an intrinsic size rasterises exactly like a PNG.)
+            img.src = './art/floating-world-v1/ui/score-panel.svg'
             await img.decode()
             const canvas = document.createElement('canvas')
             canvas.width = img.naturalWidth
@@ -660,13 +664,21 @@ async function capture(browser, shot) {
           failures.push(`settings button's top edge is ${parsed.playLayout.hudTopDelta.toFixed(1)}px off the score BOARD's top edge`)
         }
         // …and the ratio itself has to still match the ART, derived at run time rather than
-        // remembered: the page loads score-panel.png into a canvas and finds the first row whose
-        // longest opaque run spans half the slice (the wooden slab's top edge — the leaves never
-        // form a run that wide). `node tools/art-alpha-box.mjs score-panel.png` prints the same
-        // number offline. If the plaque is re-cut, this goes red instead of silently drifting.
-        if (parsed.playLayout && parsed.artBoardTopRatio !== null
+        // remembered: the page rasterises the skin's plaque asset into a canvas and finds the
+        // first row whose longest opaque run spans half the slice — the BOARD's top edge (the
+        // old slice's leaf decoration never formed a run that wide, and the new one has no
+        // decoration at all, so its outer stroke's top row is the answer).
+        //
+        // v0.13.0 R6: a null measurement is now a FAILURE rather than a skip. The old form
+        // silently graded nothing whenever the rasterisation failed, which was survivable while
+        // the asset was a PNG the browser could always decode; it is not survivable now that the
+        // asset is an SVG, where a decode miss would turn the one gate that ties
+        // `--plaque-board-top` to the art into a gate that always passes.
+        if (parsed.playLayout && parsed.artBoardTopRatio === null) {
+          failures.push('the plaque asset could not be measured, so the --plaque-board-top/art agreement is ungraded')
+        } else if (parsed.playLayout
           && Math.abs(parsed.playLayout.boardTopRatio - parsed.artBoardTopRatio) > 0.005) {
-          failures.push(`--plaque-board-top is ${parsed.playLayout.boardTopRatio} but score-panel.png says ${parsed.artBoardTopRatio} — re-measure with node tools/art-alpha-box.mjs score-panel.png`)
+          failures.push(`--plaque-board-top is ${parsed.playLayout.boardTopRatio} but score-panel.svg says ${parsed.artBoardTopRatio} — re-measure with node tools/art-alpha-box.mjs, or fix the skin stylesheet`)
         }
         if (parsed.boot.homeOpen !== false || parsed.boot.homeVisible || parsed.boot.appHomeOpen) {
           failures.push(`the game did not open inside a run (${JSON.stringify(parsed.boot)})`)
