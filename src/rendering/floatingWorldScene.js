@@ -28,7 +28,7 @@
 // value.
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { floatingWorldRecipe as recipe, floatingWorldPalette as palette } from './floatingWorld.js'
+import { floatingWorldRecipe as recipe, floatingWorldPalette as palette, floatingWorldTierFor } from './floatingWorld.js'
 
 // 0 = the board and its effects, 1 = shadow-only receivers (boardShadows), 2 = the world.
 // Enabling it is gameScene's job; this module only ever asserts the mask it owns.
@@ -52,8 +52,11 @@ const _box = new THREE.Box3()
 const _shadowDir = new THREE.Vector3()
 
 // `getRenderQuality()` ships two tiers (`lowPower`); the recipe names three. Mapping to the
-// nearest is deliberate and documented rather than inventing a third tier here.
-const tierFor = (quality) => (quality?.lowPower ? recipe.quality.low : recipe.quality.high)
+// nearest is deliberate and documented rather than inventing a third tier here. v0.13.1 R7: the
+// mapping itself moved to `floatingWorld.js` so the renderer's DPR cap and this module's
+// decoration budget cannot resolve to different tiers (`gameScene.js` applies the same helper to
+// `renderer.setPixelRatio`).
+const tierFor = floatingWorldTierFor
 
 function prepareTexture(texture, anisotropy) {
   texture.colorSpace = THREE.SRGBColorSpace
@@ -632,6 +635,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       // layout re-solve cannot ratchet a decoration progressively across the screen.
       cluster.mesh.position.copy(base)
       let box = screenBoxOf(cluster.mesh, camera, rect)
+      const authoredLeft = box.left
       // Dodge sideways only for rects a sideways move can actually clear.
       const narrowHits = () => rects.filter((keep) => !spanning(keep) && intersects(box, keep))
       for (let attempt = 0; attempt < 3 && narrowHits().length > 0; attempt += 1) {
@@ -666,6 +670,10 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
         blocked.push({
           id: cluster.mesh.name.replace('floating-world-', ''),
           offFrame,
+          // How far the dodge moved it. `offFrame` ALONE cannot tell 「按设计被画框裁切」 (a piece
+          // authored at an anchor outside the viewport — what 搂4.2 asks for on the wide end) from
+          // 「被禁带挤出行外」. Only the second one is a defect, and the difference is this number.
+          shiftedPx: Math.round(box.left - authoredLeft),
           coverage: area > 0 ? Number((covered / area).toFixed(3)) : 0,
           box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
           by: rects

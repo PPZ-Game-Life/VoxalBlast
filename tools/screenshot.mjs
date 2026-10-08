@@ -626,6 +626,26 @@ async function capture(browser, shot) {
         if (!world.ambient?.pinned) {
           failures.push('the scenery ambient clock was not pinned — two captures of this build are not pixel-comparable (§C0.4)')
         }
+        // v0.13.0 R4: the counts above are what the ART asks for; this is what actually reached the
+        // screen. They came apart exactly once and nobody noticed for an hour: the board's silhouette
+        // went into the keep-out list as a stale, ~130px-too-wide box that spanned the frame, so
+        // every decoration was un-dodgeable and nine of ten were removed — while this gate stayed
+        // GREEN, because `3/3/6` was never about visibility. §9.3's 「所有探针绿了但画面仍像本次截图，
+        // 依然不通过美术验收」 is this failure mode; the fix is to assert the survivors too.
+        const sceneryTotal = (world.clusters ?? 0) + (world.walls ?? 0) + (world.foreground ?? 0) + (world.looseBlocks ?? 0)
+        const survivors = sceneryTotal - (world.culled ?? 0)
+        // Losing a piece or two to the HUD is normal (a loose block behind the top bar). Losing most
+        // of the scenery is not a composition any more.
+        if (survivors < Math.ceil(sceneryTotal * 0.6)) {
+          failures.push(`only ${survivors} of ${sceneryTotal} scenery pieces survived keep-out (culled ${world.culled}); a band has been emptied — see the R4 receipt §9 for how this shipped green once`)
+        }
+        // Only a piece the DODGE pushed out of the picture counts. A piece authored at an anchor
+        // outside the viewport is 搂4.2's 「被画框裁切」 and is exactly what the wide viewports are
+        // supposed to show — the first version of this assertion flagged that and failed 2048×900
+        // for doing the right thing.
+        if (world.blockedBy?.some((entry) => entry.offFrame && Math.abs(entry.shiftedPx ?? 0) > 1)) {
+          failures.push(`a decoration was pushed out of frame by a keep-out rect it could never clear: ${JSON.stringify(world.blockedBy.filter((entry) => entry.offFrame && Math.abs(entry.shiftedPx ?? 0) > 1).slice(0, 4))}`)
+        }
       }
       if (parsed.viewport.width !== width || parsed.viewport.height !== height) failures.push('incorrect CSS viewport')
       if (parsed.screenshot.width !== width || parsed.screenshot.height !== height) failures.push('incorrect PNG dimensions')
