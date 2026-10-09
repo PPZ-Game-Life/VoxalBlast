@@ -32,6 +32,7 @@
 //   node tools/contour-aa-probe.mjs                     # full matrix, artifacts/contour-aa
 //   node tools/contour-aa-probe.mjs --tier low --viewport 390x844 --dsf 1
 //   node tools/contour-aa-probe.mjs --cases mobile-low,mobile-high
+//   node tools/contour-aa-probe.mjs --cases mobile-dpr3-low --phases 8   # top-face flicker
 //
 // Pitfalls this driver already handles, do not re-solve them:
 //   - Headless Edge reports `devicePixelRatio` from the emulation override, so `--dsf 3` is how
@@ -85,6 +86,7 @@ const selected = CASES.filter((c) => {
 if (!selected.length) throw new Error('no probe case selected')
 
 const outDir = resolve(ROOT, arg('out', 'artifacts/contour-aa'))
+const phases = Math.max(1, Number(arg('phases', '6')))
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -120,6 +122,12 @@ function pipe(socket) {
 
 const LUM = (p, i) => 0.2126 * p[i] + 0.7152 * p[i + 1] + 0.0722 * p[i + 2]
 const DARK = 140
+// The board float is an ambient cycle (recipe `motion.board.periodSeconds`). Its EXACT length
+// does not matter here: the sweep only needs poses far enough apart that nothing is repeated, so
+// the phase times are a plain spread over this one documented period.
+const SWEEP_SECONDS = 5.5
+// A pixel whose luminance swings this many levels across the cycle is a visible flicker.
+const FLICKER_LUM = 10
 
 // One row of the cube's silhouette: the OUTERMOST dark run whose inner neighbour is a bright
 // block. The `outside`/`outside2` samples are the two pixels away from the cube, which is where
@@ -211,8 +219,197 @@ function analyse(image, band, side) {
   }
 }
 
-async function capture(browser, probeCase) {
-  const { width, height, dsf, tier, name } = probeCase
+// ---- the TOP face: what the raster can actually resolve --------------------------------
+//
+// The camera holds a deliberately weak ~5-degree pitch, so the cube's roof is seen at a
+// grazing angle: five lattice rows compress into a narrow band and the ink that separates them
+// is a fraction of a device pixel wide. A pattern finer than the pixel grid cannot be resolved —
+// it can only shimmer as the board floats and turns. This section reports what IS there:
+//
+//   top.runsPerColumn / modalColumnFrac   how many seams a vertical scan crosses, and the share
+//                                         of columns that cross exactly that many. 1.0 = a solid
+//                                         grid; well below 1.0 = the seams drop in and out (dots).
+//   top.thicknessPx / spacingPx           the seam's own width and pitch in RASTER pixels.
+//   top.dipLum                            the seam's contrast against the block it separates.
+//   flicker.*                             per-pixel luminance standard deviation across one
+//                                         ambient float cycle, inside the top band and inside a
+//                                         same-size band on the main face as a control.
+function columnRuns(image, x, y0, y1) {
+  const { width, channels, pixels } = image
+  const values = []
+  for (let y = y0; y <= y1; y += 1) values.push(LUM(pixels, (y * width + x) * channels))
+  const sorted = [...values].sort((a, b) => a - b)
+  const background = sorted[Math.floor(sorted.length * 0.85)]
+  const runs = []
+  let i = 0
+  while (i < values.length) {
+    if (values[i] >= background - 45) { i += 1; continue }
+    let j = i
+    while (j + 1 < values.length && values[j + 1] < background - 45) j += 1
+    runs.push({ from: y0 + i, thickness: j - i + 1, dip: Math.round(background - Math.min(...values.slice(i, j + 1))) })
+    i = j + 1
+  }
+  return runs
+}
+
+function median(values) {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor(sorted.length / 2)]
+}
+
+function bandProfile(image, box) {
+  const thicknesses = []
+  const spacings = []
+  const dips = []
+  const counts = []
+  for (let x = box.x0; x <= box.x1; x += 2) {
+    const runs = columnRuns(image, x, box.y0, box.y1)
+    counts.push(runs.length)
+    for (const run of runs) { thicknesses.push(run.thickness); dips.push(run.dip) }
+    for (let k = 1; k < runs.length; k += 1) spacings.push(runs[k].from - runs[k - 1].from)
+  }
+  if (!counts.length) throw new Error('empty band')
+  const tally = new Map()
+  for (const count of counts) tally.set(count, (tally.get(count) ?? 0) + 1)
+  const modal = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]
+  return {
+    columns: counts.length,
+    runsPerColumn: modal[0],
+    modalColumnFrac: Number((modal[1] / counts.length).toFixed(3)),
+    seamsFound: thicknesses.length,
+    thicknessPx: median(thicknesses),
+    thicknessMin: thicknesses.length ? Math.min(...thicknesses) : null,
+    thicknessMax: thicknesses.length ? Math.max(...thicknesses) : null,
+    spacingPx: median(spacings),
+    dipLum: median(dips),
+  }
+}
+
+function flickerStats(frames, box) {
+  const { width, channels } = frames[0]
+  const deviations = []
+  const rowSums = new Array(box.y1 - box.y0 + 1).fill(0)
+  const rowCounts = new Array(rowSums.length).fill(0)
+  for (let y = box.y0; y <= box.y1; y += 1) {
+    for (let x = box.x0; x <= box.x1; x += 1) {
+      const i = (y * width + x) * channels
+      let sum = 0
+      let sumSquares = 0
+      for (const frame of frames) {
+        const value = LUM(frame.pixels, i)
+        sum += value
+        sumSquares += value * value
+      }
+      const mean = sum / frames.length
+      const deviation = Math.sqrt(Math.max(0, sumSquares / frames.length - mean * mean))
+      deviations.push(deviation)
+      rowSums[y - box.y0] += deviation
+      rowCounts[y - box.y0] += 1
+    }
+  }
+  const sorted = [...deviations].sort((a, b) => a - b)
+  const at = (q) => Number(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))].toFixed(2))
+  // WHICH rows move: a list of box-local rows whose mean deviation is high. Evenly spaced rows
+  // are the top face's lattice seams; one row at the edge is the perimeter contour.
+  const rowMeans = rowSums.map((sum, index) => sum / Math.max(rowCounts[index], 1))
+  const hot = []
+  for (let index = 0; index < rowMeans.length; index += 1) {
+    if (rowMeans[index] >= 25 && (index === 0 || rowMeans[index] >= rowMeans[index - 1])) hot.push(index)
+  }
+  return {
+    frames: frames.length,
+    pixels: deviations.length,
+    stdMedian: at(0.5),
+    stdP95: at(0.95),
+    stdMax: at(1),
+    flickerFrac: Number((deviations.filter((value) => value >= FLICKER_LUM).length / deviations.length).toFixed(4)),
+    hotRows: hot,
+    hotRowSpacing: hot.length > 1 ? Number(((hot[hot.length - 1] - hot[0]) / (hot.length - 1)).toFixed(1)) : null,
+  }
+}
+
+// A pixel that swings by 40 luminance levels across the cycle may be doing nothing worse than
+// moving: the board floats, so every thin seam slides over the pixel grid. `flickerStats` alone
+// cannot tell that apart from real instability, so this pair of controls does:
+//
+//   atRest        the SAME frozen pose captured twice. Any difference here is instability with
+//                 nothing moving at all — the ONLY reading that is unambiguously 闪烁.
+//   motionResidual after the best whole-column vertical shift is subtracted from each frame,
+//                 what is left. Residual ≈ 0 means the top band changes only by rigid motion
+//                 (the seams slide); residual ≠ 0 means pixels appear/disappear on their own.
+function diffStats(a, b, box) {
+  const { width, channels } = a
+  const deltas = []
+  for (let y = box.y0; y <= box.y1; y += 1) {
+    for (let x = box.x0; x <= box.x1; x += 1) {
+      const i = (y * width + x) * channels
+      deltas.push(Math.abs(LUM(a.pixels, i) - LUM(b.pixels, i)))
+    }
+  }
+  const sorted = [...deltas].sort((u, v) => u - v)
+  const at = (q) => Number(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))].toFixed(2))
+  return {
+    pixels: deltas.length,
+    mean: Number((deltas.reduce((s, v) => s + v, 0) / deltas.length).toFixed(3)),
+    median: at(0.5),
+    p95: at(0.95),
+    max: at(1),
+    over4Frac: Number((deltas.filter((v) => v > 4).length / deltas.length).toFixed(4)),
+  }
+}
+
+function motionResidual(frames, box) {
+  const { width, channels } = frames[0]
+  const height = box.y1 - box.y0 + 1
+  const columns = []
+  const shifts = []
+  for (let x = box.x0; x <= box.x1; x += 3) {
+    const profile = (frame, shift) => {
+      const values = []
+      for (let k = 0; k < height; k += 1) {
+        const y = box.y0 + k + shift
+        values.push(y < 0 || y >= frame.height ? null : LUM(frame.pixels, (y * width + x) * channels))
+      }
+      return values
+    }
+    const reference = profile(frames[0], 0)
+    for (const frame of frames.slice(1)) {
+      let best = 0
+      let bestError = Infinity
+      for (let shift = -8; shift <= 8; shift += 1) {
+        const candidate = profile(frame, shift)
+        let error = 0
+        let count = 0
+        for (let k = 0; k < height; k += 1) {
+          if (reference[k] === null || candidate[k] === null) continue
+          const delta = candidate[k] - reference[k]
+          error += delta * delta
+          count += 1
+        }
+        if (count && error / count < bestError) { bestError = error / count; best = shift }
+      }
+      shifts.push(best)
+      const aligned = profile(frame, best)
+      const residuals = []
+      for (let k = 0; k < height; k += 1) {
+        if (reference[k] === null || aligned[k] === null) continue
+        residuals.push(Math.abs(aligned[k] - reference[k]))
+      }
+      columns.push(residuals.reduce((s, v) => s + v, 0) / residuals.length)
+    }
+  }
+  const sorted = [...columns].sort((a, b) => a - b)
+  return {
+    columns: columns.length,
+    shiftMin: shifts.length ? Math.min(...shifts) : null,
+    shiftMax: shifts.length ? Math.max(...shifts) : null,
+    residualMean: Number((columns.reduce((s, v) => s + v, 0) / columns.length).toFixed(2)),
+    residualP95: Number(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))].toFixed(2)),
+  }
+}
+
+async function capture(browser, probeCase) {  const { width, height, dsf, tier, name } = probeCase
   const profile = mkdtempSync(join(tmpdir(), 'voxalblast-contour-'))
   const child = spawn(browser, [
     '--headless=new', '--disable-gpu', '--disable-breakpad', '--hide-scrollbars',
@@ -311,9 +508,30 @@ async function capture(browser, probeCase) {
     mkdirSync(outDir, { recursive: true })
     const out = join(outDir, `v${version}-${name}.png`)
     writeFileSync(out, Buffer.from(shot.data, 'base64'))
+    // One ambient float cycle, sampled as distinct frozen poses: the scenery clock stays pinned
+    // (set above), so every difference between these frames is the BOARD's own displacement.
+    // The LAST frame repeats the FIRST pose — see `diffStats`, that repeat is the only
+    // unambiguous flicker reading in this tool.
+    const frames = []
+    for (let i = 0; i <= phases; i += 1) {
+      const phaseIndex = i === phases ? 0 : i
+      const time = Number(((phaseIndex / phases) * SWEEP_SECONDS).toFixed(3))
+      await send(ws, nextId++, 'Runtime.evaluate', {
+        expression: `globalThis.__voxalblastDev?.setBoardFloat?.({ frozen: true, time: ${time} })`,
+        returnByValue: true,
+      })
+      await send(ws, nextId++, 'Runtime.evaluate', {
+        expression: 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))', awaitPromise: true,
+      })
+      await sleep(150)
+      const phaseShot = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+      const file = join(outDir, `v${version}-${name}-phi${i === phases ? 'repeat' : i}.png`)
+      writeFileSync(file, Buffer.from(phaseShot.data, 'base64'))
+      frames.push(readPng(file))
+    }
     await send(ws, 1000, 'Browser.close').catch(() => {})
     ws.close()
-    return { out, facts: factsValue }
+    return { out, facts: factsValue, frames }
   } finally {
     await new Promise((done) => {
       if (child.exitCode !== null) return done()
@@ -331,7 +549,7 @@ if (!browser) throw new Error('no Edge/Chrome binary found')
 
 const results = []
 for (const probeCase of selected) {
-  const { out, facts } = await capture(browser, probeCase)
+  const { out, facts, frames } = await capture(browser, probeCase)
   const image = readPng(out)
   const { bounds } = facts
   // Emulation coordinates are CSS px; the PNG is device px. The factor is measured from the
@@ -350,6 +568,15 @@ for (const probeCase of selected) {
   }
   const left = analyse(image, band, 'left')
   const right = analyse(image, band, 'right')
+  // The top band and a same-sized control band on the main face, both inset so the corners and
+  // the silhouette itself stay out of the scan.
+  const insetX = Math.round((x1 - x0) * 0.14)
+  const bandHeight = Math.round(height * 0.22)
+  const topBox = { x0: x0 + insetX, x1: x1 - insetX, y0: top, y1: top + bandHeight }
+  const mainBox = {
+    x0: x0 + insetX, x1: x1 - insetX,
+    y0: Math.round(top + height * 0.42), y1: Math.round(top + height * 0.42) + bandHeight,
+  }
   results.push({
     case: probeCase.name,
     viewport: `${probeCase.width}x${probeCase.height}`,
@@ -361,6 +588,14 @@ for (const probeCase of selected) {
     cubeScreen: { x: Math.round(bounds.maxX - bounds.minX), y: Math.round(bounds.maxY - bounds.minY) },
     left,
     right,
+    topFace: bandProfile(image, topBox),
+    mainFaceControl: bandProfile(image, mainBox),
+    flickerTop: flickerStats(frames.slice(0, -1), topBox),
+    flickerMain: flickerStats(frames.slice(0, -1), mainBox),
+    atRestTop: diffStats(frames[0], frames[frames.length - 1], topBox),
+    atRestMain: diffStats(frames[0], frames[frames.length - 1], mainBox),
+    residualTop: motionResidual(frames.slice(0, -1), topBox),
+    residualMain: motionResidual(frames.slice(0, -1), mainBox),
     png: out.replace(/\\/g, '/'),
   })
 }
@@ -373,4 +608,13 @@ console.log(failing.length
   : `\nCONTOUR-AA: ${results.length}/${results.length} case(s) anti-aliased on both silhouettes`)
 if (rough.length) {
   console.log(`CONTOUR-AA note: ${rough.map((r) => r.case).join(', ')} still has rows with no blend pixel (blendRowFrac < .7) — the shipped desktop tier measured .72-.79`)
+}
+for (const r of results) {
+  console.log(`TOP ${r.case.padEnd(18)} seams/col ${r.topFace.runsPerColumn} (solid ${r.topFace.modalColumnFrac})`
+    + ` thickness ${r.topFace.thicknessPx}px spacing ${r.topFace.spacingPx}px dip ${r.topFace.dipLum}`
+    + ` | sweep std p95 top ${r.flickerTop.stdP95} / main ${r.flickerMain.stdP95}`
+    + ` | at-rest p95 top ${r.atRestTop.p95} / main ${r.atRestMain.p95}`
+    + ` | residual(p95) top ${r.residualTop.residualP95} / main ${r.residualMain.residualP95}`
+    + ` | shift ${r.residualTop.shiftMin}..${r.residualTop.shiftMax}px`
+    + ` | hot rows ${r.flickerTop.hotRows.join(',')} (spacing ${r.flickerTop.hotRowSpacing})`)
 }
