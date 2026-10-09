@@ -686,6 +686,11 @@ async function capture(browser, shot) {
       const materials = parsed.rendering?.materials
       if (!(materials?.wood.roughness > materials?.paint.roughness)) failures.push('bare wood must stay rougher than toy plastic')
       if (!materials?.ink?.belowPitch) failures.push(`decorative ink overlaps the physical pitch (${JSON.stringify(materials?.ink)})`)
+      if (!materials?.ink?.outerInsideEnvelope || !(materials?.ink?.outerSide > 4.95)) {
+        failures.push(`the continuous board perimeter is missing or leaves the 5-cell envelope (${JSON.stringify(materials?.ink)})`)
+      }
+      if (parsed.rendering?.lowPower && !(world?.sceneryAtmosphereMix >= 0.2)) failures.push('low-tier scenery does not recede behind the gameplay board')
+      if (!parsed.rendering?.lowPower && world?.sceneryAtmosphereMix !== 0) failures.push('high-tier scenery was unintentionally washed out')
       if (parsed.paintPalette.length !== 18 || parsed.paintPalette.some((entry) => !entry.mapped || entry.materialHex !== entry.mappedHex || entry.boardHex !== entry.candidateHex || entry.boardHex !== entry.ghostHex)) {
         failures.push(`the complete legal paint palette is not 18/18 or consumers disagree: ${JSON.stringify(parsed.paintPalette)}`)
       }
@@ -728,7 +733,7 @@ async function capture(browser, shot) {
       if (grounding?.shadowMechanism !== 'art-ellipse') failures.push(`unexpected shipped shadow owner: ${grounding?.shadowMechanism}`)
       if (ground?.blobVisible || ground?.projectedVisible) failures.push('a legacy ground-shadow quad is still drawn under the art ellipse')
       if (!artShadow?.visible || !artShadow?.mapReady || !artShadow?.parented) failures.push('the floating-world art shadow is not fully mounted and visible')
-      if (!(artShadow?.opacity > 0 && artShadow?.width > 0 && artShadow?.height > 0)) failures.push('the floating-world art shadow has no visible area')
+      if (!(artShadow?.opacity >= 0.2 && artShadow?.width > 0 && artShadow?.height > 0)) failures.push('the floating-world art shadow is not strong enough to read in the complete frame')
       if (parsed.rendering?.lowPower && parsed.rendering?.contactShadows?.ssaoEnabled) failures.push('low-power path must use surface AO instead of full scene SSAO')
       const onHome = mode === 'home' || mode === 'home-return'
       // The badge is inside the hidden topbar while the home cover is up, so on those

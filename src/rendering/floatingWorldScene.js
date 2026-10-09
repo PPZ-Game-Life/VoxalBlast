@@ -164,7 +164,14 @@ function plazaShape(halfX, zFar, zNear, cornerRadius) {
 
 export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, getKeepOutRects, getBoardScreenBox }) {
   const world = recipe.world
+  const tierSpec = tierFor(quality)
+  const sceneryAtmosphere = new THREE.Color(palette.skyBottom)
+  const sceneryAtmosphereMix = THREE.MathUtils.clamp(tierSpec.sceneryAtmosphereMix ?? 0, 0, 0.4)
+  // Mobile must keep the side constructions, but their cream cells cannot compete with the cream
+  // gameplay board. Tiered atmospheric perspective pushes every scenery colour toward the lower sky
+  // without changing geometry, culling or the four-layer composition proved by Q3.
   const paletteColor = (name) => new THREE.Color(palette[name] ?? 0xffffff)
+    .lerp(sceneryAtmosphere, sceneryAtmosphereMix)
 
   const group = new THREE.Group()
   group.name = 'floating-world'
@@ -1074,7 +1081,8 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       layer: SCENERY_LAYER,
       layerMask: WORLD_LAYER_MASK,
       tier: quality?.lowPower ? 'low' : 'high',
-      tierSpec: tierFor(quality),
+      tierSpec,
+      sceneryAtmosphereMix,
       // §4.2's split, as the screen actually shows it. `edgeNdc` is the solved far edge PROJECTED
       // BACK through the render camera: the number §4.2's composition is graded on, and the one
       // fact that cannot be read off a screenshot when the background is a flat cream field.

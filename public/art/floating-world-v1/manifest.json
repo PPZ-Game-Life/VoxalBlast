@@ -5,7 +5,7 @@
   "runtimeBase": "/art/floating-world-v1/",
   "totals": {
     "files": 39,
-    "bytes": 832127
+    "bytes": 832214
   },
   "geometry": {
     "boardTriangles": 588,
@@ -82,7 +82,7 @@
     },
     {
       "path": "scene.recipe.json",
-      "bytes": 8334,
+      "bytes": 8421,
       "role": "scene.recipe.json"
     },
     {

@@ -80,6 +80,21 @@ export function createBlockResources({ metrics }) {
   cubeBody.castShadow = false
   cubeBody.receiveShadow = true
 
+  // The 98 per-cell ink backs own the INTERNAL seams. Art review on 069394d found that their
+  // sub-pixel outer fragments could still disappear against mobile scenery, so this one BackSide
+  // shell owns only the BOARD PERIMETER. Its 4.99 side stays inside the 5.0 lattice envelope;
+  // it changes no cell size, gap, picking volume or gameplay transform.
+  const boardOuterInkSide = cubeSide - (metrics().cs - style.blockSize) + style.boardOuterInkExpansion
+  const boardOuterInk = new THREE.Mesh(
+    new RoundedBoxGeometry(boardOuterInkSide, boardOuterInkSide, boardOuterInkSide, style.blockSegments, style.blockRadius),
+    makeInkMaterial(1),
+  )
+  boardOuterInk.name = 'board-outer-ink'
+  boardOuterInk.renderOrder = -1.5
+  boardOuterInk.castShadow = false
+  boardOuterInk.receiveShadow = false
+  boardOuterInk.raycast = () => {}
+
   // One material per (state × tone step): the idle bare block and the lighter one on the face
   // under the camera.
   //
@@ -195,7 +210,7 @@ export function createBlockResources({ metrics }) {
   // before freeing a geometry, which is what stops a cleared candidate preview or drag
   // ghost from taking the board's blocks down with it. `cubeBody.geometry` is the board's
   // own hull and belongs to its creator, so it is listed here too.
-  const sharedGeometries = [blockGeometry, cubeBody.geometry, barGeometry]
+  const sharedGeometries = [blockGeometry, cubeBody.geometry, boardOuterInk.geometry, barGeometry]
 
   // Read-out for the moved introspection block (diagnostics only assembles): the triangle
   // count of THE shared block geometry, so a check can prove the block is still the same
@@ -213,6 +228,8 @@ export function createBlockResources({ metrics }) {
         candidates: [...style.boardInkScaleCandidates],
         physicalWidth: style.blockSize * style.boardInkScale,
         belowPitch: style.blockSize * style.boardInkScale < metrics().cs,
+        outerSide: boardOuterInkSide,
+        outerInsideEnvelope: boardOuterInkSide < cubeSide,
       },
       gem: { model: 'local-thickness-scattering', settings: { ...gemTuning }, materials: livePaintMaterials.size,
         singlePass: [...livePaintMaterials].every(material => material.transmission === 0) },
@@ -251,8 +268,9 @@ export function createBlockResources({ metrics }) {
     blockGeometry,
     edgeGeometry,
     barGeometry,
-    // The shell mesh itself, for main to add to the cube group (see the note above).
+    // The backing and perimeter meshes themselves, for main to add in load-bearing order.
     cubeBody,
+    boardOuterInk,
     report,
     tuneMaterials,
     tuneGem,

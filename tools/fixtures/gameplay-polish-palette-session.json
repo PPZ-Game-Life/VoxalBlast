@@ -1,0 +1,100 @@
+{
+  "snapshot": {
+    "v": 1,
+    "board": {
+      "cells": [
+        [0, 0, 4, 12725080],
+        [1, 0, 4, 4165600],
+        [2, 0, 4, 2701460],
+        [3, 0, 4, 2171353],
+        [4, 0, 4, 9131977],
+        [0, 1, 4, 2194798],
+        [1, 1, 4, 3104708],
+        [2, 1, 4, 14706063],
+        [3, 1, 4, 5220938],
+        [4, 1, 4, 12599200],
+        [0, 2, 4, 3520201],
+        [1, 2, 4, 4171898],
+        [2, 2, 4, 9486893],
+        [3, 2, 4, 6971312],
+        [4, 2, 4, 11096004],
+        [0, 3, 4, 14036950],
+        [1, 3, 4, 3135051],
+        [2, 3, 4, 13712430]
+      ],
+      "score": 1800,
+      "totalLines": 0
+    },
+    "pieces": [
+      { "name": "Line 4", "used": false },
+      { "name": "U 5", "used": false },
+      { "name": "Cross 5", "used": false }
+    ],
+    "items": {
+      "refresh": 2,
+      "hammer": 1,
+      "rocket": 1,
+      "bomb": 1
+    },
+    "run": {
+      "chain": 0,
+      "bestChain": 0,
+      "maxLinesOneMove": 0,
+      "maxFacesOneMove": 0,
+      "facesLit": [],
+      "faceWipes": 0,
+      "honors": [],
+      "honorCounts": {}
+    },
+    "pose": {}
+  },
+  "expectedBoard": {
+    "cells": [
+      [0, 0, 4, 12725080],
+      [1, 0, 4, 4165600],
+      [2, 0, 4, 2701460],
+      [3, 0, 4, 2171353],
+      [4, 0, 4, 9131977],
+      [0, 1, 4, 2194798],
+      [1, 1, 4, 3104708],
+      [2, 1, 4, 14706063],
+      [3, 1, 4, 5220938],
+      [4, 1, 4, 12599200],
+      [0, 2, 4, 3520201],
+      [1, 2, 4, 4171898],
+      [2, 2, 4, 9486893],
+      [3, 2, 4, 6971312],
+      [4, 2, 4, 11096004],
+      [0, 3, 4, 14036950],
+      [1, 3, 4, 3135051],
+      [2, 3, 4, 13712430]
+    ],
+    "score": 1800,
+    "totalLines": 0
+  },
+  "legend": [
+    { "cell": [0, 0], "name": "Dot", "stored": 12725080, "display": "#E65B86" },
+    { "cell": [1, 0], "name": "Line 2", "stored": 4165600, "display": "#368CEF" },
+    { "cell": [2, 0], "name": "Line 3", "stored": 2701460, "display": "#F5C846" },
+    { "cell": [3, 0], "name": "Line 4", "stored": 2171353, "display": "#2F70E8" },
+    { "cell": [4, 0], "name": "Square", "stored": 9131977, "display": "#9454D9" },
+    { "cell": [0, 1], "name": "L", "stored": 2194798, "display": "#18BBA6" },
+    { "cell": [1, 1], "name": "J", "stored": 3104708, "display": "#2F70E8" },
+    { "cell": [2, 1], "name": "T", "stored": 14706063, "display": "#EF79A0" },
+    { "cell": [3, 1], "name": "S", "stored": 5220938, "display": "#51B991" },
+    { "cell": [4, 1], "name": "Z", "stored": 12599200, "display": "#BE55C9" },
+    { "cell": [0, 2], "name": "Corner", "stored": 3520201, "display": "#31AFD1" },
+    { "cell": [1, 2], "name": "Rect 6", "stored": 4171898, "display": "#21AFA0" },
+    { "cell": [2, 2], "name": "L 5", "stored": 9486893, "display": "#A2C758" },
+    { "cell": [3, 2], "name": "Slant 3", "stored": 6971312, "display": "#7268CB" },
+    { "cell": [4, 2], "name": "Block 9", "stored": 11096004, "display": "#AE70D8" },
+    { "cell": [0, 3], "name": "Cross 5", "stored": 14036950, "display": "#AF68D4" },
+    { "cell": [1, 3], "name": "U 5", "stored": 3135051, "display": "#56B879" },
+    { "cell": [2, 3], "name": "T 5", "stored": 13712430, "display": "#E66B63" }
+  ],
+  "evidence": {
+    "purpose": "All 18 legal stored colors rendered through the live lit board material on desktop/high and mobile/low.",
+    "frontFace": "+z",
+    "order": "left-to-right, bottom-to-top on the rendered +z face"
+  }
+}

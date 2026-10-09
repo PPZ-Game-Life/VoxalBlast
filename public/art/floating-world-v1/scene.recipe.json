@@ -89,7 +89,7 @@
     },
     "boardShadow": {
       "note": "主盘的艺术化软椭圆投影（纠偏交接 §6.4）。尺寸按主盘自己的屏幕宽高比例给；widthFactor 含透明羽化补偿，实际可见宽按像素门禁保持 0.65–0.85 盘宽。锚点在开场盘面稳定后一次求解，翻面时不逐角抖动。",
-      "widthFactor": 1.04, "heightFactor": 0.38, "offsetFactor": 0.17, "opacity": 0.16, "lift": 0.02
+      "widthFactor": 1.04, "heightFactor": 0.38, "offsetFactor": 0.17, "opacity": 0.22, "lift": 0.02
     },
     "bands": { "near": 0.92, "mid": 1.02, "far": 1.26, "clouds": 2.4 },
     "clouds": { "opacity": 0.92, "aspect": 2.667, "shapes": ["cloud-a.png", "cloud-b.png", "cloud-c.png"] },
@@ -103,8 +103,8 @@
     ]
   },
   "quality": {
-    "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": false, "shadowMapSize": 0, "ssao": true },
-    "medium": { "clusters": 2, "looseBlocks": 2, "clouds": 4, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false },
-    "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false }
+    "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": false, "shadowMapSize": 0, "ssao": true, "sceneryAtmosphereMix": 0 },
+    "medium": { "clusters": 2, "looseBlocks": 2, "clouds": 4, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false, "sceneryAtmosphereMix": 0.12 },
+    "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false, "sceneryAtmosphereMix": 0.24 }
   }
 }

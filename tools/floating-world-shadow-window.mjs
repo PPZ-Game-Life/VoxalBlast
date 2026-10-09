@@ -44,11 +44,11 @@ const window4 = (w, h, below, opacity) => [
   w >= 0.65 && w <= 0.85,
   h >= 0.06 && h <= 0.12,
   below >= 0.12 && below <= 0.18,
-  opacity >= 0.14,
+  opacity >= 0.20,
 ]
 
 console.log('§6.4 悬浮投影：像素实测 vs 交接单窗口')
-console.log('  窗口：影宽/盘宽 .65–.85 ｜ 影高/盘屏高 .06–.12 ｜ 中心在盘底下方 .12–.18 盘屏高 ｜ 透明度 ≥ .14')
+console.log('  窗口：影宽/盘宽 .65–.85 ｜ 影高/盘屏高 .06–.12 ｜ 中心在盘底下方 .12–.18 盘屏高 ｜ 透明度 ≥ .20')
 console.log('')
 console.log('shot                       viewport     影宽px 影宽比     影高px 影高比     中心距盘底  透明度  判定')
 let failures = 0
@@ -148,7 +148,7 @@ for (const shot of shots) {
   // parked-pose size window; applying the rest ratios to the expanded diamond box would demand that
   // the shadow chase each corner, exactly the jitter §6.4 forbids.
   const checks = midTurn
-    ? [true, soft.overlapped, soft.overlapped, shadow.opacity >= 0.14]
+    ? [true, soft.overlapped, soft.overlapped, shadow.opacity >= 0.20]
     : window4(wRatio, hRatio, below, shadow.opacity)
   const ok = checks.every(Boolean)
   if (!ok) failures += 1

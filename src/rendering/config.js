@@ -85,6 +85,10 @@ export const BOARD_STYLE = Object.freeze({
   // .95 × 1.025 = .97375 < pitch 1, so the presentation shell cannot bridge the real cell gap.
   boardInkScale: 1.025,
   boardInkScaleCandidates: Object.freeze([1.015, 1.020, 1.025]),
+  // Art review after 069394d kept the per-cell ink but found the board's OUTER contour could still
+  // break against scenery at mobile resolution. A second whole-cube BackSide shell closes only the
+  // perimeter; 4.95 + .04 = 4.99 remains inside the 5.0 lattice envelope and cannot bridge cells.
+  boardOuterInkExpansion: 0.04,
   // Empty cell / bare block. Recipe `materials.empty`.
   woodRoughness: floatingWorldMaterials.empty.roughness,
   woodClearcoat: floatingWorldMaterials.empty.clearcoat,

@@ -581,10 +581,11 @@ const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // the lattice arithmetic stays this file's, and the factory runs before nothing else needs it.
 const blocks = createBlockResources({ metrics: () => ({ cubeSide, cs }) })
 cubeGroup.add(blocks.cubeBody)
+cubeGroup.add(blocks.boardOuterInk)
 
 // The 98 blocks live in rendering/boardView.js (refactor P3c). attachTiles() runs here, where
 // the group used to be attached and built: cubeGroup's child order is load-bearing (cubeBody
-// carries renderOrder -2 and the preview groups are added after it).
+// -2, whole-board perimeter -1.5, per-cell ink -1; preview groups are added after them).
 boardView.attachTiles()
 
 // The board's own single source of truth hands the painted cells to the view, which repaints
