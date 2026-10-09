@@ -58,6 +58,59 @@ const _shadowDir = new THREE.Vector3()
 // `renderer.setPixelRatio`).
 const tierFor = floatingWorldTierFor
 
+// ---- The far layer's colour contract (v0.13.1) -------------------------------------
+//
+// `palette.skyTop` / `skyBottom` are the colours the reference asks the SKY TO BE: `#42abF2` at the
+// zenith, `#b8e5f7` at the horizon. Writing those numbers at a raw ShaderMaterial does NOT produce
+// them, and the reason is the composer's final pass: it runs three's `NeutralToneMapping` and then
+// the sRGB transfer over everything
+// (`tools/.tmp-sky-glsl.mjs` reads both out of the live GL programs; `tools/.tmp-sky-solve.mjs`
+// reproduces the chain and is where the arithmetic below is checked).
+//
+// The tone mapper is the half that bites. Its first act is an OFFSET — `x - (x - 6.25x²)` for a
+// channel below 0.08 — which for a dark channel is a large GAIN: skyTop's linear red of 0.0545
+// came out at 0.267, so the sky rendered as `#a4d5ec` instead of `#42abF2`. Nothing read as broken
+// at a glance; the whole frame just looked hazy and washed out, which is the complaint
+// 「中间六面体区域的背景和参考图面相不符」.
+//
+// Two things make the sky different from every other surface, and both are why it gets its own
+// contract rather than a tweak to the palette:
+//
+//   * It is a BACKDROP. Its colours are literal, not lit, and nothing about them is scene radiance
+//     that a tone mapper should be deciding — hence `toneMapped: false` on the material.
+//   * Its gradient is built by MIXING. Compensating the two endpoints is not the same as
+//     compensating the mix: skyBottom's tone-map-inverted green is ~1.09, so a 13% weight on it
+//     dragged the sky's green from 0.73 to 0.90 — the gradient came out PALER than either colour
+//     it was built from. The blend has to happen where the reference is read.
+//
+// So the uniform carries the reference colour as WORKING-SPACE (linear) floats, the shader mixes
+// those, and the framebuffer's own sRGB encode finishes the job. Mixing in linear light is also
+// what the rest of the scene's material pipeline does, so the sky is not a special case there —
+// only its lack of a tone map is.
+const SKY_CHANNEL = 255
+
+// The transfer the composer's final pass applies, and the SECOND one the far layer receives: the
+// pipeline encodes sRGB twice. Measured on a cloudless frame, byte for byte — writing the linear
+// triple (0.0545, 0.4072, 0.8879) displays `#34a0df`, which is `srgbTransfer(srgbTransfer(·))` of
+// exactly those numbers, not one transfer (`#42abf2`) and not three (`#819eb4`).
+//
+// The extra encode is the price of the far layer being a RawShader-style material in a pipeline
+// built for lit ones; inverting it here is cheaper and far more honest than a new render target.
+// It is also why the palette keeps saying `#42abF2`: the recipe stays the artist-facing truth and
+// this file states what has to happen to it on the way to the glass.
+function srgbToLinear(value) {
+  return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+}
+
+function skyLinearChannels(name) {
+  const value = palette[name]
+  return [
+    srgbToLinear(((value >> 16) & 255) / SKY_CHANNEL),
+    srgbToLinear(((value >> 8) & 255) / SKY_CHANNEL),
+    srgbToLinear((value & 255) / SKY_CHANNEL),
+  ]
+}
+
 function prepareTexture(texture, anisotropy) {
   texture.colorSpace = THREE.SRGBColorSpace
   texture.anisotropy = anisotropy
@@ -133,9 +186,18 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     depthWrite: false,
     depthTest: false,
     fog: false,
+    // The far layer is a BACKDROP, not scene radiance: its two colours are the reference's own,
+    // blended in the space the reference is read in and written straight out. Leaving this true
+    // puts them through `NeutralToneMapping`, whose sub-0.08 offset is a large gain on a dark
+    // channel — the washout the compensation block above documents.
+    toneMapped: false,
     uniforms: {
-      uTop: { value: paletteColor('skyTop') },
-      uBottom: { value: paletteColor('skyBottom') },
+      // `uTop` / `uBottom` are the reference's own colours in WORKING space (see the compensation
+      // block above this factory). `Vector3` rather than `Color` because these are raw shader
+      // numbers now: a `Color` uniform would be re-read as a colour by every future reader of this
+      // file, and the whole point of the contract is that these two are NOT scene colours.
+      uTop: { value: new THREE.Vector3(...skyLinearChannels('skyTop')) },
+      uBottom: { value: new THREE.Vector3(...skyLinearChannels('skyBottom')) },
       uHorizon: { value: world.sky.horizon },
       uZenith: { value: world.sky.zenith },
     },
@@ -153,6 +215,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       uniform float uHorizon;
       uniform float uZenith;
       varying vec3 vFromCamera;
+
       void main() {
         float height = normalize(vFromCamera).y;
         gl_FragColor = vec4(mix(uBottom, uTop, smoothstep(uHorizon, uZenith, height)), 1.0);
@@ -412,7 +475,10 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   // alpha-blended thing in the world, and `depthWrite:false` keeps them from punching a hole in
   // whatever is drawn after them.
   const cloudTextures = []
-  const cloudSpecs = recipe.layout.cloudSeeds.map((seed, index) => {
+  // The recipe carries the full desktop authored set. Phones take the tier's first three seeds,
+  // desktops all six: fewer correctly sized clouds, not six giant quads made translucent.
+  const cloudLimit = Math.min(recipe.layout.cloudSeeds.length, tierFor(quality).clouds)
+  const cloudSpecs = recipe.layout.cloudSeeds.slice(0, cloudLimit).map((seed, index) => {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       transparent: true,
       depthWrite: false,
@@ -475,6 +541,13 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     return Math.abs(top - _point.y)
   }
 
+  function visibleWidthAt(camera, distance) {
+    ndcPoint(camera, _point, -1, 0, distance)
+    const left = _point.clone()
+    ndcPoint(camera, _point, 1, 0, distance)
+    return left.distanceTo(_point)
+  }
+
   // The distance the board itself sits at, read from the live camera so the wheel and the
   // framing solver both feed through: every band is a multiple of it.
   const frameDistance = () => Math.max(1, getCamera()?.position.length() ?? 60)
@@ -485,9 +558,16 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   function place(cluster, spec, bandFactor) {
     const camera = getCamera()
     if (!camera) return
+    const rect = getCanvasRect?.()
+    // Q3 §6.2: wide/short layouts need their own authored anchor instead of endlessly dodging the
+    // portrait composition. At aspect >= 1.7 the left arch moves below the score plaque; the board
+    // may occlude part of it normally because mid/far scenery remains depth-correct and non-pickable.
+    const anchor = rect && rect.width / Math.max(rect.height, 1) >= 1.7 && spec.wideAnchor
+      ? spec.wideAnchor
+      : spec.anchor
     const distance = frameDistance() * (spec.distanceFactor ?? bandFactor)
     const scale = (spec.screenHeightFraction * visibleHeightAt(camera, distance)) / cluster.bounds.height
-    ndcPoint(camera, _point, spec.anchor[0], spec.anchor[1], distance)
+    ndcPoint(camera, _point, anchor[0], anchor[1], distance)
     _quaternion.setFromEuler(_euler.set(0, degrees(spec.yawDegrees), 0))
     // The cluster is centred on its own bounds, so the anchor names where the decoration IS
     // rather than where its lattice origin happens to be.
@@ -554,6 +634,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   let decorations = []
   let keepOutDebug = null
   let appliedBoardBox = null
+  let visibilityTest = null
 
   // Has the board's silhouette moved enough that the keep-out answer changed? 2 CSS px is well
   // under anything a person could see and well over the idle float's per-frame step.
@@ -571,19 +652,19 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     if (!camera || !rect || rect.width < 1 || rect.height < 1) return
     const rects = (getKeepOutRects?.() ?? []).filter((r) => r && r.width > 0 && r.height > 0)
     const board = getBoardScreenBox?.()
-    if (board && [board.minX, board.minY, board.maxX, board.maxY].every(Number.isFinite)) {
-      const padding = Math.max(0, Number(recipe.layout.keepOutPaddingCssPx) || 0)
-      rects.push({
-        left: board.minX - padding,
-        top: board.minY - padding,
-        right: board.maxX + padding,
-        bottom: board.maxY + padding,
-        width: board.maxX - board.minX + padding * 2,
-        height: board.maxY - board.minY + padding * 2,
-        role: 'board',
-      })
-    }
-    if (!rects.length) { culled = 0; dodged = 0; return }
+    const boardPadding = 10
+    const boardRef = board && [board.minX, board.minY, board.maxX, board.maxY].every(Number.isFinite)
+      ? {
+          left: board.minX - boardPadding,
+          top: board.minY - boardPadding,
+          right: board.maxX + boardPadding,
+          bottom: board.maxY + boardPadding,
+          role: 'board-soft',
+        }
+      : null
+    // The board is a SOFT layout reference for mid/far scenery: depth may hide a building behind
+    // it normally. Only near foreground, which could paint over gameplay, treats this rect as hard.
+    if (!rects.length && !boardRef) { culled = 0; dodged = 0; return }
     // Remember WHICH board box this pass was solved against. The board's projected silhouette is
     // not a constant: it is different during the opening wave, it breathes with the idle float and
     // it changes shape as the cube turns. Solving keep-out only when the LAYOUT moves therefore
@@ -622,10 +703,10 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // overlapped it and nine of ten pieces vanished — while the gate stayed green, because it
     // asserts the AUTHORED counts (3/3/6) and never looks at `culled`.
     const all = [
-      ...clusters.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
-      ...walls.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
-      ...foreground.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
-      ...looseBlocks.map((cluster) => ({ cluster, base: cluster.mesh.position.clone() })),
+      ...clusters.map((cluster) => ({ cluster, family: 'mid', base: cluster.mesh.position.clone() })),
+      ...walls.map((cluster) => ({ cluster, family: 'far', base: cluster.mesh.position.clone() })),
+      ...foreground.map((cluster) => ({ cluster, family: 'near', base: cluster.mesh.position.clone() })),
+      ...looseBlocks.map((cluster) => ({ cluster, family: 'loose', base: cluster.mesh.position.clone() })),
     ]
 
     let hidden = 0
@@ -637,14 +718,18 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // answered by counting pixels — the plaza's cream and the sky's blue sit in the same buckets
     // as the near layer's own colours.
     const decor = []
-    for (const { cluster, base } of all) {
+    for (const { cluster, family, base } of all) {
       // Every dodge starts from the AUTHORED position, never from the previous frame's, so a
       // layout re-solve cannot ratchet a decoration progressively across the screen.
       cluster.mesh.position.copy(base)
       let box = screenBoxOf(cluster.mesh, camera, rect)
+      const authoredBox = { ...box }
       const authoredLeft = box.left
-      // Dodge sideways only for rects a sideways move can actually clear.
-      const narrowHits = () => rects.filter((keep) => !spanning(keep) && intersects(box, keep))
+      // Mid/far pieces are allowed behind the opaque board and remain depth-correct. Near pieces
+      // could cover gameplay, so only that family receives the board's 10px hard buffer.
+      const hardRects = family === 'near' && boardRef ? [...rects, boardRef] : rects
+      const narrowHits = () => hardRects.filter((keep) => !spanning(keep) && intersects(box, keep))
+      let didDodge = false
       for (let attempt = 0; attempt < 3 && narrowHits().length > 0; attempt += 1) {
         let clearLeft = Infinity
         let clearRight = Infinity
@@ -661,23 +746,62 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
         const next = screenBoxOf(cluster.mesh, camera, rect)
         if (Math.abs(next.left - box.left) < 0.01 && Math.abs(next.right - box.right) < 0.01) break
         box = next
-        moved += 1
+        didDodge = true
       }
+      // A failed dodge must not turn a small HUD conflict into an accidental off-frame exile.
+      // Return to the authored anchor and hide there; the report then says hard-keep-out with a
+      // zero shift instead of pretending an invisible piece was a successful layout adjustment.
+      const dodgePushedOff = (box.right <= rect.left || box.left >= rect.right)
+        && !(authoredBox.right <= rect.left || authoredBox.left >= rect.right)
+      if (dodgePushedOff) {
+        cluster.mesh.position.copy(base)
+        box = authoredBox
+        didDodge = false
+      }
+      if (didDodge) moved += 1
       // Remove it only if a narrow rect still blocks it (nowhere to stand), a full-width band
       // covers too much of it, or it has been pushed clean out of the picture.
       const covered = rects.reduce((worst, keep) => (spanning(keep) ? Math.max(worst, overlapArea(box, keep)) : worst), 0)
       const area = areaOf(box)
-      const offFrame = box.right <= rect.left || box.left >= rect.right
+      const insideWidth = Math.max(0, Math.min(box.right, rect.right) - Math.max(box.left, rect.left))
+      const insideHeight = Math.max(0, Math.min(box.bottom, rect.bottom) - Math.max(box.top, rect.top))
+      const inViewport = insideWidth > 0 && insideHeight > 0
+      const offFrame = !inViewport
+      const hardBlocked = narrowHits().length > 0
+      const bandBlocked = area > 0 && covered / area > SPANNING_COVER_LIMIT
+      const testHidden = visibilityTest === 'hide-mid' && family === 'mid'
+      const visibleFlag = !offFrame && !hardBlocked && !bandBlocked && !testHidden
+      const boardOccludedArea = boardRef && family !== 'near' ? overlapArea(box, boardRef) : 0
+      const visibleArea = Math.max(0, insideWidth * insideHeight - boardOccludedArea - covered)
+      const effectiveVisible = visibleFlag
+        && insideWidth >= rect.width * 0.06
+        && insideHeight >= rect.height * 0.08
+        && visibleArea >= rect.width * rect.height * 0.0048
+      const cullReason = testHidden ? 'visibility-self-test'
+        : offFrame ? 'off-frame'
+          : hardBlocked ? 'hard-keep-out'
+            : bandBlocked ? 'hud-coverage'
+              : null
       decor.push({
         id: cluster.mesh.name.replace('floating-world-', ''),
-        visible: !offFrame && narrowHits().length === 0 && (area <= 0 || covered / area <= SPANNING_COVER_LIMIT),
-        // How many CSS px of it are inside the frame — a piece "visible" but 3px wide on the very
-        // edge is still not a near layer.
-        insidePx: Math.max(0, Math.min(box.right, rect.right) - Math.max(box.left, rect.left)),
-        box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
+        family,
+        side: (box.left + box.right) * 0.5 < centreX ? 'left' : 'right',
+        authored: true,
+        visible: visibleFlag,
+        visibleFlag,
+        inViewport,
+        effectiveVisible,
+        projectedBounds: {
+          left: Math.round(box.left), top: Math.round(box.top),
+          right: Math.round(box.right), bottom: Math.round(box.bottom),
+          width: Math.round(box.right - box.left), height: Math.round(box.bottom - box.top),
+          insideWidth: Math.round(insideWidth), insideHeight: Math.round(insideHeight),
+        },
+        dodged: Math.abs(box.left - authoredLeft) > 0.5,
         movedPx: Math.round(box.left - authoredLeft),
+        cullReason,
       })
-      cluster.mesh.visible = !offFrame && narrowHits().length === 0 && (area <= 0 || covered / area <= SPANNING_COVER_LIMIT)
+      cluster.mesh.visible = visibleFlag
       if (!cluster.mesh.visible) {
         hidden += 1
         // WHICH rect is still in the way, how much of the piece it covers, and where the piece
@@ -692,7 +816,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
           shiftedPx: Math.round(box.left - authoredLeft),
           coverage: area > 0 ? Number((covered / area).toFixed(3)) : 0,
           box: [Math.round(box.left), Math.round(box.top), Math.round(box.right), Math.round(box.bottom)],
-          by: rects
+          by: hardRects
             .filter((keep) => intersects(box, keep))
             .map((keep) => keep.role ?? (spanning(keep) ? 'hud-spanning' : 'hud')),
         })
@@ -709,12 +833,53 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
         box: [Math.round(keep.left), Math.round(keep.top), Math.round(keep.right), Math.round(keep.bottom)],
         spanning: spanning(keep),
       })),
+      boardSoft: boardRef ? [Math.round(boardRef.left), Math.round(boardRef.top), Math.round(boardRef.right), Math.round(boardRef.bottom)] : null,
+    }
+  }
+
+  function setVisibilityTest(mode = null) {
+    visibilityTest = mode === 'hide-mid' ? 'hide-mid' : null
+    applyKeepOut()
+    return {
+      mode: visibilityTest,
+      effectiveMid: decorations.filter((entry) => entry.family === 'mid' && entry.effectiveVisible).length,
     }
   }
 
   // ---- Layout solve -------------------------------------------------------------
 
   let appliedLayout = null
+  let shadowSettlePending = true
+  let shadowStableFrames = 0
+  let shadowLastBox = null
+
+  function armBoardShadowSettle() {
+    shadowSettlePending = true
+    shadowStableFrames = 0
+    shadowLastBox = null
+  }
+
+  // `layout()` can run while the opening wave still scales the 98 cells, so its first board box is
+  // not necessarily the parked cube the shadow must support. Re-solve once after the box has held
+  // still for several frames, then stop: a turn may reshape the projected AABB, but the designed
+  // plaza shadow must not chase every corner and visibly jitter through 0°/45°/90°.
+  function settleBoardShadow() {
+    if (!shadowSettlePending) return
+    const box = getBoardScreenBox?.()
+    if (!box || ![box.minX, box.minY, box.maxX, box.maxY].every(Number.isFinite)) return
+    if (shadowLastBox) {
+      const delta = Math.max(
+        Math.abs(box.minX - shadowLastBox.minX), Math.abs(box.minY - shadowLastBox.minY),
+        Math.abs(box.maxX - shadowLastBox.maxX), Math.abs(box.maxY - shadowLastBox.maxY),
+      )
+      shadowStableFrames = delta <= 0.5 ? shadowStableFrames + 1 : 0
+    }
+    shadowLastBox = { minX: box.minX, minY: box.minY, maxX: box.maxX, maxY: box.maxY }
+    if (shadowStableFrames < 8) return
+    placeBoardShadow()
+    shadowSettlePending = false
+    shadowLastBox = null
+  }
 
   // The two edges are solved along the frame's OWN vertical centre line, and the slab is then
   // yawed to match the camera's ground bearing. Both halves are load-bearing: the camera looks
@@ -754,17 +919,18 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // Clouds are placed on their own band; the layout pass only fixes where each one STARTS, and
     // the drift in `update()` moves it from there.
     const cloudDistance = frameDistance() * world.bands.clouds
-    // The delivered cloud PNGs are 512×192 — 2.67:1, not square. A sprite scaled by one number
-    // stretches them vertically into tall white slabs with hard-looking edges, which is what a
-    // "cloud" stops being the moment it is 2.67× too tall. The aspect is declared in the recipe
-    // so the shape is right on the first frame, before any texture has finished loading.
+    // Seeds carry QUAD WIDTH fractions of the CSS viewport (.24/.30/.36, max .40). The delivered
+    // texture is 512×192, so height is derived once by division. The previous height-based path
+    // multiplied by the 2.667 aspect afterwards and produced .92–1.44-screen white slabs on phones.
     const cloudAspect = world.clouds.aspect
+    const frameWidth = visibleWidthAt(camera, cloudDistance)
     for (const { sprite, seed } of cloudSpecs) {
-      const [ndcX, ndcY, heightFraction] = seed
+      const [ndcX, ndcY, widthFraction] = seed
       ndcPoint(camera, _point, ndcX, ndcY, cloudDistance)
       sprite.position.copy(_point)
-      const size = heightFraction * visibleHeightAt(camera, cloudDistance)
-      sprite.scale.set(size * cloudAspect, size, 1)
+      const width = Math.min(0.40, widthFraction) * frameWidth
+      const height = width / cloudAspect
+      sprite.scale.set(width, height, 1)
       // The band records everything the drift needs to be computed ABSOLUTELY from a time
       // value rather than accumulated frame by frame (see `applyAmbient`): where this cloud
       // starts, how wide the frame is in world units at its own depth, and how far it has to
@@ -775,9 +941,11 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       const rightX = _point.x
       sprite.userData.band = {
         distance: cloudDistance,
-        size,
+        width,
+        height,
+        widthFraction: Math.min(0.40, widthFraction),
         baseX: sprite.position.x,
-        halfSpan: (size * cloudAspect) / 2,
+        halfSpan: width / 2,
         leftX,
         rightX,
         speed: recipe.motion.clouds.speedScreenWidthsPerSecond[(seed[3] ?? 0) % recipe.motion.clouds.speedScreenWidthsPerSecond.length],
@@ -794,6 +962,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // Last: the shadow's anchor is solved from the board's own screen box, which is a product of
     // the framing this layout pass did not touch but must not read before the camera is settled.
     placeBoardShadow()
+    armBoardShadowSettle()
   }
 
   // ---- Motion (§7.2) -------------------------------------------------------------
@@ -868,6 +1037,7 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
     // box and left the whole side layer culled. Cheap enough to re-ask every frame: the pass is a
     // dozen box projections and it only runs when the answer actually moved.
     else if (boardBoxMoved()) applyKeepOut()
+    settleBoardShadow()
     // A pinned time answers for the clock entirely; `frozen` only decides whether the live clock
     // keeps running underneath. `prefers-reduced-motion` freezes the displacement too (§7.2) — the
     // world holds a readable static pose rather than accumulating time nobody sees.
@@ -938,12 +1108,35 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
       cells: count(clusters) + count(walls) + count(foreground) + count(looseBlocks),
       clouds: cloudSpecs.length,
       cloudTextures: cloudTextures.filter(Boolean).length,
+      cloudQuads: cloudSpecs.map(({ sprite, seed }, index) => ({
+        index,
+        widthFraction: sprite.userData.band?.widthFraction ?? seed[2],
+        heightFraction: (() => {
+          const rect = getCanvasRect?.()
+          const widthFraction = sprite.userData.band?.widthFraction ?? seed[2]
+          return rect?.height > 0 ? widthFraction * rect.width / (world.clouds.aspect * rect.height) : null
+        })(),
+        // Alpha-bounds measured from the delivered sprites occupy roughly 75–81% of each quad.
+        bodyWidthFractionRange: [
+          Number(((sprite.userData.band?.widthFraction ?? seed[2]) * 0.75).toFixed(3)),
+          Number(((sprite.userData.band?.widthFraction ?? seed[2]) * 0.81).toFixed(3)),
+        ],
+      })),
       culled,
       // 搂4.2 的「避让」那一步的结果。`culled` 单独一个数说不出「是躲开了还是没地方站」——
       // 上一轮整层被剔光时，两个数里只有这一个会变。
       dodged,
       blockedBy,
       decor: decorations,
+      composition: {
+        effective: decorations.filter((entry) => entry.effectiveVisible).length,
+        effectiveMid: decorations.filter((entry) => entry.family === 'mid' && entry.effectiveVisible).length,
+        effectiveBySide: {
+          left: decorations.filter((entry) => entry.effectiveVisible && entry.side === 'left').length,
+          right: decorations.filter((entry) => entry.effectiveVisible && entry.side === 'right').length,
+        },
+        visibilityTest,
+      },
       keepOutDebug,
       layout: appliedLayout,
       reducedMotion: reducedMotion.matches,
@@ -970,5 +1163,5 @@ export function createFloatingWorld({ scene, quality, getCamera, getCanvasRect, 
   // first layout attempt. The plaza's placeholder geometry is built above; `update()` re-solves
   // everything on the first frame, and `resize()` re-solves it again whenever the layout moves.
 
-  return { group, sky, plaza, resize: layout, update, setEnabled, setAmbient, report }
+  return { group, sky, plaza, resize: layout, update, setEnabled, setAmbient, setVisibilityTest, report }
 }

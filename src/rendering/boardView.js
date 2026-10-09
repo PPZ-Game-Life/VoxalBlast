@@ -634,7 +634,8 @@ export function createBoardView({
   const BOARD_CELL_COUNT = SH ** 3 - Math.max(0, SH - 2) ** 3
   const inkMatrix = new THREE.Matrix4()
   const inkQuaternion = new THREE.Quaternion()
-  const inkScale = new THREE.Vector3(style.boardInkScale, style.boardInkScale, style.boardInkScale)
+  let currentInkScale = style.boardInkScale
+  const inkScale = new THREE.Vector3(currentInkScale, currentInkScale, currentInkScale)
   let boardInk = null
   // The wood and paint material family — one material per (state x tone step), plus a cache
   // of paint per colour — and the deterministic per-cell tone hash both live in
@@ -730,7 +731,7 @@ export function createBoardView({
   function attachTiles() {
     boardInk = new THREE.InstancedMesh(
       getBlocks().blockGeometry,
-      new THREE.MeshBasicMaterial({ color: style.boardInkColor, side: THREE.BackSide, toneMapped: false }),
+      getBlocks().makeInkMaterial(1),
       BOARD_CELL_COUNT,
     )
     boardInk.name = 'board-cell-ink'
@@ -751,6 +752,25 @@ export function createBoardView({
     clearPreviewColors.clear()
     occupiedColors = new Map(cells.map((cell) => [`${cell.x},${cell.y},${cell.z}`, cell.color]))
     applyTileMaterials()
+  }
+
+  // DEV locked-scene A/B: update only the presentation shell matrices. Gameplay transforms,
+  // picking and the .95 block geometry never move. The pitch inequality is enforced here as well
+  // as reported by blockResources, so a diagnostic cannot accidentally recreate overlapping ink.
+  function tuneInkScale(value) {
+    const next = Number(value)
+    if (!Number.isFinite(next) || next < 1 || next > 1.03 || style.blockSize * next >= metrics().cs) {
+      throw new RangeError(`ink scale ${value} violates 1 <= scale <= 1.03 and blockSize * scale < pitch`)
+    }
+    currentInkScale = next
+    inkScale.setScalar(next)
+    let index = 0
+    gridGroup.children.forEach((faceGroup) => faceGroup.children.forEach((mesh) => {
+      inkMatrix.compose(mesh.position, inkQuaternion, inkScale)
+      boardInk?.setMatrixAt(index++, inkMatrix)
+    }))
+    if (boardInk) boardInk.instanceMatrix.needsUpdate = true
+    return { scale: currentInkScale, physicalWidth: style.blockSize * currentInkScale, pitch: metrics().cs }
   }
 
   // Which face the tiles were last painted for. The frame loop re-applies the materials only
@@ -1456,6 +1476,7 @@ export function createBoardView({
     setClearPreview,
     clearPreviewReport,
     tileColorReport,
+    tuneInkScale,
     setLive,
     // Pose commands and queries. `stepQuaternion`, `planAxisRelease`, `frontFaceOf` and
     // `updateScreenAxesLocal` are internals of this model and stay private.

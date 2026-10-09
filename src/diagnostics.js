@@ -23,7 +23,7 @@ import { DEFAULT_LOCALE, getLocale, LOCALES } from './i18n/index.js'
 import { hapticsSupported } from './platform/haptics.js'
 import { KEY_BINDINGS } from './rendering/keyboard.js'
 import { blockSurfaceArtStatus } from './rendering/woodTexture.js'
-import { referencePaintColor } from './rendering/referencePalette.js'
+import { referencePaintColor, referencePaintReport } from './rendering/referencePalette.js'
 
 export function createDiagnostics({
   version,
@@ -312,6 +312,21 @@ export function createDiagnostics({
     }),
     // The candidate pool itself: name, color and cell count per type.
     shapes: () => SHAPES.map((shape) => ({ name: shape.name, color: shape.color, size: shape.cells.length })),
+    // v0.13.1 Q1: all legal stored identities, their recipe mapping and the material colour the
+    // shared board/tray/ghost factory actually produced. This is the 18-colour development swatch
+    // as data, so a probe can grade it without sampling five hand-picked colours from a screenshot.
+    paintPalette: () => referencePaintReport(SHAPES.map((shape) => shape.color)).map((entry) => {
+      const shape = SHAPES.find((candidate) => candidate.color === entry.logical)
+      const materialHex = `#${blocks.paintMaterial(entry.logical).color.getHexString()}`
+      return {
+        name: shape?.name ?? 'historical',
+        ...entry,
+        materialHex,
+        boardHex: materialHex,
+        candidateHex: materialHex,
+        ghostHex: materialHex,
+      }
+    }),
     // v0.9.0 P1: where the run is on the difficulty ladder, and what the LAST batch was made
     // of — the tolerance interval it landed on, the pressure change, whether it needed a
     // fallback, and how many search nodes it cost. This is the only read-out that can prove
@@ -334,6 +349,8 @@ export function createDiagnostics({
       globalThis.__voxalblastDev = Object.freeze({
         tuneMaterials: (values) => blocks.tuneMaterials(values),
         tuneGem: (values) => blocks.tuneGem(values),
+        tuneInkScale: (value) => boardView.tuneInkScale(value),
+        setSceneryVisibilityTest: (value) => floatingWorld.setVisibilityTest(value),
         tuneShadows: (values) => scene3d.tuneShadows(values),
         // v0.13.0 R5 (handoff §8.7): pin the board's idle float while a capture is taken, so a
         // screenshot is a still of a DETERMINISTIC pose rather than of whatever phase the float

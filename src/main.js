@@ -328,15 +328,32 @@ const {
 // edges, and the tray is an opaque DOM panel drawn over the canvas — a block behind it cannot
 // obscure a candidate. Keeping the tray in this list deleted exactly that layer when it was
 // measured (3 of the 7 decorations), which is the opposite of what the correction asks for.
-const KEEP_OUT_SELECTORS = Object.freeze(['.score-plaque', '.topbar', '.action-bars'])
+const KEEP_OUT_TARGETS = Object.freeze([
+  ['.score-plaque', 'score'],
+  ['.topbar .icon-button', 'top-control'],
+  ['.item-button', 'tool-control'],
+  ['.piece-slot', 'candidate'],
+  ['#axis-hint', 'hint'],
+  ['#item-status-hint', 'hint'],
+])
 function floatingWorldKeepOut() {
   const rects = []
   if (typeof document === 'undefined') return rects
-  for (const selector of KEEP_OUT_SELECTORS) {
+  const padding = 8
+  for (const [selector, role] of KEEP_OUT_TARGETS) {
     for (const element of document.querySelectorAll(selector)) {
+      const style = getComputedStyle(element)
       const rect = element.getBoundingClientRect()
-      if (rect.width > 0 && rect.height > 0) {
-        rects.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height })
+      if (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05 && rect.width > 0 && rect.height > 0) {
+        rects.push({
+          left: rect.left - padding,
+          top: rect.top - padding,
+          right: rect.right + padding,
+          bottom: rect.bottom + padding,
+          width: rect.width + padding * 2,
+          height: rect.height + padding * 2,
+          role,
+        })
       }
     }
   }
@@ -562,7 +579,7 @@ const PREVIEW_LIFT = BLOCK_HALF + style.previewLift
 // board are literally the same object — same size, same six flat faces, same bevel.
 // The shell's half-side is handed in lazily for the same reason gameScene gets `metrics`:
 // the lattice arithmetic stays this file's, and the factory runs before nothing else needs it.
-const blocks = createBlockResources({ metrics: () => ({ cubeSide }) })
+const blocks = createBlockResources({ metrics: () => ({ cubeSide, cs }) })
 cubeGroup.add(blocks.cubeBody)
 
 // The 98 blocks live in rendering/boardView.js (refactor P3c). attachTiles() runs here, where

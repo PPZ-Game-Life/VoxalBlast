@@ -28,7 +28,7 @@ export const floatingWorldPalette = Object.freeze(
   Object.fromEntries(Object.entries(recipe.palette).map(([name, value]) => [name, hex(value)])),
 )
 
-// Stored save colours → displayed paint. The KEYS are the 14 stable gameplay RGB identities
+// Stored save colours → displayed paint. The keys are the live pool's stable gameplay RGB identities
 // (referencePalette.js's whole reason for existing): the mapping changes what a block LOOKS
 // like and never what a run, a save or a shape is made of.
 export const floatingWorldPaint = Object.freeze(

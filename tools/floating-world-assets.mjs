@@ -20,10 +20,12 @@
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { join, resolve, dirname, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { SHAPES } from '../src/game/shapes.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const PACK_DIR = join(ROOT, 'public', 'art', 'floating-world-v1')
 const MANIFEST = join(PACK_DIR, 'manifest.json')
+const RECIPE = join(PACK_DIR, 'scene.recipe.json')
 const RUNTIME_PREFIX = '/art/floating-world-v1/'
 const FIRST_SCREEN_BUDGET = 400 * 1024
 // The pack's own exchange backups. §2.5: the GLBs are geometry sources for the art team, and
@@ -37,12 +39,21 @@ const warnings = []
 function fail(message) { failures.push(message) }
 function warn(message) { warnings.push(message) }
 const kib = (bytes) => `${(bytes / 1024).toFixed(1)} KiB`
+const manifestBytes = (file) => {
+  const bytes = readFileSync(file)
+  // Git may check text assets out as CRLF on Windows. Manifest sizes are canonical LF bytes so the
+  // same pack validates on every OS; binary payloads always use their exact on-disk byte length.
+  return /\.(?:json|svg)$/i.test(file)
+    ? Buffer.byteLength(bytes.toString('utf8').replace(/\r\n/g, '\n'))
+    : bytes.length
+}
 
 if (!existsSync(MANIFEST)) {
   console.error(`floating-world-assets: no manifest at ${relative(ROOT, MANIFEST)}`)
   process.exit(1)
 }
 const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'))
+const recipe = JSON.parse(readFileSync(RECIPE, 'utf8'))
 if (manifest.runtimeBase !== RUNTIME_PREFIX) {
   warn(`manifest.runtimeBase is ${JSON.stringify(manifest.runtimeBase)}, the source uses ${RUNTIME_PREFIX}`)
 }
@@ -53,8 +64,8 @@ const byRole = new Map()
 for (const entry of manifest.files) {
   const file = join(PACK_DIR, entry.path)
   if (!existsSync(file)) { fail(`manifest lists ${entry.path} but the file is missing`); continue }
-  const actual = statSync(file).size
-  if (actual !== entry.bytes) fail(`${entry.path}: manifest says ${entry.bytes} bytes, file is ${actual}`)
+  const actual = manifestBytes(file)
+  if (actual !== entry.bytes) fail(`${entry.path}: manifest says ${entry.bytes} canonical bytes, file is ${actual}`)
   if (actual === 0) fail(`${entry.path}: zero bytes`)
   packedBytes += actual
   byRole.set(entry.role, (byRole.get(entry.role) ?? 0) + 1)
@@ -75,7 +86,24 @@ const walk = (dir, prefix = '') => {
 }
 walk(PACK_DIR)
 
-// ---- 2. what the source references, and whether it is there ---------------------
+// ---- 2. every legal stored colour has an authored display colour ----------------
+// Derive the set from SHAPES so a future pool expansion fails here until the recipe follows it;
+// never pin the gate to "18 forever". Decimal and 0x-prefixed JSON keys are both accepted by
+// Number(), matching the runtime reader in rendering/floatingWorld.js.
+const legalColours = [...new Set(SHAPES.map((shape) => shape.color))]
+const paintMap = new Map(Object.entries(recipe.paintMapping ?? {}).map(([stored, shown]) => [Number(stored), String(shown).toUpperCase()]))
+const missingPaint = legalColours.filter((color) => !paintMap.has(color))
+if (missingPaint.length) {
+  fail(`paintMapping misses ${missingPaint.length}/${legalColours.length} legal colour(s): ${missingPaint.map((color) => `0x${color.toString(16).padStart(6, '0')}`).join(', ')}`)
+}
+const requiredPolish = new Map([
+  [0x2121d9, '#2F70E8'], [0xd62fd6, '#AF68D4'], [0x2fd64b, '#56B879'], [0xd13c2e, '#E66B63'],
+])
+for (const [stored, shown] of requiredPolish) {
+  if (paintMap.get(stored) !== shown) fail(`paintMapping 0x${stored.toString(16)} is ${paintMap.get(stored) ?? 'missing'}, expected ${shown}`)
+}
+
+// ---- 3. what the source references, and whether it is there ---------------------
 // Every `/art/floating-world-v1/...` string in index.html and src/**. A reference that does not
 // resolve is the failure mode this tool was written for.
 const SOURCE_EXTENSIONS = /\.(html|css|js)$/
@@ -149,6 +177,7 @@ if (referencedLogo && /logo-1024\.png$/.test(referencedLogo) && references.has(`
   warn('both the WebP and the PNG logo are referenced — use <picture> so only one is fetched')
 }
 
+console.log(`paint map   ${legalColours.length - missingPaint.length}/${legalColours.length} legal stored colours mapped`)
 console.log(`pack        ${manifest.files.length} files, ${kib(packedBytes)} (manifest totals agree with disk)`)
 console.log(`roles       ${[...byRole].map(([role, n]) => `${role}:${n}`).join('  ')}`)
 console.log(`references  ${counted} file(s) named by index.html/src, ${kib(referencedBytes)} counted for the first screen`)

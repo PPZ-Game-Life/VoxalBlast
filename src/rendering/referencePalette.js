@@ -8,4 +8,25 @@
 import { floatingWorldPaint } from './floatingWorld.js'
 
 const lacquer = new Map(floatingWorldPaint)
-export const referencePaintColor = color => lacquer.get(color) ?? color
+const warnedFallbacks = new Set()
+const FALLBACK_WARNING_LIMIT = 8
+
+// Unknown historical save colours keep the compatibility fallback. In development the first few
+// are reported once, while current legal SHAPES are guarded separately by the art preflight gate.
+export function referencePaintColor(color) {
+  if (lacquer.has(color)) return lacquer.get(color)
+  if (import.meta.env?.DEV && warnedFallbacks.size < FALLBACK_WARNING_LIMIT && !warnedFallbacks.has(color)) {
+    warnedFallbacks.add(color)
+    console.warn(`[paintMapping] unmapped stored colour 0x${Number(color).toString(16).padStart(6, '0')}; using compatibility fallback`)
+  }
+  return color
+}
+
+export function referencePaintReport(colors) {
+  return [...new Set(colors)].map((logical) => ({
+    logical,
+    logicalHex: `#${Number(logical).toString(16).padStart(6, '0')}`,
+    mapped: lacquer.has(logical),
+    mappedHex: `#${Number(referencePaintColor(logical)).toString(16).padStart(6, '0')}`,
+  }))
+}

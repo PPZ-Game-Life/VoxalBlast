@@ -93,9 +93,15 @@ export function createPieceView({
       if (!node.material) return
       node.material = node.material.clone()
       temporaryMaterials.push(node.material)
-      node.material.color.set(referencePaintColor(piece.shape.color))
-      if (node.isLineSegments) node.material.color.multiplyScalar(0.58)
-      node.material.opacity = node.isLineSegments ? style.voxelEdgeOpacity : 0.96
+      if (node.userData.cellInk) {
+        node.material.color.set(style.boardInkColor)
+        node.material.opacity = 0.68
+        node.material.transparent = true
+        node.material.depthWrite = false
+      } else {
+        node.material.color.set(referencePaintColor(piece.shape.color))
+        node.material.opacity = 0.96
+      }
     })
     snapshot.add(copy)
     const captureCamera = camera.clone(false)
@@ -166,15 +172,24 @@ export function createPieceView({
     }
   }
 
+  // Every piece state uses the board's back-face silhouette, never the retired twelve-edge cage.
+  // The opacity belongs to the state: normal tray blocks are crisp, transparent drag/landing
+  // states carry a weaker ink shell so a black opaque contour cannot survive after the fill fades.
+  function addCellInk(mesh, opacity, options = {}) {
+    const ink = blocks.makeInkMesh(opacity, options)
+    ink.renderOrder = options.renderOrder ?? mesh.renderOrder - 1
+    mesh.add(ink)
+    return ink
+  }
+
   // A cell has one visual size across the entire hand. Do not inflate a dot or a two-cell shape
   // to fill the same box as a nine-cell shape.
   function buildPreviewMeshes(root, piece) {
-    const outlineColor = new THREE.Color(referencePaintColor(piece.shape.color)).multiplyScalar(0.58)
     return flatPreviewPositions(getCells(piece)).map((position) => {
       const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(piece.shape.color))
       mesh.scale.setScalar(0.8)
       mesh.position.copy(position)
-      mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: style.voxelEdgeOpacity })))
+      addCellInk(mesh, 0.88)
       root.add(mesh)
       return mesh
     })
@@ -339,9 +354,6 @@ export function createPieceView({
   function showLanding({ face, cells, origin, valid, color }) {
     const faceNormal = cubeVector(face, 'n')
     const markerColor = valid ? color : palette.invalid
-    const markerEdge = valid
-      ? new THREE.Color(referencePaintColor(color)).multiplyScalar(0.58)
-      : new THREE.Color(palette.invalid).multiplyScalar(0.58)
     cells.forEach(([u, v]) => {
       const [cx, cy, cz] = faceLattice(face, u + origin.u, v + origin.v)
       // The landing marker IS a ghost of the block: same cube, same cell, same gap to
@@ -349,12 +361,7 @@ export function createPieceView({
       // highlight floating over it (05 §6「落点预览」).
       const mesh = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(markerColor, valid ? 0.86 : 0.96))
       mesh.position.copy(cellToWorld(cx, cy, cz)).addScaledVector(faceNormal, previewLift)
-      mesh.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
-        color: markerEdge,
-        transparent: true,
-        opacity: style.voxelEdgeOpacity,
-        depthWrite: false,
-      })))
+      addCellInk(mesh, valid ? 0.58 : 0.68, { depthWrite: false })
       landing.add(mesh)
     })
   }
@@ -385,6 +392,7 @@ export function createPieceView({
   // Reused per drag so tinting an invalid drop never reallocates a Color.
   const ghostInvalid = new THREE.Color(palette.invalid)
   const ghostInvalidEdge = new THREE.Color(palette.invalid).multiplyScalar(0.62)
+  const ghostInk = new THREE.Color(style.boardInkColor)
 
   // 03 §4 has always asked for「鼠标按下方块后进入拖拽态，方块跟随光标移动」; until
   // v0.4.4 the drag drew the landing cells on the board and nothing else, so the
@@ -406,7 +414,6 @@ export function createPieceView({
     draggedPiece = piece
     clearGroup(ghost)
     const fill = new THREE.Color(referencePaintColor(piece.shape.color))
-    const outline = fill.clone().multiplyScalar(0.58)
     const cells = getCells(piece)
     // Rows the shape spans on screen: what the fingertip clearance is measured from.
     ghost.userData.rows = cells.reduce((max, [, v]) => Math.max(max, v), 0) + 1
@@ -426,16 +433,12 @@ export function createPieceView({
       mesh.position.copy(position)
       mesh.renderOrder = 12
       mesh.userData.fillColor = fill.clone()
-      mesh.userData.edgeColor = outline.clone()
-      const edges = new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
-        color: outline,
-        transparent: true,
-        opacity: style.voxelEdgeOpacity,
+      const ink = addCellInk(mesh, DRAG_GHOST.opacity * 0.64, {
         depthTest: false,
         depthWrite: false,
-      }))
-      edges.renderOrder = 13
-      mesh.add(edges)
+        renderOrder: 11,
+      })
+      mesh.userData.ink = ink
       ghost.add(mesh)
     }
     ghost.visible = false
@@ -455,8 +458,11 @@ export function createPieceView({
     for (const mesh of ghost.children) {
       mesh.material.color.copy(invalid ? ghostInvalid : mesh.userData.fillColor)
       mesh.material.opacity = opacity
-      const edges = mesh.children[0]
-      if (edges) edges.material.color.copy(invalid ? ghostInvalidEdge : mesh.userData.edgeColor)
+      const ink = mesh.userData.ink
+      if (ink) {
+        ink.material.color.copy(invalid ? ghostInvalidEdge : ghostInk)
+        ink.material.opacity = opacity * 0.64
+      }
     }
   }
 
@@ -703,6 +709,9 @@ export function createPieceView({
       const ghost = new THREE.Mesh(blocks.blockGeometry, blocks.makeMaterial(palette.itemClear, 0.34))
       ghost.scale.setScalar(0.94)
       ghost.position.copy(cellToWorld(cell[0], cell[1], cell[2])).addScaledVector(normal, previewLift)
+      // Intentional exception to the gameplay ink language: this is the item-clear SCOPE cue,
+      // not a candidate/drag/landing block. Its full 12-edge cage communicates the volume that
+      // will disappear; replacing it with a silhouette would erase the internal scope reading.
       ghost.add(new THREE.LineSegments(blocks.edgeGeometry, new THREE.LineBasicMaterial({
         color: palette.itemClear, transparent: true, opacity: 0.98, depthWrite: false, toneMapped: false,
       })))

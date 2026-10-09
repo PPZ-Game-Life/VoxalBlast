@@ -50,11 +50,11 @@ export const BOARD_STYLE = Object.freeze({
   // The shell is the BACKING, not a surface the player is meant to look at: it sits
   // behind the blocks, and every place it shows through is a notch between blocks.
   // It is therefore deliberately darker than the blocks — the groove IS this colour.
-  // v0.13.1: the seam backing uses the same recipe `ink` (#20334C) as the cell contour.
-  // The prior `hull` grey made the gaps read like rubber strips. The skin has no wood grain
-  // anywhere, so the shell's grain map is gone with the block maps (§4.2: switch the
-  // affected albedo/normal/roughness channels off, do not just re-tint them).
-  hullColor: floatingWorldPalette.ink,
+  // v0.13.1 quality close: backing and contour are related but distinct layers. The recessed
+  // shell reads recipe `hull` (#243A4A); the decorative silhouette below keeps `ink` (#20334C).
+  // Merging them made every physical gap as heavy as the extra contour. The skin has no wood
+  // grain anywhere, so this is still a flat backing rather than a restored timber surface.
+  hullColor: floatingWorldPalette.hull,
   hullOpacity: 1,
   hullRoughness: floatingWorldMaterials.background.roughness,
   hullClearcoat: floatingWorldMaterials.background.clearcoat,
@@ -80,7 +80,11 @@ export const BOARD_STYLE = Object.freeze({
   // hull alone made the live board read as 25 soft cushions with shadowy cracks. The outline does
   // not move, lift or resize any gameplay cell — it is a single non-pickable presentation mesh.
   boardInkColor: floatingWorldPalette.ink,
-  boardInkScale: 1.055,
+  // Q2 low-DPR A/B (320×740, identical seed/pose) selected 1.025: 1.015/1.020 lost parts
+  // of the outer silhouette, while 1.025 remained fine without restoring the old black band.
+  // .95 × 1.025 = .97375 < pitch 1, so the presentation shell cannot bridge the real cell gap.
+  boardInkScale: 1.025,
+  boardInkScaleCandidates: Object.freeze([1.015, 1.020, 1.025]),
   // Empty cell / bare block. Recipe `materials.empty`.
   woodRoughness: floatingWorldMaterials.empty.roughness,
   woodClearcoat: floatingWorldMaterials.empty.clearcoat,
@@ -114,7 +118,6 @@ export const BOARD_STYLE = Object.freeze({
   // roughness texture that the floating-world skin does not build (§4.2). They are kept
   // only for the rollback story — with `paintNormalScale`/`woodNormalScale` at 0 and no
   // surface maps on either family, `paintCrownHeight`/`woodCrownHeight` reach no shader.
-  voxelEdgeOpacity: 0,
   // Landing marker: a ghost of the block itself, sitting in the cell and lifted
   // just clear of whatever is already there so it cannot z-fight with a neighbour.
   previewLift: 0.03,
@@ -582,11 +585,15 @@ export const VFX_CONFIG = Object.freeze({
   occlusion: Object.freeze({
     samples: 16,
     rings: 3,
+    // Neutral floating-world contact shading. The retired warm-brown/1.65 wood rig dirtied the
+    // entire cream face on high tier; low still disables SSAO, while high keeps only a restrained
+    // blue-grey crease cue. Radius remains the existing postprocessing input until its screen/
+    // scene-space semantics are measured rather than guessed from the literal.
     radius: 0.075,
-    intensity: 1.65,
+    intensity: 0.35,
     bias: 0.012,
     fade: 0.018,
-    color: 0x60422e,
+    color: 0x52606b,
     worldProximityThreshold: 0.35,
     worldProximityFalloff: 0.45,
     luminanceInfluence: 0.15,

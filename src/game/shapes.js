@@ -163,10 +163,10 @@ export const SHAPES = [
   // distance to the nearest paint already in the pool.
   //
   // ⚠️ The scan has to be run in RENDERED space, and these three are a case where that matters:
-  // `src/rendering/referencePalette.js` maps the 14 pre-v0.9.0 logic colours to a LACQUER skin
-  // and passes anything else through unchanged, so `Line 4` and these three are seen by the
-  // player as the hex values written here, while `Dot` and `Block 9` are seen as whatever
-  // `paintMapping` says (v0.13.0 「浮空积木世界」: #E65B86 and #AE70D8). The bare block the paint
+  // `src/rendering/referencePalette.js` maps every legal logic colour to the LACQUER skin.
+  // v0.13.1 completes the table for `Line 4` and these three pentominoes; unknown historical
+  // save colours alone keep the compatibility fallback. `Dot` and `Block 9` are likewise seen as
+  // whatever `paintMapping` says (#E65B86 and #AE70D8). The bare block the paint
   // must clear is `BOARD_STYLE.blockColor` (#F4E4C0, the EMPTY block — a placed and an empty
   // block are the same cube in a different material, so "is this cell filled?" is carried by
   // colour alone). v0.13.0 collapsed `blockToneSteps` to `[1]`, so the bare tone is now ONE

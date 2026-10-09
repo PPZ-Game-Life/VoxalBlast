@@ -90,6 +90,14 @@ const SHOTS = [
 // Three or four seeds cover the 14-shape pool; each run is still fully deterministic.
 const CAPTURE_SEED = Number(process.env.SHOT_SEED || 20260916)
 const SURFACE_FALLBACK = process.env.SHOT_SURFACE === 'fallback'
+const SCENERY_VISIBILITY_SELFTEST = process.env.SCENERY_VISIBILITY_SELFTEST === '1'
+// Q2 locked-scene A/B: tune only the board's presentation shell after boot. The chosen value is
+// still written back to BOARD_STYLE so board/tray/ghost ship from one static source; this hook exists
+// solely to make the 1.015 / 1.020 / 1.025 comparison reproducible without three source edits.
+const SHOT_INK_SCALE = process.env.SHOT_INK_SCALE === undefined ? null : Number(process.env.SHOT_INK_SCALE)
+if (SHOT_INK_SCALE !== null && (!Number.isFinite(SHOT_INK_SCALE) || SHOT_INK_SCALE < 1 || SHOT_INK_SCALE > 1.03)) {
+  throw new Error(`SHOT_INK_SCALE must be within 1..1.03, got ${process.env.SHOT_INK_SCALE}`)
+}
 // Inject only into this driver's disposable browser profile, never the player's
 // browser. Used to verify a continued game, not just a freshly dealt palette.
 const sessionFixture = process.env.SHOT_SESSION
@@ -287,6 +295,21 @@ async function capture(browser, shot) {
           + ' ambient: d.setAmbient?.({ frozen: true, time: 0 }) ?? null }; })()',
         returnByValue: true,
       })
+      if (SHOT_INK_SCALE !== null && mode === 'board') {
+        const tuned = await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: `globalThis.__voxalblastDev?.tuneInkScale?.(${JSON.stringify(SHOT_INK_SCALE)})`,
+          returnByValue: true,
+        })
+        if (!tuned.result?.value || Math.abs(tuned.result.value.scale - SHOT_INK_SCALE) > 1e-9) {
+          throw new Error(`ink A/B hook did not apply ${SHOT_INK_SCALE}: ${JSON.stringify(tuned)}`)
+        }
+      }
+      if (SCENERY_VISIBILITY_SELFTEST && mode === 'board') {
+        await send(ws, nextId++, 'Runtime.evaluate', {
+          expression: 'globalThis.__voxalblastDev?.setSceneryVisibilityTest?.("hide-mid")',
+          returnByValue: true,
+        })
+      }
       if (mode === 'home' || mode === 'home-return') {
         await send(ws, nextId++, 'Runtime.evaluate', {
           expression: '(() => { document.querySelector("#settings-button").click(); document.querySelector("#home-setting").click(); return "home"; })()',
@@ -440,6 +463,8 @@ async function capture(browser, shot) {
             resumedBoard: ${Boolean(sessionFixture)} ? globalThis.__voxalblast?.board?.() : null,
             gameLayers: [...document.querySelectorAll('.topbar, .game-layout')].map(el => ({ visibility: getComputedStyle(el).visibility, inert: el.inert, width: el.clientWidth, height: el.clientHeight })),
             candidateFrames: globalThis.__voxalblast?.candidateFrames?.() ?? [],
+            paintPalette: globalThis.__voxalblast?.paintPalette?.() ?? [],
+            shapes: globalThis.__voxalblast?.shapes?.() ?? [],
             // v0.9.32 R0 (BLOCK_REFERENCE_REWORK_HANDOFF §5.3): the candidate tray's real
             // CSS pixels. This block reads LAYOUT BOXES only -- it deliberately does not
             // re-derive the preview camera's ortho fit, because diagnostics must not copy a
@@ -605,19 +630,14 @@ async function capture(browser, shot) {
         if (!(world.plaza?.floorY <= -4.5)) failures.push(`the plaza floor (${world.plaza?.floorY}) is above the board's worst pose — the board would cut through it`)
         if (!(world.cells > 0)) failures.push('the floating blocks have no cells')
         if (!(world.clouds > 0) || world.cloudTextures !== 3) failures.push(`clouds: ${world.clouds} sprites over ${world.cloudTextures} textures (the pack ships three)`)
-        // The scenery's composition is ART-FIXED at 3 groups / 3 loose blocks / 6 clouds on
-        // every tier, and that is a DELIBERATE deviation from §7.3's per-tier counts — the R4
-        // side's own receipt §4.2 records the reason: the project's `lowPower` selector is
-        // width-based, EVERY phone width lands in `low`, and applying the recipe's low tier
-        // (1/1/3) would strip the very viewport C1 is graded at. Downgrades still act on DPR,
-        // shadows and SSAO.
-        //
-        // So the exact numbers are asserted here rather than the tier comparison they replaced:
-        // this gate now pins the composition the module PROMISES. If the tiers are ever wired
-        // up, this line has to change with them — which is the point. The deviation itself is
-        // recorded as an OPEN PRODUCER DECISION in docs/Technical/KNOWN_GAPS.md, not resolved.
-        if (world.clusters !== 3 || world.looseBlocks !== 3 || world.clouds !== 6) {
-          failures.push(`scenery composition is ${world.clusters}/${world.looseBlocks}/${world.clouds}, the art-fixed contract is 3/3/6 (see KNOWN_GAPS: the §7.3 tier deviation is an open decision)`)
+        // Buildings stay authored at full count so phone composition cannot collapse; cloud count
+        // follows the active tier (3 on low/mobile, 6 on high/desktop) now that each quad is sized
+        // from viewport WIDTH. This is the v0.13.1 correction to the old art-fixed 3/3/6 gate.
+        if (world.clusters !== 3 || world.looseBlocks !== 3 || world.clouds !== world.tierSpec?.clouds) {
+          failures.push(`scenery composition is ${world.clusters}/${world.looseBlocks}/${world.clouds}; expected 3/3/${world.tierSpec?.clouds} for the active tier`)
+        }
+        if (world.cloudQuads?.some((cloud) => !(cloud.widthFraction >= 0.24 && cloud.widthFraction <= 0.40))) {
+          failures.push(`cloud quad width escaped the .24-.40 viewport window: ${JSON.stringify(world.cloudQuads)}`)
         }
         // v0.13.0 R4 (KNOWN_GAPS §3 / handoff §C0.4): the world has to BE still for the picture to
         // be comparable. This is read back from the module rather than trusted from the pin call
@@ -639,6 +659,18 @@ async function capture(browser, shot) {
         if (survivors < Math.ceil(sceneryTotal * 0.6)) {
           failures.push(`only ${survivors} of ${sceneryTotal} scenery pieces survived keep-out (culled ${world.culled}); a band has been emptied — see the R4 receipt §9 for how this shipped green once`)
         }
+        if (mode === 'board') {
+          const effectiveMid = (world.decor ?? []).filter((entry) => entry.family === 'mid' && entry.effectiveVisible)
+          const midSides = new Set(effectiveMid.map((entry) => entry.side))
+          const effectiveSides = new Set((world.decor ?? []).filter((entry) => entry.effectiveVisible).map((entry) => entry.side))
+          if (width <= 320) {
+            if (effectiveMid.length < 1 || !effectiveSides.has('left') || !effectiveSides.has('right')) {
+              failures.push(`midground composition: 320px requires one effective building and designed content on both sides; ${JSON.stringify(world.composition)}`)
+            }
+          } else if (!midSides.has('left') || !midSides.has('right')) {
+            failures.push(`midground composition: gameplay requires an effective building fragment on both sides; ${JSON.stringify(world.composition)}`)
+          }
+        }
         // Only a piece the DODGE pushed out of the picture counts. A piece authored at an anchor
         // outside the viewport is 搂4.2's 「被画框裁切」 and is exactly what the wide viewports are
         // supposed to show — the first version of this assertion flagged that and failed 2048×900
@@ -653,6 +685,10 @@ async function capture(browser, shot) {
       if (parsed.rendering?.surfaceArt !== (SURFACE_FALLBACK ? 'fallback' : 'ready')) failures.push('block surface asset / fallback not ready')
       const materials = parsed.rendering?.materials
       if (!(materials?.wood.roughness > materials?.paint.roughness)) failures.push('bare wood must stay rougher than toy plastic')
+      if (!materials?.ink?.belowPitch) failures.push(`decorative ink overlaps the physical pitch (${JSON.stringify(materials?.ink)})`)
+      if (parsed.paintPalette.length !== 18 || parsed.paintPalette.some((entry) => !entry.mapped || entry.materialHex !== entry.mappedHex || entry.boardHex !== entry.candidateHex || entry.boardHex !== entry.ghostHex)) {
+        failures.push(`the complete legal paint palette is not 18/18 or consumers disagree: ${JSON.stringify(parsed.paintPalette)}`)
+      }
       if (!materials?.environmentBound) failures.push('per-material reflection tuning is bypassed by scene environment')
       if (!(parsed.rendering?.trianglesPerBlock <= 1000)) failures.push('shared block exceeds H5 geometry budget')
       // v0.13.0 (handoff §5.2/§13.2): the board FLOATS. The old gate here asserted a painted
@@ -783,6 +819,13 @@ async function capture(browser, shot) {
         if (!playAgain?.width || !playAgain?.height) failures.push('PLAY AGAIN has no layout box')
         if (playAgain && !playAgain.onTop) failures.push(`PLAY AGAIN is covered at its own centre (${playAgain.at})`)
         if (leaderboardEntry && !leaderboardEntry.onTop) failures.push('排行榜 entry is covered at its own centre')
+      }
+      if (SCENERY_VISIBILITY_SELFTEST && mode === 'board') {
+        const caught = failures.some((message) => message.startsWith('midground composition:'))
+        console.log(`${caught ? 'OK  ' : 'FAIL'} ${shot.name.padEnd(13)} scenery visibility negative control`)
+        console.log(`     ${JSON.stringify(parsed.rendering?.world?.composition ?? null)}`)
+        if (!caught) throw new Error(`${shot.name}: visibility gate did not fail after every midground building was deliberately hidden`)
+        return
       }
       const clean = failures.length === 0
       console.log(`${clean ? 'OK  ' : 'FAIL'} ${shot.name.padEnd(13)} ${width}x${height}  ${out}`)

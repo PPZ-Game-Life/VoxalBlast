@@ -276,10 +276,14 @@ html:root { --plaque-board-top: 0.025; }
  * Without the reserved gap the crown lands on the ribbon instead of the sky.
  */
 #app .home-record {
+  width: clamp(168px, 52vw, 232px);
   aspect-ratio: 2;
   color: #20334C;
   margin-top: 8px;
 }
+#app .home-primary-icon,
+#app .home-new-icon { width: 22px; height: 22px; }
+#app .home-nav-icon { width: 18px; height: 18px; }
 #app .home-brand { margin-bottom: clamp(24px, 8vh, 76px); }
 #app .home-record-crown {
   position: absolute;
@@ -321,6 +325,7 @@ html:root { --plaque-board-top: 0.025; }
    the reserved gap above the plaque is grid whitespace there and must not offset the brand. */
 @media (orientation: landscape) and (max-height: 600px) {
   #app .home-brand { margin-bottom: 0; }
+  #app .home-record { width: min(196px, 51.2vw); }
 }
 
 /* ---- The three top-bar function keys (handoff §5 「顶部功能键」) ---------------------------
@@ -377,6 +382,10 @@ html:root { --plaque-board-top: 0.025; }
  * inset ring — which is also how the pack builds `record-panel.svg`: cream field, navy keyline, and
  * the `#DDA965` band along the bottom edge.
  */
+#app .modal {
+  background: rgba(32, 51, 76, .42);
+  backdrop-filter: blur(5px);
+}
 #app .settings-card {
   background: #FFF1CE;
   border-color: transparent;

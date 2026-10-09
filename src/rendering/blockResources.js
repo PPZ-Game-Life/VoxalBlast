@@ -157,6 +157,33 @@ export function createBlockResources({ metrics }) {
 
   const edgeGeometry = new THREE.EdgesGeometry(blockGeometry)
 
+  // One contour language for board, tray, landing marker and drag ghost. This is the same
+  // back-face silhouette used by boardView's instanced mesh, exposed as a builder so pieceView
+  // cannot silently fall back to the retired twelve-edge wireframe. Geometry stays shared; each
+  // transient mesh owns its tiny material and the existing teardown paths dispose that material.
+  function makeInkMaterial(opacity = 1, options = {}) {
+    return new THREE.MeshBasicMaterial({
+      color: options.color ?? style.boardInkColor,
+      side: THREE.BackSide,
+      toneMapped: false,
+      transparent: opacity < 1,
+      opacity,
+      depthTest: options.depthTest ?? true,
+      depthWrite: options.depthWrite ?? opacity >= 1,
+    })
+  }
+
+  function makeInkMesh(opacity = 1, options = {}) {
+    const mesh = new THREE.Mesh(blockGeometry, makeInkMaterial(opacity, options))
+    mesh.name = 'cell-ink'
+    mesh.userData.cellInk = true
+    mesh.scale.setScalar(style.boardInkScale)
+    mesh.castShadow = false
+    mesh.receiveShadow = false
+    mesh.raycast = () => {}
+    return mesh
+  }
+
   // A plain unit box, scaled per bar by rendering/pieceView.js to draw an item's scope frame
   // (07 §8.5.4/§8.6: 「细实线/低透明填充表示完整作用域」 and 「边框沿棋格画成方形/透视四边形，
   // 并保留内部分格」). It is deliberately NOT `blockGeometry`: a frame drawn out of bevelled
@@ -180,6 +207,13 @@ export function createBlockResources({ metrics }) {
       wood: { roughness: style.woodRoughness, envMapIntensity: style.woodEnvMapIntensity, specularIntensity: style.woodSpecularIntensity, ior: style.woodIor },
       paint: { ...paintTuning },
       polish: { clearcoat: style.paintClearcoat, clearcoatRoughness: style.paintClearcoatRoughness, ior: style.paintIor, crownHeight: style.paintCrownHeight },
+      ink: {
+        color: `#${new THREE.Color(style.boardInkColor).getHexString()}`,
+        scale: style.boardInkScale,
+        candidates: [...style.boardInkScaleCandidates],
+        physicalWidth: style.blockSize * style.boardInkScale,
+        belowPitch: style.blockSize * style.boardInkScale < metrics().cs,
+      },
       gem: { model: 'local-thickness-scattering', settings: { ...gemTuning }, materials: livePaintMaterials.size,
         singlePass: [...livePaintMaterials].every(material => material.transmission === 0) },
       // v0.13.0: the empty cell and the paint are UNTEXTURED (§4.2 — a flat uniform roughness
@@ -225,6 +259,8 @@ export function createBlockResources({ metrics }) {
     blockWoodMaterials,
     paintMaterial,
     makeMaterial,
+    makeInkMaterial,
+    makeInkMesh,
     toneIndexFor,
     sharedGeometries,
   }
