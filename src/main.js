@@ -89,6 +89,7 @@ const platform = createCrazyGamesAdapter()
 // `#home-hero` used to be one of them; v0.9.26 deleted the node with the cover's live cube.
 const {
   sceneWrap,
+  scrollShield,
   app: appEl,
   versionEl,
   bootEl,
@@ -468,6 +469,10 @@ const input = createGameInput({
   // in and the only box a board gesture may start in. Every `canvas.getBoundingClientRect()`
   // inside gameInput therefore answers "where is the play area", which is what it always meant.
   canvas: sceneWrap,
+  // v0.13.2: the view gesture's SECOND surface. `#scene-wrap` is the board's own hit box and
+  // stops short of the tray, so the empty ground under the cube used to turn nothing; the
+  // background layer catches it instead (see `onBackgroundDown` in input/gameInput.js).
+  background: scrollShield,
   isPaused: () => isPaused,
   isEnded: () => session.isEnded(),
   isHomeOpen: () => homeUi.isOpen(),

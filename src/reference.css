@@ -11,7 +11,51 @@
  * `border-width` / `border-image-width` (the new skin sets the image and its slice, so the WIDTH
  * that sizes a nine-slice plate still comes from this file), and the muted-sound `filter`.
  * The one display path for UI art is now `src/floatingWorldUi.css`; the two must not both paint. */
-:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; --item-caption: 15px; }
+:root { --hud-button: clamp(64px, 8.8vh, 96px); --plaque-width: clamp(220px, 21vw, 350px); --hud-top: max(2px, env(safe-area-inset-top)); --hud-left: max(.2vw, env(safe-area-inset-left)); --plaque-board-top: .1322; --item-caption: 15px; --board-drop: 3%; }
+/* v0.13.2 — THE BOARD BAND SITS AGAINST THE HUD, NOT UNDER ITS DEAD GROUND.
+ *
+ * Producer, 2026-10-09, on a 360x616 phone: 「感觉六面体可以适当下移一点，现在太偏上了」.
+ * Read off that screenshot (949x2048 PNG at scale 2.636): the cube's top edge sat 36px below
+ * the tool row's caption while its bottom edge left 67px of empty ground above the tray — and
+ * the shot viewports show the same lean (430x932: 69 / 189px; 1440x900: 29 / 137px).
+ *
+ * The cube is CENTRED IN ITS OWN PLAY RECT (`#scene-wrap`, the gameplay box gameScene frames
+ * against), so nothing can be done by nudging the cube inside it: the band itself has to move.
+ *
+ * `--board-drop` is applied to BOTH edges — `top: calc(<edge> + var(--board-drop))` and
+ * `bottom: calc(<edge> - var(--board-drop))` — which is what makes it a TRANSLATION rather
+ * than a growth. Those two terms cancel in the height, so `.board-section` keeps its exact
+ * size, so `#scene-wrap` keeps its size, so the camera fit is untouched: the cube translates
+ * with the band and neither changes size nor moves within the frame. The v0.9.14 note in
+ * 04 §v0.9.14 measured the OTHER lever ("把 `.board-section` 往下长只会把它一起往下推") —
+ * growing the band downward moves the cube by half of it and eats the tray's gain.
+ *
+ * 3% is the balanced value for the reported device: 18.5px at 616 turns 36 / 67 into
+ * 54.7 / 48.8. It is a percentage rather than a pixel count because the free band only exists
+ * between the tool row and the tray and both of those scale with the viewport — 3% also lands
+ * the 390x700 (21px needed) and 430x753 (23.5px needed) cases on balance.
+ *
+ * NOT free, and measured rather than glossed: the band between the cube's bottom edge and the
+ * tray IS the drag-turn dwell's whole travel (03 §3.1), so it loses exactly this much. See 04
+ * §v0.13.2 for the per-viewport readings and the one case that closes. */
+/* v0.13.2 — THE BAND UNDER THE CUBE STOPS BEING DEAD GROUND.
+ *
+ * Producer, same report: 「下面圈出来的区域应该要能响应左右划和上下划六面体」 — the empty
+ * ground between the cube's bottom edge and the tray. It turned NOTHING, and so did the meadows
+ * beside the cube. `#scene-wrap` is the only element the view gesture is bound to, and it is
+ * deliberately the camera's framing rect (v0.13.0 R3 handoff §9.3: 「the box the board is
+ * measured in and the only box a board gesture may start in」) — that box stops 8% above this
+ * one's bottom, so of the 67px of ground under the cube on the producer's 360x616 phone only
+ * the top 21px (its own bottom edge) responded.
+ *
+ * The fix is not to enlarge the framing rect — that box sets the cube's size and the embedded
+ * projection — it is to stop `.board-section` from swallowing a band it only exists to lay
+ * out. It owns no pointer target of its own: everything inside it the player can touch
+ * declares it (`#scene-wrap` below, `.toast.undoable`), and the rest is `pointer-events: none`
+ * already. So the box goes transparent, the band falls through to `.scroll-shield` — which IS
+ * the background (`inset: 0`, `touch-action: none`, the first child of `.game-layout`) — and
+ * gameInput binds the view gesture to that too (`onBackgroundDown`), which is what
+ * 「拖动背景转动六面体」 was always supposed to mean. */
 .topbar { position: absolute; inset: 0 0 auto; width: 100%; max-width: none; height: 18vh; padding: 0; overflow: visible; pointer-events: none; }
 .topbar > button { pointer-events: auto; }
 .score-plaque { position: absolute; left: var(--hud-left); top: var(--hud-top); width: var(--plaque-width); aspect-ratio: 1.72; }
@@ -98,8 +142,12 @@
    "what is this about to clear", so it has to be in the same place every time. `pointer-events`
    belongs to the buttons alone, so the band never eats a gesture aimed at the board behind it. */
 .action-bars { top: calc(max(10px, env(safe-area-inset-top)) + var(--hud-button) + var(--item-caption) + 6px); }
-.board-section { position: absolute; top: 12%; bottom: 20%; left: 10%; width: 80%; }
-.scene-wrap { position: absolute; inset: 0 0 12%; height: auto; min-height: 0; z-index: 1; }
+/* v0.13.2: translated down by `--board-drop` (see the variable's note at the top of this file)
+   and made transparent to pointers — the band under the cube now belongs to `.scroll-shield`,
+   which the view gesture is bound to as well. `#scene-wrap` is the one descendant that takes
+   pointers back, because it IS the board's hit box. */
+.board-section { position: absolute; top: calc(12% + var(--board-drop)); bottom: calc(20% - var(--board-drop)); left: 10%; width: 80%; pointer-events: none; }
+.scene-wrap { position: absolute; inset: 0 0 12%; height: auto; min-height: 0; z-index: 1; pointer-events: auto; }
 /* v0.13.0 R3/R5 (handoff §9.2/§9.4): the main canvas is the whole viewport, drawn BEHIND the UI
    and never hit-tested — `#scene-wrap` keeps its own box and stays the only thing that is. The
    picture is put back into the play area by `renderCamera`'s embedded projection, not by the
@@ -168,7 +216,7 @@
          so a taller canvas moves it DOWN and eats the tray's gain exactly (measured: band
          145px before and 146px after a naive CSS-only attempt).
      `.board-section` / `.scene-wrap` therefore keep their v0.9.1 values. */
-  .board-section { left: 1.5%; width: 97%; top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + var(--item-caption) + 24px); bottom: 18%; }
+  .board-section { left: 1.5%; width: 97%; top: calc(var(--hud-top) + var(--plaque-width) * .56 + var(--hud-button) + var(--item-caption) + 24px + var(--board-drop)); bottom: calc(18% - var(--board-drop)); }
   .scene-wrap { bottom: 8%; }
   .bottom-panel { bottom: max(1%, env(safe-area-inset-bottom)); width: 94vw; height: 13.8%; max-height: 170px; padding: 4px 9px 6px; }
   .bottom-panel .piece-slot { padding: 0; border-radius: 12px; }
@@ -214,7 +262,7 @@ html, body { overscroll-behavior: none; }
      they need (`bottom: 30%`), which is the honest price: this orientation is a phone held
      sideways, and a cube 8% smaller beats a status bar covering the target cells. */
   .action-bars { top: auto; bottom: calc(23% + 2px); }
-  .board-section { top: 14%; bottom: 30%; }
+  .board-section { top: calc(14% + var(--board-drop)); bottom: calc(30% - var(--board-drop)); }
   .scene-wrap { bottom: 4%; }
   .bottom-panel { width: 48vw; height: 21%; bottom: max(1%, env(safe-area-inset-bottom)); padding: 2px 9px 5px; }
 }

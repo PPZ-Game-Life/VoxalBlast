@@ -31,6 +31,10 @@ export function collectDom(root = document) {
   return {
     // Board canvas host and the top bar.
     sceneWrap: need('#scene-wrap'),
+    // v0.13.2: the background itself — the layer that owns every pixel the game does not.
+    // It is a SECOND surface for the view gesture (gameInput's `background`): `.board-section`
+    // is transparent to pointers, so the band under the cube arrives here instead of dying.
+    scrollShield: need('.scroll-shield'),
     app: need('#app'),
     versionEl: need('#app-version'),
     // v0.11.2: the boot curtain. It is NOT inside #app (it must cover the cover as well), so it

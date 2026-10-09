@@ -25,6 +25,11 @@ import { createEdgeTurn } from './edgeTurn.js'
 
 export function createGameInput({
   canvas,
+  // v0.13.2: the second surface the view gesture may start from — the background layer itself.
+  // `canvas` above is the board's own hit box AND the NDC ruler, and those two jobs cannot be
+  // given to the same bigger element; this one only has to receive the press. See
+  // `onBackgroundDown` in bind().
+  background,
   // Read-only queries and the interaction gates (plan section 3: nothing here is copied, and
   // nothing here is written).
   isPaused,
@@ -1446,6 +1451,27 @@ export function createGameInput({
       beginViewGesture(event)
     }
 
+    // v0.13.2 — 「拖动背景转动六面体」, for the one element that IS the background.
+    //
+    // The gesture's first surface is `#scene-wrap`: v0.13.0 R3 (handoff §9.3) made it 「the box
+    // the board is measured in and the only box a board gesture may start in」. That box is the
+    // CAMERA's framing rect (`gameScene.getGameplayRect()`), which is why it cannot simply be
+    // enlarged — its size sets the cube's size and the embedded projection. It also stops 8%
+    // above `.board-section`'s bottom, so the empty ground under the cube, which reads as part
+    // of the stage, belonged to `.scroll-shield` and turned nothing. Producer, 2026-10-09: 「下面
+    // 圈出来的区域应该要能响应左右划和上下划六面体」 — measured on a 360x616 phone, of the 67px
+    // of ground between the cube's bottom edge and the tray only the top 21px responded.
+    //
+    // `.board-section` is now transparent to pointers (reference.css), so that band falls
+    // through to this layer. The armed tool is deliberately NOT extended here: `onPointerDown`
+    // above routes it to `beginItemAim` because §8.5's target is the front face under the
+    // finger, and widening where a tap may AIM is a different decision from widening where a
+    // drag may TURN. This round only has the second one.
+    function onBackgroundDown(event) {
+      if (itemMode) return
+      beginViewGesture(event)
+    }
+
     function onPointerMove(event) {
       // The icon press that has not yet become a tap or a drag (its own slop, §8.4).
       if (itemPickup && !itemPickup.moved) {
@@ -1607,6 +1633,10 @@ export function createGameInput({
     function onRefreshGoClick() { confirmRefreshBatch() }
 
     canvas.addEventListener('pointerdown', onPointerDown)
+    // The background layer. `beginViewGesture` is bound to whatever element the press landed on
+    // (it takes the pointer capture on `event.currentTarget`), so the two surfaces never both
+    // fire for one press: the band under the cube hits this layer, the cube hits `#scene-wrap`.
+    background?.addEventListener('pointerdown', onBackgroundDown)
     window.addEventListener('pointermove', onPointerMove, { passive: false })
     window.addEventListener('pointerup', onPointerUp)
     window.addEventListener('pointercancel', onPointerCancel)
@@ -1629,6 +1659,7 @@ export function createGameInput({
 
     function dispose() {
       canvas.removeEventListener('pointerdown', onPointerDown)
+      background?.removeEventListener('pointerdown', onBackgroundDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerCancel)
