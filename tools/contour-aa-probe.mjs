@@ -42,6 +42,10 @@
 //     registered as a new-document script before navigating.
 //   - The board's idle float and the scenery clock are pinned before the capture, otherwise two
 //     runs of the same build photograph the cube at different heights and the row band moves.
+//   - DO NOT edit anything in the app's module graph while a matrix is running. The dev server
+//     reloads the page, and a reload destroys the execution context an in-flight
+//     `Runtime.evaluate` is waiting on, so that case stalls until its budget expires. (Measured
+//     the hard way: a concurrent save turned a 3-minute matrix into a 47-minute one.)
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -87,6 +91,8 @@ if (!selected.length) throw new Error('no probe case selected')
 
 const outDir = resolve(ROOT, arg('out', 'artifacts/contour-aa'))
 const phases = Math.max(1, Number(arg('phases', '6')))
+const CASE_BUDGET_MS = Math.max(60, Number(arg('caseBudgetSeconds', '240'))) * 1000
+const VERBOSE = process.argv.includes('--verbose')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -99,13 +105,23 @@ function connect(wsUrl) {
 }
 
 const pending = new Map()
+// Screenshots get their own, much longer budget: this harness has no GPU, and a 1440x900 readback
+// after several frames of software rendering has been measured taking minutes, not seconds. A
+// tight timeout there does not protect anything — it rejects a shot that IS coming, and the case
+// then sits out its whole budget waiting for a frame that already landed.
+const CALL_TIMEOUT_MS = { 'Page.captureScreenshot': 150000 }
 function send(socket, id, method, params = {}) {
+  const budget = CALL_TIMEOUT_MS[method] ?? 30000
   return new Promise((resolve_, reject) => {
     pending.set(id, { resolve: resolve_, reject })
+    if (VERBOSE) console.error(`[cdp ->] ${id} ${method}`)
     socket.send(JSON.stringify({ id, method, params }))
     setTimeout(() => {
-      if (pending.delete(id)) reject(new Error(`${method} timed out`))
-    }, 30000)
+      if (pending.delete(id)) {
+        if (VERBOSE) console.error(`[cdp ??] ${id} ${method} had not answered in ${budget / 1000}s`)
+        reject(new Error(`${method} timed out`))
+      }
+    }, budget)
   })
 }
 
@@ -113,8 +129,12 @@ function pipe(socket) {
   socket.addEventListener('message', (event) => {
     const message = JSON.parse(event.data)
     const slot = pending.get(message.id)
-    if (!slot) return
+    if (!slot) {
+      if (VERBOSE) console.error(`[cdp <<] ${message.id} arrived with no waiter`)
+      return
+    }
     pending.delete(message.id)
+    if (VERBOSE) console.error(`[cdp <-] ${message.id}`)
     if (message.error) slot.reject(new Error(`${JSON.stringify(message.error)}`))
     else slot.resolve(message.result)
   })
@@ -409,7 +429,10 @@ function motionResidual(frames, box) {
   }
 }
 
-async function capture(browser, probeCase) {  const { width, height, dsf, tier, name } = probeCase
+async function capture(browser, probeCase) {
+  const { width, height, dsf, tier, name } = probeCase
+  // `--verbose` prints one line per stage to stderr: when a case stalls, the last line says where.
+  const trace = (message) => { if (VERBOSE) console.error(`[contour-aa] ${name}: ${message}`) }
   const profile = mkdtempSync(join(tmpdir(), 'voxalblast-contour-'))
   const child = spawn(browser, [
     '--headless=new', '--disable-gpu', '--disable-breakpad', '--hide-scrollbars',
@@ -504,10 +527,12 @@ async function capture(browser, probeCase) {  const { width, height, dsf, tier, 
       ? JSON.parse(facts.result.value)
       : (() => { throw new Error(`page facts unavailable: ${JSON.stringify(facts).slice(0, 600)}`) })()
     if (factsValue.error) throw new Error(`page facts failed on ${name}: ${JSON.stringify(factsValue).slice(0, 600)}`)
+    trace(`facts ok tier=${factsValue.lowPower ? 'low' : 'high'} buffer=${factsValue.drawingBuffer?.width}x${factsValue.drawingBuffer?.height}`)
     const shot = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
     mkdirSync(outDir, { recursive: true })
     const out = join(outDir, `v${version}-${name}.png`)
     writeFileSync(out, Buffer.from(shot.data, 'base64'))
+    trace('static frame captured')
     // One ambient float cycle, sampled as distinct frozen poses: the scenery clock stays pinned
     // (set above), so every difference between these frames is the BOARD's own displacement.
     // The LAST frame repeats the FIRST pose — see `diffStats`, that repeat is the only
@@ -516,6 +541,7 @@ async function capture(browser, probeCase) {  const { width, height, dsf, tier, 
     for (let i = 0; i <= phases; i += 1) {
       const phaseIndex = i === phases ? 0 : i
       const time = Number(((phaseIndex / phases) * SWEEP_SECONDS).toFixed(3))
+      trace(`phase ${i}/${phases} pin t=${time}`)
       await send(ws, nextId++, 'Runtime.evaluate', {
         expression: `globalThis.__voxalblastDev?.setBoardFloat?.({ frozen: true, time: ${time} })`,
         returnByValue: true,
@@ -528,15 +554,26 @@ async function capture(browser, probeCase) {  const { width, height, dsf, tier, 
       const file = join(outDir, `v${version}-${name}-phi${i === phases ? 'repeat' : i}.png`)
       writeFileSync(file, Buffer.from(phaseShot.data, 'base64'))
       frames.push(readPng(file))
+      trace(`phase ${i} captured`)
     }
     await send(ws, 1000, 'Browser.close').catch(() => {})
     ws.close()
     return { out, facts: factsValue, frames }
   } finally {
+    // Bounded, always: an Edge that ignores the kill must not be able to hang the run. 1.5s of
+    // courtesy, then the whole process tree, then move on regardless of the exit event.
     await new Promise((done) => {
       if (child.exitCode !== null) return done()
-      child.once('exit', done)
-      setTimeout(() => { try { child.kill() } catch {} }, 3000)
+      let settled = false
+      const finish = () => { if (!settled) { settled = true; done() } }
+      child.once('exit', finish)
+      setTimeout(() => { try { child.kill() } catch {} }, 1500)
+      setTimeout(() => {
+        if (process.platform === 'win32' && child.pid) {
+          try { spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }) } catch {}
+        }
+        finish()
+      }, 6000)
     })
     try { rmSync(profile, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 }) } catch {}
   }
@@ -549,7 +586,13 @@ if (!browser) throw new Error('no Edge/Chrome binary found')
 
 const results = []
 for (const probeCase of selected) {
-  const { out, facts, frames } = await capture(browser, probeCase)
+  // A headless page that stops painting never settles an `awaitPromise` rAF evaluate, so a case
+  // gets a hard ceiling: a stalled browser becomes a reported failure instead of a run that sits
+  // there forever. The probe-owned Edge is closed by `capture`'s own finally.
+  const watchdog = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`case ${probeCase.name} exceeded ${CASE_BUDGET_MS / 1000}s — the browser stopped settling`)), CASE_BUDGET_MS).unref()
+  })
+  const { out, facts, frames } = await Promise.race([capture(browser, probeCase), watchdog])
   const image = readPng(out)
   const { bounds } = facts
   // Emulation coordinates are CSS px; the PNG is device px. The factor is measured from the

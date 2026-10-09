@@ -113,10 +113,13 @@ export const BOARD_STYLE = Object.freeze({
   paintEnvMapIntensity: floatingWorldMaterials.paint.envMapIntensity,
   paintSpecularIntensity: floatingWorldMaterials.paint.specularIntensity,
   surfaceAOIntensity: 0,
-  // How far the board itself drifts up and down while idle (handoff §8: .02 of a cell, pitch=1,
-  // so .02 world units). R2 does not move the board yet; the number is here because the GROUND
-  // has to be placed below the board's WORST pose, and the worst pose includes this. R5 is what
-  // makes it visible.
+  // How far the board itself drifts up and down while idle — and it is 0 ON PURPOSE (2026-10-09).
+  // The ~1 CSS px bob slid the top face's ~1 CSS px lattice seams through the pixel grid; a
+  // cycle-sweep probe measured 25.6% of that band's pixels swinging 10+ luminance levels, with the
+  // renderer provably stable at rest (R7 §5.4). At 0 the machinery, the `setBoardFloat` pin and
+  // `freezeDuringInteraction` all stay in place for a future retune — only the value moved. The
+  // scenery keeps floating (`motion.cluster` 0.12 / `motion.looseBlock` 0.16), and the value also
+  // still feeds the GROUND placement below the board's WORST pose.
   idleFloatAmplitude: floatingWorldMotion.board.amplitudeCell,
   // v0.13.0: the old crown/roughness notes below described a cached normal map and a
   // roughness texture that the floating-world skin does not build (§4.2). They are kept

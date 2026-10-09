@@ -206,6 +206,24 @@ C5（松手后恢复移动，`resumeSpan > 0.1`）都以 ±0.3px 以上的位移
 旁证：所有已验收的实景截图本来就是**钉住浮动**拍的（`screenshot.mjs` 先 `setBoardFloat({ frozen: true, time: 0 })`），
 也就是说「盘子不自己浮」这件事，在任何一张验收图里都已经是现状。
 
+**2026-10-09 裁决与落地（制作人选定「停掉盘子自身的浮动」）**：`scene.recipe.json` 的
+`motion.board.amplitudeCell` 由 `0.02` 改为 **`0`**（`manifest.json` 字节同步 8420 / 832213）。
+机制、`setBoardFloat` 钉位手柄、`freezeDuringInteraction` / `resumeBlendSeconds` 全部保留——只动了值，
+调回来就恢复。场景侧浮动不受影响（`motion.cluster` 0.12 / `motion.looseBlock` 0.16 / 云漂移照旧）。
+改动后的读数：
+
+| 读数（手机档 dsf 3 + cap 1.5，同前） | 修前 | 修后 |
+| --- | ---: | ---: |
+| 一个周期内顶面带逐像素亮度标准差（p95） | 53.8 | **0** |
+| 逐列最佳位移 `shift` | −3..+3 px | **0..0 px** |
+| 会闪的像素占比 | 25.6% | **0%** |
+| 同一位姿重复帧差异（p95） | 0 | 0 |
+
+注意这一栏的「0」是**没有运动**，不是「测出了稳定性」——真正的稳定性证据是同一个位姿重复两帧本来就逐像素相同。
+门禁后果（**如实报，未放宽任何阈值**）：`npm run evidence:motion` 的 **C2 与 C5 前置条件不再成立，报 SKIP 并写明条件**
+（「the board has no ambient float (recipe motion.board.amplitudeCell = 0)」），C1/C2b/C3/C4 仍过但**通过得平凡**；
+A/B/D 三个阶段（云与建筑运动、拖拽冻结、reduced-motion）不受影响。C3 证据文档已同步这一变化。
+
 ### 5.5 仍未收口（不要当成已通过）
 
 - **桌面 DPR=1**（1440×900）量到 `blendPerRow 0.87 / sharpness 151`，是四个复核视口里最硬的一条边。

@@ -27,7 +27,9 @@
 //   node tools/floating-world-motion-evidence.mjs [url] [outDir] [--size=WxH]
 //
 // Exit code: 1 if any assertion fails. The thresholds are NOT tuned to whatever a run
-// produced - a failure is reported to the producer as it stands.
+// produced - a failure is reported to the producer as it stands. Assertions whose precondition
+// the recipe no longer meets (the board has no ambient float) are reported as SKIP with the
+// condition named, which is a different thing from a threshold that was let through.
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -47,6 +49,11 @@ const outDir = resolve(ROOT, process.argv[3] && !process.argv[3].startsWith('--'
 const sizeArg = process.argv.find((a) => a.startsWith('--size='))
 const [WIDTH, HEIGHT] = (sizeArg ? sizeArg.slice(7) : '1440x900').split('x').map(Number)
 const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+// The board's own ambient float, straight from the art recipe: the board-bob assertions below
+// can only be met while this is non-zero, and the recipe is the single source of that value.
+const BOARD_FLOAT_AMPLITUDE = JSON.parse(readFileSync(join(ROOT, 'public/art/floating-world-v1/scene.recipe.json'), 'utf8')).motion.board.amplitudeCell
+const BOARD_HAS_FLOAT = BOARD_FLOAT_AMPLITUDE !== 0
+const NO_FLOAT_REASON = `the board has no ambient float (recipe motion.board.amplitudeCell = ${BOARD_FLOAT_AMPLITUDE})`
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // The pin the whole file rests on: ONE absolute time for BOTH clocks, so "t=8" means the same
@@ -136,9 +143,19 @@ function diffBox(a, b, box) {
 }
 
 const failures = []
+const skipped = []
 const check = (ok, label, detail) => {
   if (!ok) failures.push(`${label}${detail ? ` - ${detail}` : ''}`)
   return ok
+}
+// An assertion whose PRECONDITION the product no longer meets is reported as SKIP with the
+// condition named, never loosened to pass (the same convention `npm run probe:intro` uses for
+// its unreachable "已占用格晚一拍" case). 2026-10-09: the producer stopped the board's own
+// ambient float to remove the top-face shimmer (R7 §5.4), which is exactly that situation for
+// the two board-bob assertions below.
+const skip = (label, reason) => {
+  skipped.push(`${label} — ${reason}`)
+  return { skipped: true, label, reason }
 }
 // The dev server reloads the page whenever anything in the module graph is saved, and the live
 // handles are gone for a few frames while it does. A concurrent editor is therefore an
@@ -300,10 +317,14 @@ await sleep(500)
 // ~30ms between the reading and the event, which is why this waits for 1.0px of the 1.33px
 // amplitude rather than for "not zero". The period is 5.5s, so this terminates on its own.
 let displaced = null
-for (let i = 0; i < 200; i += 1) {
-  displaced = JSON.parse(await evaluate(ws, 'JSON.stringify(globalThis.__voxalblast.placement().center.y)'))
-  if (Math.abs(displaced - neutralY) > 1) break
-  await sleep(40)
+if (BOARD_HAS_FLOAT) {
+  for (let i = 0; i < 200; i += 1) {
+    displaced = JSON.parse(await evaluate(ws, 'JSON.stringify(globalThis.__voxalblast.placement().center.y)'))
+    if (Math.abs(displaced - neutralY) > 1) break
+    await sleep(40)
+  }
+} else {
+  displaced = neutralY
 }
 await send(ws, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y })
 const pressAt = await pageClock()
@@ -406,12 +427,17 @@ report.phases.resume = {
   held: check(heldSamples.length > 5 && spread !== null && spread < 0.05, 'C1 the board kept moving while a piece was held', `spread=${spread} samples=${heldSamples.length}`),
   // "HOLD, not RESET" is two claims, and the second is the one a screenshot cannot make: the held
   // value must be OFF the neutral pose (a reset parks it exactly there), and it must agree with
-  // where the board was when the finger landed.
-  notReset: check(heldValue !== null && Math.abs(heldValue - neutralY) > 0.3, 'C2 the freeze parked the board on the neutral pose (reset, not hold)', `held=${heldValue} neutral=${neutralY}`),
+  // where the board was when the finger landed. With the ambient float at 0 the neutral pose IS
+  // the only pose, so C2 has no distinguishable state to assert - reported as SKIP, not softened.
+  notReset: BOARD_HAS_FLOAT
+    ? check(heldValue !== null && Math.abs(heldValue - neutralY) > 0.3, 'C2 the freeze parked the board on the neutral pose (reset, not hold)', `held=${heldValue} neutral=${neutralY}`)
+    : skip('C2 the freeze parked the board on the neutral pose (reset, not hold)', NO_FLOAT_REASON),
   heldAtPressValue: check(holdMatchesPress, 'C2b the held offset does not match where the board was at pointerdown', `held=${heldValue} beforePress=${beforePress} frameStep=${frameStepPx}`),
   noJumpOnResume: check(after.length > 0 && heldValue !== null && Math.abs(after[0].y - heldValue) < 0.05, 'C3 the resume jumped away from the held offset', `first=${after[0]?.y} held=${heldValue}`),
   smoothResume: check(resumeStepMax !== null && resumeStepMax < STEP_CEILING, 'C4 the resume moved in one step instead of blending', `maxStep=${resumeStepMax} ceiling=${STEP_CEILING}`),
-  resumeContinues: check(resumeSpan !== null && resumeSpan > 0.1, 'C5 the board never resumed moving after the release', `span=${resumeSpan}`),
+  resumeContinues: BOARD_HAS_FLOAT
+    ? check(resumeSpan !== null && resumeSpan > 0.1, 'C5 the board never resumed moving after the release', `span=${resumeSpan}`)
+    : skip('C5 the board never resumed moving after the release', NO_FLOAT_REASON),
 }
 
 // --- Phase D: prefers-reduced-motion stops the world (section 7.2, last line) ----------------
@@ -437,6 +463,8 @@ report.phases.reducedMotion = {
 await send(ws, 'Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
 
 report.failures = failures
+report.skipped = skipped
+report.boardFloat = { amplitudeCell: BOARD_FLOAT_AMPLITUDE, hasFloat: BOARD_HAS_FLOAT }
 report.logs = logs
 const jsonPath = join(outDir, `motion-evidence-${WIDTH}x${HEIGHT}.json`)
 writeFileSync(jsonPath, JSON.stringify(report, null, 1))
@@ -454,6 +482,10 @@ row('B hold tray band', holdTray)
 row('D reduced-motion whole', reducedWhole)
 console.log(`C neutral ${neutralY.toFixed(3)}px  held ${report.phases.resume.heldValuePx} (dNeutral ${report.phases.resume.heldDeltaFromNeutralPx}px, dLastFree ${report.phases.resume.heldDeltaFromBeforePressPx}px)  resume first ${report.phases.resume.resumeFirstPx}  max step ${report.phases.resume.resumeStepMaxPx}px  span ${report.phases.resume.resumeSpanPx}px  trace ${report.phases.resume.samples.total} frames @ ${traceFps}fps`)
 console.log(`   frames ${outDir}`)
+if (!BOARD_HAS_FLOAT) {
+  console.log(`   board float: OFF (${NO_FLOAT_REASON}) — C1/C2b/C3/C4 still hold, but they hold trivially: with nothing to hold, "the board did not move" is not evidence of the freeze path`)
+}
+if (skipped.length) console.log(`SKIP ${skipped.length}:\n  - ${skipped.join('\n  - ')}`)
 console.log(failures.length ? `FAIL ${failures.length}:\n  - ${failures.join('\n  - ')}` : 'all motion/freeze/resume/reduced-motion assertions passed')
 
 await send(browserSocket, 'Browser.close').catch(() => {})

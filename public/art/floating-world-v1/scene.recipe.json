@@ -36,7 +36,7 @@
     "shadow": { "mapSize": 1024, "extent": 4.8, "bias": -0.00015, "normalBias": 0.012, "floorY": -4.8, "receiverOpacity": 0.18, "blobOpacity": 0.14 }
   },
   "motion": {
-    "board": { "amplitudeCell": 0.02, "periodSeconds": 5.5, "phaseRadians": 0, "freezeDuringInteraction": true, "resumeBlendSeconds": 0.25 },
+    "board": { "amplitudeCell": 0, "periodSeconds": 5.5, "phaseRadians": 0, "freezeDuringInteraction": true, "resumeBlendSeconds": 0.25 },
     "cluster": { "amplitudeCell": 0.12, "periodSeconds": 7.5, "tiltDegrees": 0, "phaseStepRadians": 1.3 },
     "looseBlock": { "amplitudeCell": 0.16, "periodSeconds": 6.5, "tiltDegrees": 1.5, "phaseStepRadians": 1.7 },
     "clouds": { "speedScreenWidthsPerSecond": [0.006, 0.008, 0.01], "wrapMarginScreenWidths": 0.2, "verticalAmplitudeScreenHeights": 0.002, "verticalPeriodSeconds": 16 },
