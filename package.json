@@ -39,7 +39,8 @@
     "art:preflight": "node tools/floating-world-assets.mjs",
     "probe:ui-paint": "node tools/floating-world-ui-paint.mjs",
     "evidence:motion": "node tools/floating-world-motion-evidence.mjs",
-    "probe:buffer": "node tools/floating-world-tier-buffer-probe.mjs"
+    "probe:buffer": "node tools/floating-world-tier-buffer-probe.mjs",
+    "probe:contour": "node tools/contour-aa-probe.mjs"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",

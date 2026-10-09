@@ -1082,8 +1082,26 @@ export function getRenderQuality() {
     : window.matchMedia?.('(max-width: 700px)').matches || (navigator.hardwareConcurrency || 8) <= 4
   return Object.freeze({
     lowPower,
-    pixelRatioMax: lowPower ? 1.35 : 2,
-    multisampling: lowPower ? 0 : 4,
+    // v0.13.1 contour quality close. The real phone is the case that was reported: portrait
+    // 390–430 CSS px is 窄屏, so a DPR-3 handset runs the LOW tier and the canvas was rasterised at
+    // ONE CSS pixel per device pixel — `min(devicePixelRatio, cap)` with the art pack's low
+    // `dprCap` of 1. The compositor then magnifies that 390x844 raster by 3x, so the board's
+    // one-pixel ink stroke (BOARD_STYLE.boardOuterInkExpansion) is drawn as 3-device-pixel blocks:
+    // 明显的锯齿. 1.5 keeps the ordering below the high tier's 1.75 and halves the magnification
+    // (3x -> 2x) on a phone, while a DPR-1 device still resolves to 1 and pays nothing at all
+    // (min() with the device ratio). Raising this is the next quality lever; it costs fill rate
+    // quadratically. `npm run probe:buffer` re-reads the real drawing buffer per tier and viewport.
+    pixelRatioMax: lowPower ? 1.5 : 2,
+    // The ink contour is about ONE device pixel wide, so it sits exactly at the sampling limit: the
+    // low tier used to ship multisampling 0 + SMAAPreset.LOW, and that measured as a hard edge.
+    // tools/contour-aa-probe.mjs on the SAME 390x844 DPR-1 frame reports the shipped low tier at
+    // blendPerRow .36 / edgeSharpness 168 against the high tier's 1.15 / 125 on the same silhouette
+    // — 3x fewer partially covered pixels, i.e. a staircase the eye reads as jagged. Both tiers now
+    // resolve the frame with the same AA plan (MSAA 4 + SMAA ULTRA, the preset selected below);
+    // the tier still differs in pixel ratio, SSAO, bloom and particle counts. Re-measure with
+    // `npm run probe:contour` before touching either value.
+    multisampling: 4,
+    smaaPreset: 'ultra',
     particlesPerLine: lowPower ? 7 : 14,
     bloomIntensity: lowPower ? VFX_CONFIG.bloom.lowPowerIntensity : VFX_CONFIG.bloom.intensity,
   })

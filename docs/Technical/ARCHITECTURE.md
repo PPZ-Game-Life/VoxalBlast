@@ -112,7 +112,7 @@ Vite + 原生 ES modules，未使用 React 等 UI 框架。Three.js 主场景采
 
 `toyLights.js` 生成共享的 256×128 HalfFloat 线性 HDR 等距柱状环境纹理，由各 WebGLRenderer 的 PMREM 分别处理，不跨 WebGL context 复用 GPU render target。`environmentIntensity = 0.7`；主反射光箱为软矩形，强度 14，切平面宽/高参数 `0.48 / 0.16`，轮廓反射光箱强度/集中指数为 `4 / 32`，方向与各自直接光一致。主 renderer 使用 `NoToneMapping`，composer 使用 HalfFloat 缓冲，并在最终效果链执行一次 `ACES_FILMIC`；候选与主页直接使用 renderer 的 `ACESFilmicToneMapping`，曝光统一取 `BOARD_STYLE.exposure = 1`。
 
-主画布 pass 顺序为 `RenderPass → NormalPass → EffectPass(SSAO) → EffectPass(Bloom, ACES, SMAA)`。`NormalPass.renderTarget` 自持一个独立 `DepthTexture`（`UnsignedIntType`），先绘制本帧法线与深度，再由 `occlusionPass.setDepthTexture(contactDepth)` 提供给 AO；这是真实场景深度，不是占位纹理，也不需要 composer 的 stable-depth blit。AO 为暖褐 `#60422E`，主要参数 `radius 0.075 / intensity 1.65 / bias 0.012 / fade 0.018`，世界接近阈值/衰减 `0.35 / 0.45`，亮度影响 0.15。桌面采样/圈数/分辨率比例 `16 / 3 / 0.75`，移动或低性能档 `11 / 3 / 0.5`；采样数不取圈数的整倍数。主 composer 保留桌面 4× MSAA，低性能档为 0。
+主画布 pass 顺序为 `RenderPass → NormalPass → EffectPass(SSAO) → EffectPass(Bloom, ACES, SMAA)`。`NormalPass.renderTarget` 自持一个独立 `DepthTexture`（`UnsignedIntType`），先绘制本帧法线与深度，再由 `occlusionPass.setDepthTexture(contactDepth)` 提供给 AO；这是真实场景深度，不是占位纹理，也不需要 composer 的 stable-depth blit。AO 为暖褐 `#60422E`，主要参数 `radius 0.075 / intensity 1.65 / bias 0.012 / fade 0.018`，世界接近阈值/衰减 `0.35 / 0.45`，亮度影响 0.15。桌面采样/圈数/分辨率比例 `16 / 3 / 0.75`，移动或低性能档 `11 / 3 / 0.5`；采样数不取圈数的整倍数。主 composer **两档都是 4× MSAA + `SMAAPreset.ULTRA`**（低性能档曾是 0× MSAA + SMAA `LOW`，v0.13.1 描边收口后两档对齐——主盘那条一像素墨线在低档量出明显的硬台阶，理由与前后读数见 [R7 读数 §5](FLOATING_WORLD_R7_PERF.md)），两者都由 `config.js::getRenderQuality()` 下发，低档与高档的差别只剩像素比、SSAO、Bloom 层级与粒子数。
 
 依赖实测版本：three 0.172.0、three.quarks 0.10.18、postprocessing 6.39.4、vite 6.4.3（package.json 里是 ^ 范围）。`src/rendering/threeCompat.js` 是引擎兼容桥，装两件事：
 

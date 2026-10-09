@@ -105,6 +105,6 @@
   "quality": {
     "high": { "clusters": 3, "looseBlocks": 3, "clouds": 6, "dprCap": 1.75, "realBoardShadow": false, "shadowMapSize": 0, "ssao": true, "sceneryAtmosphereMix": 0 },
     "medium": { "clusters": 2, "looseBlocks": 2, "clouds": 4, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false, "sceneryAtmosphereMix": 0.12 },
-    "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false, "sceneryAtmosphereMix": 0.24 }
+    "low": { "clusters": 1, "looseBlocks": 1, "clouds": 3, "dprCap": 1.5, "realBoardShadow": false, "shadowMapSize": 0, "ssao": false, "sceneryAtmosphereMix": 0.24 }
   }
 }

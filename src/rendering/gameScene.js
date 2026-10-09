@@ -298,13 +298,19 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
   // ---- Renderer / post ----------------------------------------------------------
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
   // v0.13.1 R7 (handoff §7.3 / correction §7.3): the drawing buffer is capped by the STRICTER of
-  // the project's own policy (`quality.pixelRatioMax`, 2 / 1.35) and the art pack's per-tier
-  // budget (`recipe.quality.*.dprCap`, 1.75 / 1.5 / 1). Before this, the recipe's `dprCap` was
+  // the project's own policy (`quality.pixelRatioMax`, 2 / 1.5) and the art pack's per-tier
+  // budget (`recipe.quality.*.dprCap`, 1.75 / 1.5 / 1.5). Before this, the recipe's `dprCap` was
   // read into `rendering().world.tierSpec` and never enforced — the report named a cap the
   // renderer did not honour, which is exactly the "handle that silently does nothing" failure.
   // Both specs are stated twice (art handoff §7.3 and correction §7.3), so the art budget wins
   // wherever it is lower. The tier is resolved ONCE per load (main passes `quality` in), so there
   // is no rotation path that could leave a stale cap behind — `resize()` only re-sizes.
+  //
+  // v0.13.1 contour close: the LOW tier's cap was 1, which on a DPR-3 phone rasterised the whole
+  // board at one CSS pixel per device pixel and let the compositor magnify it 3x — the reported
+  // 锯齿 on the board's ink outline. It is 1.5 now (the recipe's own medium value), so a phone
+  // renders at 1.5x CSS and is magnified 2x. A DPR-1 device is untouched by this: `setPixelRatio`
+  // takes the MINIMUM of this cap and the device ratio.
   const dprCap = Math.min(quality.pixelRatioMax, floatingWorldTierFor(quality).dprCap)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap))
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -417,7 +423,10 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
     radius: VFX_CONFIG.bloom.radius,
     levels: quality.lowPower ? VFX_CONFIG.bloom.lowPowerLevels : VFX_CONFIG.bloom.levels,
   })
-  const smaaEffect = new SMAAEffect({ preset: quality.lowPower ? SMAAPreset.LOW : SMAAPreset.HIGH })
+  // The SMAA preset comes from the tier plan, not from `lowPower` directly: the board's outer
+  // contour is a one-pixel dark stroke, and SMAAPreset.LOW's shorter search dropped most of the
+  // partially covered pixels along it (see config.js getRenderQuality and `probe:contour`).
+  const smaaEffect = new SMAAEffect({ preset: quality.smaaPreset === 'ultra' ? SMAAPreset.ULTRA : quality.smaaPreset === 'high' ? SMAAPreset.HIGH : SMAAPreset.LOW })
   const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })
   const effectPass = new EffectPass(renderCamera, bloomEffect, toneMappingEffect, smaaEffect)
   // SMAA carries EffectAttribute.DEPTH, so this pass would otherwise ask the composer for a
