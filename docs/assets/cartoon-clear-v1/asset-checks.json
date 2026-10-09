@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "command": "py -3.12 tools/build-cartoon-clear-assets.py --check",
+  "passed": true,
+  "environment": {
+    "python": "3.12.6",
+    "pillow": "12.2.0",
+    "rasterBackend": "Microsoft Edge headless SVG fallback",
+    "cairoSvgVersion": null,
+    "cairoNativeAvailable": false,
+    "cairoDiagnostic": "OSError: no library called \"cairo-2\" was found\nno library called \"cairo\" was found\nno library called \"libcairo-2\" was found\ncannot load library 'libcairo.so.2': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo.so.2'\ncannot load library 'libcairo.2.dylib': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo.2.dylib'\ncannot load library 'libcairo-2.dll': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo-2.dll'"
+  },
+  "verified": {
+    "svgCount": 8,
+    "spritePngCount": 8,
+    "svgGeometryParsed": true,
+    "rasterBackendRecorded": "Microsoft Edge headless SVG fallback",
+    "cairoNativeRasterizationExecutedDuringBuild": false,
+    "supersampleFactor": 4,
+    "lanczosDownsample": true,
+    "transparentRgbBleedPixels": 4,
+    "atlasExactTileByteMatch": true,
+    "atlasMetadataPolicy": true,
+    "manifestBytesAndSha256": true,
+    "manifestScopeExcludesReferences": true,
+    "runtimeNetworkBudgetExcludesReferences": true,
+    "previewDimensionsAndDecode": true,
+    "previewUsesNoExternalOrNetworkFont": true,
+    "perSprite": {
+      "confetti-blue": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          24,
+          24,
+          104,
+          104
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 799,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "confetti-teal": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          18,
+          18,
+          107,
+          110
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 1057,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "confetti-pink": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          31,
+          25,
+          109,
+          104
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 832,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "star-pop": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          12,
+          14,
+          114,
+          116
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 1926,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "sparkle-cream": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          22,
+          23,
+          106,
+          107
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 806,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "dot-blue": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          31,
+          31,
+          97,
+          97
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 782,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "swoosh-cream": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          15,
+          38,
+          114,
+          100
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 1073,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "dash-blue": {
+        "size": [
+          128,
+          128
+        ],
+        "alphaBounds": [
+          17,
+          46,
+          114,
+          85
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "hasPartialAlphaAntialiasing": true,
+        "outer12pxAlphaZero": true,
+        "transparentRgbBleedPixelCount": 745,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "explicitlyNotVerified": {
+    "GPUUploadOrRendering": true,
+    "gameRuntimeIntegration": true,
+    "devicePerformance": true
+  }
+}

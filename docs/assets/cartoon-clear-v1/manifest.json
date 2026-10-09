@@ -1,0 +1,349 @@
+{
+  "schemaVersion": 1,
+  "packId": "cartoon-clear-v1",
+  "scope": {
+    "audited": [
+      "sources/*.svg",
+      "runtime/sprites/*.png",
+      "runtime/atlas.png",
+      "runtime/atlas.json",
+      "preview.png"
+    ],
+    "excluded": [
+      "references/**",
+      "references/README.md",
+      "ASSETS.md",
+      "asset-checks.json",
+      "tools/build-cartoon-clear-assets.py"
+    ],
+    "referencesPolicy": "Parent-agent approved storyboard references are context-only, are not generated, hashed, copied, or overwritten by this builder, and are never part of runtime network budget."
+  },
+  "runtimeNetworkBudget": {
+    "scope": "runtime/ only; references/, sources/, preview, and documentation are excluded",
+    "runtimeDirectoryBytes": 111275,
+    "atlasModeBytes": 59081,
+    "individualSpritesModeBytes": 52194
+  },
+  "artSource": "Original manually authored editable SVG geometry for VoxalBlast; not cropped, traced, or sliced from the supplied concept/storyboard image.",
+  "license": {
+    "status": "Original project asset",
+    "owner": "VoxalBlast project",
+    "source": "In-repository SVG reconstruction authored for this pack",
+    "externalAssetLicense": "Not applicable"
+  },
+  "palette": {
+    "outlineDeepBlue": "#20334C",
+    "blue": "#2F70E8",
+    "teal": "#18BBA6",
+    "pink": "#E65B86",
+    "cream": "#FFF1CC",
+    "starWarmGoldEdge": "#E2A62B"
+  },
+  "rasterization": {
+    "sourceOfTruth": "SVG files under sources/",
+    "backend": "Microsoft Edge headless SVG fallback",
+    "cairoNativeAvailable": false,
+    "cairoDiagnostic": "OSError: no library called \"cairo-2\" was found\nno library called \"cairo\" was found\nno library called \"libcairo-2\" was found\ncannot load library 'libcairo.so.2': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo.so.2'\ncannot load library 'libcairo.2.dylib': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo.2.dylib'\ncannot load library 'libcairo-2.dll': error 0x7e.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libcairo-2.dll'",
+    "outputSize": [
+      128,
+      128
+    ],
+    "supersample": 4,
+    "downsample": "Pillow LANCZOS",
+    "transparentRgbBleedPixels": 4,
+    "outerTransparentPixelsMinimum": 12
+  },
+  "sprites": [
+    {
+      "id": "confetti-blue",
+      "role": "rounded blue square confetti",
+      "source": "sources/confetti-blue.svg",
+      "texture": "runtime/sprites/confetti-blue.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        24,
+        24,
+        104,
+        104
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "confetti-teal",
+      "role": "rounded teal square confetti",
+      "source": "sources/confetti-teal.svg",
+      "texture": "runtime/sprites/confetti-teal.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        18,
+        18,
+        107,
+        110
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "confetti-pink",
+      "role": "rounded pink square confetti",
+      "source": "sources/confetti-pink.svg",
+      "texture": "runtime/sprites/confetti-pink.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        31,
+        25,
+        109,
+        104
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "star-pop",
+      "role": "primary cream star pop with warm-gold edge",
+      "source": "sources/star-pop.svg",
+      "texture": "runtime/sprites/star-pop.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        12,
+        14,
+        114,
+        116
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "sparkle-cream",
+      "role": "secondary four-point cream sparkle",
+      "source": "sources/sparkle-cream.svg",
+      "texture": "runtime/sprites/sparkle-cream.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        22,
+        23,
+        106,
+        107
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "dot-blue",
+      "role": "small blue circular accent",
+      "source": "sources/dot-blue.svg",
+      "texture": "runtime/sprites/dot-blue.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        31,
+        31,
+        97,
+        97
+      ],
+      "defaultDirection": null
+    },
+    {
+      "id": "swoosh-cream",
+      "role": "short curved cream ejection trail, points +X",
+      "source": "sources/swoosh-cream.svg",
+      "texture": "runtime/sprites/swoosh-cream.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        15,
+        38,
+        114,
+        100
+      ],
+      "defaultDirection": "+X"
+    },
+    {
+      "id": "dash-blue",
+      "role": "short blue ejection dash, points +X",
+      "source": "sources/dash-blue.svg",
+      "texture": "runtime/sprites/dash-blue.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        0.5,
+        0.5
+      ],
+      "alphaBounds": [
+        17,
+        46,
+        114,
+        85
+      ],
+      "defaultDirection": "+X"
+    }
+  ],
+  "atlas": "runtime/atlas.json",
+  "preview": {
+    "path": "preview.png",
+    "runtimeTexture": false,
+    "fontSource": "Pillow bundled default font rasterized into PNG",
+    "externalOrNetworkFontDependency": false
+  },
+  "files": [
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/confetti-blue.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 384,
+      "sha256": "91bc3fa9df12b920d52fb007d7ded52a3822973bd41dbc05d34d6f40155d7f26"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/confetti-teal.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 387,
+      "sha256": "ce907351cef7871578334415190b9f5e26fde79954ff332390089b12ccaa8076"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/confetti-pink.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 385,
+      "sha256": "f8bc1dff6a21dd76947a24300558393edc5205f3c9ddb530d8337f6332f925ed"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/star-pop.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 475,
+      "sha256": "ee52e9e532ca74f347c5ecf4b0b8dcbcfaf1e76088afbe6eae4237dee78336c6"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/sparkle-cream.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 409,
+      "sha256": "f87beed6d6d3fcabc7d94cef1cbb0e6c2e151444bcc1c92f8f90611bb3cd367e"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/dot-blue.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 245,
+      "sha256": "7f91c89f45c6b2d31e488381fd3c1ecb05ded3fc1a3deb69e22723b25fba428d"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/swoosh-cream.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 313,
+      "sha256": "3483bd6f699363924d81425a6c23ab068acf89d1c03c3acf169be9038be16d76"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/sources/dash-blue.svg",
+      "kind": "editable SVG art source (LF canonical hash)",
+      "bytes": 382,
+      "sha256": "6202bdbfec7b7b2a50634bb32de1c31006842eb1a320bc8c66b9a3ddc9f4569f"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/confetti-blue.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 5859,
+      "sha256": "c12f74008f477f17ca8d1264029b866a139beb866fc8ad886067d70d5f66dfbf"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/confetti-teal.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 8365,
+      "sha256": "025b433d8ee16d0b2e5789b16945430734e74ab8883e535cfdae734ac75ccb90"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/confetti-pink.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 6170,
+      "sha256": "3642bb146c71eb791964f7cdddd4ec33564fa028118fa2f591c7203fd9aa1e83"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/star-pop.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 8468,
+      "sha256": "88cb2a162b7275c601ca9f269833dc7fdb7bf74172fb159971a7046cf6c05da9"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/sparkle-cream.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 6140,
+      "sha256": "a7d7170df07b248da5980f5e2df23a3ca9ed894345e3280fe4e6a2b7ae0ffe02"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/dot-blue.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 5416,
+      "sha256": "c6544c3a637c47601e20bd742b43ccb91aca7ccfef9dec8cb628ec4348edc770"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/swoosh-cream.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 7194,
+      "sha256": "aa176b6b25a5300a26719bf3339f2e157bbf64d5cfc3d1ed4272614b2bb02fe8"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/sprites/dash-blue.png",
+      "kind": "runtime transparent PNG texture",
+      "bytes": 4582,
+      "sha256": "fa616a961d6a2fe79f9cec2b57416cfb116717416175f16d336e4b29974d253d"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/atlas.png",
+      "kind": "runtime transparent PNG atlas",
+      "bytes": 53431,
+      "sha256": "034d1dab7b2667262973226f5a2dfbd5cd783622f275475d118d46b564585d4c"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/runtime/atlas.json",
+      "kind": "runtime atlas metadata (LF canonical hash)",
+      "bytes": 5650,
+      "sha256": "c71a00e80b5ac27714c9df3c78d5bc4e3b63b6e3af770fbe22c786b6c528e819"
+    },
+    {
+      "path": "docs/assets/cartoon-clear-v1/preview.png",
+      "kind": "inspection-only preview; not a runtime texture",
+      "bytes": 161617,
+      "sha256": "8e9803f621b78bbde5c6ec2dcbbe42ed9e75dfa41023cf37578029ff1cd169b5"
+    }
+  ]
+}
