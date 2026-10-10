@@ -596,3 +596,18 @@ Error: case desktop-high exceeded 900s — the browser stopped settling
 同时排除了「本机跑不了 1440×900 无头」这个可能：`npm run shot`（14 张截图、含 1440×900 硬门）与 `probe:clear r4`（含 2048×900）本轮都正常退出 0。所以问题落在**这个探针在这个用例上**，与卡通消除无关，也与视口尺寸本身无关。
 
 **未修**：本机无法进一步区分「headless 合成器在该用例下卡住」与「该探针的某个 await 条件永远不成立」。已连同 900s 这一条写进 `KNOWN_GAPS`，留给能在真机/正常会话里跑的人。
+
+### 回归扫描（三）：渲染与动效侧的门禁
+
+**只改文件**：本文档。无代码改动。
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run probe:grounding` | 通过（mobile 390×844 low / desktop720 1280×720 high 与 low，各 31–32 条条件） |
+| `npm run evidence:motion` | **全部 motion/freeze/resume/reduced-motion 断言通过** |
+
+`evidence:motion` 尤其相关：它覆盖 reduced-motion 与冻结/恢复，正是本轮改动碰过的两条（`honourReducedMotionToggle()` 当帧停飞、`boardFloatFrozen()` 的暂停判定）。
+
+### 扫描边界（没跑的，如实列出）
+
+以下门禁本轮**没有**运行，理由是与本次改动面无关，而不是「跑了是绿的」：`probe:rescue`（道具救场）、`probe:fragility`（棋盘脆弱性）、`probe:dialog` / `probe:scroll`（UI 遮挡与滚动归属）、`art:preflight`、`fixtures:grounding`、`reachability`（长时离线模拟）。本次改动集中在 `effects.js` / `main.js` / `gameScene.js` / `diagnostics.js`，上述门禁不经过这些模块的改动点。
