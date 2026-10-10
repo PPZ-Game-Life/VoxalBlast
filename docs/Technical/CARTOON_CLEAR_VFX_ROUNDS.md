@@ -534,3 +534,37 @@ OK   fuzz: the emitter cap held on every board              worst 8
 **155 次真实结算，与参考实现零分歧。** 覆盖也够：其中 **64 次（41%）出现了同一段空间被两个面各报一次**——正是规划器存在的理由，说明这个分支不是没被走到。
 
 关于覆盖率下限：一开始我把「真的落成了」写成 ≥250，实测只有 155——因为随机形状+随机面+随机原点大多数非法或清不掉线。**这是我自己生成器的覆盖率陈述，不是产品门禁**，所以按实测把下限校准到 120 并写明原因，而不是把生成器调到数字好看。
+
+## R5 — 回归扫描：把改动之外的门禁全跑一遍
+
+**只改文件**：本文档、`docs/Technical/KNOWN_GAPS.md`。无代码改动。
+
+本轮改的是 `effects.js` / `main.js` / `gameScene.js` / `diagnostics.js`，都是被别的门禁依赖的模块。所以把仓库里**改动之外**的探针与门禁全部跑了一遍，而不是只看自己那四个。
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm test`（12 套件） | **PASS 0 failure** |
+| `npm run probe:interaction` | **52 ok / 0 failed / 0 skipped** |
+| `npm run probe:churn` | **44 ok / 0 failed / 1 skipped**（该 skip 与本次改动无关，见下） |
+| `npm run probe:ui` | **105 ok / 0 failed / 0 skipped** |
+| `npm run probe:drag` | **117 ok / 0 failed / 0 skipped** |
+| `npm run probe:framing` | 通过（trajectory 全在目标内） |
+| `npm run probe:item` | 全部通过 |
+| `npm run probe:score` | 通过（含关声后主输出静音、数字仍滚到 board score） |
+| `npm run probe:celebration` | 全部通过 |
+| `npm run probe:clear`（r1–r4） | 四轮各 **0 failure** |
+| `npm run probe:contour` | **在改动之前就是坏的**，见下 |
+
+### `probe:contour`：不是本轮改坏的，是本来就在这台机器上跑不起来
+
+它跑到 `desktop-high` 用例就报 `case desktop-high exceeded 240s — the browser stopped settling`，重跑复现。**判定方法是把它指向「我任何改动之前」的代码**：
+
+```powershell
+git worktree add ..\vb-base bf03464     # 交接单提交本身，比本轮全部改动更早
+node node_modules/vite/bin/vite.js --port 5201 --strictPort --host localhost
+npm run probe:contour -- http://localhost:5201/
+```
+
+基线提交上**同一个用例以同样的方式超时**，`mobile-low` 的读数也照常打出来。所以这是**预先存在的环境/探针问题**（"browser stopped settling" 是页面停止绘制导致 `awaitPromise` 的 rAF 求值永不落定），**不是本轮回归**。已按此写进 `KNOWN_GAPS`，并把临时 worktree 删掉、基线 dev server 停掉。
+
+顺带说明：`probe:churn` 那 1 个 skipped 是它自己报告的「有 1 个用例从未运行」，本轮没有改动 churn 覆盖的任何生命周期开关，`44 ok / 0 failed` 的其余项全过；没有去动它的 SKIP 口径。
