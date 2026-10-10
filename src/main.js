@@ -725,12 +725,17 @@ const {
   // failure can never block the first move; the scope cancel is the clear's own, separate from
   // the item/reward/audio scopes.
   loadCartoonAtlas,
+  // v0.13.4 R1 (PLACEMENT_IMPACT_FEEDBACK_HANDOFF §8.1): the impact pack's own lazy load. Same
+  // contract as the atlas above — fetched once, never awaited, and a failure leaves the v1 clear
+  // in charge rather than blocking a placement behind a Loading screen.
+  loadImpactAssets,
   cancelCartoonScope,
 } = effects
 
 // §3.1: kick the atlas off now, but never await it. Until it lands (or if it never does) the
 // clear draws with the procedural fallback in effects.js and the game stays fully playable.
 loadCartoonAtlas()
+loadImpactAssets()
 
 // §4.2 「先选朝向相机的可见面，正面对相机者优先」. The planner is pure and must not guess which side
 // of the cube the player is on, so the order is computed here, from the camera's own position and
@@ -2108,7 +2113,7 @@ const devHandles = import.meta.env.DEV
     // The third argument (the old `milestone`) and the second (`faces`) are both gone: version 2
     // has no chain milestone, and facesHit stopped being a level input when the level moved to
     // the reward result (§4.2 清理 demoClear 旧参数).
-    demoClear: (lineCount) => {
+    demoClear: (lineCount, options = {}) => {
       const lines = Number(lineCount) || 1
       const face = findFrontFace()
       const descriptors = []
@@ -2125,10 +2130,28 @@ const devHandles = import.meta.env.DEV
             : faceLattice(face, k, index))),
         })
       }
+      // v0.13.4 R1: the demo may declare WHERE the piece landed (§4). Without it the planner
+      // reports `originFallback` on every line — honest, but it cannot exercise 「光从落点传出去」.
+      // `placedIndexes` names the in-line cells the hand covered, i.e. exactly the field a real
+      // `snapshotPlacement()` produces; the REAL Board path is asserted in
+      // tools/cartoon-clear-plan-tests.mjs against nine real fixtures.
+      const placedIndexes = Array.isArray(options.placedIndexes) ? options.placedIndexes : null
+      const placement = placedIndexes
+        ? {
+          face,
+          origin: { u: 0, v: 0 },
+          localCells: [],
+          placedCells: descriptors.flatMap((descriptor) => placedIndexes
+            .filter((k) => k >= 0 && k < descriptor.cells.length)
+            .map((k) => descriptor.cells[k])),
+          color: 0xffffff,
+          paintLookup: new Map(),
+        }
+        : null
       // A demo with no reward event: the level is the plain clear ladder (L1–L5 by line count),
       // which is what the celebration budget and the clear cue are indexed by.
       const level = rewardLevel({ lines, rewards: [] })
-      spawnClearEffects(descriptors, level)
+      spawnClearEffects(descriptors, level, placement ? { placement } : {})
       audio.playClear(level)
       return { level, ...effects.report() }
     },
@@ -2175,6 +2198,13 @@ const devHandles = import.meta.env.DEV
       }
     },
     clearCelebration: () => { clearTransientEffects() },
+    // v0.13.4 R1: the impact pack's own read-out, separate from `report()`. It carries the asset
+    // contract (frame ids/order/durations, union bounds, pivot, GLB primitives and vertex colours)
+    // AND the live counters, so a probe can grade the pack without reading `report()`'s shape.
+    impactReport: () => effects.impactReport(),
+    // DEV-only: freeze the impact layer's clock and run one real frame, so a check can step the
+    // 148ms sweep below the rasteriser's frame rate instead of describing the frame rate.
+    impactStep: (tMs, delta) => effects.impactStep(tMs, delta),
     // §3.1's first gate: all eight tiles through the real Quarks billboard path, so a capture can
     // grade the sampling rather than the download.
     atlasGate: (options) => effects.showAtlasGate(options),

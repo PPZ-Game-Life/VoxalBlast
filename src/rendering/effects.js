@@ -37,6 +37,10 @@ import {
   SpeedOverLife,
 } from 'three.quarks'
 import { CARTOON_CLEAR, CELEBRATION, VFX_CONFIG, FEEDBACK_STYLE, BOARD_STYLE as style } from './config.js'
+// The rules' OWN face lattice, used for one thing in this file: turning a CONTINUOUS face-local
+// coordinate (the planner's origin, §4.3) into a lattice point. Re-deriving the six mappings here
+// would be a second opinion about where a cell is, and the two would eventually disagree.
+import { faceLattice } from '../game/board.js'
 // v0.13.3: the normal clear's planner. Pure by construction -- see the module's own header for
 // why the physical/face split cannot live in this file.
 import {
@@ -50,6 +54,10 @@ import {
   vfxRandom,
   vfxSeed,
 } from './cartoonClearPlan.js'
+// v0.13.4 R1: the placement-driven layer. Everything it draws starts where the hand fell, so it
+// needs the same pre-settle snapshot the planner got (PLACEMENT_IMPACT_FEEDBACK_HANDOFF §3–§5).
+import { createImpactFeedback, budgetFor, severityOf } from './impactFeedback.js'
+import { IMPACT_FEEDBACK } from './config.js'
 // The buzz is the platform's, not the renderer's: whether a vibrate call can be felt at all is
 // a device question with its own measurements (platform/haptics.js header).
 import { vibrate } from '../platform/haptics.js'
@@ -187,6 +195,44 @@ export function createEffects({
 
   const cellSize = cellPitch
   const celebrationColors = CELEBRATION.colors
+
+  // v0.13.4 R1: the placement-driven layer (§5). It draws the sweep, the endpoint bursts and the
+  // 3D cube flight; this file keeps the skeleton it always had around them — the outline as the
+  // understated confirmation, the chips as the secondary sprites, the scope, the clock and the
+  // report. `surfaceOffset` is the SAME number the bands and the outline use, so the new art is
+  // lifted off the real surface by the one convention the board already has (§8.2).
+  const impact = createImpactFeedback({
+    scene,
+    cubeGroup,
+    cellPitch,
+    cellToWorld,
+    cubeVector,
+    quality,
+    prefersReducedMotion,
+    surfaceOffset: style.feedbackSurfaceOffset,
+  })
+  // The v1 sprite budget is the FALLBACK. When the pack is loaded, §5.2's `secondarySprites` row
+  // is the chip count instead of §4.3's old all-in budget (which also paid for the marks, the
+  // arcs and the dots that the sweep and the bursts have now replaced).
+  const impactActive = () => impact.ready()
+  function spriteBudget(severity, physical) {
+    if (!impactActive()) {
+      return {
+        budget: clearBudget(physical, {
+          lowPower: Boolean(quality.lowPower),
+          reducedMotion: prefersReducedMotion(),
+          cramped: crampedViewport(),
+        }),
+        secondaryOnly: false,
+      }
+    }
+    // v0.13.4 R1: §5.2's `secondarySprites` replaces §4.3's all-in row for the CHIPS only — the
+    // marks, the arcs and the dots it used to pay for are now the sweep and the bursts. The
+    // 「手机横屏/安全边距不足：装饰预算减半」 rule is kept, because the chips are still decoration and
+    // dropping it would quietly make a landscape phone busier than it was before.
+    const base = budgetFor(impact.recipe(), severity, Boolean(quality.lowPower), 'secondarySprites')
+    return { budget: crampedViewport() ? Math.round(base * 0.5) : base, secondaryOnly: true }
+  }
 
   // ---------------------------------------------------------------- geometry pool
   // §7.3: shared geometry/material belong to the pool. A single event destroys its INSTANCES,
@@ -915,11 +961,10 @@ export function createEffects({
     cartoon.seq += 1
     const eventKey = `${cartoon.scopeEpoch}:${cartoon.seq}`
     const physical = plan.physicalLineCount
-    const budget = clearBudget(physical, {
-      lowPower: Boolean(quality.lowPower),
-      reducedMotion: reduced,
-      cramped,
-    })
+    const severity = severityOf(physical)
+    const sprites = spriteBudget(severity, physical)
+    const budget = reduced ? 0 : sprites.budget
+    const secondaryOnly = sprites.secondaryOnly
     const caps = clearCaps(Math.max(1, physical))
     const tail = clearTailSeconds(physical)
     const now = performance.now()
@@ -1015,11 +1060,24 @@ export function createEffects({
     }
 
     if (tail > 0) {
-      const sprites = spawnCartoonSprites({ plan, budget, caps, tail, record, reduced })
-      record.spawned = sprites.spawned
-      record.marks = sprites.marks
-      record.arcs = sprites.arcs
+      const spawned = spawnCartoonSprites({ plan, budget, caps, tail, record, reduced, secondaryOnly })
+      record.spawned = spawned.spawned
+      record.marks = spawned.marks
+      record.arcs = spawned.arcs
     }
+
+    // ---- 2. the placement-driven layer (§5) -------------------------------------------------
+    // Started AFTER the board has already settled: §3.1 「仍然原顺序结算、更新棋盘、声音/短签、保存；
+    // 不等刷光才删除格或更新分数」. It draws nothing at all when the pack is not loaded, and the v1
+    // confirmation above has already been drawn either way — a failed load must never cost the
+    // player their line, and must never leave a Loading screen behind.
+    const impactEvent = impactActive() && !reduced
+      ? impact.spawn({ eventKey, plan, propagation })
+      : null
+    record.impact = impactEvent
+      ? { sweeps: impactEvent.sweeps, bursts: impactEvent.bursts, cubes: impactEvent.cubes, severity: impactEvent.severity }
+      : null
+    if (impactActive() && !reduced) spawnPlacementPulse(propagation, tail, record)
 
     cartoon.events.push(record)
     // The event log is the probe's own read-out; it is bounded so a long session cannot grow it.
@@ -1040,7 +1098,7 @@ export function createEffects({
    * slice it into kinds, and the global pool ceiling can trim it further — trimming decoration is
    * always preferred to dropping a line outline, which is drawn above and is not part of `budget`.
    */
-  function spawnCartoonSprites({ plan, budget, caps, tail, record, reduced }) {
+  function spawnCartoonSprites({ plan, budget, caps, tail, record, reduced, secondaryOnly = false }) {
     const now = performance.now()
     const ends = emitterPositions(plan, { max: CARTOON_CLEAR.emitterCap })
     const fallbackPoint = plan.uniqueCells.length
@@ -1074,9 +1132,9 @@ export function createEffects({
 
     // The kinds, in §4.3's own order of importance: marks and arcs are reserved first, the
     // confetti fills what is left, and nothing may exceed the event's budget.
-    const marks = reduced ? 1 : markPositions(plan, caps.marks).length
-    const arcs = caps.arcs
-    const dots = quality.lowPower ? 0 : Math.min(2, Math.floor(budget / 8))
+    const marks = secondaryOnly || reduced ? 0 : markPositions(plan, caps.marks).length
+    const arcs = secondaryOnly ? 0 : caps.arcs
+    const dots = secondaryOnly || quality.lowPower ? 0 : Math.min(2, Math.floor(budget / 8))
     const confetti = Math.max(0, budget - marks - arcs - dots)
     const pink = Math.round(confetti * CARTOON_CLEAR.confetti.pinkShare)
     const blue = Math.ceil((confetti - pink) / 2)
@@ -1239,6 +1297,42 @@ export function createEffects({
     }
     const spawned = addCartoonSystems(allowed, record, center)
     return { spawned: spawned.count, marks: spawned.byId['star-pop'] || 0, arcs: spawned.byId['swoosh-cream'] || 0 }
+  }
+
+  /**
+   * §5.1 「落点脉冲：一个短奶油色确认，强调'这一手'；单次局部提示，不按新格数量倍增」.
+   *
+   * The pack ships no pulse sprite and §5.1 keeps the existing atlas for exactly this kind of
+   * supporting mark, so the pulse is the v1 `sparkle-cream` tile at its own small size — one
+   * instance at the placement's centroid, never one per placed cell. The anchor is the snapshot's
+   * own centre (§3.1), so the flash is where the hand fell rather than where the pointer lifted.
+   */
+  function spawnPlacementPulse(propagation, tail, record) {
+    const pulse = propagation?.pulse
+    if (!pulse || !pulse.uv) return false
+    const [u, v] = pulse.uv
+    const cell = faceLattice(pulse.face, u, v)
+    const position = worldCell(cell).addScaledVector(faceNormalWorld(pulse.face), style.feedbackSurfaceOffset)
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) {
+      nanGuards.pivot += 1
+      return false
+    }
+    const coverage = tileCoverage('sparkle-cream')
+    const center = position.clone()
+    const systems = addCartoonSystems([{
+      id: 'sparkle-cream',
+      count: 1,
+      delay: 0,
+      life: Math.max(0.1, Math.min(0.22, tail)),
+      speed: 1,
+      points: [position.clone().sub(center)],
+      velocities: [new THREE.Vector3(0, 0, 0)],
+      sizes: [visibleSize(IMPACT_FEEDBACK.pulseCells, coverage.x)],
+      rotations: [0],
+      gravity: 0,
+    }], record, center)
+    record.pulse = systems.count === 1
+    return record.pulse
   }
 
   const SCENE_UP = new THREE.Vector3(0, 1, 0)
@@ -1508,6 +1602,9 @@ export function createEffects({
       return false
     })
     for (const event of cartoon.events) event.until = Math.min(event.until, now)
+    // §8.3: the placement-driven layer closes on the SAME transition, with the same stale-token
+    // contract — a queued burst or a cube in flight must not come back after a settings panel.
+    impact.cancelScope()
   }
 
   function cartoonReport() {
@@ -1758,6 +1855,9 @@ export function createEffects({
     releaseCartoonEmission(now)
     particleRenderer.update(delta)
     updateTransientEffects(delta)
+    // v0.13.4 R1: the placement-driven layer steps on the SAME wall clock. It is not the particle
+    // renderer and it is not slowed by the L5 dip (§8.3 「事件时间使用wall clock，不乘L5慢放」).
+    impact.update(delta)
     pruneSystems()
     // Read live, never captured: the drag preview and the tool scope both belong to the input
     // layer and can appear between two frames.
@@ -1892,6 +1992,8 @@ function setVisible(on) {
   const visible = Boolean(on)
   fxGroup.visible = visible
   particleRenderer.visible = visible
+  // v0.13.4 R1: the placement layer's two groups take the same switch as the board's own effects.
+  impact.setVisible(visible)
   return { fxGroup: fxGroup.visible, particleRenderer: particleRenderer.visible }
 }
 
@@ -1932,6 +2034,10 @@ function report() {    // `liveParticles` is the system's OWN particle count: th
       // is over. `cartoon` carries the planner's own numbers as well.
       celebrationChips: liveChipCount('celebration'),
       cartoon: cartoonReport(),
+      // v0.13.4 R1 (§5.2/§8.3): the new layer has its own line in the read-out — a budget that is
+      // "fine" in one pool can never hide a total that is over, so the sweep, the bursts, the
+      // cubes and the pack's own asset contracts are all reported apart from the v1 counts.
+      impact: impact.report(),
     }
   }
 
@@ -1963,6 +2069,12 @@ function report() {    // `liveParticles` is the system's OWN particle count: th
     // `cancelCartoonScope` is the scoped cancel §7.1 asks for, and `cartoonReport` is the
     // planner's own read-out.
     loadCartoonAtlas,
+    // v0.13.4 R1 (§8.1): the impact pack loads lazily and never blocks a move. `impactReport` is
+    // the pack's own asset read-out plus its live counters.
+    loadImpactAssets: () => impact.load(),
+    impactReport: () => impact.report(),
+    // DEV only: freeze the impact layer's clock and run one real frame (§9.1's recomputable rows).
+    impactStep: (tMs, delta) => impact.devStep(tMs, delta),
     cancelCartoonScope,
     cartoonReport,
     // The §3.1 sampling gate. DEV-only caller (main's `__voxalblastDev.atlasGate`), but the

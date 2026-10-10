@@ -34,16 +34,40 @@ mkdirSync(OUT, { recursive: true })
 const r3 = (value) => Math.round(value * 1000) / 1000
 
 /**
- * §4.3's budget table, applied the way the effects layer applies it: the tier's own column, then
- * 「手机横屏/安全边距不足」 halving. One helper, so a check and the code under test cannot read two
- * different tables.
+ * The normal clear's CHIP budget, applied the way the effects layer applies it: the tier's own
+ * column, then 「手机横屏/安全边距不足」 halving. One helper, so a check and the code under test
+ * cannot read two different tables.
+ *
+ * v0.13.4: PLACEMENT_IMPACT_FEEDBACK_HANDOFF §5.2 replaces §4.3's all-in row with its
+ * `secondarySprites` row (6/8/10 standard, 2/3/4 low power), because the marks, the arcs and the
+ * dots the old number paid for are now the sweep and the endpoint bursts. The probe therefore
+ * reads the table from the RUNNING layer (`setLiveBudgetTables`, fed by the impact report's own
+ * `caps.perEvent`) and falls back to the v1 numbers only when the pack is not loaded — which is
+ * exactly the two branches the effects layer itself has.
  */
+let liveBudgetTables = null
+
+function setLiveBudgetTables(perEvent) {
+  const row = (key) => {
+    const entry = perEvent?.[key]
+    if (!entry) return null
+    const standard = entry.standard || []
+    const low = entry.low || []
+    return { 1: standard[0], 2: standard[1], 3: standard[2], low: { 1: low[0], 2: low[1], 3: low[2] } }
+  }
+  const table = row('secondarySprites')
+  if (!table) return
+  liveBudgetTables = { standard: { 1: table[1], 2: table[2], 3: table[3] }, low: table.low }
+}
+
 function budgetFor(physicalLines, event) {
   const count = Math.max(0, Math.trunc(physicalLines) || 0)
   if (count <= 0) return 0
   if (event?.reducedMotion) return 0
   const lowPower = event?.lowPower === undefined ? false : event.lowPower
-  const table = lowPower ? { 1: 7, 2: 11, 3: 16 } : { 1: 14, 2: 22, 3: 32 }
+  const table = liveBudgetTables
+    ? (lowPower ? liveBudgetTables.low : liveBudgetTables.standard)
+    : (lowPower ? { 1: 7, 2: 11, 3: 16 } : { 1: 14, 2: 22, 3: 32 })
   const base = table[Math.min(count, 3)]
   return event?.cramped ? Math.round(base * 0.5) : base
 }
@@ -565,6 +589,9 @@ async function runLifecycle(ctx) {
     await send(ws, nextId++, "Page.navigate", { url })
     await sleep(2600)
     await waitLive()
+    // v0.13.4: which chip table is in force depends on whether the impact pack has loaded, so the
+    // probe asks the running layer rather than assuming either (see `ensureLiveBudgetTable`).
+    await ensureLiveBudgetTable()
     await evaluate('JSON.stringify(globalThis.__voxalblastDev.setBoardFloat({ frozen: true, time: 0 }))')
     await evaluate('JSON.stringify(globalThis.__voxalblastDev.setAmbient({ frozen: true, time: 0 }))')
     const onReturn = await report()
@@ -941,6 +968,19 @@ try {
     return result.result?.value
   }
   const json = async (expression) => JSON.parse(await evaluate(`JSON.stringify(${expression})`))
+  // v0.13.4: which chip table is in force depends on whether the impact pack has loaded, so the
+  // probe asks the RUNNING layer instead of assuming either — the ladder below then grades the
+  // layer the player would actually get rather than the one the code used to ship. The pack loads
+  // lazily, so this waits for it once per process (the recipe does not change on a reload).
+  let liveBudgetReady = false
+  const ensureLiveBudgetTable = async () => {
+    if (liveBudgetReady) return
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const caps = await json('globalThis.__voxalblastDev.impactReport().caps')
+      if (caps?.perEvent) { setLiveBudgetTables(caps.perEvent); liveBudgetReady = true; return }
+      await sleep(250)
+    }
+  }
   const shot = async (name) => {
     const result = await send(ws, nextId++, 'Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
     const file = join(OUT, `${name}.png`)
@@ -983,6 +1023,7 @@ try {
         if ((await json('globalThis.__voxalblast.intro().active')) === false) break
         await sleep(200)
       }
+      await ensureLiveBudgetTable()
       await evaluate('globalThis.__voxalblastDev.clearCelebration()')
       await sleep(240)
       const before = await json(`({
@@ -1339,12 +1380,12 @@ try {
         // empty after 360ms -- measured, not asserted from the config.
         const expected = lines === 1 ? 1 : lines
         const lowPower = await json('globalThis.__voxalblast.effects().lowPower')
-        // §4.3 has two independent reductions and the expectation has to apply both: the tier's
-        // own column, then 「手机横屏/安全边距不足」 halving it. Reading only `lowPower` reported a
-        // landscape phone's correct 7 as a failure against 14.
-        const table = lowPower ? { 1: 7, 2: 11, 3: 16 } : { 1: 14, 2: 22, 3: 32 }
+        // The two independent reductions are applied by ONE helper that reads the table the running
+        // layer read (§4.3's tier column, then 「手机横屏/安全边距不足」 halving — v0.13.4 swapped the
+        // first of those for §5.2's `secondarySprites` row). Reading only `lowPower` reported a
+        // landscape phone's correct number as a failure against the portrait one.
         const cramped = Boolean(event?.cramped)
-        const budgetCap = cramped ? Math.round(table[Math.min(lines, 3)] * 0.5) : table[Math.min(lines, 3)]
+        const budgetCap = budgetFor(lines, { lowPower, cramped })
         check(`${viewport.id} L${lines}: the budget comes from the physical line count (${budgetCap})`,
           event?.budget === budgetCap && event?.spawned <= budgetCap,
           `budget=${event?.budget} spawned=${event?.spawned} physical=${event?.physicalLineCount} lowPower=${lowPower} cramped=${cramped}`)

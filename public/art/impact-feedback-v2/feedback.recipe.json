@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "units": {
+    "time": "ms",
+    "worldSize": "cell",
+    "screenSize": "CSSpx",
+    "normalizedAge": "0..1"
+  },
+  "proposalNotRuntimeVerified": true,
+  "sweep": {
+    "startMs": 35,
+    "speedCellsPerSecond": 32,
+    "endMaxMs": 200,
+    "visibleHeightCells": 0.65,
+    "lengthCells": 1.4
+  },
+  "burst": {
+    "burstDurationMs": 140
+  },
+  "cube": {
+    "visibleEdgeCells": [
+      0.36,
+      0.52
+    ],
+    "holdScaleUntilNormalizedAge": 0.45,
+    "clearEndMs": {
+      "single": 420,
+      "multi": 480
+    }
+  },
+  "tap": {
+    "diameterCssPx": [
+      24,
+      36
+    ],
+    "durationMs": 160,
+    "pressDotMs": 60,
+    "staticReducedMs": 80,
+    "maxConcurrent": 2
+  },
+  "cameraShake": {
+    "normalizedCurve": [
+      [
+        0,
+        0
+      ],
+      [
+        0.12,
+        1
+      ],
+      [
+        0.28,
+        -0.55
+      ],
+      [
+        0.48,
+        0.28
+      ],
+      [
+        0.72,
+        -0.1
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "maxDisplacementCssPx": {
+      "place": 0,
+      "single": 1.2,
+      "double": 2,
+      "threePlus": 3
+    },
+    "durationMs": {
+      "single": 90,
+      "double": 110,
+      "threePlus": 140
+    },
+    "reducedMotionDisabled": true,
+    "compose": "max-not-sum"
+  },
+  "haptics": {
+    "patternsMs": {
+      "tap": [],
+      "place": [
+        6
+      ],
+      "single": [
+        12
+      ],
+      "double": [
+        18
+      ],
+      "threePlus": [
+        14,
+        20,
+        14
+      ]
+    },
+    "sourceCapTotalMs": 48,
+    "cancelOnScopeExit": true,
+    "preferenceIndependentOfReducedMotion": true,
+    "integrationPolicy": {
+      "directVibrateCall": false,
+      "ordinaryScreenTapRecommendedDisabledValue": 0,
+      "note": "Configuration delivery only. Route through the integration-owned haptics adapter; never call vibrate directly."
+    }
+  },
+  "clearBudgets": {
+    "schema": "severity-by-quality-v1",
+    "severityOrder": [
+      "single",
+      "double",
+      "threePlus"
+    ],
+    "perClearEvent": {
+      "cubes": {
+        "standard": [
+          4,
+          6,
+          8
+        ],
+        "low": [
+          2,
+          3,
+          4
+        ]
+      },
+      "endpointPops": {
+        "standard": [
+          2,
+          4,
+          6
+        ],
+        "low": [
+          1,
+          2,
+          3
+        ]
+      },
+      "secondarySprites": {
+        "standard": [
+          6,
+          8,
+          10
+        ],
+        "low": [
+          2,
+          3,
+          4
+        ]
+      }
+    },
+    "maxClearEvents": 2,
+    "globalLiveCaps": {
+      "cubes": {
+        "standard": 16,
+        "low": 8
+      },
+      "endpointPops": {
+        "standard": 12,
+        "low": 6
+      },
+      "secondarySprites": {
+        "standard": 20,
+        "low": 8
+      }
+    },
+    "faceRays": {
+      "maxPerEvent": 120,
+      "derivation": "6 faces * 60 raw lines * 2",
+      "countsAgainstDecorativePool": false
+    }
+  }
+}

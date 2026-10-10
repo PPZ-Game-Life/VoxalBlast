@@ -984,6 +984,47 @@ export const CARTOON_CLEAR = Object.freeze({
 })
 
 // ============================================================
+// Impact feedback v2 (docs/Technical/PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md §5)
+// ============================================================
+// v0.13.4 R1. The NORMAL clear's placement-driven layer: the wide sweep that leaves from where the
+// hand landed, the endpoint bursts and the real 3D cubes. `CARTOON_CLEAR` above keeps its job as
+// the v1 underlay (the "low-key confirmation" outline, the secondary chips and the whole fallback
+// path when this pack cannot load); the two tables coexist on purpose, because §5.2 lets the
+// secondary chips be the OLD atlas rather than a second copy of the same art.
+//
+// The TUNABLES are deliberately NOT here: §5 says 「参数源：feedback.recipe.json」, so the shipped
+// recipe is fetched at runtime and everything above is structural (paths, layout, colour policy,
+// budget schema). A number that lives in both places is a number that will disagree.
+export const IMPACT_FEEDBACK = Object.freeze({
+  dir: 'art/impact-feedback-v2/',
+  recipe: 'feedback.recipe.json',
+  // One sequence per role. `atlas` says how the sheet is cut; the union bounds inside the JSON —
+  // never the per-frame measured bounds — are what a quad is normalized to (§5.1).
+  sweep: Object.freeze({ id: 'sweep-right', image: 'sweep-right.png', json: 'sweep-right.json' }),
+  endpointPop: Object.freeze({ id: 'endpoint-pop', image: 'endpoint-pop.png', json: 'endpoint-pop.json' }),
+  tap: Object.freeze({ id: 'tap-feedback', image: 'tap-feedback.png', json: 'tap-feedback.json' }),
+  // §8.1: 「全三色加载时排除alias，避免重复蓝色」 — `cube.glb` is byte-identical to `cube-blue.glb`
+  // and is never requested. The mesh name is the node the loader must hand back (ASSETS 「加载契约」).
+  cubes: Object.freeze([
+    Object.freeze({ id: 'blue', file: 'cube-blue.glb', node: 'Cube_Blue' }),
+    Object.freeze({ id: 'teal', file: 'cube-teal.glb', node: 'Cube_Teal' }),
+    Object.freeze({ id: 'pink', file: 'cube-pink.glb', node: 'Cube_Pink' }),
+  ]),
+  // §5.2 「低配主六面体默认只分配蓝/青两个vertexColors变体，粉色让位」.
+  lowPowerCubeIds: Object.freeze(['blue', 'teal']),
+  // §5.2 「特殊全盘清除可能非常密，重合alpha必须封顶」: the sweep's own ceiling, so a five-line
+  // crossing cannot stack five 0.45-alpha tails into a white slab.
+  sweepOpacity: 0.46,
+  sweepFadeInMs: 22,
+  // §5.1's placement pulse: one short cream confirmation. It reuses the v1 `sparkle-cream` tile at
+  // this VISIBLE size because the pack ships no pulse sprite of its own.
+  pulseCells: 0.3,
+  endpointPopOpacity: 0.9,
+  cubeOpacity: 1,
+  fxLayer: 3,
+})
+
+// ============================================================
 // Reward feedback signatures (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2)
 // ============================================================
 // The three categories must be TELLABLE APART, not just louder or quieter: each has its own

@@ -43,7 +43,8 @@
     "probe:contour": "node tools/contour-aa-probe.mjs",
     "test:cartoon": "node tools/cartoon-clear-plan-tests.mjs",
     "fixtures:cartoon": "node tools/cartoon-clear-fixtures.mjs",
-    "probe:clear": "node tools/cartoon-clear-probe.mjs"
+    "probe:clear": "node tools/cartoon-clear-probe.mjs",
+    "probe:impact": "node tools/placement-impact-probe.mjs"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",

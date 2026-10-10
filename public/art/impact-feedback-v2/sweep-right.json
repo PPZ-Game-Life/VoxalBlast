@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 3,
+  "id": "sweep-right",
+  "image": "sweep-right.png",
+  "sheetSize": [
+    1024,
+    128
+  ],
+  "layout": {
+    "columns": 4,
+    "rows": 1,
+    "frameSize": [
+      256,
+      128
+    ],
+    "order": "left-to-right"
+  },
+  "texture": {
+    "colorSpace": "sRGB",
+    "alphaMode": "straight/unassociated RGBA",
+    "premultipliedAlpha": false,
+    "generateMipmaps": false,
+    "minFilter": "LinearFilter",
+    "magFilter": "LinearFilter",
+    "wrapS": "ClampToEdgeWrapping",
+    "wrapT": "ClampToEdgeWrapping",
+    "depthWrite": false
+  },
+  "normalization": {
+    "unionAlphaBounds": [
+      6,
+      8,
+      239,
+      116
+    ],
+    "referenceAlphaBounds": [
+      6,
+      8,
+      239,
+      116
+    ],
+    "policy": "fixed union bounds for every frame; never rescale or recenter from per-frame measured bounds"
+  },
+  "playback": {
+    "loop": false,
+    "cleanupAfterLastFrame": true,
+    "driver": "branchTravelProgress",
+    "frameIntervalsNormalized": [
+      [
+        0.0,
+        0.25
+      ],
+      [
+        0.25,
+        0.5
+      ],
+      [
+        0.5,
+        0.75
+      ],
+      [
+        0.75,
+        1.0
+      ]
+    ],
+    "nominalArtCycleDurationMs": 140,
+    "nominalDurationsAreAuthoritative": false,
+    "authority": "feedback.recipe.json sweep startMs/speedCellsPerSecond/endMaxMs and actual branch arrival"
+  },
+  "role": "filled fan-head directional clear brush; fixed head pivot follows branch travel progress",
+  "frames": [
+    {
+      "index": 0,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 128,
+        "origin": "top-left pixels"
+      },
+      "pivot": [
+        0.92578125,
+        0.5
+      ],
+      "durationMs": 35,
+      "contentAlphaBoundsMeasuredOnly": [
+        8,
+        10,
+        237,
+        114
+      ],
+      "uvTopLeft": [
+        0.0,
+        0.0,
+        0.25,
+        1.0
+      ],
+      "uvBottomLeft": [
+        0.0,
+        0.0,
+        0.25,
+        1.0
+      ],
+      "travelProgressInterval": [
+        0.0,
+        0.25
+      ]
+    },
+    {
+      "index": 1,
+      "rect": {
+        "x": 256,
+        "y": 0,
+        "width": 256,
+        "height": 128,
+        "origin": "top-left pixels"
+      },
+      "pivot": [
+        0.92578125,
+        0.5
+      ],
+      "durationMs": 35,
+      "contentAlphaBoundsMeasuredOnly": [
+        7,
+        9,
+        238,
+        115
+      ],
+      "uvTopLeft": [
+        0.25,
+        0.0,
+        0.5,
+        1.0
+      ],
+      "uvBottomLeft": [
+        0.25,
+        0.0,
+        0.5,
+        1.0
+      ],
+      "travelProgressInterval": [
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "index": 2,
+      "rect": {
+        "x": 512,
+        "y": 0,
+        "width": 256,
+        "height": 128,
+        "origin": "top-left pixels"
+      },
+      "pivot": [
+        0.92578125,
+        0.5
+      ],
+      "durationMs": 35,
+      "contentAlphaBoundsMeasuredOnly": [
+        6,
+        8,
+        239,
+        116
+      ],
+      "uvTopLeft": [
+        0.5,
+        0.0,
+        0.75,
+        1.0
+      ],
+      "uvBottomLeft": [
+        0.5,
+        0.0,
+        0.75,
+        1.0
+      ],
+      "travelProgressInterval": [
+        0.5,
+        0.75
+      ]
+    },
+    {
+      "index": 3,
+      "rect": {
+        "x": 768,
+        "y": 0,
+        "width": 256,
+        "height": 128,
+        "origin": "top-left pixels"
+      },
+      "pivot": [
+        0.92578125,
+        0.5
+      ],
+      "durationMs": 35,
+      "contentAlphaBoundsMeasuredOnly": [
+        8,
+        9,
+        238,
+        114
+      ],
+      "uvTopLeft": [
+        0.75,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "uvBottomLeft": [
+        0.75,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "travelProgressInterval": [
+        0.75,
+        1.0
+      ]
+    }
+  ],
+  "placement": {
+    "defaultDirection": "+X",
+    "headAnchorNormalized": [
+      0.92578125,
+      0.5
+    ],
+    "headAnchorLocalPx": [
+      237,
+      64
+    ],
+    "leadingTipMaxLocalX": 240,
+    "maxLeadingExtentFromAnchorPx": 3,
+    "mirrorForNegativeDirection": true,
+    "rotateAroundHeadAnchor": true,
+    "visibleHeightNormalizationCells": 0.65,
+    "designLengthCells": 1.4,
+    "rayRevealClip": {
+      "worldInterval": "branch origin..advancing leading tip",
+      "localLeadingExtentPx": 3,
+      "purpose": "clip tail/ribs outside traveled interval so no branch appears behind the placement origin before arrival"
+    },
+    "scaleContract": "Scale from fixed normalization.referenceAlphaBounds to 1.4 cell wide x 0.65 cell high; do not compensate each frame and do not stretch to row length."
+  }
+}

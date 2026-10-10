@@ -412,12 +412,17 @@ export function createDiagnostics({
         // v0.10.1 clear-celebration probe: an L1–L5 clear cannot be arranged by playing, so the
         // probe drives the very same spawnClearEffects() the gameplay path calls, plus the two
         // audio-window handles that make "was anything heard since here" answerable.
-        demoClear: (lines) => dev.demoClear(lines),
+        demoClear: (lines, options) => dev.demoClear(lines, options),
         // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §9.1): one REAL settled placement, for the rule
         // cases `demoClear()` cannot express. See main.js's `dropAt` for why this is the drop
         // path and not a mock of it.
         dropAt: (options) => dev.dropAt(options),
         clearCelebration: () => dev.clearCelebration(),
+        // v0.13.4 R1 (PLACEMENT_IMPACT_FEEDBACK_HANDOFF §9.2): the impact pack's own read-out —
+        // the asset contract plus the live sweep/burst/cube counters, kept OUT of the read-only
+        // `report()` because it is the pack's, not the scene's.
+        impactReport: () => dev.impactReport(),
+        impactStep: (tMs, delta) => dev.impactStep(tMs, delta),
         atlasGate: (options) => dev.atlasGate(options),
         audioReset: () => dev.audioReset(),
         audioUnlock: () => dev.audioUnlock(),
