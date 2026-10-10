@@ -91,6 +91,9 @@ export function createDiagnostics({
         // pedestal, its two quads, the 3D prototype, and whether the two scene passes are on).
         // Still a pure assembly of gameScene's own report.
         rendererInfo: scene.rendererInfo,
+        // v0.13.3 (§6.2): the layer contract — the beauty mask, the normal prepass' narrowed mask
+        // and whether the narrowing was undone. A probe can assert them without reading a comment.
+        layers: scene.layers,
         grounding: scene.grounding,
       }
     },

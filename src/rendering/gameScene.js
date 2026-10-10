@@ -32,7 +32,7 @@ import {
   ToneMappingMode,
 } from 'postprocessing'
 import { skipComposerDepthBlit } from './threeCompat.js'
-import { BOARD_STYLE as style, GROUNDING_STYLE, LIGHTING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
+import { BOARD_STYLE as style, CARTOON_CLEAR, GROUNDING_STYLE, LIGHTING_STYLE, ROTATE_STYLE, SHADOW_STYLE, VFX_CONFIG } from './config.js'
 import { createBoardShadows } from './boardShadows.js'
 import { floatingWorldTierFor } from './floatingWorld.js'
 
@@ -373,6 +373,17 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
     }
   }
 
+  // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §6.2): the normal clear's FX layer. Searched for a free
+  // bit at the time: 0 is the board and the effects module, 1 is shadow-only receivers, 2 is the
+  // floating world, and 3 was unused. The effects layer CONSTRUCTS its ParticleSystems with this
+  // mask (the quarks batch key includes `layers.mask`, so a mask moved afterwards would need the
+  // batch rebuilt) and every contour mesh sets it object by object — a parent Group carrying the
+  // layer does NOT recurse to its children.
+  const FX_CLEAR_LAYER = CARTOON_CLEAR.fxLayer
+  let lastNormalPassMask = null
+  let normalPassDraws = 0
+  let beautyMaskAfterRestore = 0
+
   // Called once per frame, after the canonical camera has been placed and before anything is
   // drawn. It is cheap (two matrix multiplies) and it has to be re-run because the canonical
   // camera moves on nearly every frame — a gesture, the zoom wheel, the turn-band lift.
@@ -383,9 +394,14 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
     // and 2 (scenery, the floating world). NormalPass narrows this mask for its own draw and
     // puts it back; a mask that is never re-asserted here would be permanently narrowed by
     // whichever pass ran last.
+    // v0.13.3 (§6.2): the normal clear's own sprites and contour ride a dedicated layer, so the
+    // prepass can leave them out of the normal/depth buffer entirely and a transparent quad is
+    // never written into the buffer SSAO reads.
     renderCamera.layers.set(0)
     renderCamera.layers.enable(1)
     renderCamera.layers.enable(2)
+    renderCamera.layers.enable(FX_CLEAR_LAYER)
+    beautyMaskAfterRestore = renderCamera.layers.mask
     // v0.13.0 R4: the canonical camera's OWN world matrix is refreshed here, not assumed.
     // `camera.position` / `camera.lookAt()` only touch `position` and `quaternion`; `matrixWorld`
     // is recomputed inside `renderer.render()`, which runs AFTER this — so copying it without
@@ -449,6 +465,12 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
     const mask = renderCamera.layers.mask
     renderCamera.layers.disable(1)
     renderCamera.layers.disable(2)
+    renderCamera.layers.disable(FX_CLEAR_LAYER)
+    // v0.13.3: the narrow mask is recorded so the layer contract is a READ-OUT rather than a
+    // comment. `normalPassDraws` makes "the probe ran before any pass" a distinguishable state
+    // from "the mask happened to be right".
+    lastNormalPassMask = renderCamera.layers.mask
+    normalPassDraws += 1
     try { renderNormals(...args) } finally { renderCamera.layers.mask = mask }
   }
   const contactDepth = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType)
@@ -905,6 +927,18 @@ export function createGameScene({ sceneWrap, quality, getCubeGroup, metrics, onR
       },
       lowPower: quality.lowPower,
       grounding: groundingReport(),
+      // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §6.2): the layer contract, as three numbers a probe can
+      // assert without trusting a comment. `beautyMask` is the mask the frame is really drawn
+      // through (it must carry the clear FX layer), `normalPassMask` is the mask the prepass
+      // narrowed to (it must not), and `layersRestored` says the narrowing did not outlive its
+      // pass — a mask that survives one frame blanks the next frame's board.
+      layers: {
+        fxClearLayer: FX_CLEAR_LAYER,
+        beautyMask: renderCamera.layers.mask,
+        normalPassMask: lastNormalPassMask,
+        normalPassDraws: normalPassDraws,
+        layersRestored: renderCamera.layers.mask === beautyMaskAfterRestore,
+      },
       // v0.13.0 R3: the canvas/gameplay split, and the error between the two projections.
       projection: embeddingErrorPx(),
     }

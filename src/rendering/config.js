@@ -976,6 +976,11 @@ export const CARTOON_CLEAR = Object.freeze({
   fallbackCellPx: 26,
   // §4.3 「手机横屏/安全边距不足」: a viewport this short or narrow halves the decoration.
   cramped: Object.freeze({ maxHeight: 620, maxWidth: 360 }),
+  // §6.2's layer. Named here so `effects.js` (which constructs every ParticleSystem with it) and
+  // `gameScene.js` (which asserts the render camera carries it and the normal prepass does not)
+  // cannot drift to two different numbers. 0/1/2 were already taken by the board, the
+  // shadow-only receivers and the scenery.
+  fxLayer: 3,
 })
 
 // ============================================================

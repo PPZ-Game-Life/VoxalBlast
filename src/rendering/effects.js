@@ -160,13 +160,12 @@ export function createEffects({
   // not have to guess a second opinion about the viewport.
   getCanvasRect = null,
 }) {
-  // §6.2's dedicated FX layer. The clear's own sprites and contours are pulled out of the normal
-  // prepass by a layer of their own; today that layer is 0, which is what the whole effects module
-  // already uses, and gameScene asserts the rest of the contract in `updateRenderCamera()`.
-  // Declared here so every new ParticleSystem is CONSTRUCTED with it: the batch key includes
-  // `layers.mask`, so a mask moved afterwards would need the batch rebuilt.
+  // §6.2's dedicated FX layer. The clear's own sprites and contour are pulled out of the normal
+  // prepass by the same layer gameScene draws them with. Declared here so every new
+  // ParticleSystem is CONSTRUCTED with it: the batch key includes `layers.mask`, so a mask moved
+  // afterwards would need the batch rebuilt rather than silently kept.
   const clearLayers = new THREE.Layers()
-  clearLayers.set(0)
+  clearLayers.set(CARTOON_CLEAR.fxLayer)
 
   // The effect surfaces (bands, marks) are scene-level: they are world-space objects, not part
   // of the cube, so they must not inherit its rotation.
@@ -974,6 +973,9 @@ export function createEffects({
     if (outlineGeometry) {
       const material = markMaterial(CARTOON_CLEAR.colors.outline, 0)
       const outline = new THREE.Mesh(outlineGeometry, material)
+      // §6.2: a parent Group carrying the layer does NOT recurse to its children, so the contour
+      // sets it object by object.
+      outline.layers.set(CARTOON_CLEAR.fxLayer)
       const duration = Math.min(CARTOON_CLEAR.outline.duration, tail)
       const transient = addTransient({
         object: outline,
@@ -1447,6 +1449,10 @@ export function createEffects({
     const now = performance.now()
     return {
       atlas: { status: cartoon.status, error: cartoon.error, hasFrames: Boolean(cartoon.frames), tileSize: CARTOON_CLEAR.atlas.tile },
+      // §7.2's draw-call budget is spent by BATCHES, and quarks keeps an emptied batch in the
+      // scene, so "how many batches exist" is the number a draw-call delta has to be read against.
+      batches: particleRenderer.children.length,
+      layers: { clearMask: clearLayers.mask },
       scopeEpoch: cartoon.scopeEpoch,
       liveEvents: live.length,
       liveSprites: liveCartoonSprites(),

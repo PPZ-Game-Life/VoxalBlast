@@ -298,3 +298,21 @@ FAIL C settings: the frame loop is running before the transition  liveParticles=
 | 读数 | ✅ 本机五视口读数（上表） |
 | 分别记录通过 / 未测 / 待修 | ✅ 本文档 + `KNOWN_GAPS` 五行 |
 | 不拿 build 成功代替美术通过 | ✅ 全程未把 `npm run build` 或探针全绿当作美术验收；轮廓对比度、三个 tile 的数值判据都明确留着未通过 |
+
+### R4 补完：layer3 合同与帧开销归因（v0.13.3）
+
+**只改文件**：`src/rendering/config.js`（新增 `CARTOON_CLEAR.fxLayer = 3`）、`src/rendering/gameScene.js`、`src/rendering/effects.js`、`src/diagnostics.js`、`tools/cartoon-clear-probe.mjs`、`docs/Technical/KNOWN_GAPS.md`、本文档。
+
+§6.2 把 layer3 定义为**待新增合同**，并明说「必须有像素/层 mask 探针，不是当前已有能力」。本轮把它做成**三个可读出的数**，而不是一句注释：
+
+| 读数 | 实测 | 含义 |
+| --- | --- | --- |
+| `layers.clearMask` | **8**（1 左移 3 位） | 精灵在**构造时**就带上这个 mask（quarks 的 batch key 含 `layers.mask`，事后改必须重建 batch）；轮廓逐对象设，因为父 Group 不会把层递归给子对象 |
+| `layers.beautyMask` | **15**（bit 0/1/2/3） | 主画质通道确实带着消除层 |
+| `layers.normalPassMask` | **1**（只留 bit 0，819 次采样） | 法线/深度预通道同时排除 layer 1（阴影接收体）、2（景物）与 3（消除 FX），透明 quad 不再写进 SSAO 读的缓冲 |
+| `layers.layersRestored` | **true** | 收窄不会活过一次 pass —— 否则下一帧整块棋盘会被 blank 掉 |
+| 像素复核 | **2765 px** 变化 | 只有 mask 对不算数：mask 把 quad 从预通道排除、又从主通道排除，同样会「合同完美而什么都不画」 |
+
+**顺带关掉了 R3 留下的帧开销缺口。** 同一个事件（单线与 5 线）的额外 draw calls 从 **+5 降到 +3**（240→243），落进 §7.2 的 ≤4。归因明确：多出来的 2 个调用就是粒子被**主通道与法线预通道各画一遍**；把消除 FX 挪到独立层并从预通道排除后这两个调用消失。三角面 +68，远在 2500 以内。
+
+**未关掉的三条**（照报）：`star-pop` / `confetti-pink` / `dash-blue` 的采样尺寸判据、轮廓对比度未评级、设置面板用例无效（前置断言实测 `liveParticles=0`，用例开始时循环已暂停）。

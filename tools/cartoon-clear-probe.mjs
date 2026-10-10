@@ -348,6 +348,58 @@ async function runLifecycle(ctx) {
       `triangles ${out.cost.idle.triangles} -> ${out.cost.busy.triangles} (delta ${out.cost.deltaTriangles})`)
     record.costFrame = { file: await shot('desktop-cost-clear5') }
   }
+  // ---- G. §6.2's layer contract, as read-outs rather than as a comment ---------------------
+  {
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(240)
+    const layers = (await json("globalThis.__voxalblast.rendering()")).layers
+    const bit = (mask, index) => (mask >> index) & 1
+    const clear = (await report()).cartoon.layers.clearMask
+    out.layers = { ...layers, clearMask: clear }
+    check('G the clear FX are constructed on the dedicated layer, not on layer 0',
+      // `clearMask` is a MASK (1 << layer) and `fxClearLayer` is an index: comparing them
+      // directly was the probe's own bug in the first run of this gate.
+      clear === (1 << layers.fxClearLayer) && layers.fxClearLayer === 3,
+      `clearMask=${clear} expected=${1 << layers.fxClearLayer} fxClearLayer=${layers.fxClearLayer}`)
+    check('G the beauty pass draws that layer',
+      bit(layers.beautyMask, layers.fxClearLayer) === 1 && bit(layers.beautyMask, 0) === 1,
+      `beautyMask=${layers.beautyMask}`)
+    check('G the normal prepass excludes it (and the shadow-only and scenery layers)',
+      layers.normalPassDraws > 0
+      && bit(layers.normalPassMask, layers.fxClearLayer) === 0
+      && bit(layers.normalPassMask, 1) === 0 && bit(layers.normalPassMask, 2) === 0,
+      `normalPassMask=${layers.normalPassMask} draws=${layers.normalPassDraws}`)
+    check('G the narrowing does not outlive the pass',
+      layers.layersRestored === true, `layersRestored=${layers.layersRestored}`)
+    // The layer has to be proved with PIXELS too: a mask that excludes the quad from the
+    // prepass but also from the beauty pass would read as a perfect contract and draw nothing.
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(240)
+    const box = (await json("globalThis.__voxalblast.framing()")).solid
+    const clip = {
+      x: Math.round(box.minX), y: Math.round(box.minY),
+      width: Math.max(1, Math.round(box.maxX - box.minX)), height: Math.max(1, Math.round(box.maxY - box.minY)),
+      scale: 1,
+    }
+    const grab = async () => readPng(Buffer.from((await send(ws, nextId++, "Page.captureScreenshot", {
+      format: "png", clip, captureBeyondViewport: false,
+    })).data, "base64"))
+    const before = await grab()
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(150)
+    const during = await grab()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    let changed = 0
+    for (let i = 0; i < before.pixels.length; i += before.channels) {
+      if (Math.abs(during.pixels[i] - before.pixels[i]) > 12
+        || Math.abs(during.pixels[i + 1] - before.pixels[i + 1]) > 12
+        || Math.abs(during.pixels[i + 2] - before.pixels[i + 2]) > 12) changed += 1
+    }
+    out.layers.pixelsChanged = changed
+    check('G and the beauty pass really draws them (pixels, not a mask)',
+      changed >= 40, `${changed} pixels of the board box changed under layer ${layers.fxClearLayer}`)
+  }
   void note
 }
 
