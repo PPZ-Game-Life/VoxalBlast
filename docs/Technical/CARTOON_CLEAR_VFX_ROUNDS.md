@@ -215,4 +215,41 @@ node tools/cartoon-clear-probe.mjs r1     2 failure（均为上表 UNMEASURED �
 - [ ] 快速连发/重叠事件（2 个上限、全局 64/32 上限）—— R3
 - [ ] layer3 合同、性能前后同 fixture 取差 —— R3
 
+## R3 — 生命周期 / 低配 / reduced-motion / 帧开销
+
+**只改文件**：`src/rendering/effects.js`、`tools/cartoon-clear-probe.mjs`、本文档。版本仍 0.13.3。
+
+探针新增一个 §7 生命周期段落（`r3` 轮，跑在 desktop 视口、节拍取证之后），每项都是**转变**而不是某一帧。
+
+### 修掉的两个真缺陷
+
+1. **几何体泄漏**：每事件的轮廓自建一个 `BufferGeometry`，移除时只 dispose 了 material。100 轮触发/清理后 renderer 几何体 **27 → 127**。现在 `addTransient({ ownGeometry: true })` 标记该事件私有几何体，`releaseTransient()` 统一释放（庆祝池的共享几何体仍然**不**释放）。复测 **19 → 19**。
+2. **作用域取消只做标记、不做移除**：`cancelCartoonScope()` 原先把轮廓的 `until` 设成 now 就返回，靠帧循环压缩列表——可 §7.1 的每一个转变**同时也会暂停帧循环**（设置面板、主页封面），于是 `effects.update()` 根本不跑，被取消的轮廓会一直留在列表里。现在直接移除并释放。
+3. reduced-motion **动态开启**（§7.1「当帧停飞行」）原先只在下一个事件生效。现在 `honourReducedMotionToggle()` 在 `update()` 里检测偏好翻转，当帧收掉飞行精灵；**轮廓不停**——它是确认不是装饰，允许把自己那一次淡出收完。
+
+### §7 生命周期读数（desktop 1440×900）
+
+| 用例 | 读数 | 判定 |
+| --- | --- | --- |
+| A 第三个重叠事件 | liveEvents **2**，最新事件轮廓仍在（`outlines=2`），计分未丢 | OK |
+| B 两次 5 线事件相隔 40ms | liveSprites **48 / cap 64**，liveEvents 2 | OK |
+| C 主页封面 | 转变前 live 24 → 转变中 **0 / outlines 0**，epoch 3→6，回来 **0（不补播）** | OK |
+| D 飞行中打开 reduced-motion | liveSprites **24 → 0（120ms 内）**，无需刷新 | OK |
+| E 100 轮触发/清理 | systems/sprites/events/transients **全 0**；98 格 tiles=98、scale/position 偏移 0；几何体 **19 → 19** | OK |
+| E reduced-motion 静态确认 | 0 飞行 + 1 静态闪点（`probe:celebration` 亦覆盖） | OK |
+
+### 未通过的项（按实测照报，未放宽）
+
+**C-settings：打开设置面板没有关闭正常消除作用域。** 面板确实打开了（探针先断言 `settingsOpen=true`，避免把「按钮是 toggle、上一次没关」误判成打开），但 `scopeEpoch` 停在 6 不变，且因为帧循环被暂停，`outlines` 仍留在列表里（`duringLive=0` 只是 `until` 被标记后的读数，不是真的清掉了）。同一套探针里**主页封面是正常关闭的**（epoch +3）。所以这不是探针写法问题，而是 `#settings-button` 这条路径上 `syncPause()` 没看到「已打开」或 `onOpen` 没走到取消逻辑——**本轮未定位根因**，如实记为待查，不给它打勾。
+
+**F：单线与 5 线的帧开销都是 +5 draw calls，比 §7.2 的 ≤4 目标多 1。** 两种事件同样是 5，说明它与精灵数量无关（1 个轮廓 mesh + 若干 batch）。本轮只记录「多 1」，**没有把 5 个额外调用归因清楚**；三角面 +126，远在 2500 以内。
+
+### 未做
+
+- layer3 合同（`clearLayers` 已在 `ParticleSystem` 构造处接入，但仍是 layer 0，等 gameScene 侧一起改）
+- 拖拽/旋转时的 ≤80ms 退场（`retreatDecorations()` 已把 cartoon 池收到 80ms，但**没有驱动真实指针手势来取证**）
+- hidden / 局终 / 重开 / 恢复存档 的取消（代码路径存在，探针只覆盖了主页与设置两条）
+- 真机（R4）
+
+
 

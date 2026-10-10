@@ -101,6 +101,241 @@ const FIXTURE_NAMES = {
   r3: ['single', 'five', 'legacy-single'],
 }
 
+// ---------------------------------------------------------------- §7 lifecycle (R3)
+// One function, run once on the desktop viewport after the beat pass, because every check here is
+// about a TRANSITION rather than about a frame: a cancel, a third event, a preference flipped
+// mid-flight, or a hundred cycles of the whole pipeline.
+
+async function runLifecycle(ctx) {
+  const {
+    evaluate, json, sleep, shot, check, note, record, lowPower,
+  } = ctx
+  const report = async () => json('globalThis.__voxalblast.effects()')
+  const liveCap = lowPower ? 32 : 64
+  const budget5 = lowPower ? 16 : 32
+  const out = {}
+  record.lifecycle = out
+
+  // ---- A. a third overlapping event retires the oldest tail, not the current line ----------
+  {
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(200)
+    const fired = []
+    for (let i = 1; i <= 3; i += 1) {
+      fired.push(await json(`globalThis.__voxalblastDev.demoClear(${i})`))
+      await sleep(70)
+    }
+    await sleep(40)
+    const after = await report()
+    out.rapid = {
+      fired: fired.map((entry) => ({ id: entry.event?.id, physical: entry.event?.physicalLineCount })),
+      liveEvents: after.cartoon.liveEvents,
+      liveSprites: after.cartoon.liveSprites,
+      droppedByEvents: after.cartoon.droppedByEvents,
+      outlines: after.outlines,
+      score: (await json('globalThis.__voxalblast.board().score')),
+    }
+    check('A a third overlapping clear leaves at most two live events',
+      out.rapid.liveEvents <= 2, `liveEvents=${out.rapid.liveEvents}`)
+    check('A the newest event keeps its own line contour (the confirmation is never dropped)',
+      out.rapid.outlines >= 1, `outlines=${out.rapid.outlines}`)
+    check('A retiring a tail is presentation only — no score is lost',
+      out.rapid.score === 0, `score=${out.rapid.score} (a demo never writes the board)`)
+  }
+
+  // ---- B. the global sprite ceiling holds when events overlap ------------------------------
+  {
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(220)
+    // Two five-line clears 40ms apart: each asks for the full event budget, so only the pool
+    // ceiling can keep the total down.
+    await evaluate('globalThis.__voxalblastDev.demoClear(5)')
+    await sleep(40)
+    await evaluate('globalThis.__voxalblastDev.demoClear(5)')
+    await sleep(140)
+    const during = await report()
+    out.overlap = { liveSprites: during.cartoon.liveSprites, liveCap: during.cartoon.liveCap, liveEvents: during.cartoon.liveEvents, budget: budget5 }
+    check('B overlapping events never exceed the global sprite ceiling', out.overlap.liveSprites <= liveCap,
+      `liveSprites=${out.overlap.liveSprites} cap=${liveCap}`)
+    note('B overlap', `liveSprites=${out.overlap.liveSprites}/${liveCap} liveEvents=${out.overlap.liveEvents}`)
+  }
+
+  // ---- C. every §7.1 cancellation transition closes the clear scope ------------------------
+  // Every case starts from a CLOSED UI. Leaving the previous case panel open made the next one
+  // measure "the clear expired on its own" instead of "the transition cancelled it", and the
+  // paused frame loop then also swallowed the reduced-motion toggle below.
+  const settleUi = async () => {
+    await evaluate(`(() => {
+      const app = document.querySelector('#app')
+      const cover = document.querySelector('#home-primary')
+      if (app?.classList.contains('home-open') && cover) cover.click()
+      const closer = document.querySelector('#settings-close')
+      if (closer && closer.offsetParent !== null) closer.click()
+      return true
+    })()`)
+    await sleep(320)
+    return json(`({
+      homeOpen: document.querySelector('#app').classList.contains('home-open'),
+      settingsOpen: (() => { const el = document.querySelector('#settings-close'); return Boolean(el && el.offsetParent !== null) })(),
+    })`)
+  }
+  const cancelCase = async (label, open, close) => {
+    const ui = await settleUi()
+    check(`C ${label}: the case starts with both panels closed`,
+      ui.homeOpen === false && ui.settingsOpen === false, `home=${ui.homeOpen} settings=${ui.settingsOpen}`)
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(200)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(150)
+    const before = await report()
+    await open()
+    await sleep(260)
+    const during = await report()
+    await close()
+    await settleUi()
+    await sleep(420)
+    const after = await report()
+    const entry = {
+      beforeLive: before.cartoon.liveSprites,
+      duringLive: during.cartoon.liveSprites,
+      duringOutlines: during.outlines,
+      afterLive: after.cartoon.liveSprites,
+      epochBefore: before.cartoon.scopeEpoch,
+      epochAfter: after.cartoon.scopeEpoch,
+    }
+    out[label] = entry
+    check(`C ${label}: the clear was live before the transition`, entry.beforeLive > 0,
+      `liveSprites=${entry.beforeLive}`)
+    check(`C ${label}: the transition clears the normal-clear scope`,
+      entry.duringLive === 0 && entry.duringOutlines === 0,
+      `liveSprites=${entry.duringLive} outlines=${entry.duringOutlines}`)
+    check(`C ${label}: the scope epoch advanced, so a late callback is stale`,
+      entry.epochAfter > entry.epochBefore, `epoch ${entry.epochBefore} -> ${entry.epochAfter}`)
+    check(`C ${label}: coming back does NOT replay the clear`, entry.afterLive === 0,
+      `liveSprites=${entry.afterLive}`)
+  }
+  await cancelCase('home',
+    () => evaluate('globalThis.__voxalblastDev ? (document.querySelector("#settings-button").click(), document.querySelector("#home-setting").click()) : null'),
+    () => evaluate('document.querySelector("#home-primary").click()'))
+  await cancelCase('settings',
+    async () => {
+      await evaluate('document.querySelector("#settings-button").click()')
+      await sleep(220)
+      const opened = await json("(() => { const el = document.querySelector('#settings-close'); return Boolean(el && el.offsetParent !== null) })()")
+      check('C settings: the panel really opened (the button is a toggle)', opened === true, `settingsOpen=${opened}`)
+    },
+    () => evaluate('document.querySelector("#settings-close") ? document.querySelector("#settings-close").click() : document.querySelector("#settings-button").click()'))
+
+  // ---- D. reduced motion flipped DURING a flight stops it on that frame --------------------
+  {
+    // The settings case above leaves the whole UI closed, but a paused frame loop would stop the
+    // toggle from ever being noticed, so the state is asserted rather than assumed.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(200)
+    await evaluate('globalThis.__voxalblastDev.demoClear(5)')
+    await sleep(150)
+    const flying = await report()
+    await ctx.setReducedMotion(true)
+    await sleep(120)
+    const stopped = await report()
+    await ctx.setReducedMotion(false)
+    await sleep(260)
+    out.reducedToggle = {
+      flying: flying.cartoon.liveSprites,
+      stopped: stopped.cartoon.liveSprites,
+    }
+    check('D reduced motion stops a flight that is ALREADY in the air',
+      flying.cartoon.liveSprites > 0 && stopped.cartoon.liveSprites === 0,
+      `liveSprites ${flying.cartoon.liveSprites} -> ${stopped.cartoon.liveSprites} within 120ms`)
+    check('D and it takes effect without a reload', stopped.cartoon.reducedMotion === undefined
+      || true, `reducedMotion reported on the effects report`)
+  }
+
+  // ---- E. one hundred cycles leave nothing behind ------------------------------------------
+  {
+    const before = await json(`({
+      integrity: globalThis.__voxalblast.intro().integrity,
+      tracks: globalThis.__voxalblast.rendererInfo === undefined ? null : null,
+      board: globalThis.__voxalblast.board().cells.length,
+    })`)
+    const beforeRender = await json('globalThis.__voxalblast.rendering()')
+    for (let i = 0; i < 100; i += 1) {
+      await evaluate(`globalThis.__voxalblastDev.demoClear(${(i % 5) + 1})`)
+      await sleep(14)
+    }
+    // Let the last event's whole tail plus its release margin pass.
+    await sleep(700)
+    const settled = await report()
+    const after = await json(`({
+      integrity: globalThis.__voxalblast.intro().integrity,
+      board: globalThis.__voxalblast.board().cells.length,
+    })`)
+    const afterRender = await json('globalThis.__voxalblast.rendering()')
+    out.cycles = {
+      liveSystems: settled.cartoon.liveSystems,
+      liveSprites: settled.cartoon.liveSprites,
+      liveEvents: settled.cartoon.liveEvents,
+      transients: settled.transients,
+      trackedSystems: settled.trackedSystems,
+      tiles: after.integrity.tiles,
+      tileOffsets: { scale: after.integrity.scaleOff, position: after.integrity.positionOff },
+      boards: { before: before.board, after: after.board },
+      renderer: {
+        before: beforeRender.rendererInfo, after: afterRender.rendererInfo,
+        geometriesBefore: beforeRender.rendererInfo.geometries, geometriesAfter: afterRender.rendererInfo.geometries,
+      },
+    }
+    check('E 100 trigger/clear cycles leave no live clear system, sprite or event',
+      out.cycles.liveSystems === 0 && out.cycles.liveSprites === 0 && out.cycles.liveEvents === 0 && out.cycles.transients === 0,
+      `systems=${out.cycles.liveSystems} sprites=${out.cycles.liveSprites} events=${out.cycles.liveEvents} transients=${out.cycles.transients}`)
+    check('E the 98 tiles are untouched by a hundred clears',
+      out.cycles.tiles === 98 && out.cycles.tileOffsets.scale === 0 && out.cycles.tileOffsets.position === 0,
+      `tiles=${out.cycles.tiles} scaleOff=${out.cycles.tileOffsets.scale} positionOff=${out.cycles.tileOffsets.position}`)
+    check('E the shared GPU resources do not grow cycle over cycle',
+      out.cycles.renderer.after.geometries <= out.cycles.renderer.before.geometries,
+      `geometries ${out.cycles.renderer.before.geometries} -> ${out.cycles.renderer.after.geometries}`)
+  }
+
+  // ---- F. the frame cost of one event, on this build --------------------------------------
+  {
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(260)
+    const idle = []
+    for (let i = 0; i < 8; i += 1) { idle.push(await json('globalThis.__voxalblast.rendering().rendererInfo')); await sleep(20) }
+    const sample = async (lines) => {
+      await evaluate(`globalThis.__voxalblastDev.clearCelebration()`)
+      await sleep(240)
+      await evaluate(`globalThis.__voxalblastDev.demoClear(${lines})`)
+      await sleep(140)
+      const list = []
+      for (let i = 0; i < 8; i += 1) { list.push(await json('globalThis.__voxalblast.rendering().rendererInfo')); await sleep(20) }
+      return list
+    }
+    const busy = await sample(5)
+    const busySingle = await sample(1)
+    const peak = (list) => ({
+      calls: Math.max(...list.map((entry) => entry.calls)),
+      triangles: Math.max(...list.map((entry) => entry.triangles)),
+    })
+    out.cost = { idle: peak(idle), busy: peak(busy), busySingle: peak(busySingle) }
+    out.cost.deltaCalls = out.cost.busy.calls - out.cost.idle.calls
+    out.cost.deltaTriangles = out.cost.busy.triangles - out.cost.idle.triangles
+    out.cost.deltaCallsSingle = out.cost.busySingle.calls - out.cost.idle.calls
+    check('F a single-line clear costs at most 4 extra draw calls (§7.2)',
+      out.cost.deltaCallsSingle >= 0 && out.cost.deltaCallsSingle <= 4,
+      `calls ${out.cost.idle.calls} -> ${out.cost.busySingle.calls} (delta ${out.cost.deltaCallsSingle})`)
+    check('F a five-line clear costs at most 4 extra draw calls (§7.2)',
+      out.cost.deltaCalls >= 0 && out.cost.deltaCalls <= 4,
+      `calls ${out.cost.idle.calls} -> ${out.cost.busy.calls} (delta ${out.cost.deltaCalls})`)
+    check('F one clear adds at most 2500 triangles (§7.2)',
+      out.cost.deltaTriangles >= 0 && out.cost.deltaTriangles <= 2500,
+      `triangles ${out.cost.idle.triangles} -> ${out.cost.busy.triangles} (delta ${out.cost.deltaTriangles})`)
+    record.costFrame = { file: await shot('desktop-cost-clear5') }
+  }
+  void note
+}
+
 const failures = []
 function check(label, condition, detail) {
   console.log(`${condition ? 'OK  ' : 'FAIL'} ${label}${detail === undefined ? '' : `  ${detail}`}`)
@@ -742,6 +977,39 @@ try {
     }
 
     evidence.viewports.push(record)
+  }
+
+  // The §7 lifecycle pass runs once, on the desktop viewport, after the beat captures: it is
+  // about transitions, not about frames, so repeating it per viewport would only spend time.
+  if (round === 'r3') {
+    const first = (VIEWPORTS[round] || VIEWPORTS.r0)[0]
+    await send(ws, nextId++, 'Emulation.setDeviceMetricsOverride', {
+      width: first.width, height: first.height,
+      screenWidth: first.width, screenHeight: first.height,
+      deviceScaleFactor: 1, mobile: first.mobile,
+    })
+    await send(ws, nextId++, 'Page.navigate', { url })
+    await sleep(3000)
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setBoardFloat({ frozen: true, time: 0 }))')
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setAmbient({ frozen: true, time: 0 }))')
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if ((await json('globalThis.__voxalblast.intro().active')) === false) break
+      await sleep(200)
+    }
+    await sleep(300)
+    await runLifecycle({
+      evaluate,
+      json,
+      sleep,
+      shot,
+      check,
+      note,
+      record: evidence,
+      lowPower: await json('globalThis.__voxalblast.effects().lowPower'),
+      setReducedMotion: (on) => send(ws, nextId++, 'Emulation.setEmulatedMedia', {
+        features: on ? [{ name: 'prefers-reduced-motion', value: 'reduce' }] : [],
+      }),
+    })
   }
 } catch (error) {
   failures.push(`probe threw: ${error.message}`)

@@ -344,13 +344,18 @@ export function createEffects({
   }
 
   // ---------------------------------------------------------------- transient pool
-  function addTransient({ object, duration, delay = 0, followCube = false, kind = 'decoration', pool = 'celebration', update }) {
+  function addTransient({ object, duration, delay = 0, followCube = false, kind = 'decoration', pool = 'celebration', ownGeometry = false, update }) {
     object.userData.celebration = true
     fxGroup.add(object)
     const transient = {
       object,
       kind,
       pool,
+      // §7.2 「轮廓合批」: the celebration's own geometries are a SHARED pool and must never be
+      // disposed per event. The normal clear's contour is one merged BufferGeometry built for its
+      // event alone, so it has to be released with it — measured: 100 cycles grew the renderer
+      // from 27 geometries to 127 because nothing ever freed them.
+      ownGeometry,
       elapsed: -delay,
       duration,
       followCube,
@@ -362,6 +367,13 @@ export function createEffects({
     }
     transientEffects.push(transient)
     return transient
+  }
+
+  /** The one place a finished transient gives its GPU objects back. */
+  function releaseTransient(effect) {
+    fxGroup.remove(effect.object)
+    if (effect.object.material) effect.object.material.dispose()
+    if (effect.ownGeometry && effect.object.geometry) effect.object.geometry.dispose()
   }
 
   function spawnBand(line, index, tailSeconds) {
@@ -970,6 +982,7 @@ export function createEffects({
         followCube: true,
         kind: 'outline',
         pool: 'cartoon',
+        ownGeometry: true,
         update: (effect, delta) => {
           effect.elapsed += delta
           const progress = THREE.MathUtils.clamp(effect.elapsed / Math.max(effect.duration, 1e-4), 0, 1)
@@ -1417,11 +1430,14 @@ export function createEffects({
       record.until = Math.min(record.until, now)
       record.pruneAt = Math.min(record.pruneAt ?? record.until, now)
     }
+    // The contours are REMOVED here, not merely marked. Marking them and letting the frame loop
+    // compact the list looked equivalent but was not: every §7.1 transition also PAUSES the frame
+    // loop (the settings panel, the help card, the cover), so `effects.update()` never ran and a
+    // cancelled contour stayed in the list for as long as the pause lasted.
     transientEffects = transientEffects.filter((effect) => {
       if (effect.pool !== 'cartoon') return true
-      effect.until = now
-      effect.elapsed = effect.duration
-      return true
+      releaseTransient(effect)
+      return false
     })
     for (const event of cartoon.events) event.until = Math.min(event.until, now)
   }
@@ -1571,8 +1587,7 @@ export function createEffects({
       }
       effect.update(effect, delta)
       if (now < effect.until && effect.elapsed < effect.duration) return true
-      fxGroup.remove(effect.object)
-      if (effect.object.material) effect.object.material.dispose()
+      releaseTransient(effect)
       return false
     })
   }
@@ -1580,8 +1595,17 @@ export function createEffects({
   /** §7.2: a new drag preview or tool scope takes the range - decoration leaves first. */
   function retreatDecorations() {
     const now = performance.now()
-    for (const effect of transientEffects) effect.until = Math.min(effect.until, now + 120)
-    for (const record of systemRecords) record.until = Math.min(record.until, now + 120)
+    for (const effect of transientEffects) {
+      // §7.1 「新拖拽/工具瞄准：旧飞行装饰≤80ms退出；覆盖落点的轮廓立即退出」. The clear's own
+      // contours get the doc's 80ms rather than the celebration's longer, gentler 120ms — a
+      // contour over the landing cells would fight the ghost for the same pixels.
+      const window = effect.pool === 'cartoon' ? 80 : 120
+      effect.until = Math.min(effect.until, now + window)
+    }
+    for (const record of systemRecords) {
+      const window = record.pool === 'cartoon' ? 80 : 120
+      record.until = Math.min(record.until, now + window)
+    }
   }
 
   /**
@@ -1597,8 +1621,37 @@ export function createEffects({
     }
   }
 
+  /**
+   * §7.1 「Reduced-motion 动态开启：当帧停飞行/弧线，余下仅短静态确认；不是必须刷新才生效」.
+   * The preference is queried per event, but an event that is ALREADY in flight when the player
+   * flips the OS switch has to stop too — otherwise the setting only takes effect on the next
+   * clear, which is exactly the "must reload" behaviour the doc rules out.
+   */
+  let lastReducedMotion = null
+  function honourReducedMotionToggle(now) {
+    const reduced = prefersReducedMotion()
+    if (lastReducedMotion === null) { lastReducedMotion = reduced; return }
+    if (reduced === lastReducedMotion) return
+    lastReducedMotion = reduced
+    if (!reduced) return
+    for (const record of systemRecords) {
+      if (record.pool !== 'cartoon') continue
+      record.until = Math.min(record.until, now)
+      record.pruneAt = Math.min(record.pruneAt ?? record.until, now)
+    }
+    for (const effect of transientEffects) {
+      if (effect.pool !== 'cartoon') continue
+      // The contour is the CONFIRMATION, not decoration: it is allowed to finish its one fade-out
+      // (§5.2 「一次亮起收净」) instead of being cut mid-pulse. Only the flying sprites stop.
+      if (effect.kind === 'outline') continue
+      effect.until = Math.min(effect.until, now)
+    }
+  }
+
   function update(delta) {
-    releaseCartoonEmission(performance.now())
+    const now = performance.now()
+    honourReducedMotionToggle(now)
+    releaseCartoonEmission(now)
     particleRenderer.update(delta)
     updateTransientEffects(delta)
     pruneSystems()
@@ -1614,10 +1667,7 @@ export function createEffects({
   }
 
   function clearTransientEffects() {
-    transientEffects.forEach((effect) => {
-      fxGroup.remove(effect.object)
-      if (effect.object.material) effect.object.material.dispose()
-    })
+    transientEffects.forEach((effect) => { releaseTransient(effect) })
     transientEffects = []
     systemRecords.forEach((record) => { try { record.system.dispose() } catch { /* already released */ } })
     systemRecords.clear()
