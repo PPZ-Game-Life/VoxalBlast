@@ -410,6 +410,10 @@ export function createDiagnostics({
         // probe drives the very same spawnClearEffects() the gameplay path calls, plus the two
         // audio-window handles that make "was anything heard since here" answerable.
         demoClear: (lines) => dev.demoClear(lines),
+        // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §9.1): one REAL settled placement, for the rule
+        // cases `demoClear()` cannot express. See main.js's `dropAt` for why this is the drop
+        // path and not a mock of it.
+        dropAt: (options) => dev.dropAt(options),
         clearCelebration: () => dev.clearCelebration(),
         audioReset: () => dev.audioReset(),
         audioUnlock: () => dev.audioUnlock(),

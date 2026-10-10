@@ -1136,9 +1136,10 @@ function onDrop({ piece, face, cells, origin }) {
   // anything else happens (07 §3.1 A9) -- it used to be settlePlacement()'s own first line, and
   // it now sits here, in the same order, because the window is the item flow's (P6b).
   clearItemUndo()
+  const settled = settlePlacement(face, cells, origin, piece.shape.color)
   const {
     lines, lineCount, level, score, rewardEvent,
-  } = settlePlacement(face, cells, origin, piece.shape.color)
+  } = settled
   // §6.1 of the audio handoff, as narrowed by §3.3 here: ONE main cue per settled placement,
   // chosen by the reward event's headline category. `milestone` is only meaningful for a
   // legacy version-1 run (version 2 pays the streak reward instead).
@@ -1190,6 +1191,10 @@ function onDrop({ piece, face, cells, origin }) {
     saveSession()
     checkStuckAndPrompt()
   }
+  // v0.13.3: the settled record goes back to the caller. Input has always ignored this return
+  // value and still does; the DEV-only `dropAt()` hook reads it so a probe can name the raw face
+  // lines a real drop produced instead of inferring them from a particle budget.
+  return settled
 }
 
 // ============================================================
@@ -2029,6 +2034,48 @@ const devHandles = import.meta.env.DEV
       spawnClearEffects(descriptors, level)
       audio.playClear(level)
       return { level, ...effects.report() }
+    },
+    // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §9.1): the rule cases in the handoff's own table cannot
+    // be built by `demoClear()` -- that entry makes line descriptors without a Board, so it can
+    // prove a budget but never "raw 2 / physical 1 / 5 unique cells". This drives the REAL drop:
+    // the candidate is a real hand piece, the cells come from the same
+    // `currentCells` → `faceOrientedCells` pair the input layer uses, and the call lands in the
+    // same `onDrop()` a finger release lands in. It refuses an illegal placement instead of
+    // forcing one, so a fixture that is one cell away from a line can only produce that line.
+    dropAt: ({ pieceIndex = 0, face = null, u = 0, v = 0, origin = null } = {}) => {
+      const piece = getPieces()[pieceIndex]
+      if (!piece) return { ok: false, reason: 'no such candidate' }
+      if (piece.used) return { ok: false, reason: 'candidate already used' }
+      const targetFace = face || findFrontFace()
+      const cells = faceOrientedCells(targetFace, currentCells(piece))
+      const target = origin && Number.isFinite(origin.u)
+        ? { u: Math.round(origin.u), v: Math.round(origin.v) }
+        : { u: Math.round(u), v: Math.round(v) }
+      if (!board.canPlace(targetFace, cells, target)) {
+        return { ok: false, reason: 'illegal placement', face: targetFace, piece: piece.shape.name, cells, origin: target }
+      }
+      const settled = onDrop({ piece, face: targetFace, cells, origin: target })
+      return {
+        ok: true,
+        face: targetFace,
+        piece: piece.shape.name,
+        cells,
+        origin: target,
+        // The raw face lines the rules layer really produced. `face`/`axis`/`index`/`cells` are
+        // board.js's own line record; the physical-line de-duplication is the VFX planner's job
+        // and is read from its own report, never recomputed here.
+        rules: {
+          lines: (settled?.lines || []).map((line) => ({
+            face: line.face, axis: line.axis, index: line.axis === 'row' ? line.v : line.u,
+            cells: line.cells,
+          })),
+          lineCount: settled?.lineCount ?? null,
+          level: settled?.level ?? null,
+          score: settled?.score ?? null,
+          rewardEvent: settled?.rewardEvent ?? null,
+        },
+        ...effects.report(),
+      }
     },
     clearCelebration: () => { clearTransientEffects() },
     // The bus's measurement window (§9): "was anything heard SINCE here" is the only question

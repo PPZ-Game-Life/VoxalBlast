@@ -1,0 +1,138 @@
+{
+  "single": {
+    "drop": {
+      "face": "+z",
+      "piece": "Dot",
+      "origin": {
+        "u": 4,
+        "v": 2
+      }
+    },
+    "expect": {
+      "physical": 1,
+      "uniqueCells": 5
+    },
+    "occupied": 21
+  },
+  "parallel": {
+    "drop": {
+      "face": "+z",
+      "piece": "Rect 6",
+      "origin": {
+        "u": 2,
+        "v": 1
+      }
+    },
+    "expect": {
+      "physical": 2,
+      "uniqueCells": 10
+    },
+    "occupied": 18
+  },
+  "cross": {
+    "drop": {
+      "face": "+z",
+      "piece": "Dot",
+      "origin": {
+        "u": 4,
+        "v": 2
+      }
+    },
+    "expect": {
+      "physical": 2,
+      "uniqueCells": 9
+    },
+    "occupied": 20
+  },
+  "shared-edge": {
+    "drop": {
+      "face": "+z",
+      "piece": "Dot",
+      "origin": {
+        "u": 4,
+        "v": 4
+      }
+    },
+    "expect": {
+      "physical": 1,
+      "uniqueCells": 5
+    },
+    "occupied": 16
+  },
+  "face-pair": {
+    "drop": {
+      "face": "+z",
+      "piece": "Dot",
+      "origin": {
+        "u": 4,
+        "v": 2
+      }
+    },
+    "expect": {
+      "physical": 2,
+      "uniqueCells": 9
+    },
+    "occupied": 20
+  },
+  "three": {
+    "drop": {
+      "face": "+z",
+      "piece": "Block 9",
+      "origin": {
+        "u": 2,
+        "v": 0
+      }
+    },
+    "expect": {
+      "physical": 3,
+      "uniqueCells": 15
+    },
+    "occupied": 18
+  },
+  "four": {
+    "drop": {
+      "face": "+z",
+      "piece": "Square",
+      "origin": {
+        "u": 3,
+        "v": 0
+      }
+    },
+    "expect": {
+      "physical": 4,
+      "uniqueCells": 16
+    },
+    "occupied": 24
+  },
+  "five": {
+    "drop": {
+      "face": "+z",
+      "piece": "Rect 6",
+      "origin": {
+        "u": 2,
+        "v": 0
+      }
+    },
+    "expect": {
+      "physical": 5,
+      "uniqueCells": 19
+    },
+    "occupied": 25
+  },
+  "legacy-single": {
+    "drop": {
+      "face": "+z",
+      "piece": "Dot",
+      "origin": {
+        "u": 4,
+        "v": 2
+      }
+    },
+    "expect": {
+      "physical": 1,
+      "uniqueCells": 5,
+      "legacy": true
+    },
+    "occupied": 21
+  }
+}
