@@ -14,8 +14,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Board, FACES, SH } from '../src/game/board.js'
+import { Board, FACES, SH, isShell } from '../src/game/board.js'
 import { SHAPES, normalizeCells } from '../src/game/shapes.js'
+import { createRng, hashSeed } from '../src/game/rng.js'
 import {
   CARTOON_BUDGETS, clearBudget, clearCaps, clearTailSeconds, emitterPositions,
   markPositions, physicalKey, planClear, vfxSeed,
@@ -145,5 +146,88 @@ console.log('\n--- planner units ---')
   check('endpoint sampling respects the cap', first.length <= 8, first.length)
 }
 
+
+console.log("\n--- differential fuzz: planClear vs a brute-force reference ---")
+{
+  // The nine hand-made cases prove the rules the doc names. This proves the DE-DUPLICATION is
+  // the same function as an obvious (slow) reference over hundreds of random boards, so a case
+  // nobody thought of cannot slip through. Seeded, so a failure is reproducible.
+  const FUZZ_CASES = 400
+  const rng = createRng(hashSeed('v0.13.3-cartoon-clear-fuzz', 20261009))
+  let drops = 0
+  let sharedEdgeCases = 0
+  let orphanBudget = 0
+  let worstEmitters = 0
+  for (let caseIndex = 0; caseIndex < FUZZ_CASES; caseIndex += 1) {
+    const cells = []
+    for (let x = 0; x < SH; x += 1) {
+      for (let y = 0; y < SH; y += 1) {
+        for (let z = 0; z < SH; z += 1) {
+          if (!isShell(x, y, z)) continue
+          if (rng() < 0.5) cells.push([x, y, z, 0xc22b58])
+        }
+      }
+    }
+    const board = new Board()
+    board.restore({ cells })
+    const shape = SHAPES[Math.floor(rng() * SHAPES.length)]
+    const oriented = normalizeCells(shape.cells)
+    const face = FACES[Math.floor(rng() * FACES.length)]
+    let placed = null
+    for (let attempt = 0; attempt < 40 && !placed; attempt += 1) {
+      const origin = { u: Math.floor(rng() * SH), v: Math.floor(rng() * SH) }
+      if (!board.canPlace(face, oriented, origin)) continue
+      placed = board.place(face, oriented, origin, shape.color)
+    }
+    if (!placed || !placed.lines.length) continue
+    drops += 1
+    const raw = placed.lines
+    const plan = planClear(raw, { frontFace: face })
+
+    // The reference: group the raw face lines by their sorted cell set, union every cell.
+    const reference = new Map()
+    const union = new Set()
+    for (const line of raw) {
+      const key = line.cells.map((cell) => cell.join(",")).sort().join("|")
+      reference.set(key, (reference.get(key) || 0) + 1)
+      for (const cell of line.cells) union.add(cell.join(","))
+    }
+    if (plan.physicalLineCount !== reference.size) {
+      failures.push(`fuzz ${caseIndex}: physical ${plan.physicalLineCount} vs reference ${reference.size}`)
+    }
+    if (plan.uniqueCellCount !== union.size) {
+      failures.push(`fuzz ${caseIndex}: union ${plan.uniqueCellCount} vs reference ${union.size}`)
+    }
+    if (plan.rawLineCount !== raw.length) {
+      failures.push(`fuzz ${caseIndex}: raw ${plan.rawLineCount} vs board ${raw.length}`)
+    }
+    if (plan.faceFootprints.length !== raw.length) {
+      failures.push(`fuzz ${caseIndex}: footprints ${plan.faceFootprints.length} vs raw ${raw.length}`)
+    }
+    if (plan.physicalLineCount > raw.length) {
+      failures.push(`fuzz ${caseIndex}: more physical lines than raw reports`)
+    }
+    // Every plan must stay inside the doc ceilings whatever the board looked like.
+    for (const tier of ["standard", "lowPower"]) {
+      const budget = clearBudget(plan.physicalLineCount, { lowPower: tier === "lowPower" })
+      const cap = CARTOON_BUDGETS[tier][Math.min(Math.max(1, plan.physicalLineCount), 3)]
+      if (budget > cap) failures.push(`fuzz ${caseIndex}: ${tier} budget ${budget} over ${cap}`)
+    }
+    const caps = clearCaps(plan.physicalLineCount)
+    if (markPositions(plan, caps.marks).length > caps.marks) {
+      failures.push(`fuzz ${caseIndex}: marks over cap`)
+    }
+    const emitters = emitterPositions(plan, { max: 8 }).length
+    worstEmitters = Math.max(worstEmitters, emitters)
+    if (emitters > 8) failures.push(`fuzz ${caseIndex}: ${emitters} emitters over the cap of 8`)
+    if (plan.outlineCellCount > 150) failures.push(`fuzz ${caseIndex}: outline over 150 cells`)
+    if (plan.duplicatedReports < 0) failures.push(`fuzz ${caseIndex}: negative duplication`)
+    if (plan.duplicatedReports > 0) sharedEdgeCases += 1
+  }
+  check("fuzz: the run actually dropped onto real boards", drops >= 120, `${drops} of ${FUZZ_CASES} random boards produced a settled drop (a random shape/face/origin is usually illegal or clears nothing)`)
+  check("fuzz: shared-edge duplication was actually exercised", sharedEdgeCases >= 30,
+    `${sharedEdgeCases} of ${drops} drops reported one space segment more than once`)
+  check("fuzz: the emitter cap held on every board", worstEmitters <= 8, `worst ${worstEmitters}`)
+}
 console.log(`\n${failures.length ? 'FAIL' : 'PASS'}  ${failures.length} failure(s)`)
 process.exit(failures.length ? 1 : 0)

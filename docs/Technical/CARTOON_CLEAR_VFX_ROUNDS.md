@@ -514,3 +514,23 @@ OK   K a normal move still settles and still scores with the atlas broken  drop.
 #### 规划器并入标准测试链
 
 `tools/cartoon-clear-plan-tests.mjs` 是纯模块 + 已入库夹具，本来只在 `npm run test:cartoon` 下跑。现在接进 `npm test`（链上 12 个套件），**规则/会话/i18n/发牌/形状池/荣誉/道具/材质/排行榜之后紧跟卡通规划器**：`npm test` 一次跑完，`PASS 0 failure(s)`。这样物理线去重口径以后再被改坏，标准门禁就会直接拦住。
+
+### 规划器的差分模糊测试（v0.13.3）
+
+**只改文件**：`tools/cartoon-clear-plan-tests.mjs`、本文档。无产品代码改动。
+
+九个手工用例证明了文档点名的规则；模糊测试证明**去重这件事本身**和一份朴素参考实现是同一个函数——否则一个谁也没想到的盘面就可能溜过去。做法（全部有种子、可复现）：
+
+- 400 个随机盘面（壳层每格 50% 概率被占），随机形状 × 随机面 × 随机原点，用**真实 `Board.canPlace/place`** 落子；
+- 参考实现就是「按排序后的格集合给 raw 面线分组、union 所有格」这一句朴素写法；
+- 逐例比对 `physicalLineCount` / `uniqueCellCount` / `rawLineCount` / 面脚印数，外加天花板不变量（预算不超表、星/闪点不超 `caps.marks`、发射位 ≤8、轮廓 ≤150 格、重复报告不为负）：
+
+```
+OK   fuzz: the run actually dropped onto real boards       155 of 400 random boards produced a settled drop
+OK   fuzz: shared-edge duplication was actually exercised   64 of 155 drops reported one space segment more than once
+OK   fuzz: the emitter cap held on every board              worst 8
+```
+
+**155 次真实结算，与参考实现零分歧。** 覆盖也够：其中 **64 次（41%）出现了同一段空间被两个面各报一次**——正是规划器存在的理由，说明这个分支不是没被走到。
+
+关于覆盖率下限：一开始我把「真的落成了」写成 ≥250，实测只有 155——因为随机形状+随机面+随机原点大多数非法或清不掉线。**这是我自己生成器的覆盖率陈述，不是产品门禁**，所以按实测把下限校准到 120 并写明原因，而不是把生成器调到数字好看。
