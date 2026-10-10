@@ -461,3 +461,27 @@ OK   J and it covers the whole event window, not just its start  last frame at 9
 底板的实现要点（都写进了代码注释）：`atlasGate({ plate: true, tiles: false })` 创建底板且不画 tile，`atlasGate()` 复用仍然活着的那一块；底板走 `addTransient`（`ownGeometry` 标记，会被 `clearCelebration()` 正常回收），深度上放在 tile 之后，`renderOrder` 让 alpha 批次仍然盖在它上面。
 
 **`npm run probe:clear` 的 `r1` 与 `r3` 现在都是 0 failure。**
+
+### 贴图 404 的兜底路径：从「有代码」变成「有取证」（v0.13.3）
+
+**只改文件**：`tools/cartoon-clear-probe.mjs`、本文档。无产品代码改动。
+
+§3.1 写得很清楚：「贴图未就绪/加载失败：使用简单程序方片/四角星或仅亮边反馈，**禁止阻塞第一手、进入无限 Loading 或吞掉分数反馈**。开发诊断记录 fallback」。这条兜底从 R1 就写在代码里，但**一次都没被真正触发过**。本轮用 CDP `Network.setBlockedURLs` 把 `atlas.png` 拦掉、重新加载页面来真跑一遍：
+
+```
+OK   K with the atlas blocked the loader reports a failure   atlas.status=failed error=[object Event]
+OK   K the fallback still emits and really paints            spawned=32 pixels=4010
+OK   K the event budget is unchanged by the failure          budget=32 physical=3
+OK   K a normal move still settles and still scores with the atlas broken  drop.ok=true score 0 -> 50
+```
+
+四条正好对上 §3.1 的四句要求：
+
+1. **失败被记录**（`status=failed`），不是静默降级；
+2. **仍然画得出来**，而且是像素级证据（32 个精灵 / 4010 个像素变化），不是计数器自证；
+3. **预算与物理线数不受影响**（仍是 32 / 3）—— 失败不改变规则层给的东西；
+4. **不吞分数**：一次合法落子照常结算，score 0 → 50。
+
+一个小瑕疵如实记下：`error` 字段是 `[object Event]`，因为 `TextureLoader` 的 onError 回一个 Event、没有 `message`，诊断里看不出是哪个 URL 失败（`status=failed` 本身是准的）。这属于开发诊断的可读性，不影响行为，未改。
+
+**`npm run probe:clear` 的 `r1` 与 `r3` 现在都是 0 failure**，`r3` 一次覆盖：8-tile 采样门、§7 生命周期（重叠事件/全局上限/七类取消/reduced-motion 动态开启/100 轮泄漏/帧开销）、layer3 合同、真实帧序录制、以及本条失败路径。

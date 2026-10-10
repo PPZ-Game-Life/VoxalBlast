@@ -628,6 +628,73 @@ async function runLifecycle(ctx) {
       out.screencast.durationMs >= 420,
       `last frame at ${out.screencast.durationMs}ms`)
   }
+  // ---- K. the atlas really failing must not cost the player the move ------------------------
+  // "Texture not ready / load failed: fall back to simple procedural quads or the outline alone;
+  // never block the first move, never show an endless loading state, never swallow the score."
+  // The fallback branch existed from R1 but had never been driven with a real failure.
+  {
+    await settleUi()
+    await send(ws, nextId++, "Network.enable")
+    await send(ws, nextId++, "Network.setBlockedURLs", { urls: ["*cartoon-clear-v1/atlas.png*"] })
+    await send(ws, nextId++, "Page.navigate", { url })
+    await sleep(3000)
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setBoardFloat({ frozen: true, time: 0 }))')
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setAmbient({ frozen: true, time: 0 }))')
+    await waitLive()
+    const blocked = await report()
+    // The failure has to be REPORTED, not inferred from the absence of an error.
+    check("K with the atlas blocked the loader reports a failure",
+      blocked.cartoon.atlas.status === "failed",
+      `atlas.status=${blocked.cartoon.atlas.status} error=${blocked.cartoon.atlas.error}`)
+
+    // The clear still has to draw something, and it has to be pixels rather than counters.
+    const box = (await json("globalThis.__voxalblast.framing()")).solid
+    const clip = {
+      x: Math.round(box.minX), y: Math.round(box.minY),
+      width: Math.max(1, Math.round(box.maxX - box.minX)), height: Math.max(1, Math.round(box.maxY - box.minY)),
+      scale: 1,
+    }
+    const grab = async () => readPng(Buffer.from((await send(ws, nextId++, "Page.captureScreenshot", {
+      format: "png", clip, captureBeyondViewport: false,
+    })).data, "base64"))
+    const before = await grab()
+    const fallback = await json("globalThis.__voxalblastDev.demoClear(3)")
+    await sleep(170)
+    const during = await grab()
+    let changed = 0
+    for (let i = 0; i < before.pixels.length; i += before.channels) {
+      if (Math.abs(during.pixels[i] - before.pixels[i]) > 12
+        || Math.abs(during.pixels[i + 1] - before.pixels[i + 1]) > 12
+        || Math.abs(during.pixels[i + 2] - before.pixels[i + 2]) > 12) changed += 1
+    }
+    out.blockedAtlas = {
+      status: blocked.cartoon.atlas.status,
+      error: blocked.cartoon.atlas.error,
+      budget: fallback.event?.budget ?? null,
+      spawned: fallback.event?.spawned ?? null,
+      liveSprites: fallback.cartoon.liveSprites,
+      pixelsChanged: changed,
+    }
+    check("K the fallback still emits and really paints",
+      (fallback.event?.spawned ?? 0) > 0 && changed >= 40,
+      `spawned=${fallback.event?.spawned} pixels=${changed}`)
+    check("K the event budget is unchanged by the failure",
+      fallback.event?.budget === budgetFor(3, { lowPower, cramped: fallback.event?.cramped }),
+      `budget=${fallback.event?.budget} physical=${fallback.event?.physicalLineCount}`)
+
+    // And a real move still settles: the score must not be swallowed by a failed texture.
+    await evaluate("globalThis.__voxalblastDev.clearCelebration()")
+    await sleep(240)
+    const scoreBefore = await json("globalThis.__voxalblast.board().score")
+    const drop = await json("globalThis.__voxalblastDev.dropAt({ pieceIndex: 0, face: '+z', u: 0, v: 0 })")
+    const scoreAfter = await json("globalThis.__voxalblast.board().score")
+    out.blockedAtlas.move = { ok: drop.ok, scoreBefore, scoreAfter }
+    check("K a normal move still settles and still scores with the atlas broken",
+      drop.ok === true && scoreAfter >= scoreBefore,
+      `drop.ok=${drop.ok} score ${scoreBefore} -> ${scoreAfter}`)
+
+    await send(ws, nextId++, "Network.setBlockedURLs", { urls: [] })
+  }
   void note
 }
 
