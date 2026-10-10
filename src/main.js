@@ -697,6 +697,19 @@ const effects = createEffects({
   // reward shake is stated in CSS pixels — both are boardView's/gameScene's to answer.
   facePlaneLocalCenter,
   getWorldPerPixel: () => scene3d.worldPerPixel(),
+  // v0.13.3 (§5.2): the outline is stated in CSS pixels and every other size in CELLS, so the one
+  // conversion -- one lattice cell's edge on screen -- comes from the board's own on-screen box
+  // rather than from a re-derived framing constant.
+  getCellPx: () => {
+    const box = cubeScreenBounds()
+    return Math.max(1, (box.maxX - box.minX) / SH)
+  },
+  // v0.13.3 (§3.1 gate): where a world point lands in CSS pixels is gameScene's answer, not a
+  // second viewport guess inside the effects module. It is the GAMEPLAY rect, not the canvas:
+  // `camera.project()` speaks the canonical camera's NDC, and gameScene's render camera is that
+  // same projection embedded into the canvas (FLOATING_WORLD_R3_INTEGRATION.md — the two are
+  // paired, and mixing them put the gate's expected tiles ~100px below where they were drawn).
+  getCanvasRect: () => scene3d.getGameplayRect(),
 })
 const {
   playHaptic,
@@ -708,7 +721,35 @@ const {
   clearTransientEffects,
   resetShake,
   clearSlowMo,
+  // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §3.1/§7.1): the atlas is fetched once, lazily, and its
+  // failure can never block the first move; the scope cancel is the clear's own, separate from
+  // the item/reward/audio scopes.
+  loadCartoonAtlas,
+  cancelCartoonScope,
 } = effects
+
+// §3.1: kick the atlas off now, but never await it. Until it lands (or if it never does) the
+// clear draws with the procedural fallback in effects.js and the game stays fully playable.
+loadCartoonAtlas()
+
+// §4.2 「先选朝向相机的可见面，正面对相机者优先」. The planner is pure and must not guess which side
+// of the cube the player is on, so the order is computed here, from the camera's own position and
+// the face normals boardView owns — never from a second face table.
+const toCameraScratch = new THREE.Vector3()
+function visibleFaceOrder() {
+  camera.updateMatrixWorld()
+  toCameraScratch.copy(camera.position).sub(cubeGroup.position)
+  const distance = toCameraScratch.length() || 1
+  toCameraScratch.multiplyScalar(1 / distance)
+  return FACES
+    .map((face) => ({
+      face,
+      facing: cubeVector(face, 'n').applyQuaternion(cubeGroup.quaternion).normalize().dot(toCameraScratch),
+    }))
+    .filter((entry) => entry.facing > 0.05)
+    .sort((a, b) => b.facing - a.facing)
+    .map((entry) => entry.face)
+}
 
 // The audio bus (v0.10.1, handoff §5/§6). One AudioContext, one master, one set of scenes: it
 // replaces the bare `playTone()` oscillators that used to live in effects.js and used to fire
@@ -828,6 +869,12 @@ function syncPause() {
   // greying would outlive its reason. Caught by the v0.8.22 board shot — the four item
   // buttons were still grey after the wave had settled.
   if (isPaused !== previous) renderItemBar()
+  // v0.13.3 (CARTOON_CLEAR_VFX_HANDOFF §7.1): every cancellation transition the doc lists —
+  // settings, the help card, the home cover, a hidden tab, the end of the run — passes through
+  // this one place, so the NORMAL clear's scope is closed here rather than at five call sites.
+  // The cancel is scoped on purpose: it takes the clear's own particles and contours and leaves
+  // the reward note, the new-record card, the item bursts and the audio untouched.
+  if (isPaused && !previous) cancelCartoonScope()
   return isPaused
 }
 
@@ -1161,7 +1208,7 @@ function onDrop({ piece, face, cells, origin }) {
     // named, and the pop carries the hand's TOTAL (基础分 + 三类奖励) — never a second total.
     showRewardNote(rewardEvent)
     showScorePop(score.total)
-    spawnClearEffects(lines, level, { reward: rewardEvent })
+    spawnClearEffects(lines, level, { reward: rewardEvent, frontFace: findFrontFace(), visibleFaces: visibleFaceOrder() })
     triggerSlowMo(level)
     input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)
@@ -1380,6 +1427,9 @@ function startNewRunFromHome() {
 
 function applySession(saved) {
   clearTransientEffects()
+  // §7.1 「恢复存档」: the resumed run is a new scope, so the tab that was hidden before the
+  // reload cannot leave a clear half-drawn over the restored board.
+  cancelCartoonScope()
   // Resuming a stored run is a new scene too: nothing from the tab that was hidden before the
   // reload may play into it (§6.3).
   audio.cancelAll()
@@ -1503,6 +1553,9 @@ function endGame() {
 
 function resetGame() {
   clearTransientEffects()
+  // §7.1: a restart closes the clear scope too, so a tail from the finished run cannot be
+  // rebuilt by a late callback that already held the old epoch.
+  cancelCartoonScope()
   // §7.3: a new run cancels EVERYTHING that belonged to the last one — tails, scheduled cues
   // and the mute scene — by scope, not one effect at a time.
   audio.cancelAll()
@@ -2078,6 +2131,9 @@ const devHandles = import.meta.env.DEV
       }
     },
     clearCelebration: () => { clearTransientEffects() },
+    // §3.1's first gate: all eight tiles through the real Quarks billboard path, so a capture can
+    // grade the sampling rather than the download.
+    atlasGate: (options) => effects.showAtlasGate(options),
     // The bus's measurement window (§9): "was anything heard SINCE here" is the only question
     // that can tell a silenced master from a master that was never driven. Zeroes the running
     // output peak; the cue count is monotonically increasing so the probe diffs it itself.

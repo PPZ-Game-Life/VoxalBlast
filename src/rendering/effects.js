@@ -36,7 +36,19 @@ import {
   SizeOverLife,
   SpeedOverLife,
 } from 'three.quarks'
-import { CELEBRATION, VFX_CONFIG, FEEDBACK_STYLE, BOARD_STYLE as style } from './config.js'
+import { CARTOON_CLEAR, CELEBRATION, VFX_CONFIG, FEEDBACK_STYLE, BOARD_STYLE as style } from './config.js'
+// v0.13.3: the normal clear's planner. Pure by construction -- see the module's own header for
+// why the physical/face split cannot live in this file.
+import {
+  clearBudget,
+  clearCaps,
+  clearTailSeconds,
+  emitterPositions,
+  markPositions,
+  planClear,
+  vfxRandom,
+  vfxSeed,
+} from './cartoonClearPlan.js'
 // The buzz is the platform's, not the renderer's: whether a vibrate call can be felt at all is
 // a device question with its own measurements (platform/haptics.js header).
 import { vibrate } from '../platform/haptics.js'
@@ -139,7 +151,23 @@ export function createEffects({
   // than baking a scale factor (the shipped framing makes one world unit ≈55px, so a guess
   // would be off by an order of magnitude), main injects gameScene's own projection conversion.
   getWorldPerPixel = () => 0.02,
+  // §5.2 states the outline's width in CSS pixels and every other size in CELLS, so the one
+  // number that converts between them -- one lattice cell's on-screen edge -- is injected by main
+  // instead of being re-derived from the framing constants in here.
+  getCellPx = () => 26,
+  // The §3.1 sampling gate has to say WHERE each tile landed on screen, and only this module has
+  // the camera the frame was drawn with. main injects gameScene's own canvas box so the gate does
+  // not have to guess a second opinion about the viewport.
+  getCanvasRect = null,
 }) {
+  // §6.2's dedicated FX layer. The clear's own sprites and contours are pulled out of the normal
+  // prepass by a layer of their own; today that layer is 0, which is what the whole effects module
+  // already uses, and gameScene asserts the rest of the contract in `updateRenderCamera()`.
+  // Declared here so every new ParticleSystem is CONSTRUCTED with it: the batch key includes
+  // `layers.mask`, so a mask moved afterwards would need the batch rebuilt.
+  const clearLayers = new THREE.Layers()
+  clearLayers.set(0)
+
   // The effect surfaces (bands, marks) are scene-level: they are world-space objects, not part
   // of the cube, so they must not inherit its rotation.
   const fxGroup = new THREE.Group()
@@ -316,12 +344,13 @@ export function createEffects({
   }
 
   // ---------------------------------------------------------------- transient pool
-  function addTransient({ object, duration, delay = 0, followCube = false, kind = 'decoration', update }) {
+  function addTransient({ object, duration, delay = 0, followCube = false, kind = 'decoration', pool = 'celebration', update }) {
     object.userData.celebration = true
     fxGroup.add(object)
-    transientEffects.push({
+    const transient = {
       object,
       kind,
+      pool,
       elapsed: -delay,
       duration,
       followCube,
@@ -330,7 +359,9 @@ export function createEffects({
       // 1.4s tail stretched by 0.6x is exactly the bug the doc names.
       until: performance.now() + (duration + delay) * 1000,
       update,
-    })
+    }
+    transientEffects.push(transient)
+    return transient
   }
 
   function spawnBand(line, index, tailSeconds) {
@@ -507,17 +538,23 @@ export function createEffects({
   }
 
   // ---------------------------------------------------------------- particle budgets
-  function liveChipCount() {
+  // `pool` separates the two families the report has to keep apart (§4.3 「两个系统并行时的总live
+  // 计数必须在report显式分项」): the celebration's own chips and the normal clear's cartoon
+  // sprites. Each has its own ceiling and neither may borrow from the other's.
+  function liveChipCount(pool = 'celebration') {
     const now = performance.now()
     let total = 0
-    for (const record of systemRecords) if (now < record.until) total += record.count
+    for (const record of systemRecords) {
+      if (record.pool !== pool) continue
+      if (now < record.until) total += record.count
+    }
     return total
   }
 
   function spawnChips({ entries, count, tailSeconds, speed = 1.05, origin = null }) {
     if (count <= 0 || !entries.length) return 0
     const ceiling = quality.lowPower ? CELEBRATION.flyingCap.lowPower : CELEBRATION.flyingCap.standard
-    const allowed = Math.min(count, Math.max(0, ceiling - liveChipCount()))
+    const allowed = Math.min(count, Math.max(0, ceiling - liveChipCount('celebration')))
     if (allowed <= 0) return 0
     const world = entries.map(surfacePoint)
     const center = origin || centroidOfPoints(world)
@@ -551,7 +588,14 @@ export function createEffects({
         startSize: new ConstantValue(1),
         startColor: new ConstantColor(colorToVector4(tone)),
         emissionOverTime: new ConstantValue(0),
-        emissionBursts: [{ time: 0, count: new ConstantValue(burst), cycle: 1, interval: 0.01, probability: 1 }],
+        // v0.13.3: `count` is a PLAIN NUMBER. `BurstParameters.count` is typed `number` in the
+        // package's own declaration, and `ParticleSystem.spawn()` iterates it directly
+        // (`for (i = 0; i < count; i++)`) — a `ConstantValue` compares as NaN and the burst emits
+        // NOTHING while every counter in this module still reports the full budget. Measured on
+        // HEAD bf03464f: `liveChips` reported 6 while `system.particleNum` stayed 0 and the board
+        // area never changed a pixel (artifacts/cartoon-clear-v1/r0/evidence.json). The handoff
+        // §6.1 note about passing a `ValueGenerator` here is wrong for 0.10.8; this is the fix.
+        emissionBursts: [{ time: 0, count: Math.max(0, Math.round(burst)), cycle: 1, interval: 0.01, probability: 1 }],
         shape: new CellEmitter(points, directions, speed),
         material: paperMaterial,
         instancingGeometry: chipGeometries[toneIndex % chipGeometries.length],        renderMode: RenderMode.Mesh,
@@ -580,10 +624,819 @@ export function createEffects({
       systemRecords.add({
         system,
         count: burst,
+        pool: 'celebration',
+        id: toneIndex,
+        emitAt: performance.now(),
         until: performance.now() + (duration + CELEBRATION.timing.paperStart) * 1000 + 60,
       })
     })
     return spawned
+  }
+
+  // ================================================================================
+  // Cartoon clear (v0.13.3, CARTOON_CLEAR_VFX_HANDOFF §4–§7)
+  // ================================================================================
+  // The NORMAL clear's whole presentation, in a pool of its own. The item bursts, the record
+  // card and every legacy path above keep using CELEBRATION and none of the numbers below touch
+  // them (§0 「本交接接管正常消除的局部图形、时序、粒子与清理」).
+  //
+  // What this replaces, measured on HEAD bf03464f (artifacts/cartoon-clear-v1/r0/evidence.json):
+  //   * the budget was chosen from board.js's RAW face-line count, so a shared edge/corner paid
+  //     twice for one space segment (a crossing clear arrived as 3 lines, a five-line clear as 7);
+  //   * a single line stayed on screen for 466ms against §5's 360ms window;
+  //   * the burst fired at the system's own t=0 regardless of the doc's `paperStart`.
+  // All three are fixed by construction here: the planner supplies `physicalLineCount`, the tail
+  // is the table's own number, and the emission time is a REAL wall-clock delay (`paused` until
+  // the beat) rather than a nominal constant.
+  const cartoon = {
+    status: 'idle', // idle | loading | ready | failed
+    texture: null,
+    error: null,
+    frames: null,
+    seq: 0,
+    scopeEpoch: 0,
+    events: [],
+    lastPlan: null,
+    lastEvent: null,
+    spawnedTotal: 0,
+    droppedByCap: 0,
+    droppedByEvents: 0,
+  }
+
+  function atlasUrl(relative) {
+    const base = import.meta.env?.BASE_URL || '/'
+    return `${base.endsWith('/') ? base : `${base}/`}${relative}`
+  }
+
+  // §3.1's sampling contract, and the reason the tile numbering starts at the PNG's TOP row: the
+  // quarks UV chunk computes `row = vTileCount - 1 - floor(uvTile / uTileCount)`, and
+  // `flipY = true` is what makes tile 0 land on the top-left tile the pack numbered first.
+  function loadCartoonAtlas() {
+    if (cartoon.status !== 'idle') return
+    cartoon.status = 'loading'
+    new THREE.TextureLoader().load(
+      atlasUrl(CARTOON_CLEAR.atlas.image),
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace
+        texture.flipY = true
+        texture.generateMipmaps = false
+        texture.minFilter = THREE.LinearFilter
+        texture.magFilter = THREE.LinearFilter
+        texture.wrapS = THREE.ClampToEdgeWrapping
+        texture.wrapT = THREE.ClampToEdgeWrapping
+        texture.premultiplyAlpha = false
+        texture.needsUpdate = true
+        cartoon.texture = texture
+        atlasMaterial.map = texture
+        atlasMaterial.needsUpdate = true
+        cartoon.status = 'ready'
+      },
+      undefined,
+      (error) => {
+        // §3.1: a failed atlas is NOT allowed to block the first move — the procedural quads
+        // keep drawing and the failure is recorded for the probe instead of thrown.
+        cartoon.status = 'failed'
+        cartoon.error = String(error?.message || error || 'atlas load failed')
+      },
+    )
+    fetch(atlasUrl(CARTOON_CLEAR.atlas.json))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (data?.frames) cartoon.frames = data.frames })
+      .catch(() => { /* the tile order plus the fallback coverage is enough to draw */ })
+  }
+
+  /**
+   * §5.2 「用 JSON alphaBounds 换算可见尺寸：某粒子图形只占tile宽70%，quad宽要除以0.7」. The
+   * coverage is how much of the 128px tile the graphic really occupies; a quad is divided by it so
+   * the VISIBLE graphic, not the transparent margin, is the size the doc states.
+   */
+  function tileCoverage(id) {
+    const frame = cartoon.frames?.[id]
+    const fallback = { x: 0.7, y: 0.7 }
+    if (!frame?.alphaBounds) return fallback
+    const [left, top, right, bottom] = frame.alphaBounds
+    return {
+      x: Math.max(0.2, (right - left) / CARTOON_CLEAR.atlas.tile),
+      y: Math.max(0.2, (bottom - top) / CARTOON_CLEAR.atlas.tile),
+    }
+  }
+
+  const tileIndex = (id) => {
+    const index = CARTOON_CLEAR.atlas.order.indexOf(id)
+    return index < 0 ? 0 : index
+  }
+
+  // Two shared materials, one per sampling route. Both are `MeshBasicMaterial` so the two may
+  // never end up in different batches by `type`; the atlas one is white because every sprite's
+  // colour is baked into its own tile (§5.2 「不能每条线换一套随机色」).
+  const atlasMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.NormalBlending,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  })
+  const fallbackMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.NormalBlending,
+    depthTest: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  })
+
+  /** §5.2's gravity: a short arc that comes back down, not a fountain. */
+  class GravityBehavior {
+    constructor(gravity) {
+      this.type = 'cartoonGravity'
+      this.gravity = gravity
+    }
+
+    initialize() {}
+
+    update(particle, delta) {
+      // 向上是场景的 +Y；加速度向 −Y。速度由 quarks 自己积分（position += velocity·delta），
+      // 这里只改速度，绝不会既写位置又让引擎重复积分速度。
+      particle.velocity.y -= this.gravity * delta
+    }
+
+    frameUpdate() {}
+
+    reset() {}
+
+    toJSON() { return { type: this.type, gravity: this.gravity } }
+
+    clone() { return new GravityBehavior(this.gravity) }
+  }
+
+  /**
+   * One particle = one planned position, velocity, screen rotation and size. Written out rather
+   * than reusing `CellEmitter` because the sprites need all four per particle and the emitter
+   * has to be able to override `startSize` (which `SizeOverLife` multiplies, so a per-particle
+   * size really does reach the GPU).
+   */
+  class CartoonSpriteEmitter {
+    constructor({ points, velocities, rotations, sizes }) {
+      this.type = 'cartoon'
+      this.points = points
+      this.velocities = velocities
+      this.rotations = rotations
+      this.sizes = sizes
+      this.sequence = 0
+    }
+
+    initialize(particle) {
+      const index = this.sequence++
+      const point = this.points[index % this.points.length]
+      const velocity = this.velocities[index % this.velocities.length]
+      if (point) particle.position.copy(point)
+      if (velocity) particle.velocity.copy(velocity)
+      if (this.rotations) particle.rotation = this.rotations[index % this.rotations.length] || 0
+      if (this.sizes) particle.startSize = this.sizes[index % this.sizes.length]
+      if (!Number.isFinite(particle.velocity.x)) particle.velocity.set(0, 0, 0)
+    }
+
+    toJSON() { return { type: this.type } }
+
+    clone() {
+      return new CartoonSpriteEmitter({
+        points: this.points, velocities: this.velocities, rotations: this.rotations, sizes: this.sizes,
+      })
+    }
+  }
+
+  /** A lattice-space unit vector, in the cube's own current world frame. */
+  function latticeDirWorld(cell, dir) {
+    const from = cellToWorld(cell[0], cell[1], cell[2])
+    const to = cellToWorld(cell[0] + dir[0], cell[1] + dir[1], cell[2] + dir[2])
+    const world = to.sub(from).normalize().applyQuaternion(cubeGroup.quaternion)
+    return Number.isFinite(world.x) ? world : new THREE.Vector3(0, 0, 0)
+  }
+
+  /**
+   * §5.2 「短弯尖朝 +X」: a swoosh/dash tile is authored pointing along its own +X, so it is
+   * rotated by the screen angle of the direction it is travelling in. Billboard rotation is a
+   * scalar in the view plane, which is why this is a projection and not a quaternion.
+   */
+  const screenProbeA = new THREE.Vector3()
+  const screenProbeB = new THREE.Vector3()
+  function screenAngleDeg(position, direction) {
+    screenProbeA.copy(position).project(camera)
+    screenProbeB.copy(position).addScaledVector(direction, Math.max(0.05, cellSize)).project(camera)
+    // NDC y is up-positive and the billboard's own +Y is view-up, so the angle needs no flip.
+    return Math.atan2(screenProbeB.y - screenProbeA.y, screenProbeB.x - screenProbeA.x)
+  }
+
+  /** Cells -> world units, divided by how much of the tile the graphic really covers (§5.2). */
+  function visibleSize(cells, coverage) {
+    return (cells * cellSize) / Math.max(0.2, coverage)
+  }
+
+  /** The face a plan's first line reports, used only when a plan has no emitter ends at all. */
+  const frontFaceOf = (plan) => plan.physicalLines[0]?.face || '+z'
+
+  function liveCartoonSprites() {
+    const now = performance.now()
+    let total = 0
+    for (const record of systemRecords) {
+      if (record.pool !== 'cartoon') continue
+      if (now < record.emitAt) continue // not emitted yet, so it is not on screen
+      if (now > record.until) continue
+      total += record.count
+    }
+    return total
+  }
+
+  function liveCartoonEvents() {
+    const now = performance.now()
+    return cartoon.events.filter((event) => event.until > now)
+  }
+
+  /** §7.1: a third overlapping clear retires the OLDEST tail; the current line keeps its marks. */
+  function enforceCartoonEventCap(now) {
+    const live = liveCartoonEvents()
+    while (live.length >= CARTOON_CLEAR.maxEvents) {
+      const oldest = live.shift()
+      if (!oldest) break
+      cartoon.droppedByEvents += 1
+      oldest.until = now
+      for (const record of oldest.records) {
+        record.until = Math.min(record.until, now)
+        record.pruneAt = Math.min(record.pruneAt ?? record.until, now)
+      }
+      for (const transient of oldest.transients) transient.until = Math.min(transient.until, now)
+      // Retiring a tail is presentation only: the score, the sound and the hand were already
+      // settled by main.onDrop(). Nothing here touches them (§7.1 「不丢结算/声音」).
+    }
+  }
+
+  /**
+   * The one place a normal clear is presented. Returns the event record the report exposes.
+   *
+   * `frontFace` and `visibleFaces` come from main (boardView's `findFrontFace()` and the camera's
+   * own visibility order) because the planner is pure and must not guess which side of the cube
+   * the player is looking at.
+   */
+  function spawnCartoonClear(lines, level, {
+    reward = null,
+    frontFace = null,
+    visibleFaces = [],
+  } = {}) {
+    const reduced = prefersReducedMotion()
+    const cramped = crampedViewport()
+    const plan = planClear(lines, {
+      frontFace,
+      visibleFaces,
+      maxOutlineCells: CARTOON_CLEAR.outline.maxCells,
+    })
+    cartoon.seq += 1
+    const eventKey = `${cartoon.scopeEpoch}:${cartoon.seq}`
+    const physical = plan.physicalLineCount
+    const budget = clearBudget(physical, {
+      lowPower: Boolean(quality.lowPower),
+      reducedMotion: reduced,
+      cramped,
+    })
+    const caps = clearCaps(Math.max(1, physical))
+    const tail = clearTailSeconds(physical)
+    const now = performance.now()
+    const record = {
+      id: cartoon.seq,
+      key: eventKey,
+      epoch: cartoon.scopeEpoch,
+      startedAt: now,
+      until: now + (tail + 0.05) * 1000,
+      physicalLineCount: physical,
+      rawLineCount: plan.rawLineCount,
+      duplicateReports: plan.duplicatedReports,
+      uniqueCells: plan.uniqueCellCount,
+      intersections: plan.intersections.length,
+      budget,
+      spawned: 0,
+      marks: 0,
+      arcs: 0,
+      outlineCells: plan.outlineCellCount,
+      outlineDropped: false,
+      cramped,
+      reducedMotion: reduced,
+      records: [],
+      transients: [],
+      scope: true,
+    }
+    cartoon.lastPlan = plan
+    enforceCartoonEventCap(now)
+
+    if (physical <= 0) {
+      cartoon.lastEvent = { ...record, records: undefined, transients: undefined }
+      cartoon.events.push(record)
+      return cartoon.lastEvent
+    }
+
+    // ---- 1. the line outlines: the confirmation the player reads FIRST (§5, 0–65ms) ---------
+    // Never traded away for decoration, never split by the sprite budget, and per §7.1 they leave
+    // within 80ms once the cube starts turning or a new drag appears.
+    const widthWorld = Math.max(0.006, (CARTOON_CLEAR.outline.widthPx[1] / Math.max(1, getCellPx())) * cellSize)
+    const offsetWorld = Math.max(0.004, CARTOON_CLEAR.outline.surfaceOffset[1] * cellSize)
+    const outlineGeometry = buildCartoonOutlineGeometry(plan, widthWorld, offsetWorld)
+    if (outlineGeometry) {
+      const material = markMaterial(CARTOON_CLEAR.colors.outline, 0)
+      const outline = new THREE.Mesh(outlineGeometry, material)
+      const duration = Math.min(CARTOON_CLEAR.outline.duration, tail)
+      const transient = addTransient({
+        object: outline,
+        duration,
+        delay: CARTOON_CLEAR.timing.outlineIn,
+        followCube: true,
+        kind: 'outline',
+        pool: 'cartoon',
+        update: (effect, delta) => {
+          effect.elapsed += delta
+          const progress = THREE.MathUtils.clamp(effect.elapsed / Math.max(effect.duration, 1e-4), 0, 1)
+          // ONE rise and one settle: a linear in/out envelope, never a flash.
+          const envelope = progress < 0.25 ? progress / 0.25 : 1 - (progress - 0.25) / 0.75
+          effect.object.material.opacity = Math.max(0, envelope) * CARTOON_CLEAR.outline.opacity
+        },
+      })
+      record.transients.push(transient)
+    } else {
+      record.outlineDropped = true
+    }
+
+    if (tail > 0) {
+      const sprites = spawnCartoonSprites({ plan, budget, caps, tail, record, reduced })
+      record.spawned = sprites.spawned
+      record.marks = sprites.marks
+      record.arcs = sprites.arcs
+    }
+
+    cartoon.events.push(record)
+    // The event log is the probe's own read-out; it is bounded so a long session cannot grow it.
+    if (cartoon.events.length > 8) cartoon.events = cartoon.events.slice(-8)
+    cartoon.spawnedTotal += record.spawned
+    const { records, transients, ...summary } = record
+    cartoon.lastEvent = {
+      ...summary,
+      // Kept in the record for the report but never serialised into the return value's identity.
+      systems: records.length,
+      liveEvents: liveCartoonEvents().length,
+    }
+    return cartoon.lastEvent
+  }
+
+  /**
+   * The sprites themselves. §4.3's `budget` is the WHOLE event's new decoration count, the caps
+   * slice it into kinds, and the global pool ceiling can trim it further — trimming decoration is
+   * always preferred to dropping a line outline, which is drawn above and is not part of `budget`.
+   */
+  function spawnCartoonSprites({ plan, budget, caps, tail, record, reduced }) {
+    const now = performance.now()
+    const ends = emitterPositions(plan, { max: CARTOON_CLEAR.emitterCap })
+    const fallbackPoint = plan.uniqueCells.length
+      ? worldCell(plan.uniqueCells[0])
+      : new THREE.Vector3().applyMatrix4(cubeGroup.matrixWorld)
+    const anchors = ends.length
+      ? ends
+      : [{ cell: plan.uniqueCells[0] || [0, 0, 0], face: frontFaceOf(plan), outward: [1, 0, 0] }]
+    const center = centroidOfPoints(anchors.map((end) => worldCell(end.cell)))
+    const random = vfxRandom(vfxSeed(record.key, plan))
+    const liveRoom = Math.max(0, (quality.lowPower ? CARTOON_CLEAR.live.lowPower : CARTOON_CLEAR.live.standard) - liveCartoonSprites())
+
+    // §8 reduced motion is its own axis: no flight and no arc, but the result is still announced
+    // with ONE static flash, and the board outline above still appears.
+    if (reduced) {
+      const position = worldCell(plan.uniqueCells[0] ?? [0, 0, 0])
+      const systems = addCartoonSystems([{
+        id: 'sparkle-cream',
+        count: 1,
+        delay: 0,
+        life: 0.12,
+        speed: 1,
+        points: [position.clone().sub(center).addScaledVector(faceNormalWorld(frontFaceOf(plan)), style.feedbackSurfaceOffset)],
+        velocities: [new THREE.Vector3(0, 0, 0)],
+        sizes: [visibleSize(0.18, tileCoverage('sparkle-cream').x)],
+        rotations: [0],
+        gravity: 0,
+      }], record, center)
+      return { spawned: systems.count, marks: 1, arcs: 0 }
+    }
+
+    // The kinds, in §4.3's own order of importance: marks and arcs are reserved first, the
+    // confetti fills what is left, and nothing may exceed the event's budget.
+    const marks = reduced ? 1 : markPositions(plan, caps.marks).length
+    const arcs = caps.arcs
+    const dots = quality.lowPower ? 0 : Math.min(2, Math.floor(budget / 8))
+    const confetti = Math.max(0, budget - marks - arcs - dots)
+    const pink = Math.round(confetti * CARTOON_CLEAR.confetti.pinkShare)
+    const blue = Math.ceil((confetti - pink) / 2)
+    const teal = confetti - pink - blue
+
+    const specs = []
+    const emitConfetti = (id, count, sizeCells) => {
+      if (count <= 0) return
+      const coverage = tileCoverage(id)
+      const points = []
+      const velocities = []
+      const rotations = []
+      const sizes = []
+      for (let index = 0; index < count; index += 1) {
+        const anchor = anchors[(index + specs.length) % anchors.length]
+        const normal = faceNormalWorld(anchor.face)
+        const along = latticeDirWorld(anchor.cell, anchor.outward)
+        const tangent = new THREE.Vector3().crossVectors(normal, along)
+        if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0)
+        tangent.normalize()
+        const phase = random() * Math.PI * 2
+        const alongSpeed = lerp(CARTOON_CLEAR.confetti.alongSpeed, random()) * cellSize
+        const tangentSpeed = lerp(CARTOON_CLEAR.confetti.tangentSpeed, random()) * cellSize * Math.cos(phase)
+        const normalSpeed = lerp(CARTOON_CLEAR.confetti.normalSpeed, random()) * cellSize
+        const velocity = along.clone().multiplyScalar(alongSpeed)
+          .addScaledVector(tangent, tangentSpeed)
+          .addScaledVector(normal, normalSpeed)
+          .addScaledVector(SCENE_UP, CARTOON_CLEAR.confetti.upBias * alongSpeed)
+        points.push(worldCell(anchor.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset))
+        velocities.push(velocity)
+        // §5.2 「旋转≤80°，不翻成细线」: an in-plane spin of the billboard, never a tumble that
+        // turns the chip edge-on.
+        rotations.push((random() * 2 - 1) * (CARTOON_CLEAR.confetti.spinMaxDeg * Math.PI / 180))
+        sizes.push(visibleSize(sizeCells, random() > 0.5 ? coverage.x : coverage.y))
+      }
+      specs.push({
+        id,
+        count,
+        delay: CARTOON_CLEAR.timing.emitFrom,
+        life: Math.max(0.08, tail - CARTOON_CLEAR.timing.emitFrom),
+        speed: 1,
+        points,
+        velocities,
+        rotations,
+        sizes,
+        gravity: lerp(CARTOON_CLEAR.confetti.gravity, random()) * cellSize,
+      })
+    }
+    emitConfetti('confetti-blue', blue, 0.16)
+    emitConfetti('confetti-teal', teal, 0.19)
+    emitConfetti('confetti-pink', pink, 0.13)
+
+    // The stars: §5's 65–140ms beat, one 0.8→1.1→0 envelope, at the intersections and the ends.
+    if (marks > 0 && liveRoom > 0) {
+      const positions = []
+      const velocities = []
+      const sizes = []
+      const coverage = tileCoverage('star-pop')
+      for (const mark of markPositions(plan, caps.marks)) {
+        const normal = faceNormalWorld(mark.face || '+z')
+        positions.push(worldCell(mark.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset))
+        velocities.push(new THREE.Vector3(0, 0, 0))
+        sizes.push(visibleSize(Math.min(CARTOON_CLEAR.star.maxSize, Math.max(CARTOON_CLEAR.star.minSize, cellPitch * 0.24)), coverage.x))
+      }
+      specs.push({
+        id: 'star-pop',
+        count: positions.length,
+        delay: CARTOON_CLEAR.timing.arcFrom,
+        life: CARTOON_CLEAR.timing.arcTo - CARTOON_CLEAR.timing.arcFrom,
+        speed: 1,
+        points: positions,
+        velocities,
+        rotations: positions.map(() => 0),
+        sizes,
+        gravity: 0,
+      })
+    }
+
+    // The arcs: §5.2 「沿线轴向外，不超过端点0.45格」 — a short directional streak, not a trail.
+    if (arcs > 0 && liveRoom > 0) {
+      const positions = []
+      const velocities = []
+      const rotations = []
+      const sizes = []
+      for (let index = 0; index < arcs; index += 1) {
+        const anchor = anchors[index % anchors.length]
+        const normal = faceNormalWorld(anchor.face)
+        const along = latticeDirWorld(anchor.cell, anchor.outward)
+        const start = worldCell(anchor.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset * 1.2)
+        const tan = new THREE.Vector3().crossVectors(normal, along).normalize()
+        positions.push(start)
+        velocities.push(along.clone().multiplyScalar(lerp(CARTOON_CLEAR.arc.minLength, random()) * cellSize / Math.max(1e-3, CARTOON_CLEAR.timing.arcTo - CARTOON_CLEAR.timing.arcFrom))
+          .addScaledVector(tan, 0.2 * cellSize))
+        rotations.push(screenAngleDeg(start.clone().add(center), along))
+        sizes.push(visibleSize(lerp(CARTOON_CLEAR.arc.maxLength, random()), tileCoverage('swoosh-cream').x))
+      }
+      specs.push({
+        id: 'swoosh-cream',
+        count: positions.length,
+        delay: CARTOON_CLEAR.timing.arcFrom,
+        life: Math.max(0.05, CARTOON_CLEAR.timing.arcTo - CARTOON_CLEAR.timing.arcFrom),
+        speed: 1,
+        points: positions,
+        velocities,
+        rotations,
+        sizes,
+        gravity: 0,
+      })
+    }
+
+    // The dots: §5.2 「小于2px就不发，低配优先剔除」.
+    if (dots > 0 && liveRoom > 0) {
+      const coverage = tileCoverage('dot-blue')
+      const points = []
+      const velocities = []
+      const sizes = []
+      for (let index = 0; index < dots; index += 1) {
+        const anchor = anchors[index % anchors.length]
+        const normal = faceNormalWorld(anchor.face)
+        const along = latticeDirWorld(anchor.cell, anchor.outward)
+        points.push(worldCell(anchor.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset))
+        velocities.push(along.clone().multiplyScalar(lerp(CARTOON_CLEAR.confetti.alongSpeed, random()) * 0.6 * cellSize))
+        sizes.push(visibleSize(lerp(CARTOON_CLEAR.dot.maxSize, random()), coverage.x))
+      }
+      specs.push({
+        id: 'dot-blue',
+        count: points.length,
+        delay: CARTOON_CLEAR.timing.emitFrom,
+        life: Math.max(0.08, tail - CARTOON_CLEAR.timing.emitFrom),
+        speed: 1,
+        points,
+        velocities,
+        rotations: points.map(() => 0),
+        sizes,
+        gravity: lerp(CARTOON_CLEAR.confetti.gravity, random()) * cellSize,
+      })
+    }
+
+    // §4.2 「所有发射在140ms前完成」: the deadline is an assertion, not a comment.
+    let trimmed = 0
+    const allowed = specs.map((spec) => {
+      if (spec.delay >= CARTOON_CLEAR.timing.emissionDeadline) {
+        trimmed += spec.count
+        return { ...spec, count: 0 }
+      }
+      return spec
+    })
+    const total = allowed.reduce((sum, spec) => sum + spec.count, 0)
+    if (total > liveRoom) {
+      // Trim the LEAST load-bearing kinds first (dots, then confetti), never the marks.
+      const room = Math.max(0, liveRoom)
+      let left = room
+      for (const spec of allowed) {
+        const keep = Math.min(spec.count, Math.max(0, left - 0))
+        trimmed += spec.count - keep
+        spec.count = keep
+        left -= keep
+      }
+      cartoon.droppedByCap += trimmed
+    }
+    const spawned = addCartoonSystems(allowed, record, center)
+    return { spawned: spawned.count, marks: spawned.byId['star-pop'] || 0, arcs: spawned.byId['swoosh-cream'] || 0 }
+  }
+
+  const SCENE_UP = new THREE.Vector3(0, 1, 0)
+  const lerp = (range, t) => range[0] + (range[1] - range[0]) * t
+
+  function addCartoonSystems(specs, record, center) {
+    const byId = {}
+    let total = 0
+    for (const spec of specs) {
+      if (spec.count <= 0) continue
+      const coverage = tileCoverage(spec.id)
+      const size = spec.sizes?.[0] ?? visibleSize(0.16, coverage.x)
+      const system = new ParticleSystem({
+        autoDestroy: true,
+        looping: false,
+        duration: Math.max(0.02, spec.delay + spec.life),
+        startLife: new ConstantValue(Math.max(0.02, spec.life)),
+        startSpeed: new ConstantValue(spec.speed ?? 1),
+        startSize: new ConstantValue(size),
+        startColor: new ConstantColor(new THREE.Vector4(1, 1, 1, 1)),
+        startTileIndex: new ConstantValue(tileIndex(spec.id)),
+        uTileCount: CARTOON_CLEAR.atlas.columns,
+        vTileCount: CARTOON_CLEAR.atlas.rows,
+        emissionOverTime: new ConstantValue(0),
+        emissionBursts: [{ time: 0, count: Math.max(0, Math.round(spec.count)), cycle: 1, interval: 0.01, probability: 1 }],
+        shape: new CartoonSpriteEmitter({
+          points: spec.points, velocities: spec.velocities, rotations: spec.rotations, sizes: spec.sizes,
+        }),
+        material: cartoon.status === 'ready' ? atlasMaterial : fallbackMaterial,
+        renderMode: RenderMode.BillBoard,
+        renderOrder: 4,
+        worldSpace: true,
+        behaviors: [
+          new SizeOverLife(new PiecewiseBezier([[new Bezier(1, 1, 0.6, 0.25), 0]])),
+          ...(spec.gravity > 0 ? [new GravityBehavior(spec.gravity)] : []),
+        ],
+        // v0.13.0 R5's layer switch is idempotent and always points at the same mask; the batch
+        // key includes it, so it is set at construction and never moved afterwards (§6.2).
+        layers: clearLayers,
+      })
+      // §5's REAL delay: the system exists, is batched, and is PAUSED until its beat. Nothing is
+      // scheduled with setTimeout, and no nominal `paperStart` stands in for a real emission time.
+      system.paused = spec.delay > 0
+      system.emitter.position.copy(center)
+      scene.add(system.emitter)
+      system.emitter.updateMatrixWorld(true)
+      particleRenderer.addSystem(system)
+      const until = performance.now() + (spec.delay + spec.life) * 1000
+      const systemRecord = {
+        system,
+        count: spec.count,
+        pool: 'cartoon',
+        id: spec.id,
+        emitAt: performance.now() + spec.delay * 1000,
+        // `until` is the moment the LAST particle dies -- the only clock a budget check may use.
+        // `pruneAt` adds the small release margin: disposing is bookkeeping, and letting the
+        // margin leak into `until` would make a 360ms effect report as alive at 420ms.
+        until,
+        pruneAt: until + 60,
+        scopeEpoch: cartoon.scopeEpoch,
+      }
+      systemRecords.add(systemRecord)
+      record.records.push(systemRecord)
+      byId[spec.id] = spec.count
+      total += spec.count
+    }
+    return { count: total, byId }
+  }
+
+  /** The merged, batched contour: one mesh and one material per event, never one per cell. */
+  function buildCartoonOutlineGeometry(plan, widthWorld, offsetWorld) {
+    const positions = []
+    const indices = []
+    for (const footprint of plan.faceFootprints) {
+      const normal = faceNormalWorld(footprint.face)
+      const first = worldCell(footprint.cells[0])
+      const last = worldCell(footprint.cells[footprint.cells.length - 1])
+      const along = last.clone().sub(first)
+      if (along.lengthSq() < 1e-9) continue
+      const direction = along.clone().normalize()
+      const side = new THREE.Vector3().crossVectors(normal, direction)
+      if (side.lengthSq() < 1e-9) continue
+      side.normalize().multiplyScalar(widthWorld * 0.5)
+      const extension = direction.clone().multiplyScalar(cellSize * 0.5)
+      const a0 = first.clone().sub(extension).addScaledVector(normal, offsetWorld)
+      const a1 = last.clone().add(extension).addScaledVector(normal, offsetWorld)
+      const base = positions.length / 3
+      positions.push(
+        a0.x - side.x, a0.y - side.y, a0.z - side.z,
+        a0.x + side.x, a0.y + side.y, a0.z + side.z,
+        a1.x + side.x, a1.y + side.y, a1.z + side.z,
+        a1.x - side.x, a1.y - side.y, a1.z - side.z,
+      )
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
+    }
+    if (!indices.length) return null
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setIndex(indices)
+    geometry.computeVertexNormals()
+    geometry.computeBoundingSphere()
+    return geometry
+  }
+
+  /**
+   * §7.1's scope cancel. A settings panel, the help card, the home cover, a hidden tab, the end
+   * of the run, a restart and a resume all close the NORMAL clear's scope: `clearScopeEpoch`
+   * advances so any late callback is stale, and the clear's own particles and contours go away.
+   * It deliberately does NOT touch the item bursts, the record card, the reward note or the audio.
+   */
+  /**
+   * §3.1's FIRST gate: show all eight tiles, one at a time, through the very path the runtime
+   * clear uses -- Quarks `RenderMode.BillBoard` + `startTileIndex` + the shipped material -- so a
+   * capture can prove the atlas is sampled at the right tile, right way up, with the right
+   * direction, instead of proving that a file finished loading. Returns the world centre of each
+   * quad so a probe can measure what it actually got.
+   */
+  function showAtlasGate({ tileWorld = 1.1, spacing = 1.7, yOffset = 2.6 } = {}) {
+    const ids = CARTOON_CLEAR.atlas.order
+    const columns = CARTOON_CLEAR.atlas.columns
+    const rows = CARTOON_CLEAR.atlas.rows
+    const start = performance.now()
+    const specs = ids.map((id, index) => {
+      const column = index % columns
+      const row = Math.floor(index / columns)
+      const point = new THREE.Vector3(
+        (column - (columns - 1) / 2) * spacing,
+        ((rows - 1) / 2 - row) * spacing + yOffset,
+        6,
+      )
+      return {
+        id,
+        index,
+        centre: point,
+        count: 1,
+        delay: 0,
+        life: 6,
+        speed: 1,
+        points: [point.clone()],
+        velocities: [new THREE.Vector3(0, 0, 0)],
+        rotations: [0],
+        // The quad is the tile's own 128px square, so the gate measures the whole tile rather
+        // than the graphic inside it -- `visibleSize()`'s coverage correction is for the runtime
+        // clear and would make the gate read as a size test.
+        sizes: [tileWorld],
+        gravity: 0,
+      }
+    })
+    const record = { records: [], transients: [] }
+    const spawn = addCartoonSystems(specs, record, new THREE.Vector3(0, 0, 0))
+    // One synchronous step so the burst exists by the time the caller screenshots, rather than
+    // depending on whether a frame happened to land in between.
+    particleRenderer.update(0.001)
+    camera.updateMatrixWorld()
+    const box = getCanvasRect?.() || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+    const scratch = new THREE.Vector3()
+    return {
+      spawned: spawn.count,
+      systems: record.records.length,
+      startedAt: start,
+      atlas: cartoon.status,
+      columns,
+      rows,
+      tileWorld,
+      spacing,
+      tiles: specs.map((spec) => {
+        // CSS pixels inside the canvas box the frame is drawn into. `project()` is the canonical
+        // camera; the render camera is a copy of it, so both agree on where the board is.
+        const projected = scratch.copy(spec.centre).project(camera)
+        const toScreen = (dx, dy) => {
+          const p = new THREE.Vector3(spec.centre.x + dx, spec.centre.y + dy, spec.centre.z).project(camera)
+          return {
+            x: box.left + (p.x * 0.5 + 0.5) * box.width,
+            y: box.top + (0.5 - p.y * 0.5) * box.height,
+          }
+        }
+        const centre = {
+          x: box.left + (projected.x * 0.5 + 0.5) * box.width,
+          y: box.top + (0.5 - projected.y * 0.5) * box.height,
+        }
+        // The tile's OWN on-screen size, measured from its own corners. A single global pitch was
+        // tried first and under-measured the central tiles by ~10%: the camera looks at the origin
+        // from an angle, so a tile four units off-axis is not at the same depth as its neighbour.
+        const half = tileWorld / 2
+        const right = toScreen(half, 0)
+        const top = toScreen(0, half)
+        return {
+          id: spec.id,
+          index: tileIndex(spec.id),
+          world: spec.centre.toArray(),
+          screen: centre,
+          screenSize: {
+            width: Math.hypot(right.x - centre.x, right.y - centre.y) * 2,
+            height: Math.hypot(top.x - centre.x, top.y - centre.y) * 2,
+          },
+        }
+      }),
+      live: liveCartoonSprites(),
+    }
+  }
+
+  function cancelCartoonScope() {
+    cartoon.scopeEpoch += 1
+    const now = performance.now()
+    for (const record of [...systemRecords]) {
+      if (record.pool !== 'cartoon') continue
+      record.until = Math.min(record.until, now)
+      record.pruneAt = Math.min(record.pruneAt ?? record.until, now)
+    }
+    transientEffects = transientEffects.filter((effect) => {
+      if (effect.pool !== 'cartoon') return true
+      effect.until = now
+      effect.elapsed = effect.duration
+      return true
+    })
+    for (const event of cartoon.events) event.until = Math.min(event.until, now)
+  }
+
+  function cartoonReport() {
+    const live = liveCartoonEvents()
+    const now = performance.now()
+    return {
+      atlas: { status: cartoon.status, error: cartoon.error, hasFrames: Boolean(cartoon.frames), tileSize: CARTOON_CLEAR.atlas.tile },
+      scopeEpoch: cartoon.scopeEpoch,
+      liveEvents: live.length,
+      liveSprites: liveCartoonSprites(),
+      liveCap: quality.lowPower ? CARTOON_CLEAR.live.lowPower : CARTOON_CLEAR.live.standard,
+      liveSystems: [...systemRecords].filter((record) => record.pool === 'cartoon' && now < record.until).length,
+      droppedByCap: cartoon.droppedByCap,
+      droppedByEvents: cartoon.droppedByEvents,
+      spawnedTotal: cartoon.spawnedTotal,
+      lastEvent: cartoon.lastEvent,
+      lastPlan: cartoon.lastPlan
+        ? {
+          physicalLineCount: cartoon.lastPlan.physicalLineCount,
+          rawLineCount: cartoon.lastPlan.rawLineCount,
+          duplicatedReports: cartoon.lastPlan.duplicatedReports,
+          uniqueCellCount: cartoon.lastPlan.uniqueCellCount,
+          intersections: cartoon.lastPlan.intersections.length,
+          outlineCellCount: cartoon.lastPlan.outlineCellCount,
+          outlineTruncated: cartoon.lastPlan.outlineTruncated,
+          faces: cartoon.lastPlan.faceFootprints.map((footprint) => `${footprint.face}:${footprint.axis}${footprint.index}`),
+        }
+        : null,
+    }
   }
 
   // ---------------------------------------------------------------- the event
@@ -592,116 +1445,23 @@ export function createEffects({
    * feedback level (scoring.js `rewardLevel` for a version-2 run, honors.js `feedbackLevel` for
    * a legacy one): this function never re-derives a level and never re-counts lines.
    *
-   * `reward` is the rewardEvent (v0.10.3 §4.1). When it is present the three categories add
-   * their own visual signatures — a face sweep + stamp per emptied face, a double-beat sparkle
-   * pair for a streak — and the event record carries which category was the headline. It never
-   * changes the BUDGET: §3.3 粒子使用整次事件预算，不乘类别数、面数或共享格数.
+   * v0.13.3: the NORMAL clear is now the cartoon clear below. What used to live here -- the paper
+   * budget chosen from `level`, the L1-L5 tail, the per-level decoration ladder and the
+   * `spawnChips()` allocation -- is superseded by §4.3's `physicalLineCount` table, so `level` and
+   * `reward` are still accepted (every caller passes them) and are recorded, but neither picks a
+   * budget any more. §4.1 states why: `level` is derived from the RAW face-line count, and a
+   * shared edge/corner inflates that. The reward's own presentation (the merged note, the main
+   * cue, the reward shake) is main's, and §6.4 keeps it exactly as it is.
    */
-  function spawnClearEffects(lines, level, { reward = null } = {}) {
+  function spawnClearEffects(lines, level, { reward = null, frontFace = null, visibleFaces = [] } = {}) {
     const ranked = Math.min(Math.max(0, Math.trunc(level) || 0), 5)
-    const reduced = prefersReducedMotion()
-    // §4.2: no safe margin means less decoration, not a smaller board.
-    const cramped = crampedViewport()
-    const table = quality.lowPower ? CELEBRATION.budgets.lowPower : CELEBRATION.budgets.standard
-    const tailSeconds = CELEBRATION.tailSeconds[ranked] || CELEBRATION.tailSeconds[1]
-    const entries = uniqueEntries(lines)
     eventId += 1
     const id = eventId
-    const surfaces = entries.length
-      ? entries.map(surfacePoint)
-      : [new THREE.Vector3().applyMatrix4(cubeGroup.matrixWorld)]
-    const center = centroidOfPoints(surfaces)
-    const now = performance.now()
-
-    // Bands first: the player has to see WHERE it cleared before anything celebrates (§4.2).
-    const seen = new Set()
-    let bandIndex = 0
-    for (const line of lines || []) {
-      const key = segmentKey(line)
-      if (seen.has(key)) continue
-      seen.add(key)
-      spawnBand(line, bandIndex, tailSeconds)
-      bandIndex += 1
-    }
-
-    const decorationCap = quality.lowPower ? CELEBRATION.decorationCap.lowPower : CELEBRATION.decorationCap.standard
-    let decorations = 0
-    const budgetDecoration = (spawn) => {
-      if (decorations >= decorationCap) return false
-      decorations += 1
-      spawn()
-      return true
-    }
-
-    // ---- FACE_CLEAR: the emptied faces light once and take a small stamp (§3.2) ------------
-    // Read from the EVENT's own `wipedFaces` — the face IDS Board.place() reported — never from
-    // facesHit: a shared edge counts a line on two faces, so facesHit would light faces that
-    // were not emptied at all (handoff §2.4).
-    const wipedFaces = Array.isArray(reward?.wipedFaces) ? reward.wipedFaces : []
-    for (const face of wipedFaces) {
-      // Reduced motion keeps a STATIC light instead of a sweep: the result is still announced,
-      // it just does not move (§8). The sweep is one pulse, never a flashing border.
-      if (!reduced) budgetDecoration(() => spawnFaceSweep(face, 0.02, tailSeconds))
-      budgetDecoration(() => spawnFaceStamp(face, reduced ? 0.02 : CELEBRATION.timing.bannerAt, tailSeconds))
-    }
-
-    // ---- CLEAR_STREAK: two short beats of star points, never a firework (§3.2) -------------
-    const streak = (reward?.rewards || []).find((entry) => entry.type === 'CLEAR_STREAK')
-    if (streak) {
-      const left = center.clone().addScaledVector(camera.up, 0.42 * cellSize)
-      const right = center.clone().addScaledVector(camera.up, -0.42 * cellSize)
-      budgetDecoration(() => spawnSparkle(left, 0.02, tailSeconds))
-      budgetDecoration(() => spawnSparkle(right, reduced ? 0.02 : 0.14, tailSeconds))
-    }
-
-    if (reduced) {
-      // §8: reduced motion keeps a STATIC small mark - the result is still announced, it just
-      // does not move. One mark, no travel, no flip.
-      budgetDecoration(() => spawnSeal(center.clone(), 0, 0.4))
-    } else {
-      budgetDecoration(() => spawnSparkle(center.clone(), 0.04, tailSeconds))
-      if (ranked >= 3) budgetDecoration(() => spawnSeal(center.clone(), CELEBRATION.timing.bannerAt, tailSeconds))
-      if (ranked >= 4 && !cramped) {
-        // §3/§8: the two-sided fan is the ONE decoration that cools down (≥1.2s). Missing it
-        // costs decoration only - the band, the score and the main sound all still happen.
-        const sideReady = now - lastSideEmitAt >= CELEBRATION.sideCooldownMs
-        if (sideReady) {
-          lastSideEmitAt = now
-          const left = center.clone().add(new THREE.Vector3(-0.9 * cellSize, 0.35 * cellSize, 0))
-          const right = center.clone().add(new THREE.Vector3(0.9 * cellSize, 0.35 * cellSize, 0))
-          const leftDir = new THREE.Vector3(-1, 0.3, 0)
-          const rightDir = new THREE.Vector3(1, 0.3, 0)
-          for (let i = 0; i < CELEBRATION.ribbon.max; i += 1) {
-            budgetDecoration(() => spawnRibbon(left, leftDir, 0.02 + i * 0.03, tailSeconds, celebrationColors.sky))
-            budgetDecoration(() => spawnRibbon(right, rightDir, 0.06 + i * 0.03, tailSeconds, celebrationColors.rose))
-          }
-        }
-      }
-    }
-
-    const budget = reduced ? 0 : Math.round((table[ranked] ?? 0) * (cramped ? CELEBRATION.cramped.budgetFactor : 1))
-    const spawned = spawnChips({ entries, count: budget, tailSeconds })
-    lastEvent = {
-      id,
-      level: ranked,
-      lines: (lines || []).length,
-      uniqueCells: entries.length,
-      budget,
-      spawned,
-      decorations,
-      cramped,
-      // The headline category this event was presented as, or null for a plain clear. The
-      // probe reads it to tell "the note was owed" from "the note was painted".
-      primaryType: reward?.primaryType || null,
-      wipedFaces: [...wipedFaces],
-      streak: streak ? streak.count : 0,
-      reducedMotion: reduced,
-      startedAt: now,
-      // §7.3 「效果注册到 eventId／runEpoch」: a restart, a scene change or a home press
-      // cancels by epoch, so a tail can never survive into the next run.
-      epoch: eventEpoch,
-    }
-    return { ...lastEvent }
+    const event = spawnCartoonClear(lines, ranked, { reward, frontFace, visibleFaces })
+    // The two fields the old record carried that callers still read: which event this was, and
+    // which level the rules layer announced. Neither picks a budget any more (§4.1).
+    lastEvent = { ...event, id, level: ranked, rewardType: reward?.primaryType || null }
+    return lastEvent
   }
 
   // §4.3: the four tools are NOT four recolours of one burst. Each gets its own composition and
@@ -776,7 +1536,7 @@ export function createEffects({
   function pruneSystems() {
     const now = performance.now()
     for (const record of [...systemRecords]) {
-      if (now < record.until) continue
+      if (now < (record.pruneAt ?? record.until)) continue
       systemRecords.delete(record)
       // quarks' autoDestroy may already have taken this one out of the batch; disposing twice
       // is harmless but must never take the frame loop down with it (§7.3).
@@ -808,7 +1568,21 @@ export function createEffects({
     for (const record of systemRecords) record.until = Math.min(record.until, now + 120)
   }
 
+  /**
+   * §5's REAL emission delay. A system is created (and batched) at t=0 but stays PAUSED until its
+   * own beat, so 「110ms 弹出」 is measured from the settled placement and not from a nominal
+   * constant that the burst ignored. This is the one clock: the frame loop, never setTimeout.
+   */
+  function releaseCartoonEmission(now) {
+    for (const record of systemRecords) {
+      if (record.pool !== 'cartoon') continue
+      if (!record.system.paused) continue
+      if (now >= record.emitAt) record.system.paused = false
+    }
+  }
+
   function update(delta) {
+    releaseCartoonEmission(performance.now())
     particleRenderer.update(delta)
     updateTransientEffects(delta)
     pruneSystems()
@@ -965,6 +1739,7 @@ function report() {    // `liveParticles` is the system's OWN particle count: th
       liveParticles,
       decorations: countKind('decoration'),
       bands: countKind('band'),
+      outlines: countKind('outline'),
       transients: transientEffects.length,
       shake: Number(cameraShake.toFixed(4)),
       // The reward pulse, in the unit it was ASKED for and in the unit it is applied in. A
@@ -982,6 +1757,11 @@ function report() {    // `liveParticles` is the system's OWN particle count: th
       lowPower: Boolean(quality.lowPower),
       event: lastEvent,
       eventId,
+      // §4.3 「两个系统并行时的总live计数必须在report显式分项」: the celebration's own pool and the
+      // normal clear's are counted apart, so "the new pool looks fine" can never hide a total that
+      // is over. `cartoon` carries the planner's own numbers as well.
+      celebrationChips: liveChipCount('celebration'),
+      cartoon: cartoonReport(),
     }
   }
 
@@ -1009,6 +1789,15 @@ function report() {    // `liveParticles` is the system's OWN particle count: th
     clearTransientEffects,
     resetShake,
     clearSlowMo,
+    // v0.13.3 (handoff §3.1/§7.1): the atlas is loaded lazily and never blocks the first move,
+    // `cancelCartoonScope` is the scoped cancel §7.1 asks for, and `cartoonReport` is the
+    // planner's own read-out.
+    loadCartoonAtlas,
+    cancelCartoonScope,
+    cartoonReport,
+    // The §3.1 sampling gate. DEV-only caller (main's `__voxalblastDev.atlasGate`), but the
+    // function has to live here because it is the Quarks path, not a mock of it.
+    showAtlasGate,
     // haptics (sound lives in src/audio/gameAudio.js since v0.10.1)
     playHaptic,
   }

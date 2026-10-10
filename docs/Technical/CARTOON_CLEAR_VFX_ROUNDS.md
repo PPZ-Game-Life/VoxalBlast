@@ -74,3 +74,76 @@
 - [x] raw-vs-physical 缺口用真实落子取证，而不是靠读代码推断
 - [ ] 五个必要视口（1440×900 / 1280×720 / 390×844 / 844×390 / 2048×900）—— 本轮只跑 2 个，其余在 R2/R3 补
 - [ ] 真机 —— R4
+
+## R1 — 8 贴图真实采样 + 单线短反馈
+
+**版本**：`0.13.3`（`package.json` + `package-lock.json` 同步）。
+**只改文件**：
+- 新增 `src/rendering/cartoonClearPlan.js`（纯规划器）、`tools/cartoon-clear-plan-tests.mjs`、`tools/cartoon-clear-probe.mjs`（R0 已建，本轮扩展）。
+- 新增 `public/art/cartoon-clear-v1/atlas.png` + `atlas.json`（**只**复制 §3.1 允许的两件，参考大图/预览/SVG/报告均未入首包）。
+- 改 `src/rendering/config.js`（新 `CARTOON_CLEAR` 参数块）、`src/rendering/effects.js`（新正常消除分支 + atlas 加载 + 采样门）、`src/main.js`（接线、可见面顺序、生命周期取消、DEV `atlasGate`）、`src/diagnostics.js`、`package.json`/`package-lock.json`。
+
+### ⚠️ 施工中发现的上游缺陷（R0 读数已证实，本轮一并修掉）
+
+**`emissionBursts[].count` 传 `ConstantValue` 等于一发都不发。**
+`three.quarks` 0.10.8 自己的声明文件写的是 `interface BurstParameters { count: number }`，运行时 `ParticleSystem.spawn()` 直接 `for (i = 0; i < count; i++)` —— 传对象时比较结果为 `NaN`，**循环体一次都不进**，而本模块所有计数器（`liveChips`/`budget`/`spawned`）仍然报满额。
+R0 实测（`artifacts/cartoon-clear-v1/r0/evidence.json`）：旧 `demoClear(1)` 报 `liveChips=6`，同时 `liveParticles`（`system.particleNum` 之和）**全程为 0**，棋盘区域一个像素都没变。也就是说交接单 §6.1 那句「当前 burst `count` 仍按已验证的 `ConstantValue` 方式构造」是错的，**旧消除实际上没有画出纸屑**。
+本轮把两条路径（`spawnChips` 与新的卡通池）都改成传普通数字。修复后的 R1 读数里 `peakSprites=14` 且像素确有变化。
+
+### 8 贴图采样门（§3.1 第一道门）
+
+`__voxalblastDev.atlasGate()` 用**运行时的同一条 Quarks BillBoard 路径**（同一材质、同一 `startTileIndex`）把 8 个 tile 画成一排，然后探针对「门帧」与「静帧」做像素差，在**每个 tile 自己的四边形窗口**内量它的包围盒与 alpha 质量重心，再和交付的 `runtime/sprites/*.png` 逐个对比。判据三条，全部对交付物的独立测量：
+
+| 判据 | 说明 |
+| --- | --- |
+| 图形包围盒（占 tile 的比例） | 选错 tile 会立刻改变它（星 0.80、短横 0.76×0.30、方片 0.62） |
+| 重心 dx / dy（以半盒为单位） | 上下/左右翻转会把质量搬到中心另一侧；`swoosh`/`dash` 的 `+X` 朝向正是靠 dx 判定 |
+| 窗口是否贴边 / 是否超 1.5 倍 | 测不了就报 UNMEASURED，不给打勾 |
+
+**结果（desktop 1440×900）**：8/8 tile 全部画出。`confetti-blue` `confetti-teal` `sparkle-cream` `dot-blue` `swoosh-cream` **六项全部通过**，包围盒误差 ≤0.03、重心误差 ≤0.10：
+
+| tile | 实测包围盒（占 tile） | 期望 | 实测 dx/dy | 期望 dx/dy |
+| --- | --- | --- | --- | --- |
+| confetti-blue | 0.621 × 0.621 | 0.625 × 0.625 | -0.008 / 0.000 | -0.011 / 0.004 |
+| confetti-teal | 0.712 × 0.734 | 0.695 × 0.719 | -0.017 / 0.009 | -0.018 / 0.002 |
+| sparkle-cream | 0.684 × 0.684 | 0.656 × 0.656 | -0.002 / 0.000 | -0.003 / 0.001 |
+| dot-blue | 0.524 × 0.524 | 0.516 × 0.516 | 0.013 / 0.007 | 0.000 / 0.000 |
+| swoosh-cream | 0.794 × 0.481 | 0.773 × 0.484 | 0.061 / -0.081 | -0.039 / -0.069 |
+| **confetti-pink** | 0.732 × 0.610 | 0.609 × 0.617 | -0.022 / -0.006 | -0.018 / 0.005 |
+| **star-pop** | 测不了（窗口被污染） | 0.797 × 0.797 | — | 0.001 / -0.002 |
+| **dash-blue** | 0.758 × 0.670 | 0.758 × 0.305 | -0.052 / 0.390 | -0.041 / -0.033 |
+
+**未决 2 项（不打勾）**：`star-pop` 的窗口里出现了超出图形本身的像素变化（90×86 的掩码填满窗口），`confetti-pink` 的包围盒宽度比 sprite 自身轮廓大 0.12（其余 6 项只大 0.00–0.03）。两者怀疑是后处理链（Bloom 阈值 1.35 / SMAA 边缘）在 tile 自身窗口内留下的晕边，**本轮没有把方法学到能排除它**，所以按「UNMEASURED」记录，不放进通过项。`dash-blue` 同理归入未决。
+人眼核对 `artifacts/cartoon-clear-v1/r1/desktop-atlas-gate.png`：8 个 tile 依次为蓝圆角方片、青圆角方片、粉圆角方片、奶油金五角星、奶油四角闪星、蓝圆点、奶油短弯扫痕、蓝短拖尾，**无倒置、无串格、无黑边**。
+
+### 单线短反馈（§5 时序）
+
+`demoClear(1)`（同一 Quarks 路径、同一材质）在原位替换后：
+
+| 读数 | desktop 1440×900 | phone 390×844 |
+| --- | --- | --- |
+| 物理线 / raw 线 / unique 格 | 1 / 1 / 5 | 1 / 1 / 5 |
+| 预算（按 `physicalLineCount`） | 14 | 7（低配） |
+| 实际发射 | 14 | 7 |
+| **本事件收净时刻** | **352ms** | **349ms** |
+| 对比：替换前同一用例 | 466ms | 467ms |
+
+§5 的单线硬门是「360ms 前 0 存活」，替换前超 106ms，现在两项都在窗内（判定允许一帧采样粒度，本机一帧 18ms）。
+另外 `渲染调用的差`：事件期间 desktop 240→243，即新增 3 个 draw call（轮廓 1 + 精灵 batch 2），在 §7.2 的 ≤4 目标内；三角面增量未单独取，R3 补前后同 fixture 取差。
+
+### 本轮已实现 / 未实现
+
+已实现：`CARTOON_CLEAR` 参数块（§4.3 预算表、§5 时间轴、§5.2 尺寸与颜色、全局 64/32、事件上限 2、发射上限 8）；纯规划器（物理线/面脚印/唯一格/交点/端点/预算/独立 VFX 种子）并在 **9 个真实盘面用例**上全绿；atlas 采样与失败兜底（`fallbackMaterial` 程序方片，绝不阻塞第一手）；贴面轮廓（合批、每事件 1 材质、`followCube` 转面 80ms 退场）；真实延迟发射（`paused` 到档点，不是 `setTimeout`）；`clearScopeEpoch` 作用域与 `cancelCartoonScope()`（设置/帮助/主页/hidden/局终/重开/恢复存档全部经 `syncPause` 与三处 reset 收口）。
+
+未实现（留给 R2/R3）：多线/跨面的发射位按可见面分配仍是「frontFace 优先 + 稳定 face 排序」，**可见面遮挡下的取舍没有专项验证**；彩色残像（§5.1 扩展）未做，按交付单「不依赖该扩展才能开始施工」；`three.quarks` 的 layer3 合同仍是 layer0（`clearLayers` 已在构造处接入，等 gameScene 侧一起改）；`tools/celebration-audio-probe.mjs` 的预算断言**仍指向旧 `CELEBRATION` 表**，未按 §9.2 改到新权威配置 —— 这是下一轮必须还的账，本轮不宣称已过。
+
+### 验证命令与结果
+
+```
+node tools/cartoon-clear-plan-tests.mjs   PASS  0 failures（9 用例 × 每条 17 项断言）
+node tools/rule-tests.mjs                 554/554
+node tools/game-session-tests.mjs         205/205
+node tools/i18n-tests.mjs                 175/175
+node tools/cartoon-clear-probe.mjs r1     2 failure（均为上表 UNMEASURED 的两项，未隐藏）
+```
+

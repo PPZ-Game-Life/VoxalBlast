@@ -73,3 +73,20 @@ Composition: wide landscape, horizon around the lower half. The entire central 4
 Lighting: gentle warm sunshine from upper left, cool soft atmospheric depth in mountains, bright inviting spring afternoon.
 Constraints: environment only. Absolutely NO cubes, blocks, puzzle board, pedestal, game pieces, UI, panels, frames, buttons, icons, numbers, letters, words, score, arrows, glows, floating objects, characters, people, logos or watermark. Do not recreate the screenshot's interface. No hard vector shapes, no flat clipart, no photorealism.
 ```
+
+## Cartoon clear sprite atlas — v0.13.3
+
+- Runtime assets: `cartoon-clear-v1/atlas.png` (512 × 256, 4 × 2 tiles of 128 × 128, 53,431 bytes) and
+  `cartoon-clear-v1/atlas.json` (5,650 bytes). Together 59,081 bytes, inside the handoff §7.2 100KiB budget.
+- Eight tiles, numbered from the PNG top-left: `confetti-blue`, `confetti-teal`, `confetti-pink`,
+  `star-pop` (top row) and `sparkle-cream`, `dot-blue`, `swoosh-cream`, `dash-blue` (bottom row).
+  The order is the atlas JSON own `layout.order`; the runtime reads each tile index from there.
+- Authored as editable SVGs and rasterised by `tools/build-cartoon-clear-assets.py`; the sources, the
+  reference storyboards, the preview sheet and the check report stay in `docs/assets/cartoon-clear-v1/`
+  and are NOT deployed here (handoff §3.1).
+- Sampling contract: sRGB, `flipY=true`, no mipmaps, `LinearFilter`, `ClampToEdge`, straight
+  (unassociated) alpha, white modulation, `NormalBlending`, `depthTest=true`, `depthWrite=false`.
+- `swoosh-cream` and `dash-blue` are authored pointing +X; the runtime rotates them to the screen
+  angle of their own direction.
+- Loaded from the Vite base URL by `rendering/effects.js`. While it loads, or if it fails, the clear
+  draws procedural quads and the game stays playable: the atlas never blocks a move.

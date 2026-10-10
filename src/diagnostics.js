@@ -415,6 +415,7 @@ export function createDiagnostics({
         // path and not a mock of it.
         dropAt: (options) => dev.dropAt(options),
         clearCelebration: () => dev.clearCelebration(),
+        atlasGate: (options) => dev.atlasGate(options),
         audioReset: () => dev.audioReset(),
         audioUnlock: () => dev.audioUnlock(),
         // G1 grounding diagnostics (MATERIAL_GROUNDING_REWORK_HANDOFF §5): the pedestal-contact

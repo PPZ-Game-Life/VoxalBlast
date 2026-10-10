@@ -1,7 +1,7 @@
 {
   "name": "voxalblast",
   "private": true,
-  "version": "0.13.2",
+  "version": "0.13.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -40,7 +40,10 @@
     "probe:ui-paint": "node tools/floating-world-ui-paint.mjs",
     "evidence:motion": "node tools/floating-world-motion-evidence.mjs",
     "probe:buffer": "node tools/floating-world-tier-buffer-probe.mjs",
-    "probe:contour": "node tools/contour-aa-probe.mjs"
+    "probe:contour": "node tools/contour-aa-probe.mjs",
+    "test:cartoon": "node tools/cartoon-clear-plan-tests.mjs",
+    "fixtures:cartoon": "node tools/cartoon-clear-fixtures.mjs",
+    "probe:clear": "node tools/cartoon-clear-probe.mjs"
   },
   "dependencies": {
     "postprocessing": "^6.39.4",

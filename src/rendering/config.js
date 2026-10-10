@@ -882,6 +882,103 @@ export const CELEBRATION = Object.freeze({
 })
 
 // ============================================================
+// Cartoon clear VFX (docs/Technical/CARTOON_CLEAR_VFX_HANDOFF.md §4.3/§5)
+// ============================================================
+// The NORMAL clear only. `CELEBRATION` above keeps owning the item bursts, the new-record card
+// and the legacy paths; the two tables coexist and are deliberately not merged, because §0 fixed
+// the ownership line: 「本轮接管正常消除的局部图形、时序、粒子与清理」.
+//
+// Every number here is in the doc's own unit. Durations are WALL-CLOCK seconds and are never
+// multiplied by the L5 slow-motion dip (§6.4 「新FX寿命绝不乘慢放系数」); sizes are in CELLS
+// (§5.2) and are converted through `cellPitch` by the effects layer; the sprite sizes are the
+// VISIBLE graphics, so a tile whose art occupies 70% of its width is scaled by 1/0.7.
+export const CARTOON_CLEAR = Object.freeze({
+  // §3.1 部署合同: the atlas is the only thing this round ships to the runtime.
+  atlas: Object.freeze({
+    image: 'art/cartoon-clear-v1/atlas.png',
+    json: 'art/cartoon-clear-v1/atlas.json',
+    columns: 4,
+    rows: 2,
+    tile: 128,
+    // BillBoard UV chunk numbering starts at the top-left and runs left to right, top to bottom —
+    // the same order the pack's own `layout.order` is written in.
+    order: Object.freeze([
+      'confetti-blue', 'confetti-teal', 'confetti-pink', 'star-pop',
+      'sparkle-cream', 'dot-blue', 'swoosh-cream', 'dash-blue',
+    ]),
+  }),
+
+  // §5 timeline in seconds from t=0 (the settled placement). `singleLineEnd` / `multiLineEnd` are
+  // the §5 rows 「单线360ms前0存活」 and 「420ms后本事件的轮廓、闪点和粒子全部为0」.
+  timing: Object.freeze({
+    outlineIn: 0,
+    arcFrom: 0.065,
+    arcTo: 0.14,
+    emitFrom: 0.11,
+    emitTo: 0.22,
+    fadeFrom: 0.22,
+    singleLineEnd: 0.36,
+    multiLineEnd: 0.42,
+    // §5 「同批起亮，多线错峰≤25ms」.
+    staggerMax: 0.025,
+    // §4.2 「所有发射在140ms前完成」. Nothing may be scheduled later than this.
+    emissionDeadline: 0.14,
+  }),
+
+  // §5.2. Confetti is a small square chip, not a broken cube: 0.12–0.20 cell, 4–9 CSS px on a
+  // phone. `sizeRatio` scales a tone's chip inside that band so the handful does not read flat.
+  confetti: Object.freeze({
+    minSize: 0.12,
+    maxSize: 0.20,
+    // §5.2's launch: 2.0–3.0 cells/s along the cleared line's own end vector, 0.8–1.4 across it,
+    // 0.05–0.15 out of the face, ~4–7 cells/s² down. A short arc, not a fountain.
+    alongSpeed: Object.freeze([2.0, 3.0]),
+    tangentSpeed: Object.freeze([0.8, 1.4]),
+    normalSpeed: Object.freeze([0.05, 0.15]),
+    gravity: Object.freeze([4, 7]),
+    spinMaxDeg: 80,
+    upBias: 0.35,
+    // 蓝/青为主，粉 ≤15% (§5.2).
+    pinkShare: 0.15,
+  }),
+
+  // §5.2: star 0.18–0.28 cell (7–12 px), never more than half a cell; one 0.8→1.1→0 scale
+  // envelope, a single local flash.
+  star: Object.freeze({ minSize: 0.18, maxSize: 0.28, maxHalfCell: 0.5, peak: 1.1, floor: 0.8 }),
+  // §5.2: dot 0.05–0.08 cell; below a 2px presence it is dropped rather than drawn as a speck.
+  dot: Object.freeze({ minSize: 0.05, maxSize: 0.08, minPx: 2 }),
+  // §5.2: the arc's visible length is 0.20–0.40 cell and it never runs past 0.45 cell from the
+  // endpoint it belongs to.
+  arc: Object.freeze({ minLength: 0.20, maxLength: 0.40, maxFromEndpoint: 0.45 }),
+  // §5.2 「贴面轮廓约1–1.5 CSS px，opacity≤0.75，一次亮起收净」.
+  outline: Object.freeze({
+    widthPx: Object.freeze([1.0, 1.5]),
+    opacity: 0.75,
+    // §6.2: the contour is drawn just off the real surface to keep it out of z-fighting; the old
+    // 0.94 fixed scale is not reused.
+    surfaceOffset: Object.freeze([0.005, 0.012]),
+    maxCells: 150,
+    duration: 0.30,
+  }),
+  // §5.2's palette. Only the contour needs a colour here: every sprite's colour is baked into
+  // its own atlas tile, and §5.2 forbids giving a line its own random tone.
+  colors: Object.freeze({ outline: 0x20334c, star: 0xfff1cc }),
+
+  // §4.3's global ceilings. `live` is the whole new sprite decoration pool, `events` how many
+  // overlapping clears may exist (a third retires the oldest tail, never the current line's
+  // confirmation).
+  live: Object.freeze({ standard: 64, lowPower: 32 }),
+  maxEvents: 2,
+  // §4.2 「最多8个装饰发射位」.
+  emitterCap: 8,
+  // §5.2's `cellPitch` -> CSS px assumption for the 「小于2px就不发」 rule; the effects layer
+  // refreshes it from the real projection once a frame.
+  fallbackCellPx: 26,
+  // §4.3 「手机横屏/安全边距不足」: a viewport this short or narrow halves the decoration.
+  cramped: Object.freeze({ maxHeight: 620, maxWidth: 360 }),
+})
+
+// ============================================================
 // Reward feedback signatures (SCORE_REWARD_SIMPLIFICATION_HANDOFF.md §3.2)
 // ============================================================
 // The three categories must be TELLABLE APART, not just louder or quieter: each has its own
