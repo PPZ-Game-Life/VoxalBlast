@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "generator": "tools/build-impact-feedback-assets.py",
+  "geometry": {
+    "type": "rounded-box",
+    "nominalDimensions": [1.0, 1.0, 1.0],
+    "pivot": [0.0, 0.0, 0.0],
+    "cornerRadius": 0.12,
+    "segmentsPerFaceAxis": 6,
+    "normalPolicy": "analytic rounded-box normals; duplicated face-grid vertices retain matching edge normals",
+    "faceColorPolicy": "one primitive and one white material; top/front/side tones are linear-light COLOR_0 vertex colors converted from the listed sRGB hex values"
+  },
+  "variants": {
+    "blue": {"base": "#2F70E8", "top": "#62A5FF", "front": "#2F70E8", "side": "#1E54BE"},
+    "teal": {"base": "#18BBA6", "top": "#55D9C8", "front": "#18BBA6", "side": "#0B877A"},
+    "pink": {"base": "#E65B86", "top": "#F38EAC", "front": "#E65B86", "side": "#B73E67"}
+  },
+  "material": {"baseColorFactorLinear": [1.0, 1.0, 1.0, 1.0], "metallicFactor": 0.0, "roughnessFactor": 0.72, "doubleSided": false, "alphaMode": "OPAQUE", "textures": "none"},
+  "runtimeOutputs": ["runtime/cube.glb", "runtime/cube-blue.glb", "runtime/cube-teal.glb", "runtime/cube-pink.glb"]
+}

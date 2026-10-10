@@ -244,6 +244,210 @@ export function vfxSeed(eventKey, plan) {
   return hash >>> 0
 }
 
+// ============================================================================================
+// PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md §4 — where the light comes FROM
+// ============================================================================================
+// v0.13.4 R0. The old plan knew which physical lines existed but nothing about WHERE the piece
+// landed on them, so the presentation layer had no honest answer to "this hand fell here, so the
+// light leaves from here" and reached for the piece's screen position instead (§4.3 forbids
+// exactly that). Everything below is the pure half of §4: it turns (physical line, placed cells)
+// into a continuous origin, two branch distances and two arrival times, and touches no clock, no
+// THREE and no board state.
+//
+// The numbers are the doc's own contract, kept in one frozen object so config.js, the effects
+// layer and the tests cannot drift apart:
+export const SWEEP_CONTRACT = Object.freeze({
+  // §4.5 「到达式固定为 arrivalMs = 35 + distanceCells / 32 * 1000」
+  startMs: 35,
+  speedCellsPerSecond: 32,
+  // §5.1 「落点后35ms启动，32 cell/s … 到达即结束且不晚于200ms」
+  endMaxMs: 200,
+  // §4.4 「负端外边界固定为-0.5、正端外边界固定为4.5」(derived per line, see `lineBounds`)
+  minusBoundary: -0.5,
+  plusBoundary: 4.5,
+})
+
+/** §4.5's arrival formula, alone, so a probe can recompute a reported arrival without the plan. */
+export function sweepArrivalMs(distanceCells, contract = SWEEP_CONTRACT) {
+  return contract.startMs + (Math.max(0, distanceCells) / contract.speedCellsPerSecond) * 1000
+}
+
+/**
+ * §4.4's index range for a line: cell CENTRES are the integers 0..n-1, and the outer boundaries
+ * are half a cell beyond each end. Derived from the line's own length rather than hard-coded to
+ * 5, because the DEV fixtures build shorter hand-made descriptors and a hard 4.5 would silently
+ * invent a boundary those lines do not have.
+ */
+export function lineBounds(length) {
+  const n = Math.max(1, Math.trunc(length) || 1)
+  return { minus: -0.5, plus: n - 1 + 0.5, lastIndex: n - 1 }
+}
+
+/**
+ * §4.1–§4.5 for ONE physical line. `placedKeys` is a `Set` of `"x,y,z"` strings: membership is the
+ * whole question, because `placedCells ∩ line.cells` decides both whether the line is legal and
+ * where its origin sits.
+ *
+ * The two things §4 insists on and this function therefore guarantees:
+ *   * `originT` is a CONTINUOUS mean, so several hits produce ONE origin (§4.2) and a
+ *     non-contiguous hit set can put that origin on a cell the player never placed (§4.2 「实现
+ *     不得假设起点本身一定属于placedCells」);
+ *   * every number that crosses to the renderer is finite — `hitCount === 0` is reported as
+ *     `originFallback` rather than becoming a NaN origin downstream (§4.1).
+ */
+export function linePropagation(line, placedKeys, contract = SWEEP_CONTRACT) {
+  const bounds = lineBounds(line.cells.length)
+  const hitIndexes = []
+  for (let index = 0; index < line.cells.length; index += 1) {
+    if (placedKeys.has(key3(line.cells[index]))) hitIndexes.push(index)
+  }
+  const originFallback = hitIndexes.length === 0
+  const originT = originFallback
+    ? (line.cells.length - 1) / 2
+    : hitIndexes.reduce((sum, index) => sum + index, 0) / hitIndexes.length
+  const minusDistance = originT - bounds.minus
+  const plusDistance = bounds.plus - originT
+  return {
+    key: line.key,
+    face: line.face,
+    axis: line.axis,
+    length: line.cells.length,
+    hitIndexes,
+    hitCount: hitIndexes.length,
+    originFallback,
+    originT: Number.isFinite(originT) ? originT : 0,
+    minus: {
+      direction: -1,
+      distanceCells: minusDistance,
+      arrivalMs: sweepArrivalMs(minusDistance, contract),
+      outward: line.outward.map((value) => -value),
+    },
+    plus: {
+      direction: 1,
+      distanceCells: plusDistance,
+      arrivalMs: sweepArrivalMs(plusDistance, contract),
+      outward: line.outward.map((value) => value),
+    },
+    maxDistanceCells: Math.max(minusDistance, plusDistance),
+  }
+}
+
+/** The face-local (u, v) of a lattice cell on a given face — the inverse of board.js's FACE_LATTICE. */
+export function faceUv(face, cell) {
+  const [x, y, z] = cell
+  if (face === '+z' || face === '-z') return [x, y]
+  if (face === '+x' || face === '-x') return [y, z]
+  return [x, z] // '+y' / '-y'
+}
+
+/**
+ * §4.3 「originWorld由同一晶格/棋盘变换对连续originT求出」 — this returns the CONTINUOUS face-local
+ * coordinate, not a world position: the lattice transform belongs to boardView, and keeping it out
+ * of here is what lets the whole file stay testable in plain `node`.
+ *
+ * Face-local coordinates are monotone in the line's own lattice axis for all six faces, so
+ * interpolating between the two end cells' (u, v) at `originT` IS the lattice point the doc asks
+ * for — no per-face table, no assumption that the origin lands on a cell.
+ */
+export function lineOriginUv(line, originT) {
+  const first = faceUv(line.face, line.cells[0])
+  const last = faceUv(line.face, line.cells[line.cells.length - 1])
+  const span = Math.max(1, line.cells.length - 1)
+  const t = originT / span
+  return [first[0] + (last[0] - first[0]) * t, first[1] + (last[1] - first[1]) * t]
+}
+
+/**
+ * §4.1's per-line work, for every physical line of a plan, plus the §4.6 endpoint list and the
+ * §5.1 placement pulse anchor. `placement.placedCells` is the snapshot main takes BEFORE the
+ * settle (§3.1); a placement that is missing it degrades to `originFallback` on every line and
+ * says so, rather than pretending to know where the piece landed.
+ */
+export function planPropagation(plan, placement, contract = SWEEP_CONTRACT) {
+  const placedKeys = new Set((placement?.placedCells || []).map((cell) => key3(cell)))
+  const lines = []
+  const faceRays = []
+  const endpoints = []
+  const seenEnd = new Map()
+
+  for (const line of plan.physicalLines) {
+    const propagation = linePropagation(line, placedKeys, contract)
+    // §4.1 「多个placed cells只产生一个起点」 — the origin is one (u,v) per physical line, and every
+    // face footprint of a shared ridge reuses this SAME lattice scalar rather than recomputing a
+    // speed or an arrival of its own.
+    propagation.originUv = lineOriginUv(line, propagation.originT)
+    lines.push(propagation)
+
+    for (const report of line.reports) {
+      // §5.2: one `face-ray` = one face footprint × one travel direction. A shared ridge with two
+      // footprints therefore has four rays but only ONE propagation identity above. The ray's own
+      // budget is `faceRays.maxPerEvent` (120), which is deliberately NOT the decorative pool.
+      for (const branch of [propagation.minus, propagation.plus]) {
+        faceRays.push({
+          lineKey: line.key,
+          face: report.face,
+          cells: line.cells,
+          direction: branch.direction,
+          originT: propagation.originT,
+          originUv: propagation.originUv,
+          originFallback: propagation.originFallback,
+          distanceCells: branch.distanceCells,
+          arrivalMs: branch.arrivalMs,
+          outward: branch.outward,
+          maxDistanceCells: propagation.maxDistanceCells,
+        })
+      }
+    }
+
+    // §4.6 「端点装饰按坐标去重」: two lines meeting at a corner report the same cell, and it gets
+    // one ornament with one arrival — the EARLIEST of the branches that reach it.
+    for (const branch of [propagation.minus, propagation.plus]) {
+      if (!(branch.distanceCells > 0)) continue // §4.6 「零长度段不发第二次重复爆点」
+      const cell = branch.direction < 0 ? line.cells[0] : line.cells[line.cells.length - 1]
+      const key = key3(cell)
+      const previous = seenEnd.get(key)
+      if (previous) {
+        if (branch.arrivalMs < previous.arrivalMs) previous.arrivalMs = branch.arrivalMs
+        continue
+      }
+      const entry = { cell, face: line.face, outward: branch.outward, line: line.key, direction: branch.direction, arrivalMs: branch.arrivalMs }
+      seenEnd.set(key, entry)
+      endpoints.push(entry)
+    }
+  }
+
+  // §5.1 「一个短奶油色确认，强调'这一手'」: the pulse belongs to where the PIECE landed, not to a
+  // line — a placement that clears two lines still gets one confirmation.
+  const placedCells = placement?.placedCells || []
+  const pulseUv = placedCells.length
+    ? (() => {
+      const uv = placedCells.map((cell) => faceUv(placement.face, cell))
+      return [
+        uv.reduce((sum, entry) => sum + entry[0], 0) / uv.length,
+        uv.reduce((sum, entry) => sum + entry[1], 0) / uv.length,
+      ]
+    })()
+    : null
+
+  const earliestEndMs = endpoints.length ? Math.min(...endpoints.map((end) => end.arrivalMs)) : null
+  return {
+    contract,
+    placedCellCount: placedCells.length,
+    placedKnown: placedCells.length > 0,
+    lines,
+    faceRays,
+    endpoints,
+    pulse: placement
+      ? { face: placement.face, uv: pulseUv, color: placement.color ?? null }
+      : null,
+    // §6.1: 「若无可见装饰端点，startAt使用计划最早物理端点到达时刻」 — the shake's own scheduler
+    // needs this number and must not invent one.
+    earliestEndMs,
+    fallbackLines: lines.filter((entry) => entry.originFallback).length,
+    maxArrivalMs: lines.reduce((max, entry) => Math.max(max, entry.maxDistanceCells), 0),
+  }
+}
+
 /** mulberry32 over the VFX seed: stable, allocation-free, and never the game's stream. */
 export function vfxRandom(seed) {
   let state = seed >>> 0

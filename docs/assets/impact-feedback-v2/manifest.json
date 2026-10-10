@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "packId": "impact-feedback-v2",
+  "artSource": "Original deterministic SVG geometry and generated rounded-box mesh; no concept screenshot pixels are cut, traced, or shipped.",
+  "scope": {
+    "included": [
+      "sources/*.svg",
+      "sources/cube-recipe.json",
+      "sources/feedback.recipe.json",
+      "runtime/**",
+      "preview.png",
+      "contact-sheet.png",
+      "motion-sampler.webp"
+    ],
+    "excluded": [
+      "ASSETS.md",
+      "asset-checks.json",
+      "tools/build-impact-feedback-assets.py",
+      "references/**"
+    ],
+    "referencesPolicy": "Builder never reads, hashes, copies, writes, or budgets references/**."
+  },
+  "palette": {
+    "navy": "#20334C",
+    "blue": "#2F70E8",
+    "teal": "#18BBA6",
+    "pink": "#E65B86",
+    "cream": "#FFF1CC",
+    "warmGold": "#E2A62B",
+    "sky": "#8ED8FF"
+  },
+  "rasterization": {
+    "backend": {
+      "backend": "Microsoft Edge headless SVG",
+      "edgePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "edgeVersion": "version query timed out; executableBytes=5403976",
+      "outputAt4x": [
+        2048,
+        512
+      ],
+      "pillow": "12.2.0"
+    },
+    "supersample": 4,
+    "downsample": "Pillow LANCZOS",
+    "transparentRgbDilationPx": 4,
+    "alpha": "straight/unassociated",
+    "colorSpace": "sRGB"
+  },
+  "networkBytes": {
+    "scope": "runtime/ only; source/docs/preview/contact/sampler/reference excluded",
+    "runtimeTotal": 232762,
+    "spriteSheetsAndMetadata": 174378,
+    "allFourGlbFilesIncludingDefaultAlias": 58384,
+    "recommendedFullThreeColorExcludingAlias": 218166,
+    "typicalDefaultBlueOnly": 188974
+  },
+  "sequences": {
+    "sweep-right": "runtime/sweep-right.json",
+    "endpoint-pop": "runtime/endpoint-pop.json",
+    "tap-feedback": "runtime/tap-feedback.json"
+  },
+  "models": {
+    "default": "runtime/cube.glb",
+    "blue": "runtime/cube-blue.glb",
+    "teal": "runtime/cube-teal.glb",
+    "pink": "runtime/cube-pink.glb",
+    "source": "sources/cube-recipe.json"
+  },
+  "feedbackRecipe": {
+    "runtime": "runtime/feedback.recipe.json",
+    "source": "sources/feedback.recipe.json",
+    "proposalNotRuntimeVerified": true
+  },
+  "inspection": {
+    "preview": "preview.png",
+    "contactSheet": "contact-sheet.png",
+    "motionSampler": "motion-sampler.webp",
+    "samplerIsGameIntegration": false
+  },
+  "files": [
+    {
+      "path": "docs/assets/impact-feedback-v2/sources/sweep-right.svg",
+      "kind": "editable vector animation source",
+      "bytes": 3558,
+      "sha256": "6b1d2a4312462ccc7af2096d2f6d0dd59676c229f891c8d1f43360e4b170b43e"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/sources/endpoint-pop.svg",
+      "kind": "editable vector animation source",
+      "bytes": 2599,
+      "sha256": "f447cadee250d677b948538d753981341b830f21cb326f2966f4dfa7999b4014"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/sources/tap-feedback.svg",
+      "kind": "editable vector animation source",
+      "bytes": 1191,
+      "sha256": "39817abf394012804512c20d7c561a5b18205dc6d7a271dc69009316344fe799"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/sources/cube-recipe.json",
+      "kind": "editable deterministic rounded-cube source recipe",
+      "bytes": 1117,
+      "sha256": "b5da5265bc289abbb4cedbbd8dd57c6ef8e13035a8faeef49e0131dbfec16167"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/sources/feedback.recipe.json",
+      "kind": "editable proposed feedback timing/sizing configuration",
+      "bytes": 2339,
+      "sha256": "ca39834ecbf2cbd7c31659e07076352e5bfb5c29931b904f87e87c348a851cc2"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/feedback.recipe.json",
+      "kind": "runtime proposed feedback timing/sizing configuration",
+      "bytes": 2977,
+      "sha256": "7c0a1491f1db50c8f11cc855c0dd23ec275d78fb9ffe77c302ec07c303740768"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/sweep-right.png",
+      "kind": "runtime transparent RGBA animation sheet",
+      "bytes": 79701,
+      "sha256": "d5312c9bc30ae2e9e7b8c779187f80690263329ead62859f3d5b5366b0a83892"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/sweep-right.json",
+      "kind": "runtime animation metadata",
+      "bytes": 4645,
+      "sha256": "9edf625ac49f115ebc10cab3af628e4ddb941132b80381c1a797ef8c24d08d2f"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/endpoint-pop.png",
+      "kind": "runtime transparent RGBA animation sheet",
+      "bytes": 48176,
+      "sha256": "f01a8ffa1a49e36171bb4d40ee4c3eb9d229f3100950f4e3d533755587273082"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/endpoint-pop.json",
+      "kind": "runtime animation metadata",
+      "bytes": 4351,
+      "sha256": "0137738604496328bdae89d44457b182043e66d4de0c28776647bbcb95a18941"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/tap-feedback.png",
+      "kind": "runtime transparent RGBA animation sheet",
+      "bytes": 31289,
+      "sha256": "97eaa9d32e7312f4f000033cc389dff4b610bac6bb83d8568aaa491be7b1a769"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/tap-feedback.json",
+      "kind": "runtime animation metadata",
+      "bytes": 3239,
+      "sha256": "dca330506f78ad5d2a333a1884e9435c7a74b75c13da83dbea96be102b386b8b"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/cube.glb",
+      "kind": "runtime GLB 2.0 rounded cube model",
+      "bytes": 14596,
+      "sha256": "fcabbfce0711e54aca7e8dba3531994edf4f1302ff11bbb8812eade1bb9b5ddd"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/cube-blue.glb",
+      "kind": "runtime GLB 2.0 rounded cube model",
+      "bytes": 14596,
+      "sha256": "fcabbfce0711e54aca7e8dba3531994edf4f1302ff11bbb8812eade1bb9b5ddd"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/cube-teal.glb",
+      "kind": "runtime GLB 2.0 rounded cube model",
+      "bytes": 14596,
+      "sha256": "a4cc8f939278d25104a8cb5cf19dc2b99483e503fa47b198c4d409bba6e787b5"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/runtime/cube-pink.glb",
+      "kind": "runtime GLB 2.0 rounded cube model",
+      "bytes": 14596,
+      "sha256": "6e86e632cf07ced56b28d4fe7d6c4bfa36b9f3d685e5f198ed1eb201e990949c"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/preview.png",
+      "kind": "inspection preview; not runtime",
+      "bytes": 144780,
+      "sha256": "63a19a0e00a532b787317ddb4d0f0d748a67b52f007b69c826648b827df37879"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/contact-sheet.png",
+      "kind": "animation frame contact sheet; not runtime",
+      "bytes": 141100,
+      "sha256": "3bc2329b794e4e1753399b6551b65a5856b24589d3bb6981a1012a364d2131b0"
+    },
+    {
+      "path": "docs/assets/impact-feedback-v2/motion-sampler.webp",
+      "kind": "offline animated WebP motion sampler; not runtime",
+      "bytes": 129738,
+      "sha256": "8a40f966098154af754f2f73d6c284d1cbf2baef80129013e7d71761c5d4c36f"
+    }
+  ]
+}

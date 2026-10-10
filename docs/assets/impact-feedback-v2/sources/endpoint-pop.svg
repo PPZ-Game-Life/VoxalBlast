@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="128" viewBox="0 0 768 128">
+  <!-- Six 128x128 one-shot frames, fixed center pivot (64,64). -->
+  <g id="frame-0">
+    <circle cx="64" cy="64" r="10" fill="#FFF1CC" stroke="#20334C" stroke-width="4"/>
+    <path d="M64 40 L69 55 L85 51 L74 64 L87 75 L70 73 L64 89 L59 73 L42 77 L54 64 L42 53 L59 55 Z" fill="#FFD65A" stroke="#E2A62B" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g id="frame-1" transform="translate(128 0)">
+    <path d="M64 22 L72 49 L101 37 L80 61 L108 72 L78 75 L88 104 L66 83 L45 108 L50 78 L20 75 L47 62 L27 39 L56 50 Z" fill="#FFF1CC" stroke="#20334C" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="64" cy="64" r="14" fill="#FFD65A" stroke="#E2A62B" stroke-width="3"/>
+  </g>
+  <g id="frame-2" transform="translate(256 0)">
+    <path d="M64 15 L70 42 M64 86 L64 113 M15 64 L42 64 M86 64 L113 64 M29 29 L47 47 M81 81 L100 100 M99 28 L81 47 M47 81 L28 100" fill="none" stroke="#E2A62B" stroke-width="6" stroke-linecap="round"/>
+    <path d="M64 35 L72 55 L94 57 L77 70 L82 92 L64 80 L45 92 L51 70 L34 57 L56 55 Z" fill="#FFF1CC" stroke="#20334C" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="64" cy="64" r="8" fill="#FFFFFF"/>
+  </g>
+  <g id="frame-3" transform="translate(384 0)">
+    <path d="M64 18 L68 41 M64 87 L61 111 M18 64 L41 61 M87 67 L111 64 M30 29 L47 46 M82 82 L99 99 M98 30 L81 47 M46 82 L29 99" fill="none" stroke="#E2A62B" stroke-width="5" stroke-linecap="round"/>
+    <path d="M64 43 L70 57 L86 59 L74 69 L78 85 L64 76 L50 85 L54 69 L42 59 L58 57 Z" fill="#FFF1CC" stroke="#20334C" stroke-width="3.5" stroke-linejoin="round"/>
+    <circle cx="22" cy="47" r="4" fill="#2F70E8"/><circle cx="103" cy="44" r="4" fill="#18BBA6"/><circle cx="102" cy="88" r="4" fill="#E65B86"/>
+  </g>
+  <g id="frame-4" transform="translate(512 0)" opacity=".78">
+    <path d="M64 19 L64 37 M64 91 L64 108 M20 64 L38 64 M90 64 L108 64 M33 33 L46 46 M82 82 L95 95 M95 33 L82 46 M46 82 L33 95" fill="none" stroke="#E2A62B" stroke-width="4" stroke-linecap="round"/>
+    <path d="M64 50 L69 59 L80 61 L72 69 L74 80 L64 75 L54 80 L56 69 L48 61 L59 59 Z" fill="#FFF1CC" stroke="#20334C" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g id="frame-5" transform="translate(640 0)" opacity=".48">
+    <path d="M64 25 L64 40 M64 88 L64 103 M26 64 L41 64 M87 64 L102 64 M37 37 L48 48 M80 80 L91 91 M91 37 L80 48 M48 80 L37 91" fill="none" stroke="#E2A62B" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="64" cy="64" r="6" fill="#FFF1CC" stroke="#20334C" stroke-width="2.5"/>
+  </g>
+</svg>

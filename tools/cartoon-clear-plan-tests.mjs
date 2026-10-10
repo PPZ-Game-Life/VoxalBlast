@@ -14,12 +14,12 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Board, FACES, SH, isShell } from '../src/game/board.js'
+import { Board, FACES, SH, faceLattice, isShell } from '../src/game/board.js'
 import { SHAPES, normalizeCells } from '../src/game/shapes.js'
 import { createRng, hashSeed } from '../src/game/rng.js'
 import {
-  CARTOON_BUDGETS, clearBudget, clearCaps, clearTailSeconds, emitterPositions,
-  markPositions, physicalKey, planClear, vfxSeed,
+  CARTOON_BUDGETS, SWEEP_CONTRACT, clearBudget, clearCaps, clearTailSeconds, emitterPositions,
+  lineOriginUv, linePropagation, markPositions, physicalKey, planClear, planPropagation, sweepArrivalMs, vfxSeed,
 } from '../src/rendering/cartoonClearPlan.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -53,7 +53,8 @@ function loadCase(name) {
 
 console.log('--- §9.1 rule cases, through the real Board and the real planner ---')
 for (const name of CASE_NAMES) {
-  const { fixture, result, board } = loadCase(name)
+  const { fixture, result, board, shape } = loadCase(name)
+  const dropCells = normalizeCells(shape.cells)
   const plan = planClear(result.lines, { frontFace: fixture.drop.face })
   const raw = result.lines.map((line) => `${line.face}:${line.axis}${line.axis === 'row' ? line.v : line.u}`)
 
@@ -80,6 +81,27 @@ for (const name of CASE_NAMES) {
   check(`${name}: emitters are capped at 8 and merged by position`,
     ends.length <= 8 && ends.length <= plan.physicalLineCount * 2,
     `emitters=${ends.length} for ${plan.physicalLineCount} physical line(s)`)
+
+  // §4 on a REAL drop: the snapshot main takes (§3.1) is the placed lattice cells, and every
+  // physical line a legal drop produced must contain at least one of them. `fallbackLines === 0`
+  // is that assertion; a non-zero count here is the §4.1 failure the DEV report exists to surface.
+  const placedCells = dropCells.map(([u, v]) => {
+    const [x, y, z] = faceLattice(fixture.drop.face, u + fixture.drop.origin.u, v + fixture.drop.origin.v)
+    return [x, y, z]
+  })
+  const propagation = planPropagation(plan, { face: fixture.drop.face, placedCells, color: shape.color })
+  check(`${name}: every physical line contains a placed cell`, propagation.fallbackLines === 0,
+    `fallbackLines=${propagation.fallbackLines} placed=${placedCells.length} hits=${propagation.lines.map((line) => line.hitCount).join('/')}`)
+  check(`${name}: every arrival is finite and inside the doc's 200ms`,
+    propagation.lines.every((line) => Number.isFinite(line.minus.arrivalMs) && Number.isFinite(line.plus.arrivalMs)
+      && line.minus.arrivalMs <= SWEEP_CONTRACT.endMaxMs && line.plus.arrivalMs <= SWEEP_CONTRACT.endMaxMs),
+    propagation.lines.map((line) => `${line.minus.arrivalMs.toFixed(3)}/${line.plus.arrivalMs.toFixed(3)}`).join(' '))
+  check(`${name}: the origin is a continuous face-local point`,
+    propagation.lines.every((line) => line.originUv.length === 2 && line.originUv.every(Number.isFinite)),
+    JSON.stringify(propagation.lines.map((line) => line.originUv)))
+  equal(`${name}: the two branch arrivals come from the one formula`,
+    propagation.lines.every((line) => line.minus.arrivalMs === sweepArrivalMs(line.minus.distanceCells)
+      && line.plus.arrivalMs === sweepArrivalMs(line.plus.distanceCells)), true)
 
   // §4.3's table, in both tiers, straight from the shipped numbers.
   const standard = CARTOON_BUDGETS.standard[Math.min(plan.physicalLineCount, 3)]
@@ -147,7 +169,86 @@ console.log('\n--- planner units ---')
 }
 
 
-console.log("\n--- differential fuzz: planClear vs a brute-force reference ---")
+console.log('\n--- §4 placement propagation: the doc\'s own recomputable examples ---')
+{
+  // PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md §4.5's table, asserted against the formula rather than a
+  // transcription of its output: `arrivalMs = 35 + distanceCells / 32 * 1000`.
+  const line = {
+    key: 'a',
+    face: '+z',
+    axis: 'row',
+    cells: [[0, 2, 4], [1, 2, 4], [2, 2, 4], [3, 2, 4], [4, 2, 4]],
+    outward: [1, 0, 0],
+  }
+  const cases = [
+    { hits: [2], originT: 2, minus: 113.125, plus: 113.125 },
+    { hits: [0], originT: 0, minus: 50.625, plus: 175.625 },
+    { hits: [0, 1], originT: 0.5, minus: 66.25, plus: 160 },
+  ]
+  for (const entry of cases) {
+    const placed = new Set(entry.hits.map((index) => line.cells[index].join(',')))
+    const propagation = linePropagation(line, placed)
+    equal(`hits[${entry.hits}] originT`, propagation.originT, entry.originT)
+    equal(`hits[${entry.hits}] minus arrival`, propagation.minus.arrivalMs, entry.minus)
+    equal(`hits[${entry.hits}] plus arrival`, propagation.plus.arrivalMs, entry.plus)
+    equal(`hits[${entry.hits}] reports every hit`, propagation.hitIndexes.join(','), entry.hits.join(','))
+    check(`hits[${entry.hits}] never falls back`, propagation.originFallback === false)
+    check(`hits[${entry.hits}] both distances are non-negative`,
+      propagation.minus.distanceCells >= 0 && propagation.plus.distanceCells >= 0)
+    check(`hits[${entry.hits}] both arrivals are finite`,
+      Number.isFinite(propagation.minus.arrivalMs) && Number.isFinite(propagation.plus.arrivalMs))
+  }
+
+  // §4.2: several placed cells produce ONE origin, and a hit set that is not contiguous puts that
+  // origin on a cell the player never placed. This case proves the MATHEMATICS only — the doc is
+  // explicit that it does not claim a legal piece can cover two ends of one line in a single move.
+  const spread = new Set([line.cells[0].join(','), line.cells[4].join(',')])
+  const nonContiguous = linePropagation(line, spread)
+  equal('two ends average to the line centre', nonContiguous.originT, 2)
+  check('the averaged origin is not itself a placed cell',
+    nonContiguous.hitIndexes.length === 2 && !nonContiguous.hitIndexes.includes(2))
+  equal('a centred origin reaches both ends together', nonContiguous.minus.arrivalMs, nonContiguous.plus.arrivalMs)
+
+  // §4.1: an illegal/legacy fixture with no hits at all is REPORTED, never silently centred.
+  const fallback = linePropagation(line, new Set())
+  check('no hits is reported as originFallback', fallback.originFallback === true && fallback.hitCount === 0)
+  equal('the fallback origin is the line centre', fallback.originT, 2)
+
+  // §4.4: the boundaries come from the line's own length, so a short hand-made descriptor cannot
+  // inherit a 4.5 end it does not have.
+  const shortLine = { key: 'b', face: '+z', axis: 'row', cells: [[0, 1, 4], [1, 1, 4], [2, 1, 4]], outward: [1, 0, 0] }
+  const short = linePropagation(shortLine, new Set([shortLine.cells[2].join(',')]))
+  equal('a 3-cell line ends at 2.5', short.plus.distanceCells, 0.5)
+  equal('a 3-cell line starts at -0.5', short.minus.distanceCells, 2.5)
+}
+
+{
+  // §4.3: the origin is a CONTINUOUS face-local coordinate through the same lattice transform the
+  // board uses — for a '+z' row that is simply (x, y) at the interpolated index.
+  const line = {
+    key: 'c',
+    face: '+z',
+    axis: 'row',
+    cells: [[0, 3, 4], [1, 3, 4], [2, 3, 4], [3, 3, 4], [4, 3, 4]],
+    outward: [1, 0, 0],
+  }
+  equal('a whole-index origin has integer face coordinates', lineOriginUv(line, 2).join(','), '2,3')
+  equal('a half-index origin has a half face coordinate', lineOriginUv(line, 0.5).join(','), '0.5,3')
+  const plan = planClear([line], { frontFace: '+z' })
+  const propagation = planPropagation(plan, { face: '+z', placedCells: [[1, 3, 4], [2, 3, 4]], color: 0xff0000 })
+  equal('the plan reports one line with two hits', `${propagation.lines.length}/${propagation.lines[0].hitCount}`, '1/2')
+  equal('the plan origin is the hits\' mean', propagation.lines[0].originT, 1.5)
+  equal('the pulse anchor is the placed centroid', propagation.pulse.uv.join(','), '1.5,3')
+  // §4.6: one end ornament per COORDINATE, with the earliest arrival of the branches that reach it.
+  check('both ends are offered once each', propagation.endpoints.length === 2,
+    propagation.endpoints.map((end) => `${end.cell.join(',')}@${end.arrivalMs}`).join(' '))
+  equal('the near end arrives before the far end',
+    propagation.endpoints[0].arrivalMs < propagation.endpoints[1].arrivalMs, true)
+  // §5.2: one face-ray per footprint × direction.
+  equal('a single-footprint line has two face rays', propagation.faceRays.length, 2)
+}
+
+
 {
   // The nine hand-made cases prove the rules the doc names. This proves the DE-DUPLICATION is
   // the same function as an obvious (slow) reference over hundreds of random boards, so a case

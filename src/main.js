@@ -1178,11 +1178,53 @@ undoButtonEl.addEventListener('click', () => { if (hasUndo()) undoItem() })
 // ONE rewardEvent the session produced. Nothing here re-counts lines, re-decides whether a
 // bonus is owed, or plays a second melody: 账可以叠，演出不能叠 (§3.3).
 
+// §3.1 of PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md: the placement snapshot. It is built from the
+// SAME `{face, cells, origin}` pair the preview used and board.place() is about to consume, so
+// "where the light leaves from" and "which cells were really cleared" cannot disagree with the
+// rules layer. `paintLookup` is the pre-settle board plus this hand's own colour — the only
+// source of truth for what colour a cell had, because after the settle those cells are gone.
+function placementCellKey(cell) {
+  return `${cell[0]},${cell[1]},${cell[2]}`
+}
+
+function snapshotPlacement(face, cells, origin, color) {
+  const placedCells = cells.map(([u, v]) => {
+    const [x, y, z] = faceLattice(face, u + origin.u, v + origin.v)
+    return [x, y, z]
+  })
+  const paintLookup = new Map()
+  for (const cell of board.occupied()) paintLookup.set(placementCellKey([cell.x, cell.y, cell.z]), cell.color)
+  for (const cell of placedCells) paintLookup.set(placementCellKey(cell), color)
+  return {
+    face,
+    origin: { u: origin.u, v: origin.v },
+    localCells: cells.map(([u, v]) => [u, v]),
+    placedCells,
+    color,
+    paintLookup,
+  }
+}
+
 function onDrop({ piece, face, cells, origin }) {
   // A placement changes the board the undo was recorded against, so the window closes before
   // anything else happens (07 §3.1 A9) -- it used to be settlePlacement()'s own first line, and
   // it now sits here, in the same order, because the window is the item flow's (P6b).
   clearItemUndo()
+  // v0.13.4 R0 (PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md §3.1): the ONE honest record of where this
+  // hand landed, taken BEFORE the settle and therefore before the board deletes the cleared cells.
+  //
+  // Three things have to happen here rather than in the renderer, and each one is a §3.1 rule:
+  //   * the coordinates are the LATTICE cells the preview really used — `{origin, cells}` from the
+  //     input layer, the same pair board.place() is about to consume — never a pointer position or
+  //     a screen guess (§4.3 「不是pointerup、piece屏幕中心或随机交点」);
+  //   * the this-hand contribution is MERGED into the colour lookup, because a cell that was placed
+  //     and cleared in the SAME move is gone from the board by the time the renderer looks and
+  //     would otherwise have no colour at all (§3.1 「必须合并本次拼块」);
+  //   * the lookup is a flat clone of the pre-settle board (≤98 cells), so nothing downstream keeps
+  //     a mutable reference into the live board and the save/archive format is untouched.
+  // A failed placement never reaches here, so the snapshot only ever describes a legal move; the
+  // renderer still drops everything if the settle reports no line (§3.1 「失败：全部丢弃」).
+  const placement = snapshotPlacement(face, cells, origin, piece.shape.color)
   const settled = settlePlacement(face, cells, origin, piece.shape.color)
   const {
     lines, lineCount, level, score, rewardEvent,
@@ -1208,7 +1250,9 @@ function onDrop({ piece, face, cells, origin }) {
     // named, and the pop carries the hand's TOTAL (基础分 + 三类奖励) — never a second total.
     showRewardNote(rewardEvent)
     showScorePop(score.total)
-    spawnClearEffects(lines, level, { reward: rewardEvent, frontFace: findFrontFace(), visibleFaces: visibleFaceOrder() })
+    spawnClearEffects(lines, level, {
+      reward: rewardEvent, frontFace: findFrontFace(), visibleFaces: visibleFaceOrder(), placement,
+    })
     triggerSlowMo(level)
     input.holdItemsFor(650)
     setTimeout(renderItemBar, 720)

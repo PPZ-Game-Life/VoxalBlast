@@ -46,6 +46,7 @@ import {
   emitterPositions,
   markPositions,
   planClear,
+  planPropagation,
   vfxRandom,
   vfxSeed,
 } from './cartoonClearPlan.js'
@@ -668,6 +669,7 @@ export function createEffects({
     scopeEpoch: 0,
     events: [],
     lastPlan: null,
+    lastPropagation: null,
     lastEvent: null,
     spawnedTotal: 0,
     droppedByCap: 0,
@@ -845,7 +847,7 @@ export function createEffects({
 
   /** Cells -> world units, divided by how much of the tile the graphic really covers (§5.2). */
   function visibleSize(cells, coverage) {
-    return (cells * cellSize) / Math.max(0.2, coverage)
+    return finite(cells * cellSize, `visibleSize(${cells})`, 'size') / Math.max(0.2, coverage)
   }
 
   /** The face a plan's first line reports, used only when a plan has no emitter ends at all. */
@@ -897,6 +899,7 @@ export function createEffects({
     reward = null,
     frontFace = null,
     visibleFaces = [],
+    placement = null,
   } = {}) {
     const reduced = prefersReducedMotion()
     const cramped = crampedViewport()
@@ -905,6 +908,10 @@ export function createEffects({
       visibleFaces,
       maxOutlineCells: CARTOON_CLEAR.outline.maxCells,
     })
+    // §4: WHERE each physical line was entered. `placement` is main's pre-settle snapshot (§3.1);
+    // a caller that has none (the DEV demo, a legacy fixture) still gets a finite, honest plan —
+    // every line reports `originFallback` and the report says so instead of inventing an origin.
+    const propagation = planPropagation(plan, placement)
     cartoon.seq += 1
     const eventKey = `${cartoon.scopeEpoch}:${cartoon.seq}`
     const physical = plan.physicalLineCount
@@ -933,6 +940,14 @@ export function createEffects({
       arcs: 0,
       outlineCells: plan.outlineCellCount,
       outlineDropped: false,
+      // v0.13.4 R0 §4: the placement's own numbers, recorded so a probe can assert the doc's
+      // arrivals without re-deriving them and so `hits === 0` on a legal drop is a REPORTED
+      // failure (§4.1) rather than a silently centred sweep.
+      placedCells: propagation.placedCellCount,
+      originFallbackLines: propagation.fallbackLines,
+      earliestEndMs: propagation.earliestEndMs,
+      faceRays: propagation.faceRays.length,
+      endpoints: propagation.endpoints.length,
       cramped,
       reducedMotion: reduced,
       // The headline category this event was presented as, or null for a plain clear. Kept under
@@ -951,6 +966,7 @@ export function createEffects({
       scope: true,
     }
     cartoon.lastPlan = plan
+    cartoon.lastPropagation = propagation
     enforceCartoonEventCap(now)
 
     if (physical <= 0) {
@@ -1152,10 +1168,10 @@ export function createEffects({
         const start = worldCell(anchor.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset * 1.2)
         const tan = new THREE.Vector3().crossVectors(normal, along).normalize()
         positions.push(start)
-        velocities.push(along.clone().multiplyScalar(lerp(CARTOON_CLEAR.arc.minLength, random()) * cellSize / Math.max(1e-3, CARTOON_CLEAR.timing.arcTo - CARTOON_CLEAR.timing.arcFrom))
+        velocities.push(along.clone().multiplyScalar(lerp(ARC_LENGTH_RANGE, random()) * cellSize / Math.max(1e-3, CARTOON_CLEAR.timing.arcTo - CARTOON_CLEAR.timing.arcFrom))
           .addScaledVector(tan, 0.2 * cellSize))
         rotations.push(screenAngleDeg(start.clone().add(center), along))
-        sizes.push(visibleSize(lerp(CARTOON_CLEAR.arc.maxLength, random()), tileCoverage('swoosh-cream').x))
+        sizes.push(visibleSize(lerp(ARC_LENGTH_RANGE, random()), tileCoverage('swoosh-cream').x))
       }
       specs.push({
         id: 'swoosh-cream',
@@ -1183,7 +1199,7 @@ export function createEffects({
         const along = latticeDirWorld(anchor.cell, anchor.outward)
         points.push(worldCell(anchor.cell).sub(center).addScaledVector(normal, style.feedbackSurfaceOffset))
         velocities.push(along.clone().multiplyScalar(lerp(CARTOON_CLEAR.confetti.alongSpeed, random()) * 0.6 * cellSize))
-        sizes.push(visibleSize(lerp(CARTOON_CLEAR.dot.maxSize, random()), coverage.x))
+        sizes.push(visibleSize(lerp(DOT_SIZE_RANGE, random()), coverage.x))
       }
       specs.push({
         id: 'dot-blue',
@@ -1226,7 +1242,40 @@ export function createEffects({
   }
 
   const SCENE_UP = new THREE.Vector3(0, 1, 0)
-  const lerp = (range, t) => range[0] + (range[1] - range[0]) * t
+  // v0.13.4 R0 (PLACEMENT_IMPACT_FEEDBACK_HANDOFF.md §2): `lerp` was called with three SCALARS
+  // (`arc.minLength`, `arc.maxLength`, `dot.maxSize`) while its own contract is a `[min,max]`
+  // pair, so those three call sites produced `undefined + NaN` and fed a NaN size/velocity
+  // straight into the particle emitter — the §9.1 `Number.isFinite` row exists for exactly this.
+  // The pair is now named once (so the arc and the dot cannot sample from two different bands),
+  // and the function REFUSES anything that is not a pair rather than silently returning NaN: a
+  // wrong argument here is a programming error, and the whole point of R0 is that it must not be
+  // masked by a new texture on top of it.
+  const ARC_LENGTH_RANGE = Object.freeze([CARTOON_CLEAR.arc.minLength, CARTOON_CLEAR.arc.maxLength])
+  const DOT_SIZE_RANGE = Object.freeze([CARTOON_CLEAR.dot.minSize, CARTOON_CLEAR.dot.maxSize])
+  const nanGuards = { lerp: 0, size: 0, velocity: 0, rotation: 0, arrival: 0, pivot: 0 }
+  const lerp = (range, t) => {
+    if (!Array.isArray(range) || range.length < 2 || !Number.isFinite(range[0]) || !Number.isFinite(range[1])) {
+      throw new Error(`lerp expects a finite [min,max] pair, received ${JSON.stringify(range)}`)
+    }
+    const value = range[0] + (range[1] - range[0]) * t
+    if (!Number.isFinite(value)) {
+      nanGuards.lerp += 1
+      throw new Error(`lerp produced ${value} from [${range[0]}, ${range[1]}] at t=${t}`)
+    }
+    return value
+  }
+  /**
+   * §9.1 「Number.isFinite覆盖size/velocity/rotation/arrival/pivot」. Every value that leaves this
+   * file for the GPU or for the shake passes through here first: a NaN position silently draws
+   * NOTHING (three.quarks fills a NaN matrix and the whole batch disappears while the counters
+   * still report the full budget — measured, see the geometry pool's own note), so "it is finite"
+   * is not a nicety, it is the difference between the effect existing and not.
+   */
+  function finite(value, label, kind = 'size') {
+    if (Number.isFinite(value)) return value
+    nanGuards[kind] = (nanGuards[kind] || 0) + 1
+    throw new Error(`${label} is not finite: ${value}`)
+  }
 
   function addCartoonSystems(specs, record, center) {
     const byId = {}
@@ -1491,6 +1540,38 @@ export function createEffects({
           faces: cartoon.lastPlan.faceFootprints.map((footprint) => `${footprint.face}:${footprint.axis}${footprint.index}`),
         }
         : null,
+      // §4's own read-out: the origin each line was entered at, the two distances and the two
+      // arrivals the doc states. A probe can recompute every number here from `cellPulsePlan`'s
+      // formula alone, which is the point — "the light leaves from where the hand fell" has to be
+      // assertable, not just claimable.
+      lastPropagation: cartoon.lastPropagation
+        ? {
+          placedCellCount: cartoon.lastPropagation.placedCellCount,
+          placedKnown: cartoon.lastPropagation.placedKnown,
+          fallbackLines: cartoon.lastPropagation.fallbackLines,
+          earliestEndMs: cartoon.lastPropagation.earliestEndMs,
+          maxDistanceCells: cartoon.lastPropagation.maxArrivalMs,
+          contract: cartoon.lastPropagation.contract,
+          faceRays: cartoon.lastPropagation.faceRays.length,
+          pulse: cartoon.lastPropagation.pulse
+            ? { face: cartoon.lastPropagation.pulse.face, uv: cartoon.lastPropagation.pulse.uv, color: cartoon.lastPropagation.pulse.color }
+            : null,
+          lines: cartoon.lastPropagation.lines.map((line) => ({
+            key: line.key,
+            face: line.face,
+            hits: line.hitIndexes,
+            originT: line.originT,
+            originUv: line.originUv,
+            minusMs: line.minus.arrivalMs,
+            plusMs: line.plus.arrivalMs,
+            originFallback: line.originFallback,
+          })),
+          endpoints: cartoon.lastPropagation.endpoints.map((end) => ({
+            cell: end.cell, face: end.face, direction: end.direction, arrivalMs: end.arrivalMs,
+          })),
+        }
+        : null,
+      nanGuards: { ...nanGuards },
     }
   }
 
@@ -1508,11 +1589,11 @@ export function createEffects({
    * shared edge/corner inflates that. The reward's own presentation (the merged note, the main
    * cue, the reward shake) is main's, and §6.4 keeps it exactly as it is.
    */
-  function spawnClearEffects(lines, level, { reward = null, frontFace = null, visibleFaces = [] } = {}) {
+  function spawnClearEffects(lines, level, { reward = null, frontFace = null, visibleFaces = [], placement = null } = {}) {
     const ranked = Math.min(Math.max(0, Math.trunc(level) || 0), 5)
     eventId += 1
     const id = eventId
-    const event = spawnCartoonClear(lines, ranked, { reward, frontFace, visibleFaces })
+    const event = spawnCartoonClear(lines, ranked, { reward, frontFace, visibleFaces, placement })
     // The two fields the old record carried that callers still read: which event this was, and
     // which level the rules layer announced. Neither picks a budget any more (§4.1).
     lastEvent = { ...event, id, level: ranked, rewardType: reward?.primaryType || null }

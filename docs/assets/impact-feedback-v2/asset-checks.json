@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 2,
+  "command": "py -3.12 tools/build-impact-feedback-assets.py --check",
+  "passed": true,
+  "environment": {
+    "python": "3.12.6",
+    "pillow": "12.2.0",
+    "rasterBackend": {
+      "backend": "Microsoft Edge headless SVG",
+      "edgePath": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "edgeVersion": "version query timed out; executableBytes=5403976",
+      "outputAt4x": [
+        2048,
+        512
+      ],
+      "pillow": "12.2.0"
+    }
+  },
+  "verified": {
+    "svgSourcesParsed": 3,
+    "sequenceSheets": {
+      "sweep-right": {
+        "sheetSize": [
+          1024,
+          128
+        ],
+        "frameCount": 4,
+        "unionAlphaBounds": [
+          6,
+          8,
+          239,
+          116
+        ],
+        "frames": [
+          {
+            "index": 0,
+            "contentAlphaBoundsMeasuredOnly": [
+              8,
+              10,
+              237,
+              114
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 1930
+          },
+          {
+            "index": 1,
+            "contentAlphaBoundsMeasuredOnly": [
+              7,
+              9,
+              238,
+              115
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 2063
+          },
+          {
+            "index": 2,
+            "contentAlphaBoundsMeasuredOnly": [
+              6,
+              8,
+              239,
+              116
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 2174
+          },
+          {
+            "index": 3,
+            "contentAlphaBoundsMeasuredOnly": [
+              8,
+              9,
+              238,
+              114
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 1968
+          }
+        ]
+      },
+      "endpoint-pop": {
+        "sheetSize": [
+          768,
+          128
+        ],
+        "frameCount": 6,
+        "unionAlphaBounds": [
+          9,
+          9,
+          119,
+          119
+        ],
+        "frames": [
+          {
+            "index": 0,
+            "contentAlphaBoundsMeasuredOnly": [
+              38,
+              36,
+              91,
+              93
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 1270
+          },
+          {
+            "index": 1,
+            "contentAlphaBoundsMeasuredOnly": [
+              15,
+              17,
+              113,
+              113
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 1202
+          },
+          {
+            "index": 2,
+            "contentAlphaBoundsMeasuredOnly": [
+              9,
+              9,
+              119,
+              119
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 3365
+          },
+          {
+            "index": 3,
+            "contentAlphaBoundsMeasuredOnly": [
+              13,
+              13,
+              116,
+              116
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 3997
+          },
+          {
+            "index": 4,
+            "contentAlphaBoundsMeasuredOnly": [
+              15,
+              14,
+              113,
+              113
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 3563
+          },
+          {
+            "index": 5,
+            "contentAlphaBoundsMeasuredOnly": [
+              22,
+              21,
+              106,
+              107
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 2979
+          }
+        ]
+      },
+      "tap-feedback": {
+        "sheetSize": [
+          512,
+          128
+        ],
+        "frameCount": 4,
+        "unionAlphaBounds": [
+          12,
+          12,
+          116,
+          116
+        ],
+        "frames": [
+          {
+            "index": 0,
+            "contentAlphaBoundsMeasuredOnly": [
+              48,
+              48,
+              80,
+              80
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 422
+          },
+          {
+            "index": 1,
+            "contentAlphaBoundsMeasuredOnly": [
+              37,
+              37,
+              91,
+              91
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 1430
+          },
+          {
+            "index": 2,
+            "contentAlphaBoundsMeasuredOnly": [
+              23,
+              23,
+              105,
+              105
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 3065
+          },
+          {
+            "index": 3,
+            "contentAlphaBoundsMeasuredOnly": [
+              12,
+              12,
+              116,
+              116
+            ],
+            "zeroAlphaBorderPx": 4,
+            "hasPartialAlpha": true,
+            "transparentRgbBleedPixels": 3798
+          }
+        ]
+      }
+    },
+    "glbModels": {
+      "cube.glb": {
+        "bytes": 14596,
+        "vertexCount": 294,
+        "triangleCount": 432,
+        "primitiveCount": 1,
+        "materialCount": 1,
+        "colorAccessor": "COLOR_0 VEC3 float linear",
+        "colorFiniteAndInRange": true,
+        "textureCount": 0,
+        "normalCount": 294,
+        "allNormalsUnit": true,
+        "indicesInBounds": true,
+        "containsNaN": false,
+        "bbox": {
+          "min": [
+            -0.5,
+            -0.5,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "dimensions": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "pivot": [
+          0,
+          0,
+          0
+        ],
+        "materialNames": [
+          "cube-blue-vertex-color"
+        ]
+      },
+      "cube-blue.glb": {
+        "bytes": 14596,
+        "vertexCount": 294,
+        "triangleCount": 432,
+        "primitiveCount": 1,
+        "materialCount": 1,
+        "colorAccessor": "COLOR_0 VEC3 float linear",
+        "colorFiniteAndInRange": true,
+        "textureCount": 0,
+        "normalCount": 294,
+        "allNormalsUnit": true,
+        "indicesInBounds": true,
+        "containsNaN": false,
+        "bbox": {
+          "min": [
+            -0.5,
+            -0.5,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "dimensions": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "pivot": [
+          0,
+          0,
+          0
+        ],
+        "materialNames": [
+          "cube-blue-vertex-color"
+        ]
+      },
+      "cube-teal.glb": {
+        "bytes": 14596,
+        "vertexCount": 294,
+        "triangleCount": 432,
+        "primitiveCount": 1,
+        "materialCount": 1,
+        "colorAccessor": "COLOR_0 VEC3 float linear",
+        "colorFiniteAndInRange": true,
+        "textureCount": 0,
+        "normalCount": 294,
+        "allNormalsUnit": true,
+        "indicesInBounds": true,
+        "containsNaN": false,
+        "bbox": {
+          "min": [
+            -0.5,
+            -0.5,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "dimensions": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "pivot": [
+          0,
+          0,
+          0
+        ],
+        "materialNames": [
+          "cube-teal-vertex-color"
+        ]
+      },
+      "cube-pink.glb": {
+        "bytes": 14596,
+        "vertexCount": 294,
+        "triangleCount": 432,
+        "primitiveCount": 1,
+        "materialCount": 1,
+        "colorAccessor": "COLOR_0 VEC3 float linear",
+        "colorFiniteAndInRange": true,
+        "textureCount": 0,
+        "normalCount": 294,
+        "allNormalsUnit": true,
+        "indicesInBounds": true,
+        "containsNaN": false,
+        "bbox": {
+          "min": [
+            -0.5,
+            -0.5,
+            -0.5
+          ],
+          "max": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "dimensions": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "pivot": [
+          0,
+          0,
+          0
+        ],
+        "materialNames": [
+          "cube-pink-vertex-color"
+        ]
+      }
+    },
+    "feedbackRecipe": {
+      "approvedValuesExact": true,
+      "sourceRuntimeExactMatch": true,
+      "schemaVersion": 1,
+      "units": {
+        "time": "ms",
+        "worldSize": "cell",
+        "screenSize": "CSSpx"
+      },
+      "proposalNotRuntimeVerified": true,
+      "directVibrateCall": false,
+      "clearBudgetSchema": "severity-by-quality-v1"
+    },
+    "previewDecoded": true,
+    "contactSheetDecoded": true,
+    "motionSampler": {
+      "decoded": true,
+      "frames": 20,
+      "realSpeedSweepMs": 78,
+      "burstMs": 140,
+      "tapMs": 160,
+      "finalCleanupProbe": true
+    },
+    "manifestBytesAndSha256": true,
+    "runtimeNetworkBytes": 232762,
+    "referencesExcluded": true
+  },
+  "limits": {
+    "gameRuntimeIntegration": false,
+    "GPUThreeJsLoad": false,
+    "devicePerformance": false,
+    "cameraAndHaptics": "configuration only; no hardware verification"
+  }
+}
