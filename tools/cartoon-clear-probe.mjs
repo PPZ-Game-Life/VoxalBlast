@@ -54,6 +54,7 @@ function budgetFor(physicalLines, event) {
 const CARTOON_ATLAS = JSON.parse(readFileSync(join(ROOT, 'docs/assets/cartoon-clear-v1/runtime/atlas.json'), 'utf8'))
 const CARTOON_TILE_ORDER = CARTOON_ATLAS.layout.order
 const spriteMetrics = new Map()
+const spriteCoreMetrics = new Map()
 
 // §9.2 「必要视口」. r0 records the two extremes this round can afford to run end to end; the
 // full five-viewport sweep belongs to the round that finishes the look (r2/r3), and the
@@ -607,7 +608,7 @@ function note(label, detail) { console.log(`     ${label}  ${detail}`) }
 // flip does the same in x (which is how `swoosh-cream`'s +X direction is checked); picking the
 // wrong tile changes the fill ratio outright.
 
-function alphaMetrics(image) {
+function alphaMetrics(image, minAlpha = 1) {
   const { width, height, channels, pixels } = image
   const mask = new Uint8Array(width * height)
   let minX = width, minY = height, maxX = -1, maxY = -1, count = 0
@@ -615,9 +616,9 @@ function alphaMetrics(image) {
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = (y * width + x) * channels
-      // The sprite PNG own silhouette: any non-zero alpha. The delivered art keeps a 4px RGBA
-      // expansion around the graphic with alpha 0, so this is the graphic and not the margin.
-      if (pixels[i + 3] === 0) continue
+      // The delivered art keeps a 4px RGBA expansion around the graphic with alpha 0, so a
+      // non-zero cut-off is the graphic and not the margin. A higher cut-off gives the CORE.
+      if (pixels[i + 3] < minAlpha) continue
       mask[y * width + x] = 1
       count += 1
       sumX += x; sumY += y
@@ -656,7 +657,7 @@ function summarise({ minX, minY, maxX, maxY, count, sumX, sumY }) {
  * blob split was tried first and merged a tile with the horizon it happened to straddle, which
  * is exactly the kind of unrelated change a window cannot pick up.
  */
-function windowMetrics(quiet, live, screen, tileScreen) {
+function windowMetrics(quiet, live, screen, tileScreen, difference = 48) {
   // Exactly the tile's own quad, plus a one-pixel guard. A wider window was tried first and let
   // whatever the tile happened to be drawn over into the mask, which reads as an oversized
   // graphic rather than as a contaminated measurement.
@@ -673,9 +674,11 @@ function windowMetrics(quiet, live, screen, tileScreen) {
       const d = Math.abs(live.pixels[p] - quiet.pixels[p])
         + Math.abs(live.pixels[p + 1] - quiet.pixels[p + 1])
         + Math.abs(live.pixels[p + 2] - quiet.pixels[p + 2])
-      // A higher threshold than a whole-frame diff would use: the antialiased fringe of a small
-      // sprite is not the sprite, and letting it into the mask inflates every box by a few px.
-      if (d <= 48) continue
+      // The threshold is a parameter because the post chain bloom halo is a LOW-amplitude change
+      // around the sprite. Measuring at two strengths, and comparing the render against the
+      // sprite at the same strength, is what separates the graphic from its glow -- without
+      // touching the tolerance the check itself uses.
+      if (d <= difference) continue
       count += 1; sumX += x; sumY += y
       if (x < minX) minX = x
       if (y < minY) minY = y
@@ -706,6 +709,9 @@ for (const id of CARTOON_TILE_ORDER) {
   const metrics = alphaMetrics(readPng(file))
   if (!metrics) throw new Error(`sprite has no opaque pixels: ${id}`)
   spriteMetrics.set(id, metrics)
+  const core = alphaMetrics(readPng(file), 96)
+  if (!core) throw new Error(`sprite has no core pixels: ${id}`)
+  spriteCoreMetrics.set(id, core)
 }
 
 /** p50/p90 frame cadence, in ms, from a timeline of absolute timestamps. */function frameCadence(samples) {
@@ -1031,8 +1037,19 @@ try {
           const tileScreen = entry.screenSize
             ? (entry.screenSize.width + entry.screenSize.height) / 2
             : tileScreenFromGrid
-          const measured = windowMetrics(quiet, live, entry.screen, tileScreen)
-          if (!measured) return { id, index, screen: entry.screen, measured: null, reason: 'nothing changed in this tile window' }
+          // TWO strengths, so the render can be compared against the sprite at the same
+          // strength. The soft pass is the whole visible graphic including the post chain
+          // bloom halo around it; the core pass is the graphic alone. The check uses the
+          // CORE pair; the soft pair is kept in the record for comparison.
+          const soft = windowMetrics(quiet, live, entry.screen, tileScreen, 48)
+          const core = windowMetrics(quiet, live, entry.screen, tileScreen, 110)
+          if (!soft || !core) return { id, index, screen: entry.screen, measured: null, reason: "nothing changed in this tile window" }
+          const coreExpected = spriteCoreMetrics.get(id)
+          const box = (metrics) => ({
+            w: r3(metrics.box.width / tileScreen), h: r3(metrics.box.height / tileScreen),
+            dx: r3(metrics.dx), dy: r3(metrics.dy),
+            box: metrics.box, fill: r3(metrics.fill), clipped: metrics.clipped,
+          })
           return {
             id,
             index,
@@ -1044,26 +1061,31 @@ try {
               w: r3(expected.box.width / 128), h: r3(expected.box.height / 128),
               dx: r3(expected.dx), dy: r3(expected.dy),
             },
-            measured: {
-              w: r3(measured.box.width / tileScreen), h: r3(measured.box.height / tileScreen),
-              dx: r3(measured.dx), dy: r3(measured.dy),
-              box: measured.box, fill: r3(measured.fill), clipped: measured.clipped,
+            measured: box(soft),
+            expectedCore: {
+              w: r3(coreExpected.box.width / 128), h: r3(coreExpected.box.height / 128),
+              dx: r3(coreExpected.dx), dy: r3(coreExpected.dy),
             },
+            measuredCore: box(core),
           }
         })
         // Every window's raw numbers, so the record can be re-read without re-running the probe.
         gateRecord.tilesRaw = gateRecord.tiles.map((tile) => ({
-          id: tile.id, measured: tile.measured, expected: tile.expected,
+          id: tile.id,
+          soft: { measured: tile.measured, expected: tile.expected },
+          core: { measured: tile.measuredCore, expected: tile.expectedCore },
         }))
         check(`${viewport.id} atlas gate: all 8 tiles were drawn`,
           gateRecord.tiles.filter((tile) => tile.measured).length === CARTOON_TILE_ORDER.length,
           `measured=${gateRecord.tiles.filter((tile) => tile.measured).length}/8`)
         for (const tile of gateRecord.tiles) {
-          if (!tile.measured) {
+          if (!tile.measuredCore) {
             check(`${viewport.id} gate ${tile.id}: sampled`, false, tile.reason || 'no measurement')
             continue
           }
-          const { measured, expected } = tile
+          // The CORE pairing is the one the check reads: same strength on both sides. The soft
+          // numbers stay in the evidence so the two can be compared without re-running.
+          const { measuredCore: measured, expectedCore: expected } = tile
           if (measured.clipped) {
             check(`${viewport.id} gate ${tile.id}: the tile window is clean`, false,
               `mask reached the window edge at ${JSON.stringify(measured.box)} — report as UNMEASURED, not as a pass`)
@@ -1085,7 +1107,7 @@ try {
           // are measured against the delivered sprite PNGs, so this cannot agree with itself.
           check(`${viewport.id} gate ${tile.id}: the graphic sampled is the right tile`,
             Math.abs(measured.w - expected.w) <= 0.12 && Math.abs(measured.h - expected.h) <= 0.12,
-            `box ${measured.w}x${measured.h} of tile vs ${expected.w}x${expected.h}`)
+            `core ${measured.w}x${measured.h} vs ${expected.w}x${expected.h} (soft was ${tile.measured.w}x${tile.measured.h} vs ${tile.expected.w}x${tile.expected.h})`)
           check(`${viewport.id} gate ${tile.id}: the tile is not flipped or rotated`,
             Math.abs(measured.dx - expected.dx) <= 0.20 && Math.abs(measured.dy - expected.dy) <= 0.20,
             `dx ${measured.dx} vs ${expected.dx}, dy ${measured.dy} vs ${expected.dy}`)
