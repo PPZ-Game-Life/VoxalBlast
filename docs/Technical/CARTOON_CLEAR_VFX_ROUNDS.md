@@ -568,3 +568,31 @@ npm run probe:contour -- http://localhost:5201/
 基线提交上**同一个用例以同样的方式超时**，`mobile-low` 的读数也照常打出来。所以这是**预先存在的环境/探针问题**（"browser stopped settling" 是页面停止绘制导致 `awaitPromise` 的 rAF 求值永不落定），**不是本轮回归**。已按此写进 `KNOWN_GAPS`，并把临时 worktree 删掉、基线 dev server 停掉。
 
 顺带说明：`probe:churn` 那 1 个 skipped 是它自己报告的「有 1 个用例从未运行」，本轮没有改动 churn 覆盖的任何生命周期开关，`44 ok / 0 failed` 的其余项全过；没有去动它的 SKIP 口径。
+
+### 回归扫描（续）：网络加宽，以及那个红门的性质判定
+
+**只改文件**：本文档、`docs/Technical/KNOWN_GAPS.md`。无代码改动。
+
+在上一轮基础上把剩下的门禁也跑完：
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run demo:rewards` | **58 ok / 0 failed** |
+| `npm run probe:intro` | exit 0，无控制台报错 |
+| `npm run probe:swipe` | 通过（三个手势都把立方体往手指方向转） |
+| `npm run probe:boot` | **6 ok / 0 failed**，无控制台报错 |
+| `npm run probe:buffer` | 全部 tier/buffer 断言通过 |
+| `npm run probe:ui-paint` | 通过 |
+
+**`probe:contour` 是卡死，不是慢。** 上一轮只证明它在基线提交上同样失败；本轮把单用例预算从 240s 拉到 **900s**，仍然：
+
+```
+# npm run probe:contour -- --caseBudgetSeconds 900
+Error: case desktop-high exceeded 900s — the browser stopped settling
+```
+
+15 分钟都不落定，所以这不是「1440×900 高配在软件光栅下需要更久」，而是**该用例的页面停止绘制、`awaitPromise` 的 rAF 求值永远不返回**。前面三个用例（`mobile-low` / `mobile-high` / `mobile-dpr3-low`）都正常出读数，只有 `desktop-high` 卡住。
+
+同时排除了「本机跑不了 1440×900 无头」这个可能：`npm run shot`（14 张截图、含 1440×900 硬门）与 `probe:clear r4`（含 2048×900）本轮都正常退出 0。所以问题落在**这个探针在这个用例上**，与卡通消除无关，也与视口尺寸本身无关。
+
+**未修**：本机无法进一步区分「headless 合成器在该用例下卡住」与「该探针的某个 await 条件永远不成立」。已连同 900s 这一条写进 `KNOWN_GAPS`，留给能在真机/正常会话里跑的人。

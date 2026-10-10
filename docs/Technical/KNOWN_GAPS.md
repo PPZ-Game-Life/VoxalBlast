@@ -119,7 +119,7 @@
 
 | 卡通消除：贴图失败兜底（v0.13.3，**已取证**） | §3.1 要求「加载失败时用程序方片/亮边兜底，禁止阻塞第一手、无限 Loading、吞分数」。该分支 R1 起就在代码里，但直到本轮才用 `Network.setBlockedURLs` 真正拦掉 `atlas.png` 跑了一遍：`status=failed` 被记录、兜底仍发射 32 个精灵并改变 4010 个像素、预算仍是 32/物理 3、一次合法落子照常结算（score 0→50）。**一处瑕疵**：诊断里的 `error` 是 `[object Event]`，看不出失败的是哪个 URL（`status` 是准的），未改。 | 已关闭 |
 
-| 卡通消除：`probe:contour` 在本机跑不起来（v0.13.3，**预先存在，非本轮回归**） | 该探针跑到 `desktop-high` 用例报 `case desktop-high exceeded 240s — the browser stopped settling`（页面停止绘制 → `awaitPromise` 的 rAF 求值永不落定），重跑复现。判定方式：用 `git worktree add ..\vb-base bf03464` 把探针指向**本轮任何改动之前**的提交，**同一用例以同样方式超时**，`mobile-low` 照常出读数。所以这是环境/探针侧的问题，与卡通消除无关。**未修**：本机没有能力区分「软件光栅下 1440×900 高配真的慢到 240s」还是「headless 合成器卡住」；需要有人在本机或真机上重跑再定。 | 已入册；不要把它算作卡通消除的回归 |
+| `probe:contour` 在本机卡死（v0.13.3，**预先存在，非卡通消除回归**） | `desktop-high` 用例报 `case desktop-high exceeded 240s — the browser stopped settling`，重跑复现；**把单用例预算拉到 900s 仍然超时**，所以是**卡死不是慢**——该用例的页面停止绘制，`awaitPromise` 的 rAF 求值永不返回。前三例（`mobile-low/high`、`mobile-dpr3-low`）正常出读数。**不是回归**：用 `git worktree add ..\vb-base bf03464` 指向本轮任何改动之前的提交，同一用例同样超时。**也不是「本机跑不了 1440×900 无头」**：同轮 `npm run shot`（含 1440×900 硬门）与 `probe:clear r4`（含 2048×900）都正常退出 0。**未修**：本机无法再区分「headless 合成器在该用例卡住」与「该探针某个 await 条件永不成立」。 | 已入册；需要能在正常会话/真机跑的人复核 |
 
 ## 历史结论：v0.8.1 已重测，结论未变
 
