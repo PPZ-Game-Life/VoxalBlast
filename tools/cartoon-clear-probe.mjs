@@ -77,6 +77,14 @@ const VIEWPORTS = {
     { id: 'phone', width: 390, height: 844, mobile: true },
     { id: 'short-phone', width: 360, height: 600, mobile: true },
   ],
+  // §9.2's five required viewports, in its own order. The close-out round sweeps all of them.
+  r4: [
+    { id: 'desktop-1440x900', width: 1440, height: 900, mobile: false },
+    { id: 'desktop-1280x720', width: 1280, height: 720, mobile: false },
+    { id: 'phone-390x844', width: 390, height: 844, mobile: true },
+    { id: 'phone-landscape-844x390', width: 844, height: 390, mobile: true },
+    { id: 'wide-2048x900', width: 2048, height: 900, mobile: false },
+  ],
 }
 
 const CHROME_CANDIDATES = [
@@ -99,6 +107,7 @@ const FIXTURE_NAMES = {
   r0: ['single', 'parallel', 'cross', 'shared-edge', 'face-pair', 'three', 'four', 'five', 'legacy-single'],
   r2: ['single', 'parallel', 'cross', 'shared-edge', 'face-pair', 'three', 'four', 'five', 'legacy-single'],
   r3: ['single', 'five', 'legacy-single'],
+  r4: ['single', 'five'],
 }
 
 // ---------------------------------------------------------------- §7 lifecycle (R3)
@@ -186,8 +195,14 @@ async function runLifecycle(ctx) {
     await evaluate('globalThis.__voxalblastDev.clearCelebration()')
     await sleep(200)
     await evaluate('globalThis.__voxalblastDev.demoClear(3)')
-    await sleep(150)
+    await sleep(220)
     const before = await report()
+    // §5's burst is a real 110ms delay, so `liveParticles` (the systems' own particle count) is
+    // the only read-out that proves the FRAME LOOP is running. A case that starts paused would
+    // otherwise blame the transition for a cancel that never had anything to cancel.
+    check(`C ${label}: the frame loop is running before the transition`,
+      before.liveParticles > 0,
+      `liveParticles=${before.liveParticles} (0 means the loop is paused and this case measures nothing)`)
     await open()
     await sleep(260)
     const during = await report()
