@@ -33,6 +33,21 @@ mkdirSync(OUT, { recursive: true })
 
 const r3 = (value) => Math.round(value * 1000) / 1000
 
+/**
+ * §4.3's budget table, applied the way the effects layer applies it: the tier's own column, then
+ * 「手机横屏/安全边距不足」 halving. One helper, so a check and the code under test cannot read two
+ * different tables.
+ */
+function budgetFor(physicalLines, event) {
+  const count = Math.max(0, Math.trunc(physicalLines) || 0)
+  if (count <= 0) return 0
+  if (event?.reducedMotion) return 0
+  const lowPower = event?.lowPower === undefined ? false : event.lowPower
+  const table = lowPower ? { 1: 7, 2: 11, 3: 16 } : { 1: 14, 2: 22, 3: 32 }
+  const base = table[Math.min(count, 3)]
+  return event?.cramped ? Math.round(base * 0.5) : base
+}
+
 // The tile order comes from the pack's own atlas JSON rather than being retyped here, and the
 // per-sprite ground truth is the delivered sprite PNGs -- the same art the atlas was built from,
 // so the gate compares the RENDER against the source of truth and not against itself.
@@ -332,6 +347,10 @@ try {
       screenWidth: firstViewport.width, screenHeight: firstViewport.height,
       deviceScaleFactor: 1, mobile: firstViewport.mobile,
     })
+    // The fixture section runs before the first navigation, so the tier cannot be read off the
+    // page yet; `getRenderQuality()`'s own rule is "narrow viewport or few cores", and the
+    // viewport half is the one that can be computed here.
+    const fixtureLowPower = firstViewport.width <= 700
     const fixtureCases = []
     let injectId = null
     for (const name of FIXTURE_NAMES[round] || FIXTURE_NAMES.r0) {
@@ -376,7 +395,8 @@ try {
       const event = dropped.event || null
       const rules = dropped.rules || null
       const rawLines = rules?.lines || []
-      const plan = dropped.plan || null
+      // The planner's own read-out travels inside the effects report (`cartoon.lastPlan`).
+      const plan = dropped.cartoon?.lastPlan || null
       fixtureCases.push({
         name,
         expect: fixture.expect,
@@ -401,21 +421,39 @@ try {
         event?.uniqueCells === fixture.expect.uniqueCells,
         `uniqueCells=${event?.uniqueCells}`)
       if (dropped.ok) {
-        // The face scan may report one physical line more than once (a shared edge/corner), so
-        // raw is only ever asserted to be AT LEAST the physical count here. The equality is the
-        // planner's own assertion and lands with it in r2.
-        check(`${name}: raw face lines are >= the ${fixture.expect.physical} physical line(s)`,
+        check(`${name}: raw face lines are recorded (${rawLines.length} of them)`,
           rawLines.length >= fixture.expect.physical,
           `raw=${rawLines.length} [${rawLines.map((line) => `${line.face}:${line.axis}${line.index}`).join(' ')}]`)
-        if (plan) {
-          check(`${name}: the planner reports ${fixture.expect.physical} physical line(s)`,
-            plan.physicalLineCount === fixture.expect.physical,
-            `physicalLineCount=${plan.physicalLineCount}`)
-        }
+        // §4.1: the PHYSICAL count is what every budget is chosen from, so the planner's own
+        // number -- not a re-derivation here -- is what the case asserts.
+        check(`${name}: the planner reports ${fixture.expect.physical} physical line(s)`,
+          plan?.physicalLineCount === fixture.expect.physical,
+          `physicalLineCount=${plan?.physicalLineCount} raw=${plan?.rawLineCount} duplicated=${plan?.duplicatedReports}`)
+        check(`${name}: the event budget follows the physical line count, not the raw one`,
+          event?.budget === budgetFor(plan?.physicalLineCount, { ...event, lowPower: fixtureLowPower }),
+          `budget=${event?.budget} physical=${plan?.physicalLineCount} raw=${plan?.rawLineCount}`)
       }
       note(`${name}`, `raw=${rawLines.length} unique=${event?.uniqueCells} physical=${plan?.physicalLineCount ?? 'n/a'} budget=${event?.budget} score ${before.score}->${after.score}`)
     }
     evidence.fixtureCases = fixtureCases
+    // The injected snapshot lives on the page's "new document" list, so leaving it in place would
+    // put the LAST fixture's board behind every later capture in this run — the first version did
+    // exactly that, and the beat frames of a "bare board" clear came back with a played board.
+    if (injectId) {
+      await send(ws, nextId++, 'Page.removeScriptToEvaluateOnNewDocument', { identifier: injectId })
+      injectId = null
+    }
+    // `onDrop()` saves the run, so the fixture's board is ALSO in localStorage by now and would be
+    // resumed by every later navigation even with the injection gone. A removal script is used
+    // rather than a one-off `removeItem` because it runs before the app reads the key on the NEXT
+    // document — a one-off clear left the app free to save again between the clear and the reload,
+    // which is exactly what the first attempt did.
+    const clearId = await send(ws, nextId++, 'Page.addScriptToEvaluateOnNewDocument', {
+      source: "try { localStorage.removeItem('voxalblast.session.v1') } catch {}",
+    })
+    evidence.fixtureReset = { removeScript: clearId.identifier }
+    await send(ws, nextId++, 'Page.navigate', { url: 'about:blank' })
+    await sleep(250)
   }
 
   for (const viewport of VIEWPORTS[round] || VIEWPORTS.r0) {
@@ -465,6 +503,13 @@ try {
     // A settled, FX-free frame: this is the "before" of every pixel comparison in the round.
     await evaluate('globalThis.__voxalblastDev.clearCelebration()')
     await sleep(200)
+    // A guard against the class of bug the first version of this file had: a fixture's board
+    // surviving into the later captures and making every "before/after" pair compare the wrong
+    // starting position. Every viewport in this loop must start from a bare shell.
+    const startState = await json('({ cells: globalThis.__voxalblast.board().cells.length, score: globalThis.__voxalblast.board().score })')
+    check(`${viewport.id}: the capture pass starts from a bare shell`,
+      startState.cells === 0 && startState.score === 0,
+      `cells=${startState.cells} score=${startState.score}`)
     record.quietFrame = { file: await shot(`${viewport.id}-quiet`) }
 
     // ---- §3.1's sampling gate: all eight tiles, measured on screen ------------------------
@@ -657,12 +702,16 @@ try {
         // §9.1 单线: raw/physical=1, 5 unique cells, inside the 14/7 budget, and the clear pool is
         // empty after 360ms -- measured, not asserted from the config.
         const expected = lines === 1 ? 1 : lines
-        const budgetCap = (await json('globalThis.__voxalblast.effects().lowPower'))
-          ? { 1: 7, 2: 11, 3: 16 }[Math.min(lines, 3)]
-          : { 1: 14, 2: 22, 3: 32 }[Math.min(lines, 3)]
+        const lowPower = await json('globalThis.__voxalblast.effects().lowPower')
+        // §4.3 has two independent reductions and the expectation has to apply both: the tier's
+        // own column, then 「手机横屏/安全边距不足」 halving it. Reading only `lowPower` reported a
+        // landscape phone's correct 7 as a failure against 14.
+        const table = lowPower ? { 1: 7, 2: 11, 3: 16 } : { 1: 14, 2: 22, 3: 32 }
+        const cramped = Boolean(event?.cramped)
+        const budgetCap = cramped ? Math.round(table[Math.min(lines, 3)] * 0.5) : table[Math.min(lines, 3)]
         check(`${viewport.id} L${lines}: the budget comes from the physical line count (${budgetCap})`,
           event?.budget === budgetCap && event?.spawned <= budgetCap,
-          `budget=${event?.budget} spawned=${event?.spawned} physical=${event?.physicalLineCount}`)
+          `budget=${event?.budget} spawned=${event?.spawned} physical=${event?.physicalLineCount} lowPower=${lowPower} cramped=${cramped}`)
         check(`${viewport.id} L${lines}: the demo's physical line count is ${expected}`,
           event?.physicalLineCount === expected, `physical=${event?.physicalLineCount} raw=${event?.rawLineCount}`)
         const tail = lines === 1 ? 360 : 420

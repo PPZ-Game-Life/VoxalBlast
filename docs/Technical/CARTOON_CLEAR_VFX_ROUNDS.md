@@ -147,3 +147,72 @@ node tools/i18n-tests.mjs                 175/175
 node tools/cartoon-clear-probe.mjs r1     2 failure（均为上表 UNMEASURED 的两项，未隐藏）
 ```
 
+## R2 — 多线规划/去重/预算 + 卡通短弧
+
+**只改文件**：`src/rendering/cartoonClearPlan.js`（脚印身份修正）、`src/rendering/effects.js`（事件记录补齐、轮廓贴面偏移）、`tools/cartoon-clear-probe.mjs`、`tools/celebration-audio-probe.mjs`、`tools/png-read.mjs`、本文档。版本仍 **0.13.3**（R1 同版内补完，未升版）。
+
+### 本轮修掉的三个缺陷
+
+1. **面脚印身份用错了键**。原实现用 `(face, axis, index)` 做脚印身份，而 `level`/`demoClear` 这类手工 descriptor **没有 `v`/`u` 字段**（§9.1 早已警告）。于是同一面的每一行都塌成同一个脚印：`demoClear(5)` 只报 raw=2、physical=2、unique=9，比数从 5 掉到 2，预算也跟着掉到 22。改成 `face + 该行真实格集合` 作为身份后，9 个真实盘面用例全部给出 §9.1 的物理线数。
+2. **横屏手机的预算期望算错了**（探针侧）。`cramped` 与 `lowPower` 是两条独立降级（§4.3），只看 `lowPower` 会把横屏手机正确的 7 报成失败。探针现在同时套用两条。
+3. **夹具的盘面会漏进后续取证**。夹具通过 `addScriptToEvaluateOnNewDocument` 注入，`onDrop()` 又会把这一局存进 `localStorage`，于是后面「空盘」的节拍帧全拍到了夹具盘面（第一版 `r2` 的 5 线截图就是这种）。现在注入脚本会被撤销、并追加一条「进入时清掉存档」的脚本，且每个视口开拍前**硬断言** `cells=0 / score=0`——这条守卫就是为了让这类泄漏以后不可能静默发生。
+
+### §9.1 规则用例：9 个真实盘面，一次真实落子
+
+`raw` 是 `board.js` 实际报出的面线；`physical` 是规划器去重后的物理线；预算按 `physicalLineCount` 选行。
+
+| 用例 | raw 面线 | 物理线 | unique | 预算 | 计分 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| single | 1 `+z:row2` | 1 | 5 | 14 | 0→135 |
+| parallel | 2 | 2 | 10 | 22 | 0→585 |
+| cross | **3** `+x:row4 +z:row2 +z:col4` | **2** | 9 | 22 | 0→735 |
+| shared-edge | **2** `+y:row4 +z:row4` | **1** | 5 | **14** | 0→335 |
+| face-pair | 2 `+x:col2 +z:row2` | 2 | 9 | 22 | 0→735 |
+| three | **4** `-y:row4 +z:row0/1/2` | **3** | 15 | 32 | 0→1965 |
+| four | **6** | **4** | 16 | **32** | 0→5915 |
+| five | **7** | **5** | 19 | **32** | 0→12435 |
+| legacy-single | 1 | 1 | 5 | 14 | 0→135 |
+
+对照 R0 同一批用例：`shared-edge` 从 6 降到 14（不再为一段空间付两次），`four`/`five` 从 64 降到 32（§4.3 的 3+ 行封顶）。所有 `uniqueCells` 与夹具期望逐一相等，`planClear()` 的物理线数与 §9.1 表逐一相等。
+
+### §5 时序：单线到 5 线
+
+| 用量 | desktop 1440×900 | phone 390×844 | 横屏 844×390 |
+| --- | --- | --- | --- |
+| demoClear(1) 预算 / 收净 | 14 / 356ms | 7 / 357ms | 7（cramped 减半）/ 347ms |
+| demoClear(2) | 22 / 409ms | 11 / 406ms | 11 / 413ms |
+| demoClear(3) | 32 / 414ms | 16 / 415ms | 16 / 405ms |
+| demoClear(4) | 32 / 418ms | 16 / 415ms | 16 / 404ms |
+| demoClear(5) | 32 / 404ms | 16 / 416ms | 16 / 418ms |
+
+单线 ≤360ms、多线 ≤420ms 全部在窗内（判定允许一帧采样粒度，本机 p50=18ms）。低配列严格是标准列的一半（7/11/16/16/16），横屏再减半。
+
+### 卡通短弧与轮廓
+
+- 短弧：`swoosh-cream`，65–140ms，按所在端点的屏幕方向做 billboard 旋转（`screenAngleDeg`），沿线轴向外、不超过 0.45 格；5 线用例给 4 条。
+- 轮廓：每事件 1 个合并 mesh、1 个材质（不按格新增 material），逐面脚印一条丝带，`followCube` 转面 80ms 退场，`opacity ≤ 0.75` 一次亮起收净。
+- **一处实测修正**：轮廓最初按 §6.2 的 0.005–0.012 格外偏放置，65ms 截图里**完全看不到**——壳层方块本身高出面平面，0.012 的丝带被埋在方块里面（计数器仍然说轮廓存在）。改成读 `BOARD_STYLE.feedbackSurfaceOffset`（与既有亮带同一个「离开方块面」的常量）后才画得出来。**但它的对比度/可读性尚未按 §5「格线始终能读」评级**，本轮只确认「画出来了」，不宣称视觉已验收，留给 R3 与真机一起定。
+
+### 旧探针改指新权威（§9.2，R1 欠账已还）
+
+`tools/celebration-audio-probe.mjs` 的预算/时长/池断言全部改指 `CARTOON_BUDGETS` / `clearTailSeconds` / `cartoon.liveSprites`，**原有负向断言一条未删**（reduced-motion 不飞、静音真的静音、一手一声主音、场景切换、语音上限）。过程中又发现并修掉三处探针自身的失效：
+
+1. 旧像素判据用页内 `drawImage(webglCanvas)` 采样——未开 `preserveDrawingBuffer` 的 canvas 不可保证读得到，它对一个屏幕上看得见的 5 线特效报「0/1024 格变化」。改为对**合成后的 CDP 截图**在棋盘轮廓矩形内做前后差；现在读到 514/109120 像素变化。
+2. `table[5]` 越界（新表只有 1/2/3 行），恒为 `undefined`。
+3. 「关掉 reduced-motion 又飞起来」在**立即读**报告时必然读到尚未发射的暂挂系统——§5 的 110ms 是真实延迟。改为触发后等 180ms 再读。
+
+**结果：`node tools/celebration-audio-probe.mjs <url>` 全绿。**
+
+### R2 出门状态
+
+- [x] 平行/交叉/3+/四线/五线/共享满棱/跨面/旧 v1 存档 8 类用例全部由真实盘面 + 一次合法落子产生
+- [x] 粒子不随 raw 线数倍增；预算由 `physicalLineCount` 决定
+- [x] 低配与 cramped 两档独立生效并各有读数
+- [x] 单线 ≤360ms、多线 ≤420ms，三个视口各自实测
+- [x] `probe:celebration` 改指新权威后全绿，负向断言未删
+- [ ] 轮廓的视觉可读性未评级（见上）
+- [ ] 彩色残像（§5.1 扩展）未做 —— 交付单允许不依赖它施工
+- [ ] 快速连发/重叠事件（2 个上限、全局 64/32 上限）—— R3
+- [ ] layer3 合同、性能前后同 fixture 取差 —— R3
+
+

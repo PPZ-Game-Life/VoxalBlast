@@ -924,6 +924,17 @@ export function createEffects({
       outlineDropped: false,
       cramped,
       reducedMotion: reduced,
+      // The headline category this event was presented as, or null for a plain clear. Kept under
+      // the name the celebration probe and the reward demo already read (§4.1 of the v0.10.3
+      // handoff); the "note was owed" vs "note was painted" distinction is that probe's.
+      primaryType: reward?.primaryType || null,
+      rewardType: reward?.primaryType || null,
+      // The faces the rules layer reported as emptied, and the streak count when one was paid.
+      // §4.1 is explicit that neither may choose the BUDGET (a shared edge reports two faces, so
+      // `wipedFaces` would light a face that was never emptied) -- they are recorded here because
+      // the existing probe reads them to tell "the note was owed" from "the note was painted".
+      wipedFaces: Array.isArray(reward?.wipedFaces) ? [...reward.wipedFaces] : [],
+      streak: (reward?.rewards || []).find((entry) => entry.type === 'CLEAR_STREAK')?.count || 0,
       records: [],
       transients: [],
       scope: true,
@@ -940,8 +951,13 @@ export function createEffects({
     // ---- 1. the line outlines: the confirmation the player reads FIRST (§5, 0–65ms) ---------
     // Never traded away for decoration, never split by the sprite budget, and per §7.1 they leave
     // within 80ms once the cube starts turning or a new drag appears.
+    // §6.2 「轮廓必须贴实际面 … 距真实表面外偏」. The offset is taken from BOARD_STYLE's own
+    // `feedbackSurfaceOffset` rather than from the doc's 0.005–0.012 lattice figure: the shell's
+    // tiles are rounded blocks that stand proud of the face plane, so a 0.012 offset puts the
+    // ribbon INSIDE them and the contour never appears at all (measured — the first version drew
+    // it there and the 65ms capture was empty while every counter said the outline existed).
     const widthWorld = Math.max(0.006, (CARTOON_CLEAR.outline.widthPx[1] / Math.max(1, getCellPx())) * cellSize)
-    const offsetWorld = Math.max(0.004, CARTOON_CLEAR.outline.surfaceOffset[1] * cellSize)
+    const offsetWorld = style.feedbackSurfaceOffset
     const outlineGeometry = buildCartoonOutlineGeometry(plan, widthWorld, offsetWorld)
     if (outlineGeometry) {
       const material = markMaterial(CARTOON_CLEAR.colors.outline, 0)

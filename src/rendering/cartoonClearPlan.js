@@ -28,7 +28,12 @@ export function physicalKey(line) {
 }
 
 function indexOfLine(line) {
-  return line.axis === 'row' ? line.v : line.u
+  // `v`/`u` are board.js's own fields; the DEV demo builds descriptors with a generic `index`
+  // instead (handoff §9.1 warns about exactly this). It is used for reporting only -- the
+  // footprint identity below never depends on it, because a missing field there silently merged
+  // every row of one face into a single footprint (measured: demoClear(5) reported raw=2).
+  if (line.axis === 'row') return Number.isFinite(line.v) ? line.v : (Number.isFinite(line.index) ? line.index : null)
+  return Number.isFinite(line.u) ? line.u : (Number.isFinite(line.index) ? line.index : null)
 }
 
 /**
@@ -44,9 +49,14 @@ export function planClear(lines, { frontFace = null, visibleFaces = [], maxOutli
 
   for (const line of lines || []) {
     if (!line || !Array.isArray(line.cells) || !line.cells.length) continue
-    const footprintKey = `${line.face}|${line.axis}|${indexOfLine(line)}`
-    // A weapon-of-last-resort guard, not the de-duplication itself: board.js does not repeat a
-    // (face, axis, index) triple today, and if it ever did the outline would be drawn twice.
+    const identity = physicalKey(line)
+    // A face footprint is (face + the cells it reports), NOT (face, axis, index): the axis/index
+    // pair is optional on a hand-built descriptor, and keying on it silently collapsed a
+    // five-row demo into one footprint. The cell set is always present and always distinguishes
+    // two different lines on the same face.
+    const footprintKey = `${line.face}|${identity}`
+    // A (face, cells) pair reported twice is the same footprint; board.js does not do that today,
+    // and if it ever did the outline would otherwise be drawn twice.
     if (seenFaceLine.has(footprintKey)) continue
     seenFaceLine.add(footprintKey)
     footprints.push({
@@ -55,7 +65,8 @@ export function planClear(lines, { frontFace = null, visibleFaces = [], maxOutli
       index: indexOfLine(line),
       cells: line.cells.map((cell) => [cell[0], cell[1], cell[2]]),
     })
-    const identity = physicalKey(line)
+    // `identity` was computed at the top of the loop and is reused here: the physical line and
+    // the face footprint are keyed off the SAME cell set.
     let entry = physical.get(identity)
     if (!entry) {
       entry = { key: identity, cells: line.cells.map((cell) => [cell[0], cell[1], cell[2]]), reports: [] }

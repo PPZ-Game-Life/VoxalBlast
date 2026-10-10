@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs'
 import zlib from 'node:zlib'
 
 export function readPng(path) {
-  const buffer = readFileSync(path)
+  // v0.13.3: a Buffer is accepted as well as a path, so a probe that already holds the bytes (a
+  // CDP screenshot, for instance) does not have to write a temporary file to decode them.
+  const buffer = Buffer.isBuffer(path) ? path : readFileSync(path)
   if (buffer.readUInt32BE(0) !== 0x89504e47) throw new Error(`${path}: not a PNG`)
   let offset = 8
   let width = 0, height = 0, depth = 0, colorType = 0, interlace = 0

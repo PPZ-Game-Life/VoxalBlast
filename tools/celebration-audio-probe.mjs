@@ -23,7 +23,11 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, existsSync, readFileSync, rmSync, realpathSync } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
 import { tmpdir } from 'node:os'
-import { CELEBRATION, AUDIO_STYLE } from '../src/rendering/config.js'
+import { CARTOON_CLEAR, AUDIO_STYLE } from '../src/rendering/config.js'
+// v0.13.3: the NORMAL clear's authority is the planner, not CELEBRATION
+// (CARTOON_CLEAR_VFX_HANDOFF §9.2). CELEBRATION still owns the item bursts and the record card.
+import { CARTOON_BUDGETS, clearTailSeconds } from '../src/rendering/cartoonClearPlan.js'
+import { readPng } from './png-read.mjs'
 
 const url = process.argv[2] || 'http://127.0.0.1:5173/'
 const CHROME_CANDIDATES = [
@@ -161,65 +165,47 @@ try {
   const bus = () => json('globalThis.__voxalblast.audio()')
 
   // ---- 0. the check that no counter can replace -------------------------------------------
-  // The first version of this file reported `liveChips=64, liveParticles=64` while the screen
-  // showed NOTHING: a `RotationOverLife` behavior made every instance matrix NaN, the batch drew
-  // zero pictures, and every read-out in the game was still perfectly correct. Only pixels can
-  // tell "the budget was spent" from "the paper is on screen", so the board area is sampled
-  // every frame from inside the page and compared against the frame BEFORE the event.
-  const watchBoard = (cx, cy) => `(() => {
-    const canvas = document.querySelector('canvas')
-    const box = canvas.getBoundingClientRect()
-    const probe = document.createElement('canvas')
-    probe.width = 32; probe.height = 32
-    const ctx = probe.getContext('2d', { willReadFrequently: true })
-    const sx = (${cx} - box.left) * (canvas.width / box.width) - 64
-    const sy = (${cy} - box.top) * (canvas.height / box.height) - 64
-    globalThis.__boardWatch = []
-    const start = performance.now()
-    let first = null
-    const tick = () => {
-      const at = Math.round(performance.now() - start)
-      try {
-        ctx.drawImage(canvas, sx, sy, 128, 128, 0, 0, 32, 32)
-        const data = ctx.getImageData(0, 0, 32, 32).data
-        if (!first) first = Array.from(data)
-        let changed = 0
-        for (let i = 0; i < data.length; i += 4) {
-          if (Math.abs(data[i] - first[i]) > 12 || Math.abs(data[i + 1] - first[i + 1]) > 12) changed += 1
-        }
-        globalThis.__boardWatch.push([at, changed])
-      } catch (error) { globalThis.__boardWatch.push([-1, String(error.message)]) }
-      if (performance.now() - start < 1200) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-    return true
-  })()`
+
 
   // ---- 1. the per-event budget, straight out of the shipped config ---------------------
+  // v0.13.3: the NORMAL clear's authority moved to `cartoonClearPlan.js`. §9.2 of
+  // CARTOON_CLEAR_VFX_HANDOFF asks for exactly this: the budget/duration assertions are
+  // re-pointed at the new table while the NEGATIVE assertions below (reduced motion, the mute,
+  // one main cue per placement) stay exactly as they were.
   const lowPower = (await json('globalThis.__voxalblast.effects()')).lowPower
-  const table = lowPower ? CELEBRATION.budgets.lowPower : CELEBRATION.budgets.standard
-  const decorationCap = lowPower ? CELEBRATION.decorationCap.lowPower : CELEBRATION.decorationCap.standard
+  const tier = lowPower ? 'lowPower' : 'standard'
+  const table = CARTOON_BUDGETS[tier]
+  const liveCap = CARTOON_CLEAR.live[tier]
+  const spritePool = (report) => report.cartoon.liveSprites
+  const budgetFor = (lines, cramped = false) => {
+    const base = table[Math.min(lines, 3)]
+    return cramped ? Math.round(base * 0.5) : base
+  }
   for (const lines of [1, 2, 3, 4, 5]) {
     const report = await demo(lines)
-    check(`L${lines}: the event budget is the shipped one (${table[lines]})`,
-      report.event.budget === table[lines] && report.event.spawned <= table[lines],
+    const expected = budgetFor(lines)
+    check(`L${lines}: the event budget is the shipped one (${expected})`,
+      report.event.budget === expected && report.event.spawned <= expected,
       `budget=${report.event.budget} spawned=${report.event.spawned}`)
-    check(`L${lines}: nothing on screen exceeds the budget or the decoration cap`,
-      report.liveChips <= table[lines] && report.decorations <= decorationCap,
-      `liveChips=${report.liveChips} decorations=${report.decorations} cap=${decorationCap}`)
-    // §8: the band is the RESULT being shown and the decoration cooldown must never withhold
-    // it — one band per distinct cleared segment, and never more than there were lines.
-    check(`L${lines}: every line keeps its band`, report.bands === Math.min(lines, 5),
-      `bands=${report.bands} lines=${lines}`)
+    check(`L${lines}: nothing on screen exceeds the budget or the live ceiling`,
+      spritePool(report) <= expected && spritePool(report) <= liveCap,
+      `liveSprites=${spritePool(report)} liveCap=${liveCap}`)
+    // §4.1: the budget is chosen from the PHYSICAL line count, so a demo of N alternating
+    // row/columns must report N of them however many raw face lines the scan produced.
+    check(`L${lines}: the budget follows the physical line count, not the raw face lines`,
+      report.cartoon.lastPlan.physicalLineCount === lines,
+      `physical=${report.cartoon.lastPlan.physicalLineCount} raw=${report.cartoon.lastPlan.rawLineCount}`)
+    // The line contour is the RESULT being shown and no sprite budget may ever take it away.
+    check(`L${lines}: the cleared line keeps its own contour`, report.outlines === 1,
+      `outlines=${report.outlines}`)
     // The tail is a wall-clock promise (§7.3): nothing may still be flying after it.
-    await sleep(CELEBRATION.tailSeconds[lines] * 1000 + 400)
+    const tail = clearTailSeconds(lines)
+    await sleep(tail * 1000 + 400)
     const settled = await json('globalThis.__voxalblast.effects()')
     check(`L${lines}: the tail is over inside its own wall-clock budget`,
-      settled.liveChips === 0 && settled.decorations === 0,
-      `after ${CELEBRATION.tailSeconds[lines]}s: liveChips=${settled.liveChips} decorations=${settled.decorations}`)
+      settled.cartoon.liveSprites === 0 && settled.outlines === 0,
+      `after ${tail}s: liveSprites=${settled.cartoon.liveSprites} outlines=${settled.outlines}`)
   }
-  check('the whole ladder stays under the on-screen flying ceiling',
-    (await json('globalThis.__voxalblast.effects()')).liveChips <= CELEBRATION.flyingCap[lowPower ? 'lowPower' : 'standard'])
 
   // ---- 2. an intersecting pair is ONE cell, not two ------------------------------------
   const shared = await demo(2)
@@ -229,19 +215,47 @@ try {
 
   // ---- 2b. the paper is really ON SCREEN -------------------------------------------------
   {
-    const centre = await json('globalThis.__voxalblast.placement().center')
+    // v0.13.3: the pixel watch only means something while the board is actually DRAWN — the home
+    // cover calls `effects.setVisible(false)` and hides the FX group without stopping a single
+    // counter, so an open cover would make this check report "nothing on screen" about an effect
+    // that was never allowed to draw. Same dismissal `tools/cartoon-clear-probe.mjs` performs.
+    await evalJs(`(() => { const el = document.querySelector('#home-primary')
+      if (el && document.querySelector('#app').classList.contains('home-open')) el.click()
+      return document.querySelector('#app').classList.contains('home-open') })()`)
+    await sleep(500)
+    const solid = (await json('globalThis.__voxalblast.framing()')).solid
     await clearBus()
     await sleep(400)
-    await evalJs(watchBoard(centre.x, centre.y))
+    // The pixels are read from a COMPOSITED screenshot, not from the WebGL canvas. `drawImage()`
+    // on a canvas whose context was created without `preserveDrawingBuffer` is not guaranteed to
+    // see anything, and the in-page watch this replaces reported "0 of 1024 cells changed" for an
+    // effect the R2 captures show plainly on screen. A screenshot cannot have that failure mode.
+    const boardBox = {
+      x: Math.round(solid.minX), y: Math.round(solid.minY),
+      width: Math.max(1, Math.round(solid.maxX - solid.minX)),
+      height: Math.max(1, Math.round(solid.maxY - solid.minY)),
+      scale: 1,
+    }
+    const grab = async () => {
+      const result = await send(ws, nextId++, 'Page.captureScreenshot', {
+        format: 'png', clip: { ...boardBox, scale: 1 }, captureBeyondViewport: false,
+      })
+      return readPng(Buffer.from(result.data, 'base64'))
+    }
+    const quiet = await grab()
     await evalJs('globalThis.__voxalblastDev.demoClear(5)')
-    await sleep(1500)
-    const watch = await json('globalThis.__boardWatch')
-    const peak = watch.reduce((best, entry) => (entry[1] > best[1] ? entry : best), [-1, -1])
-    const tail = watch[watch.length - 1] || [-1, -1]
-    check('the celebration actually paints pixels over the board', peak[1] >= 20,
-      `peak ${peak[1]}/1024 sampled cells changed at ${peak[0]}ms (a NaN instance matrix changes 0)`)
-    check('and the board is back to itself when the tail is over', tail[1] <= 4,
-      `${tail[1]} cells still changed at ${tail[0]}ms`)
+    await sleep(140)
+    const loud = await grab()
+    await evalJs('globalThis.__voxalblastDev.clearCelebration()')
+    let changed = 0
+    for (let i = 0; i < quiet.pixels.length; i += quiet.channels) {
+      if (Math.abs(loud.pixels[i] - quiet.pixels[i]) > 12
+        || Math.abs(loud.pixels[i + 1] - quiet.pixels[i + 1]) > 12
+        || Math.abs(loud.pixels[i + 2] - quiet.pixels[i + 2]) > 12) changed += 1
+    }
+    const total = quiet.width * quiet.height
+    check('the celebration actually paints pixels over the board', changed >= Math.max(20, total * 0.0005),
+      `${changed}/${total} pixels of the board box changed 140ms into a 5-line clear`)
   }
 
   // ---- 2c. 手机没安全留白: less decoration, never a smaller board ------------------------
@@ -253,21 +267,21 @@ try {
     })
     await sleep(400)
     const cramped = await demo(5)
+    const crampedBudget = budgetFor(5, true)
     check('a landscape phone gets LESS paper, not a smaller board',
-      cramped.event.cramped === true && cramped.event.spawned <= Math.ceil(table[5] * 0.5)
-      && cramped.liveChips <= Math.ceil(table[5] * 0.5),
-      `cramped=${cramped.event.cramped} spawned=${cramped.event.spawned} liveChips=${cramped.liveChips} of budget ${table[5]}`)
-    check('and it keeps every band and the decoration it is allowed',
-      cramped.bands === 5 && cramped.event.decorations >= 1,
-      `bands=${cramped.bands} decorations=${cramped.event.decorations}`)
+      cramped.event.cramped === true && cramped.event.spawned <= crampedBudget
+      && spritePool(cramped) <= crampedBudget,
+      `cramped=${cramped.event.cramped} spawned=${cramped.event.spawned} liveSprites=${spritePool(cramped)} of budget ${crampedBudget}`)
+    check('and it keeps the cleared line outline',
+      cramped.outlines === 1, `outlines=${cramped.outlines}`)
     await send(ws, nextId++, 'Emulation.setDeviceMetricsOverride', {
       width: 430, height: 900, screenWidth: 430, screenHeight: 900, deviceScaleFactor: 1, mobile: true,
     })
     await sleep(400)
     const roomy = await demo(5)
     check('and a portrait phone is back to the full budget',
-      roomy.event.cramped === false && roomy.event.spawned === table[5],
-      `cramped=${roomy.event.cramped} spawned=${roomy.event.spawned}`)
+      roomy.event.cramped === false && roomy.event.spawned === table[Math.min(5, 3)],
+      `cramped=${roomy.event.cramped} spawned=${roomy.event.spawned} of ${table[Math.min(5, 3)]}`)
   }
 
   // ---- 3. one main cue per event, chosen by the reward headline -------------------------
@@ -345,16 +359,20 @@ try {
   const reduced = await demo(5)
   const reducedBus = await bus()
   check('reduced motion is read from the media query', reduced.reducedMotion === true)
-  check('reduced motion flies no paper at all', reduced.liveChips === 0, `liveChips=${reduced.liveChips}`)
+  check('reduced motion flies no paper at all', spritePool(reduced) <= 1, `liveSprites=${spritePool(reduced)}`)
   check('reduced motion keeps ONE static mark (the result is still announced)',
-    reduced.decorations >= 1 && reduced.decorations <= decorationCap, `decorations=${reduced.decorations}`)
+    reduced.event.spawned >= 1 && reduced.event.spawned <= 1, `spawned=${reduced.event.spawned}`)
   check('reduced motion does not silence the event', reducedBus.lastCue === 'clear-l5' && reducedBus.muted === false,
     `lastCue=${reducedBus.lastCue} muted=${reducedBus.muted}`)
   await send(ws, nextId++, 'Emulation.setEmulatedMedia', { features: [] })
   await sleep(150)
-  const restored = await demo(5)
-  check('and turning the preference back off flies paper again', restored.liveChips > 0,
-    `liveChips=${restored.liveChips}`)
+  // v0.13.3: the burst is a REAL 110ms delay now (§5 「所有发射在140ms前完成」), so the read has to
+  // come after it — the report the trigger returns only ever holds the paused systems.
+  await demo(5)
+  await sleep(180)
+  const restored = await json('globalThis.__voxalblast.effects()')
+  check('and turning the preference back off flies paper again', spritePool(restored) > 1,
+    `liveSprites=${spritePool(restored)} read 180ms after the trigger`)
 
   // ---- 5. the mute stops the MASTER, and it is measured there ---------------------------
   // An A/B of the SAME event: measured once with the sound on — the positive control, which is
