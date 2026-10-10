@@ -401,3 +401,20 @@ OK   C settings: the scope epoch advanced, so a late callback is stale  epoch 6 
 #### 试过但撤回的做法（留给下一步）
 
 方向很自然：给门板加一块**深色底板**，让所有 sprite 都有可比对比度。本轮按这个方向加了底板与 `backdropOnly` 模式（先拍「只有底板」当参考帧，再拍「底板 + 8 个 tile」做差），**结果 8 个 tile 全部变成「窗口内没有变化」**——两张帧一样了。也就是说底板确实进了参考帧，但第二张帧里那些 tile 没被画出来（或没插值出来），本轮**没查清，直接把这次尝试整体撤回**，不留半成品。下一步要从「两张帧必须共用同一块底板实例」入手，而不是各自新建。
+
+### R4 的「录屏」：本机能给的最接近的东西（v0.13.3）
+
+**只改文件**：`tools/cartoon-clear-probe.mjs`、本文档。无产品代码改动。
+
+R4 原本写的是「没有录屏，也不拿无头截图拼成视频冒充」。本机也确认**没有 ffmpeg / 任何视频编码器**。但本仓库对「录下来」的既有做法不是编码视频，而是 **CDP screencast 帧序**（`tools/intro-probe.mjs` 把开场波次就是这么录的）。按同一做法补上：
+
+```
+OK   J the clear was recorded as a real frame sequence  52 frames over 906ms, mean gap 17.8ms
+OK   J and it covers the whole event window, not just its start  last frame at 906ms
+```
+
+- 帧由浏览器**在合成时**推送，每帧带自己的时间戳，所以这个序列**自带真实节拍**（平均帧间隔 17.8ms ≈ 56fps，与探针采样到的 p50 一致）；
+- 覆盖 0–906ms，也就是整个事件窗（420ms）加尾巴，不是只抓了开头；
+- 产物：`artifacts/cartoon-clear-v1/r3/screencast/frame-000..051.png` + `timings.json`（帧号 / 毫秒 / 路径）。
+
+**它是什么、不是什么**（写在证据里，不让它被误读）：这是**本机无头** d3d11、桌面 1440×900 视口、世界时钟钳死的录制；**不是手机、不是微信/QQ 内嵌、不是真机手感**。它比静帧多了「节奏」这一维，但仍然不能替代 §9.2 要求的真机录屏。

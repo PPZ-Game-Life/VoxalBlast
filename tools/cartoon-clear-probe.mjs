@@ -586,8 +586,54 @@ async function runLifecycle(ctx) {
       afterResume.cartoon.liveSprites === 0 && afterResume.outlines === 0,
       `liveSprites=${afterResume.cartoon.liveSprites} outlines=${afterResume.outlines}`)
   }
+  // ---- J. a real recording of the clear, as a frame sequence --------------------------------
+  // This machine has no video encoder, and the handoff forbids stitching stills into a video and
+  // calling it a frame rate. What it does have is a CDP screencast, which is what this repo has
+  // used for the opening wave (tools/intro-probe.mjs). The frames below are pushed by the browser
+  // as it composites, each with its own timestamp, so the sequence carries its real cadence --
+  // and it is labelled for what it is: HEADLESS, at a device viewport, not a phone.
+  {
+    const dir = join(OUT, "screencast")
+    mkdirSync(dir, { recursive: true })
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(240)
+    const frames = []
+    screencastSink = (params) => frames.push({ at: params.metadata.timestamp, data: params.data })
+    await send(ws, nextId++, "Page.startScreencast", { format: "png", everyNthFrame: 1, maxWidth: 1440, maxHeight: 900 })
+    await evaluate('globalThis.__voxalblastDev.demoClear(5)')
+    await sleep(900)
+    await send(ws, nextId++, "Page.stopScreencast")
+    screencastSink = null
+    const base = frames.length ? frames[0].at : 0
+    const timings = frames.map((frame, index) => {
+      const file = join(dir, `frame-${String(index).padStart(3, "0")}.png`)
+      writeFileSync(file, Buffer.from(frame.data, "base64"))
+      return { index, ms: Math.round((frame.at - base) * 1000), file: file.replace(ROOT + "\\", "").replaceAll("\\", "/") }
+    })
+    const gaps = timings.slice(1).map((entry, index) => entry.ms - timings[index].ms)
+    const meanGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0
+    out.screencast = {
+      frames: timings.length,
+      durationMs: timings.length ? timings[timings.length - 1].ms : 0,
+      meanFrameGapMs: Math.round(meanGap * 10) / 10,
+      covered: timings.length ? `${timings[0].ms}..${timings[timings.length - 1].ms}` : null,
+      dir: dir.replace(ROOT + "\\", "").replaceAll("\\", "/"),
+    }
+    writeFileSync(join(dir, "timings.json"), `${JSON.stringify({ ...out.screencast, frames: timings }, null, 2)}\n`)
+    check("J the clear was recorded as a real frame sequence",
+      timings.length >= 20 && out.screencast.durationMs >= 500,
+      `${timings.length} frames over ${out.screencast.durationMs}ms, mean gap ${out.screencast.meanFrameGapMs}ms`)
+    check("J and it covers the whole event window, not just its start",
+      out.screencast.durationMs >= 420,
+      `last frame at ${out.screencast.durationMs}ms`)
+  }
   void note
 }
+
+// The screencast sink lives at module scope: the listener that feeds it is attached inside the
+// connect block, and `runLifecycle` (a top-level function) is what fills it.
+let screencastSink = null
 
 const failures = []
 function check(label, condition, detail) {
@@ -805,8 +851,15 @@ try {
   ws = await connect(target.webSocketDebuggerUrl)
 
   const browserErrors = []
+  // The screencast frames are collected here rather than through a one-shot `send`, because the
+  // recording is an EVENT STREAM: CDP pushes each frame and stalls until it is acknowledged.
   ws.addEventListener('message', (event) => {
     const { method, params } = JSON.parse(event.data)
+    if (method === 'Page.screencastFrame') {
+      if (screencastSink) screencastSink(params)
+      send(ws, nextId++, 'Page.screencastFrameAck', { sessionId: params.sessionId }).catch(() => {})
+      return
+    }
     if (method === 'Runtime.consoleAPICalled' && params.type === 'error') {
       browserErrors.push(params.args.map((arg) => arg.value ?? arg.description ?? arg.type).join(' '))
     }
