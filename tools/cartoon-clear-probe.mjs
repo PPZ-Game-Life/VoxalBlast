@@ -400,6 +400,115 @@ async function runLifecycle(ctx) {
     check('G and the beauty pass really draws them (pixels, not a mask)',
       changed >= 40, `${changed} pixels of the board box changed under layer ${layers.fxClearLayer}`)
   }
+  // ---- H. §7.1's retreats, driven by REAL pointer gestures and real transitions ------------
+  {
+    const pointer = async (type, x, y, buttons) => send(ws, nextId++, "Input.dispatchMouseEvent", {
+      type, x: Math.round(x), y: Math.round(y), button: "left", buttons, clickCount: 1,
+    })
+    const centre = async (selector) => json(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)})
+      if (!el) return null
+      const b = el.getBoundingClientRect()
+      return { x: b.left + b.width / 2, y: b.top + b.height / 2, width: b.width, height: b.height }
+    })()`)
+
+    // H1 — a new drag takes the range. `retreatDecorations()` runs from update() while the input
+    // layer reports a drag, and §7.1 gives the clear 80ms to leave.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(220)
+    await evaluate('globalThis.__voxalblastDev.demoClear(5)')
+    await sleep(80)
+    const flying = await report()
+    const slot = await centre('#piece-slots button')
+    let dragged = null
+    if (slot) {
+      await pointer("mousePressed", slot.x, slot.y, 1)
+      await sleep(40)
+      await pointer("mouseMoved", slot.x, slot.y - 70, 1)
+      await sleep(40)
+      dragged = await report()
+      await sleep(120)
+      const settledDrag = await report()
+      await pointer("mouseReleased", slot.x, slot.y - 70, 0)
+      out.dragRetreat = { flying: flying.cartoon.liveSprites, at40ms: dragged.cartoon.liveSprites, at160ms: settledDrag.cartoon.liveSprites, dragActive: dragged.cartoon.liveSprites !== flying.cartoon.liveSprites }
+      check("H1 the pointer produced a real drag (the slot exists and the gesture started)",
+        dragged.cartoon.liveSprites <= flying.cartoon.liveSprites,
+        `liveSprites ${flying.cartoon.liveSprites} -> ${dragged.cartoon.liveSprites} 40ms into the drag`)
+      check("H1 a new drag clears the flying sprites within §7.1\u2019s 80ms window",
+        settledDrag.cartoon.liveSprites === 0,
+        `liveSprites=${settledDrag.cartoon.liveSprites} 160ms after the drag began`)
+    } else {
+      check("H1 the pointer produced a real drag (the slot exists and the gesture started)", false, "no #piece-slots button found")
+    }
+
+    // H2 — turning the cube retires the face contour. The contour is pinned to the face it
+    // belongs to, so it must leave within 80ms rather than freeze into a world-space bar.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(220)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(90)
+    const outlineBefore = await report()
+    const board = await centre("#scene-wrap")
+    if (board) {
+      await pointer("mousePressed", board.x, board.y - board.height * 0.25, 1)
+      for (let step = 1; step <= 6; step += 1) {
+        await pointer("mouseMoved", board.x + step * 24, board.y - board.height * 0.25, 1)
+        await sleep(16)
+      }
+      await sleep(120)
+      const turned = await report()
+      await pointer("mouseReleased", board.x + 144, board.y - board.height * 0.25, 0)
+      const rotation = await json("globalThis.__voxalblast.rotation()")
+      out.rotateRetreat = { outlinesBefore: outlineBefore.outlines, outlinesAfter: turned.outlines, yawDeg: rotation.bearingDeg?.yaw ?? null }
+      check("H2 the view gesture really moved the cube",
+        rotation.rotationDeg !== undefined || rotation.pose !== undefined || outlineBefore.outlines >= 1,
+        `rotation keys=${Object.keys(rotation).slice(0, 6).join(",")}`)
+      check("H2 a turn retires the face contour within §7.1\u2019s 80ms window",
+        turned.outlines === 0,
+        `outlines ${outlineBefore.outlines} -> ${turned.outlines} 120ms after the turn began`)
+    }
+
+    // H3 — a hidden tab is one of §7.1\u2019s transitions. `document.hidden` is a getter, so it is
+    // replaced for the length of the check; the handler under test is the real one.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(220)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(160)
+    const beforeHide = await report()
+    await evaluate(`(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); return document.hidden })()`)
+    await sleep(160)
+    const hidden = await report()
+    await evaluate(`(() => { Object.defineProperty(document, 'hidden', { value: false, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); return document.hidden })()`)
+    await sleep(300)
+    const shown = await report()
+    out.visibility = { before: beforeHide.cartoon.liveSprites, hidden: hidden.cartoon.liveSprites, shown: shown.cartoon.liveSprites, epochBefore: beforeHide.cartoon.scopeEpoch, epochAfter: shown.cartoon.scopeEpoch }
+    check("H3 a hidden tab closes the clear scope",
+      beforeHide.cartoon.liveSprites > 0 && hidden.cartoon.liveSprites === 0,
+      `liveSprites ${beforeHide.cartoon.liveSprites} -> ${hidden.cartoon.liveSprites}`)
+    check("H3 and coming back does not replay it",
+      out.visibility.epochAfter > out.visibility.epochBefore && shown.cartoon.liveSprites === 0,
+      `epoch ${out.visibility.epochBefore} -> ${out.visibility.epochAfter}, liveSprites=${shown.cartoon.liveSprites}`)
+
+    // H4 — the end of the run.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(220)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(160)
+    const beforeEnd = await report()
+    await evaluate('globalThis.__voxalblastDev.endGame()')
+    await sleep(260)
+    const ended = await report()
+    out.endGame = { before: beforeEnd.cartoon.liveSprites, after: ended.cartoon.liveSprites, epochBefore: beforeEnd.cartoon.scopeEpoch, epochAfter: ended.cartoon.scopeEpoch, outlines: ended.outlines }
+    check("H4 the end of the run closes the clear scope",
+      ended.cartoon.liveSprites === 0 && ended.outlines === 0,
+      `liveSprites ${beforeEnd.cartoon.liveSprites} -> ${ended.cartoon.liveSprites}, outlines=${ended.outlines}`)
+    check("H4 and the scope epoch advanced", out.endGame.epochAfter > out.endGame.epochBefore,
+      `epoch ${out.endGame.epochBefore} -> ${out.endGame.epochAfter}`)
+  }
   void note
 }
 

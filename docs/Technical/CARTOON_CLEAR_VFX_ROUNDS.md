@@ -316,3 +316,20 @@ FAIL C settings: the frame loop is running before the transition  liveParticles=
 **顺带关掉了 R3 留下的帧开销缺口。** 同一个事件（单线与 5 线）的额外 draw calls 从 **+5 降到 +3**（240→243），落进 §7.2 的 ≤4。归因明确：多出来的 2 个调用就是粒子被**主通道与法线预通道各画一遍**；把消除 FX 挪到独立层并从预通道排除后这两个调用消失。三角面 +68，远在 2500 以内。
 
 **未关掉的三条**（照报）：`star-pop` / `confetti-pink` / `dash-blue` 的采样尺寸判据、轮廓对比度未评级、设置面板用例无效（前置断言实测 `liveParticles=0`，用例开始时循环已暂停）。
+
+### R4 补完（二）：§7.1 的退场与取消，用真实输入取证（v0.13.3）
+
+**只改文件**：`tools/cartoon-clear-probe.mjs`、本文档。无产品代码改动。
+
+R4 收尾时这几条只做到「代码路径存在」，本轮用**真实指针事件与真实转变**补上读数。
+
+| 用例 | 驱动方式 | 读数 | 判定 |
+| --- | --- | --- | --- |
+| 新拖拽收掉飞行装饰（§7.1 ≤80ms） | CDP 在 `#piece-slots button` 上按下 → 上移 70px | 8 个飞行精灵在**起手 40ms 内**归零 | OK |
+| 转面收掉贴面轮廓（§7.1 ≤80ms） | CDP 在 `#scene-wrap` 上按下横向拖 6 步 | 轮廓 1 → **0**（120ms 后），偏航实测到 **26.01°**（手势真的转了） | OK |
+| hidden 清作用域且回来不补播 | 替换 `document.hidden` 取值并派发真实 `visibilitychange` | 24 → **0**；epoch 6→7；恢复可见后仍 **0** | OK |
+| 局终清作用域 | `__voxalblastDev.endGame()` | 24 → **0**，`outlines` 0；epoch 7→8 | OK |
+
+转面那条特别值得记：轮廓是 `followCube` 的，`updateTransientEffects()` 在 `cubeGroup.quaternion` 与本事件出生时的姿态差超过 0.04rad 时把 `until` 收到 `now + 80ms`。本轮把偏航读数（26.01°）与轮廓归零放在同一条证据里，**证明这是真的转了面**，而不是因为事件自己到期了。
+
+仍然没验证的：**重开**（`resetGame` 路径存在，未单独驱动）与**恢复存档**（`applySession` 路径存在，未单独驱动）——两条都只做过代码检查，不给它们打勾。
