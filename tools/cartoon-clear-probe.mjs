@@ -1062,12 +1062,19 @@ try {
     // Only on the round's first viewport: the gate is about SAMPLING, and the sampling does not
     // depend on the window size, so repeating it per viewport would spend captures on nothing.
     if (viewport === (VIEWPORTS[round] || VIEWPORTS.r0)[0]) {
+      // The reference frame is the gate own plate with NO tiles, and the plate is created once
+      // and left alive for the second capture. Two separate plates produced two identical
+      // frames the first time this was tried.
       await evaluate('globalThis.__voxalblastDev.clearCelebration()')
-      await sleep(220)
-      const quietPath = join(OUT, `${viewport.id}-quiet.png`)
+      await sleep(240)
+      const plate = await json('globalThis.__voxalblastDev.atlasGate({ plate: true, tiles: false })')
+      await sleep(170)
+      const quietPath = await shot(`${viewport.id}-atlas-gate-backdrop`)
       const gate = await json('globalThis.__voxalblastDev.atlasGate()')
-      await sleep(180)
+      gate.plate = plate.tiles.length === 0
+      await sleep(200)
       const gatePath = await shot(`${viewport.id}-atlas-gate`)
+      await evaluate('globalThis.__voxalblastDev.clearCelebration()')
       const gateRecord = { ...gate, frame: gatePath.replace(ROOT + '\\', '').replaceAll('\\', '/') }
       try {
         const quiet = readPng(quietPath)

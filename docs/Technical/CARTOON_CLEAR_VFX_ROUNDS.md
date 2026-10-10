@@ -435,3 +435,29 @@ OK   J and it covers the whole event window, not just its start  last frame at 9
 - 这与材质一致：轮廓色是深蓝 `#20334C`，`NormalBlending`、`opacity ≤ 0.75`。
 
 **仍然不下「通过」**：§5.2 没有给「可读」的数值门槛，46 luma（21%）是否够、1–1.5px 在真机 DPI 下是否够，是**制作人/美术的裁决**，不是我能自评的。所以这一条的措辞从「未评级」改成「已测量，待裁决」，读数留在上面。
+
+### 最后两个 tile 的判据：用共享底板收掉（v0.13.3）
+
+**只改文件**：`src/rendering/effects.js`、`tools/cartoon-clear-probe.mjs`、本文档、`docs/Technical/KNOWN_GAPS.md`。**容差仍未动**（包围盒 0.12 / 重心 0.20）。
+
+上一轮把「给门板加深色底板」整体撤回，因为两张帧拍成了完全一样（tile 没进第二张）。**根因就是上一轮自己写进 KNOWN_GAPS 的那句**：两次拍摄各自新建了一块底板。改成**一次创建、两次共用**（先拍空底板当参考帧，再拍底板 + 8 个 tile，中间不清场）之后，**8 个 tile 全部通过**：
+
+| tile | core 包围盒 | 期望 core | 判定 |
+| --- | --- | --- | --- |
+| confetti-blue | 0.552 × 0.552 | 0.578 × 0.578 | OK |
+| confetti-teal | 0.632 × 0.655 | 0.664 × 0.688 | OK |
+| **confetti-pink** | **0.532 × 0.544** | 0.563 × 0.570 | **OK（上轮 FAIL）** |
+| **star-pop** | **0.817 × 0.806** | 0.766 × 0.766 | **OK（上轮 UNMEASURED）** |
+| sparkle-cream | 0.614 × 0.614 | 0.625 × 0.625 | OK |
+| dot-blue | 0.456 × 0.456 | 0.484 × 0.484 | OK |
+| swoosh-cream | 0.649 × 0.403 | 0.742 × 0.453 | OK |
+| dash-blue | 0.703 × 0.220 | 0.711 × 0.258 | OK |
+
+8 个 tile 的形状与朝向判据也全部通过。为什么上一轮的两个会好：
+
+- **star-pop**：奶油星原先画在奶油棋盘前，差值接近 0，只能测到描边；换到深色底板之后差值正常，包围盒 0.817 直接落在期望 0.766 的容差内。这就是「门板没有自己的背景」的直接验证。
+- **confetti-pink**：它的 core 与 soft 只差 0.03，说明不是晕边；换底板后 core 由 0.699 收到 **0.532**（期望 0.563）。也就是说旧数值里多出来的那部分**不是图形、也不是晕边，而是「粉片叠在奶油/棋盘上时差值不够锐利」导致的边缘外扩**——底板把对比度拉起来，它自己就消失了。
+
+底板的实现要点（都写进了代码注释）：`atlasGate({ plate: true, tiles: false })` 创建底板且不画 tile，`atlasGate()` 复用仍然活着的那一块；底板走 `addTransient`（`ownGeometry` 标记，会被 `clearCelebration()` 正常回收），深度上放在 tile 之后，`renderOrder` 让 alpha 批次仍然盖在它上面。
+
+**`npm run probe:clear` 的 `r1` 与 `r3` 现在都是 0 failure。**

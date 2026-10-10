@@ -1340,7 +1340,7 @@ export function createEffects({
    * direction, instead of proving that a file finished loading. Returns the world centre of each
    * quad so a probe can measure what it actually got.
    */
-  function showAtlasGate({ tileWorld = 1.1, spacing = 1.7, yOffset = 2.6 } = {}) {
+  function showAtlasGate({ tileWorld = 1.1, spacing = 1.7, yOffset = 2.6, plate = false, tiles = true } = {}) {
     const ids = CARTOON_CLEAR.atlas.order
     const columns = CARTOON_CLEAR.atlas.columns
     const rows = CARTOON_CLEAR.atlas.rows
@@ -1371,8 +1371,25 @@ export function createEffects({
         gravity: 0,
       }
     })
+    // The gate can put a dark plate behind itself, because a cream star or a cream swoosh drawn
+    // in front of the cream board is a difference of nearly zero -- the only measurable pixels
+    // are the graphic outline, and the mask then fills its whole window.
+    //
+    // A caller that wants the plate captured EMPTY and then with the tiles must create it in the
+    // first call and leave it alive: creating a fresh plate for the second capture produced two
+    // frames that differed by nothing at all, because the tiles of the second call were never in
+    // the picture.
+    if (plate) {
+      const plateGeometry = new THREE.PlaneGeometry(spacing * columns + 0.7, spacing * rows + 0.7)
+      const plateMesh = new THREE.Mesh(plateGeometry, markMaterial(0x2a3550, 0.94))
+      plateMesh.position.set(0, yOffset, 6 - 0.22)
+      addTransient({ object: plateMesh, duration: 12, kind: 'decoration', ownGeometry: true, update: () => {} })
+    }
     const record = { records: [], transients: [] }
-    const spawn = addCartoonSystems(specs, record, new THREE.Vector3(0, 0, 0))
+    const spawn = tiles
+      ? addCartoonSystems(specs, record, new THREE.Vector3(0, 0, 0))
+      : { count: 0, byId: {} }
+    specs.length = tiles ? specs.length : 0
     // One synchronous step so the burst exists by the time the caller screenshots, rather than
     // depending on whether a frame happened to land in between.
     particleRenderer.update(0.001)
