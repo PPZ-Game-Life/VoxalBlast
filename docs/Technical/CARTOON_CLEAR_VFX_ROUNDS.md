@@ -333,3 +333,38 @@ R4 收尾时这几条只做到「代码路径存在」，本轮用**真实指针
 转面那条特别值得记：轮廓是 `followCube` 的，`updateTransientEffects()` 在 `cubeGroup.quaternion` 与本事件出生时的姿态差超过 0.04rad 时把 `until` 收到 `now + 80ms`。本轮把偏航读数（26.01°）与轮廓归零放在同一条证据里，**证明这是真的转了面**，而不是因为事件自己到期了。
 
 仍然没验证的：**重开**（`resetGame` 路径存在，未单独驱动）与**恢复存档**（`applySession` 路径存在，未单独驱动）——两条都只做过代码检查，不给它们打勾。
+
+### R4 补完（三）：设置面板那条「缺陷」的根因，以及最后两条 §7.1 转变（v0.13.3）
+
+**只改文件**：`tools/cartoon-clear-probe.mjs`、`docs/Technical/KNOWN_GAPS.md`、本文档。无产品代码改动。
+
+#### 根因：不是产品缺陷，是用例跑在了开场波次的输入锁里
+
+R3 据一个用例写了「打开设置面板没有关闭正常消除作用域」；R4 加了前置断言后发现该用例开始时帧循环已暂停、从而判它无效。本轮把根因查清：
+
+- 任何新一局开始后，**开场创建波次会握住输入锁约 1.05s**（`introPlaying()` 是 `syncPause()` 的一个合法暂停源）；
+- 该用例排在上一个用例之后约 1.1s 就开测，**正好落在锁里**；
+- 所以 `liveParticles=0`：发射从未被释放，测到的与设置面板无关。
+
+把「每个用例先等波次结束（`intro().active === false`）」做成 `settleUi()` 的一部分之后，同一条断言直接由 FAIL 变 OK，**产品代码一行没改**：
+
+```
+OK   C settings: the frame loop is running before the transition  liveParticles=24
+OK   C settings: the transition clears the normal-clear scope     liveSprites=0 outlines=0
+OK   C settings: the scope epoch advanced, so a late callback is stale  epoch 6 -> 7
+```
+
+**R3 与 R4 关于设置面板的结论一并作废。** 教训写进了 KNOWN_GAPS：取消/生命周期类用例必须先等到「游戏真的在跑」，否则测的是上一个动作留下的锁。
+
+#### 最后两条 §7.1 转变
+
+| 用例 | 驱动方式 | 读数 | 判定 |
+| --- | --- | --- | --- |
+| 重开（RESTART） | 真实面板：`#settings-button` → `#restart-setting` | 24 → **0**，outlines 0；epoch 9→11 | OK |
+| 恢复存档（RESUME） | 真实存档：合法落子写入槽位 → 重新加载页面 → 在主页返回对局 | 存档键存在；返回后 `liveSprites=0 liveEvents=0`；再回来后仍 0、无补播 | OK |
+
+至此 §7.1 的取消清单（设置 / 帮助（与设置同一面板）/ 主页 / hidden / 局终 / 重开 / 恢复存档）**全部有真实驱动与读数**。
+
+#### 剩余失败项
+
+`tools/cartoon-clear-probe.mjs r3` 现在只剩 **2 个 failure**，全部是 R1 起就挂着的三个 tile 的采样尺寸判据（`confetti-pink` 超 0.12、`star-pop` 窗口污染、`dash-blue` 归入 UNMEASURED）。

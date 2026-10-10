@@ -173,7 +173,18 @@ async function runLifecycle(ctx) {
   // Every case starts from a CLOSED UI. Leaving the previous case panel open made the next one
   // measure "the clear expired on its own" instead of "the transition cancelled it", and the
   // paused frame loop then also swallowed the reduced-motion toggle below.
+  // The opening creation wave holds the input lock for ~1.05s after any new run. Waiting for it
+  // is test hygiene, not a softened assertion: a case that starts inside the lock measures the
+  // lock, and the R3/R4 runs read exactly that as "the settings panel does not cancel".
+  const waitLive = async () => {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if ((await json('globalThis.__voxalblast.intro().active')) === false) return true
+      await sleep(150)
+    }
+    return false
+  }
   const settleUi = async () => {
+    await waitLive()
     await evaluate(`(() => {
       const app = document.querySelector('#app')
       const cover = document.querySelector('#home-primary')
@@ -508,6 +519,71 @@ async function runLifecycle(ctx) {
       `liveSprites ${beforeEnd.cartoon.liveSprites} -> ${ended.cartoon.liveSprites}, outlines=${ended.outlines}`)
     check("H4 and the scope epoch advanced", out.endGame.epochAfter > out.endGame.epochBefore,
       `epoch ${out.endGame.epochBefore} -> ${out.endGame.epochAfter}`)
+  }
+  // ---- I. the last two §7.1 transitions: RESTART and RESUME --------------------------------
+  {
+    // RESTART is the settings panel own row, so it is driven through the real panel.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(200)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(220)
+    const beforeRestart = await report()
+    await evaluate('document.querySelector("#settings-button").click()')
+    await sleep(240)
+    await evaluate('document.querySelector("#restart-setting").click()')
+    await sleep(360)
+    const afterRestart = await report()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    out.restart = {
+      before: beforeRestart.cartoon.liveSprites,
+      after: afterRestart.cartoon.liveSprites,
+      outlines: afterRestart.outlines,
+      epochBefore: beforeRestart.cartoon.scopeEpoch,
+      epochAfter: afterRestart.cartoon.scopeEpoch,
+    }
+    check("I RESTART closes the clear scope",
+      out.restart.before > 0 && out.restart.after === 0 && out.restart.outlines === 0,
+      `liveSprites ${out.restart.before} -> ${out.restart.after}, outlines=${out.restart.outlines}`)
+    check("I RESTART advances the scope epoch", out.restart.epochAfter > out.restart.epochBefore,
+      `epoch ${out.restart.epochBefore} -> ${out.restart.epochAfter}`)
+
+    // RESUME is a real reload of a real save: one legal drop writes the slot, the page is
+    // reloaded and the cover continue button runs applySession() on the way back in.
+    await settleUi()
+    await evaluate('globalThis.__voxalblastDev.clearCelebration()')
+    await sleep(200)
+    await evaluate('globalThis.__voxalblastDev.demoClear(3)')
+    await sleep(220)
+    const beforeResume = await report()
+    await evaluate('globalThis.__voxalblastDev.dropAt({ pieceIndex: 0, face: "+z", u: 0, v: 0 })')
+    await sleep(200)
+    const saved = await evaluate("Boolean(localStorage.getItem('voxalblast.session.v1'))")
+    await send(ws, nextId++, "Page.navigate", { url: "about:blank" })
+    await sleep(200)
+    await send(ws, nextId++, "Page.navigate", { url })
+    await sleep(2600)
+    await waitLive()
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setBoardFloat({ frozen: true, time: 0 }))')
+    await evaluate('JSON.stringify(globalThis.__voxalblastDev.setAmbient({ frozen: true, time: 0 }))')
+    const onReturn = await report()
+    const coverOpen = await json("document.querySelector('#app').classList.contains('home-open')")
+    await settleUi()
+    const afterResume = await report()
+    out.resume = {
+      saved,
+      coverOpen,
+      epochAfterReload: onReturn.cartoon.scopeEpoch,
+      liveAfterResume: afterResume.cartoon.liveSprites,
+      outlines: afterResume.outlines,
+    }
+    check("I a real drop wrote the resume slot", saved === true, `session key present=${saved}`)
+    check("I RESUME leaves no clear from the previous page in the scope",
+      onReturn.cartoon.liveSprites === 0 && onReturn.cartoon.liveEvents === 0,
+      `liveSprites=${onReturn.cartoon.liveSprites} liveEvents=${onReturn.cartoon.liveEvents} (coverOpen=${coverOpen})`)
+    check("I and it does not replay an old clear after coming back",
+      afterResume.cartoon.liveSprites === 0 && afterResume.outlines === 0,
+      `liveSprites=${afterResume.cartoon.liveSprites} outlines=${afterResume.outlines}`)
   }
   void note
 }
