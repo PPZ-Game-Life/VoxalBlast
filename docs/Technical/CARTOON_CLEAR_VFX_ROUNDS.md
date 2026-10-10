@@ -485,3 +485,32 @@ OK   K a normal move still settles and still scores with the atlas broken  drop.
 一个小瑕疵如实记下：`error` 字段是 `[object Event]`，因为 `TextureLoader` 的 onError 回一个 Event、没有 `message`，诊断里看不出是哪个 URL 失败（`status=failed` 本身是准的）。这属于开发诊断的可读性，不影响行为，未改。
 
 **`npm run probe:clear` 的 `r1` 与 `r3` 现在都是 0 failure**，`r3` 一次覆盖：8-tile 采样门、§7 生命周期（重叠事件/全局上限/七类取消/reduced-motion 动态开启/100 轮泄漏/帧开销）、layer3 合同、真实帧序录制、以及本条失败路径。
+
+### 收口：四轮探针全绿，规划器并入 `npm test`（v0.13.3）
+
+**只改文件**：`package.json`（把 `test:cartoon` 接进 `npm test` 链）、本文档、证据刷新。无产品代码改动。
+
+#### `npm run probe:clear` 四轮全部 0 failure
+
+| 轮次 | 覆盖 | 结果 |
+| --- | --- | --- |
+| `r1` | 8-tile 采样门（含底板）+ 单线短反馈 | **0 failure** |
+| `r2` | 9 个真实盘面用例 + 三类多线 + 三视口节拍 | **0 failure** |
+| `r3` | §7 生命周期 + layer3 合同 + 帧开销 + 真实帧序录制 + 贴图 404 兜底 | **0 failure** |
+| `r4` | §9.2 五个必要视口 | **0 failure** |
+
+五视口读数（在本轮最终构建上重跑，同 URL、世界时钟钳死）：
+
+| 视口 | demoClear(1) 收净 / 预算 | demoClear(2) | demoClear(3) |
+| --- | --- | --- | --- |
+| 1440×900 | 351ms / 14 | 405ms / 22 | 405ms / 32 |
+| 1280×720 | 350ms / 14 | 411ms / 22 | 420ms / 32 |
+| 390×844（低配） | 360ms / 7 | 405ms / 11 | 410ms / 16 |
+| 844×390（横屏 cramped） | 348ms / 7 | 420ms / 11 | 416ms / 16 |
+| 2048×900 | 353ms / 14 | 420ms / 22 | 411ms / 32 |
+
+全部落在 §5 的单线 ≤360ms / 多线 ≤420ms 之内（判定含一帧 18ms 的采样粒度）。
+
+#### 规划器并入标准测试链
+
+`tools/cartoon-clear-plan-tests.mjs` 是纯模块 + 已入库夹具，本来只在 `npm run test:cartoon` 下跑。现在接进 `npm test`（链上 12 个套件），**规则/会话/i18n/发牌/形状池/荣誉/道具/材质/排行榜之后紧跟卡通规划器**：`npm test` 一次跑完，`PASS 0 failure(s)`。这样物理线去重口径以后再被改坏，标准门禁就会直接拦住。
